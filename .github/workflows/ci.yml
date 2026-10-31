@@ -24,8 +24,21 @@ jobs:
       web: ${{ steps.filter.outputs.web }}
       contract: ${{ steps.filter.outputs.contract }}
       ios: ${{ steps.filter.outputs.ios }}
+      web_ready: ${{ steps.scaffold.outputs.web }}
+      contract_ready: ${{ steps.scaffold.outputs.contract }}
+      ios_ready: ${{ steps.scaffold.outputs.ios }}
     steps:
       - uses: actions/checkout@v4
+      # hashFiles() is not allowed in a job-level `if`, so scaffold detection happens here.
+      - name: Detect scaffolded areas
+        id: scaffold
+        run: |
+          exists() { [ -f "$1" ] && echo true || echo false; }
+          {
+            echo "web=$(exists apps/web/package.json)"
+            echo "contract=$(exists contracts/vault/Cargo.toml)"
+            echo "ios=$(exists apps/ios/project.yml)"
+          } >> "$GITHUB_OUTPUT"
       - uses: dorny/paths-filter@v3
         id: filter
         with:
@@ -146,7 +159,7 @@ jobs:
 
   web:
     needs: changes
-    if: needs.changes.outputs.web == 'true' && hashFiles('apps/web/package.json') != ''
+    if: needs.changes.outputs.web == 'true' && needs.changes.outputs.web_ready == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -160,7 +173,7 @@ jobs:
 
   contract:
     needs: changes
-    if: needs.changes.outputs.contract == 'true' && hashFiles('contracts/vault/Cargo.toml') != ''
+    if: needs.changes.outputs.contract == 'true' && needs.changes.outputs.contract_ready == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -179,7 +192,7 @@ jobs:
 
   ios:
     needs: changes
-    if: needs.changes.outputs.ios == 'true' && hashFiles('apps/ios/project.yml') != ''
+    if: needs.changes.outputs.ios == 'true' && needs.changes.outputs.ios_ready == 'true'
     runs-on: macos-15
     defaults:
       run:

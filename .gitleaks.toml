@@ -1,0 +1,9 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Published demo keys for mock mode. They unlock fixtures only."
+regexes = [
+  '''rt_test_7Kp2demo00c9Qe''',
+  '''rt_test_mcp_Q8demo001fA''',
+]
