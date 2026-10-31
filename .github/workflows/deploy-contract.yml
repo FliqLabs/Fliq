@@ -1,0 +1,40 @@
+name: Deploy contract
+
+on:
+  workflow_dispatch:
+    inputs:
+      account:
+        description: Testnet account to deploy to
+        required: true
+        default: fliq-vault.testnet
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: testnet
+    defaults:
+      run:
+        working-directory: contracts/vault
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: contracts/vault
+      - run: cargo install cargo-near --locked
+      - name: Build and deploy
+        env:
+          NEAR_PRIVATE_KEY: ${{ secrets.NEAR_DEPLOYER_PRIVATE_KEY }}
+          NEAR_PUBLIC_KEY: ${{ secrets.NEAR_DEPLOYER_PUBLIC_KEY }}
+          ACCOUNT: ${{ inputs.account }}
+        run: |
+          cargo near deploy build-reproducible-wasm "$ACCOUNT" \
+            without-init-call \
+            network-config testnet \
+            sign-with-plaintext-private-key --signer-public-key "$NEAR_PUBLIC_KEY" --signer-private-key "$NEAR_PRIVATE_KEY" \
+            send

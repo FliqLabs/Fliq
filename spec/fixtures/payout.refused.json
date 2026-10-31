@@ -1,0 +1,10 @@
+{
+  "error": {
+    "code": "vault_cap_exceeded",
+    "message": "₦500,000 is over your ₦50,000 per-payout cap and the ₦150,000 daily cap. Nothing moved."
+  },
+  "attempted": 500000,
+  "per_payout_cap": 50000,
+  "daily_cap": 150000,
+  "used_today": 30000
+}

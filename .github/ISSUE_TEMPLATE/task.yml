@@ -1,0 +1,23 @@
+name: Task
+description: A piece of work for one area
+labels: [task]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options: [ios, web, api, contract, spec, analytics, docs, ci]
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Done when
+      description: What a reviewer can see or run when this is finished
+    validations:
+      required: true
+  - type: input
+    id: design
+    attributes:
+      label: Canvas screen or diagram
+      placeholder: App v5 / 8 Quote, or board diagram 5

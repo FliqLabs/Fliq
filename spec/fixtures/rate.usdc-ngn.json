@@ -1,0 +1,13 @@
+{
+  "token": "usdc",
+  "currency": "ngn",
+  "rate": 1376.32,
+  "rate_before_fees": 1383.2,
+  "provider": "paycrest",
+  "providers_quoting": 3,
+  "spread": 17.92,
+  "official": { "source": "cbn_nfem_close", "rate": 1348.01 },
+  "p2p": { "source": "bybit_usdt_ngn_median_top10", "rate": 1381.85 },
+  "change_24h": 0.0042,
+  "fetched_at": "2026-10-29T13:02:13Z"
+}

@@ -1,0 +1,5 @@
+pnpm-lock.yaml
+spec/ts/openapi.ts
+apps/ios
+contracts
+*.md

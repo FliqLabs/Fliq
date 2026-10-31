@@ -1,0 +1,10 @@
+{
+  "health.json": "Health",
+  "rate.usdc-ngn.json": "Rate",
+  "quote.usdc-ngn-50.json": "Quote",
+  "verify.gtbank-0123456789.json": "VerifiedAccount",
+  "payout.created.json": "Payout",
+  "payout.settled.json": "Payout",
+  "payout.refused.json": "Refusal",
+  "error.unauthorized.json": "Error"
+}

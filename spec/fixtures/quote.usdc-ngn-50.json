@@ -1,0 +1,19 @@
+{
+  "quote_id": "q_31ad77e0",
+  "token": "usdc",
+  "currency": "ngn",
+  "amount": "50.00",
+  "rate_before_fees": 1383.2,
+  "fees": { "provider": 25000, "network": 9400, "total": 34400 },
+  "rate": 1376.32,
+  "receive": 68816,
+  "provider": "paycrest",
+  "best_of": 4,
+  "routes": [
+    { "provider": "paycrest", "status": "live", "rate": 1376.32, "age_seconds": 6, "routed": true },
+    { "provider": "busha", "status": "live", "rate": 1370.08, "age_seconds": 9, "routed": false },
+    { "provider": "fonbnk", "status": "stale", "rate": 1358.4, "age_seconds": 240, "routed": false },
+    { "provider": "bitnob", "status": "paused", "rate": null, "routed": false }
+  ],
+  "expires_in": 90
+}

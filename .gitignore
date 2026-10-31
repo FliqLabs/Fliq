@@ -1,0 +1,39 @@
+# dependencies and builds
+node_modules/
+.pnpm-store/
+dist/
+build/
+.next/
+out/
+coverage/
+.turbo/
+.vercel/
+
+# rust
+target/
+contracts/**/res/
+
+# ios
+*.xcodeproj/
+*.xcworkspace/xcuserdata/
+xcuserdata/
+DerivedData/
+*.ipa
+*.dSYM.zip
+apps/ios/**/*.xcconfig.local
+
+# environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.near-credentials/
+neardev/
+
+# os and editors
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.log

@@ -1,0 +1,39 @@
+name: Contract review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  pull_request_review:
+    types: [submitted, dismissed]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  contract-review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Two contract owners approve changes to contracts/vault/src
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          touched=$(gh api "repos/$REPO/pulls/$PR/files" --paginate --jq '.[].filename' | grep -c '^contracts/vault/src/' || true)
+          if [ "$touched" -eq 0 ]; then echo "no contract source changes"; exit 0; fi
+
+          reviewers=$(grep -v '^#' .github/contract-reviewers.txt | sed '/^\s*$/d')
+          approvals=$(gh api "repos/$REPO/pulls/$PR/reviews" --paginate \
+            --jq 'group_by(.user.login) | map(last) | map(select(.state == "APPROVED")) | .[].user.login')
+
+          count=0
+          for user in $approvals; do
+            [ "$user" = "$AUTHOR" ] && continue
+            echo "$reviewers" | grep -qx "$user" && count=$((count + 1))
+          done
+
+          echo "contract approvals: $count of 2"
+          [ "$count" -ge 2 ] || { echo "::error::contracts/vault/src changed: two contract owners must approve"; exit 1; }

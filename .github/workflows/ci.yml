@@ -1,0 +1,212 @@
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited, labeled, unlabeled, ready_for_review]
+  push:
+    branches: [main]
+  merge_group:
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      spec: ${{ steps.filter.outputs.spec }}
+      api: ${{ steps.filter.outputs.api }}
+      web: ${{ steps.filter.outputs.web }}
+      contract: ${{ steps.filter.outputs.contract }}
+      ios: ${{ steps.filter.outputs.ios }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            shared: &shared
+              - package.json
+              - pnpm-lock.yaml
+              - pnpm-workspace.yaml
+              - tsconfig.base.json
+              - .github/workflows/ci.yml
+            spec:
+              - *shared
+              - spec/**
+            api:
+              - *shared
+              - spec/**
+              - services/**
+            web:
+              - *shared
+              - spec/**
+              - apps/web/**
+            contract:
+              - .github/workflows/ci.yml
+              - contracts/**
+              - spec/fixtures/**
+            ios:
+              - apps/ios/**
+              - spec/fixtures/**
+
+  pr-title:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            refactor
+            test
+            docs
+            chore
+            ci
+            perf
+          scopes: |
+            ios
+            web
+            api
+            contract
+            spec
+            analytics
+            docs
+            ci
+            repo
+          requireScope: true
+
+  freeze:
+    if: github.event_name == 'pull_request'
+    needs: changes
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check freeze dates
+        env:
+          EXCEPTION: ${{ contains(github.event.pull_request.labels.*.name, 'freeze-exception') }}
+          TOUCHES_APP_LAYER: ${{ needs.changes.outputs.api == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.spec == 'true' }}
+          TOUCHES_CONTRACT: ${{ needs.changes.outputs.contract == 'true' }}
+        run: |
+          now=$(date -u +%s)
+          app_freeze=$(date -u -d '2026-11-09T23:59:00Z' +%s)
+          contract_freeze=$(date -u -d '2026-11-12T23:59:00Z' +%s)
+          if [ "$EXCEPTION" = "true" ]; then echo "freeze-exception label present"; exit 0; fi
+          if [ "$TOUCHES_APP_LAYER" = "true" ] && [ "$now" -gt "$app_freeze" ]; then
+            echo "::error::web, api and spec froze on 9 Nov 23:59 UTC"; exit 1
+          fi
+          if [ "$TOUCHES_CONTRACT" = "true" ] && [ "$now" -gt "$contract_freeze" ]; then
+            echo "::error::contracts froze on 12 Nov 23:59 UTC"; exit 1
+          fi
+          echo "not frozen"
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Scan for secrets
+        run: docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.21.2 detect --source /repo --no-banner --redact -v
+
+  spec:
+    needs: changes
+    if: needs.changes.outputs.spec == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: make test-spec
+
+  api:
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: make test-api
+
+  web:
+    needs: changes
+    if: needs.changes.outputs.web == 'true' && hashFiles('apps/web/package.json') != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: make test-web
+
+  contract:
+    needs: changes
+    if: needs.changes.outputs.contract == 'true' && hashFiles('contracts/vault/Cargo.toml') != ''
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contracts/vault
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: contracts/vault
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test
+
+  ios:
+    needs: changes
+    if: needs.changes.outputs.ios == 'true' && hashFiles('apps/ios/project.yml') != ''
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: apps/ios
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install xcodegen
+      - run: xcodegen generate
+      - name: Build and unit test
+        run: |
+          xcodebuild test \
+            -project Fliq.xcodeproj \
+            -scheme Fliq \
+            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            -only-testing:FliqTests \
+            CODE_SIGNING_ALLOWED=NO | xcbeautify || exit ${PIPESTATUS[0]}
+
+  ci-gate:
+    if: always()
+    needs: [changes, pr-title, freeze, secrets, spec, api, web, contract, ios]
+    runs-on: ubuntu-latest
+    steps:
+      - name: All required jobs passed or were skipped
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "$RESULTS"
+          for result in $RESULTS; do
+            if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then exit 1; fi
+          done

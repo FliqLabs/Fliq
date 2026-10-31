@@ -1,0 +1,17 @@
+# Every path needs approval from its owning team. Later rules win.
+
+*                       @FliqLabs/leads
+
+/apps/ios/              @FliqLabs/ios
+/apps/web/              @FliqLabs/web
+/services/              @FliqLabs/backend
+/contracts/             @FliqLabs/contracts
+/analytics/             @FliqLabs/analytics
+/spec/events/           @FliqLabs/analytics
+
+/spec/openapi.yaml      @FliqLabs/backend @FliqLabs/web @FliqLabs/ios
+/spec/fixtures/         @FliqLabs/backend @FliqLabs/web @FliqLabs/ios
+
+/.github/               @FliqLabs/leads
+/AGENTS.md              @FliqLabs/leads
+/CLAUDE.md              @FliqLabs/leads

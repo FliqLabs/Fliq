@@ -1,0 +1,453 @@
+openapi: 3.1.0
+info:
+  title: fliq API
+  version: 0.1.0
+  description: Stablecoin to local money payouts. Quotes the best after-fee rate across licensed providers and pays out to bank and mobile money accounts.
+  license:
+    name: MIT
+    identifier: MIT
+servers:
+  - url: https://api.fliq.cash/v1
+    description: Production
+  - url: http://localhost:4000/v1
+    description: Local mock (make dev-mock)
+security:
+  - bearerAuth: []
+tags:
+  - name: rates
+    description: Public rates, no key needed
+  - name: quotes
+    description: Best after-fee quotes across providers
+  - name: institutions
+    description: Banks and account verification
+  - name: payouts
+    description: Create and track payouts
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Health check
+      security: []
+      responses:
+        "200":
+          description: Service is up
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+  /rates/{token}/{currency}:
+    get:
+      operationId: getRate
+      summary: Best after-fee rate for a corridor
+      tags: [rates]
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/Token"
+        - $ref: "#/components/parameters/Currency"
+      responses:
+        "200":
+          description: Best after-fee rate right now, cached for 10 seconds
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Rate"
+  /quote:
+    post:
+      operationId: createQuote
+      summary: Quote a payout
+      tags: [quotes]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QuoteRequest"
+      responses:
+        "200":
+          description: Best after-fee quote across providers
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Quote"
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Error"
+  /institutions/verify:
+    post:
+      operationId: verifyAccount
+      summary: Verify a bank account name
+      tags: [institutions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Account"
+      responses:
+        "200":
+          description: Account name as returned by the bank
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerifiedAccount"
+        "404":
+          $ref: "#/components/responses/Error"
+  /payouts:
+    post:
+      operationId: createPayout
+      summary: Create a payout
+      tags: [payouts]
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PayoutRequest"
+      responses:
+        "201":
+          description: Payout created, waiting for the deposit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Payout"
+        "409":
+          $ref: "#/components/responses/Error"
+        "422":
+          description: Refused by the vault
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Refusal"
+  /payouts/{payoutId}:
+    get:
+      operationId: getPayout
+      summary: Get a payout and its receipt
+      tags: [payouts]
+      parameters:
+        - name: payoutId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The payout and its receipt
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Payout"
+        "404":
+          $ref: "#/components/responses/Error"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: rt_test_ keys for sandbox, rt_live_ keys after KYB
+  parameters:
+    Token:
+      name: token
+      in: path
+      required: true
+      schema:
+        type: string
+        enum: [usdc, usdt]
+    Currency:
+      name: currency
+      in: path
+      required: true
+      schema:
+        type: string
+        enum: [ngn, kes]
+  responses:
+    Error:
+      description: Error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+  schemas:
+    Health:
+      type: object
+      required: [status, version]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+        version:
+          type: string
+    ProviderId:
+      type: string
+      enum: [paycrest, busha, fonbnk, bitnob]
+    ProviderStatus:
+      type: string
+      enum: [live, stale, paused]
+    ReferenceRate:
+      type: object
+      required: [source, rate]
+      properties:
+        source:
+          type: string
+        rate:
+          type: number
+    Rate:
+      type: object
+      required:
+        [
+          token,
+          currency,
+          rate,
+          rate_before_fees,
+          provider,
+          providers_quoting,
+          spread,
+          official,
+          p2p,
+          change_24h,
+          fetched_at,
+        ]
+      properties:
+        token:
+          type: string
+        currency:
+          type: string
+        rate:
+          type: number
+          description: Local currency per 1 token, after fees
+        rate_before_fees:
+          type: number
+        provider:
+          $ref: "#/components/schemas/ProviderId"
+        providers_quoting:
+          type: integer
+        spread:
+          type: number
+        official:
+          $ref: "#/components/schemas/ReferenceRate"
+        p2p:
+          $ref: "#/components/schemas/ReferenceRate"
+        change_24h:
+          type: number
+        fetched_at:
+          type: string
+          format: date-time
+    QuoteRequest:
+      type: object
+      required: [token, currency, amount]
+      properties:
+        token:
+          type: string
+          enum: [usdc, usdt]
+        currency:
+          type: string
+          enum: [ngn, kes]
+        amount:
+          type: string
+          description: Token amount as a decimal string, never a float
+    Fees:
+      type: object
+      required: [provider, network, total]
+      properties:
+        provider:
+          type: integer
+          description: In minor units of the local currency
+        network:
+          type: integer
+        total:
+          type: integer
+    Route:
+      type: object
+      required: [provider, status, rate]
+      properties:
+        provider:
+          $ref: "#/components/schemas/ProviderId"
+        status:
+          $ref: "#/components/schemas/ProviderStatus"
+        rate:
+          type: [number, "null"]
+        age_seconds:
+          type: integer
+        routed:
+          type: boolean
+    Quote:
+      type: object
+      required:
+        [
+          quote_id,
+          token,
+          currency,
+          amount,
+          rate_before_fees,
+          fees,
+          rate,
+          receive,
+          provider,
+          best_of,
+          routes,
+          expires_in,
+        ]
+      properties:
+        quote_id:
+          type: string
+        token:
+          type: string
+        currency:
+          type: string
+        amount:
+          type: string
+        rate_before_fees:
+          type: number
+        fees:
+          $ref: "#/components/schemas/Fees"
+        rate:
+          type: number
+        receive:
+          type: integer
+          description: Amount that lands, in whole local currency units
+        provider:
+          $ref: "#/components/schemas/ProviderId"
+        best_of:
+          type: integer
+        routes:
+          type: array
+          items:
+            $ref: "#/components/schemas/Route"
+        expires_in:
+          type: integer
+    Account:
+      type: object
+      required: [bank, number]
+      properties:
+        bank:
+          type: string
+          description: Institution code, for example 058 for GTBank
+        number:
+          type: string
+    VerifiedAccount:
+      allOf:
+        - $ref: "#/components/schemas/Account"
+        - type: object
+          required: [account_name, institution]
+          properties:
+            account_name:
+              type: string
+            institution:
+              type: string
+    PayoutRequest:
+      type: object
+      required: [quote_id, account]
+      properties:
+        quote_id:
+          type: string
+        account:
+          $ref: "#/components/schemas/Account"
+    PayoutState:
+      type: string
+      enum: [awaiting_deposit, deposit_seen, paying_out, settled, refused, refunded, not_received]
+    StateChange:
+      type: object
+      required: [state, at]
+      properties:
+        state:
+          $ref: "#/components/schemas/PayoutState"
+        at:
+          type: string
+          format: date-time
+    Deposit:
+      type: object
+      required: [chain, address, amount]
+      properties:
+        chain:
+          type: string
+        address:
+          type: string
+        amount:
+          type: string
+    Payout:
+      type: object
+      required:
+        [
+          payout_id,
+          state,
+          account_name,
+          account,
+          amount,
+          receive,
+          currency,
+          rate,
+          fees,
+          provider,
+          deposit,
+          history,
+        ]
+      properties:
+        payout_id:
+          type: string
+        state:
+          $ref: "#/components/schemas/PayoutState"
+        account_name:
+          type: string
+        account:
+          $ref: "#/components/schemas/Account"
+        amount:
+          type: string
+        receive:
+          type: integer
+        currency:
+          type: string
+        rate:
+          type: number
+        fees:
+          $ref: "#/components/schemas/Fees"
+        provider:
+          $ref: "#/components/schemas/ProviderId"
+        deposit:
+          $ref: "#/components/schemas/Deposit"
+        provider_order:
+          type: [string, "null"]
+        vault_receipt:
+          type: [string, "null"]
+        bank_reference:
+          type: [string, "null"]
+        seconds:
+          type: [integer, "null"]
+        history:
+          type: array
+          items:
+            $ref: "#/components/schemas/StateChange"
+    Refusal:
+      type: object
+      required: [error, attempted, per_payout_cap, daily_cap, used_today]
+      properties:
+        error:
+          $ref: "#/components/schemas/ErrorBody"
+        attempted:
+          type: integer
+          description: Local currency units
+        per_payout_cap:
+          type: integer
+        daily_cap:
+          type: integer
+        used_today:
+          type: integer
+    ErrorBody:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          $ref: "#/components/schemas/ErrorBody"
