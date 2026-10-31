@@ -5,3 +5,9 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 3
+    commit-message:
+      prefix: chore(ci)
+    ignore:
+      # Major action upgrades wait until after submission on 14 November.
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
