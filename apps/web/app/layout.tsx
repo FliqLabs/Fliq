@@ -18,7 +18,6 @@ export const metadata: Metadata = {
   title: "Fliq — Global crypto. Local money.",
   description: "Move from stablecoins to local bank accounts and mobile money with Fliq.",
 };
-
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
