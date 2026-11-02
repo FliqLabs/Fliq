@@ -17,3 +17,10 @@ Types: `import type { Quote, Payout } from "@fliq/spec"`. Fixtures for tests and
 The `/.well-known/apple-app-site-association` route must be live on the public domain from day 1; the iOS passkey flow depends on it.
 
 Design source of truth: fliq Web Design v4 (Claude Design canvas).
+
+## Libraries
+
+| Library | Why |
+| --- | --- |
+| `@tanstack/react-query` | Submit waitlist requests and expose loading, success, and error states. |
+| `zustand` | Keep the waitlist email draft in a small route-specific store. |
