@@ -81,7 +81,6 @@ function WaitlistFormFields() {
           </p>
         )}
       </div>
-  
     </form>
   );
 }
