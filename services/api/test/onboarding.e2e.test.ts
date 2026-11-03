@@ -1,5 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { encrypt, keyedHash } from "../packages/db/src/crypto.js";
+import { newId } from "../packages/db/src/ids.js";
 import { MockProvisioner } from "../apps/api/src/accounts.js";
 import { buildApp } from "../apps/api/src/app.js";
 import type { EmailSender } from "../apps/api/src/auth/email-links.js";
@@ -44,6 +46,10 @@ describe.skipIf(!enabled)("onboarding against a real database", () => {
     const user = await database.user.findUnique({ where: { email } });
     if (user) {
       const workspaces = await database.workspace.findMany({ where: { ownerId: user.id }, select: { id: true } });
+      const ids = workspaces.map((w) => w.id);
+      await database.payout.deleteMany({ where: { developerId: { in: ids } } });
+      await database.recipient.deleteMany({ where: { userId: user.id } });
+      await database.quote.deleteMany({ where: { developerId: { in: ids } } });
       await database.apiKey.deleteMany({ where: { workspaceId: { in: workspaces.map((w) => w.id) } } });
       await database.workspace.deleteMany({ where: { ownerId: user.id } });
       await database.idempotencyRecord.deleteMany({ where: { scope: user.id } });
@@ -135,6 +141,106 @@ describe.skipIf(!enabled)("onboarding against a real database", () => {
     expect(stored.last4).toBe(created.sandbox_key.key.slice(-4));
     const bad = await call("POST", "/workspaces", { ...request, use_case: "bank" }, authed({ "idempotency-key": `ws2-${suffix}` }));
     expect(bad.statusCode).toBe(400);
+  }, 120_000);
+
+  it("saves an https photo url and refuses anything else", async () => {
+    const saved = await call("PATCH", "/me", { photo_url: "https://fliq-photos.s3.amazonaws.com/usr/frank.jpg" }, authed());
+    expect(saved.statusCode).toBe(200);
+    expect(saved.json().photo_url).toBe("https://fliq-photos.s3.amazonaws.com/usr/frank.jpg");
+    expect((await call("PATCH", "/me", { photo_url: "http://example.com/a.jpg" }, authed())).statusCode).toBe(400);
+    expect((await call("PATCH", "/me", { photo_url: "javascript:alert(1)" }, authed())).statusCode).toBe(400);
+    expect((await call("PATCH", "/me", { photo_url: null }, authed())).json().photo_url).toBeNull();
+  }, 60_000);
+
+  it("serves the first-login dashboard, then pages real payouts", async () => {
+    const workspace = (await call("GET", "/workspaces/current", undefined, authed())).json();
+    expect(workspace).toMatchObject({ name: "EntryPoint Labs", countries: ["ng", "ke"], live_enabled: false });
+
+    const keys = (await call("GET", "/keys", undefined, authed())).json();
+    expect(keys.items).toHaveLength(1);
+    expect(keys.items[0].masked).toMatch(/^rt_test_.{4}\.\.\..{4}$/);
+    expect(keys.items[0].environment).toBe("test");
+
+    const before = (await call("GET", "/onboarding", undefined, authed())).json();
+    expect(before.steps).toEqual([
+      { id: "create_test_payout", done: false },
+      { id: "add_webhook", done: false },
+      { id: "go_live", done: false },
+    ]);
+    expect((await call("GET", "/payouts", undefined, authed())).json()).toEqual({ items: [], next_cursor: null });
+
+    const recipient = newId("rcp");
+    const quote = newId("q");
+    await database.$transaction(async (tx) => {
+      await tx.recipient.create({
+        data: {
+          id: recipient,
+          userId,
+          institutionCode: "058",
+          accountCipher: encrypt("0123456789", config.dataKey),
+          nameCipher: encrypt("DARA OKONKWO", config.dataKey),
+          lookupHash: keyedHash("058:0123456789", config.hashKey),
+        },
+      });
+      await tx.quote.create({
+        data: {
+          id: quote,
+          developerId: workspace.workspace_id,
+          mode: "send_exactly",
+          tokenSymbol: "USDC",
+          sourceChain: "base",
+          currency: "ngn",
+          amountIn: 50_000_000n,
+          amountOutMinor: 6_881_600n,
+          rate: "1376.32",
+          expiresAt: new Date(Date.now() + 90_000),
+        },
+      });
+      for (let i = 0; i < 3; i++) {
+        await tx.payout.create({
+          data: {
+            id: newId("po"),
+            developerId: workspace.workspace_id,
+            clientReference: `ref-${i}`,
+            quoteId: quote,
+            recipientId: recipient,
+            routeKind: "direct",
+            provider: "paycrest",
+            state: "settled",
+            amountIn: 50_000_000n,
+            amountOutMinor: 6_881_600n,
+            currency: "ngn",
+            rate: "1376.32",
+            createdAt: new Date(Date.UTC(2026, 9, 29, 13, 2, i)),
+          },
+        });
+      }
+    });
+
+    const first = (await call("GET", "/payouts?limit=2", undefined, authed())).json();
+    expect(first.items).toHaveLength(2);
+    expect(first.next_cursor).toBeTruthy();
+    expect(first.items[0]).toMatchObject({
+      state: "settled",
+      account_name: "DARA OKONKWO",
+      bank: { code: "058", name: "GTBank" },
+      account_last4: "6789",
+      amount: "50.00",
+      receive: 68816,
+      currency: "ngn",
+      provider: "paycrest",
+    });
+    expect(first.items[0].created_at > first.items[1].created_at).toBe(true);
+    expect(JSON.stringify(first)).not.toContain("0123456789");
+
+    const second = (await call("GET", `/payouts?limit=2&cursor=${first.next_cursor}`, undefined, authed())).json();
+    expect(second.items).toHaveLength(1);
+    expect(second.next_cursor).toBeNull();
+    expect(new Set([...first.items, ...second.items].map((item) => item.payout_id)).size).toBe(3);
+
+    expect((await call("GET", "/payouts?limit=0", undefined, authed())).statusCode).toBe(400);
+    expect((await call("GET", "/payouts?cursor=garbage", undefined, authed())).statusCode).toBe(400);
+    expect((await call("GET", "/onboarding", undefined, authed())).json().steps[0]).toEqual({ id: "create_test_payout", done: true });
   }, 120_000);
 
   it("rotates refresh tokens and revokes the family when an old one is reused", async () => {

@@ -311,6 +311,8 @@ model User {
   nearAccount   String?  @unique @map("near_account") @db.Text
   vaultAccount  String?  @map("vault_account") @db.Text
   displayName   String?  @map("display_name") @db.Text
+  // Uploaded by the client straight to object storage; we only keep the https URL it sends back.
+  photoUrl      String?  @map("photo_url") @db.Text
   occupation    String?  @db.Text
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   passkeys      PasskeyCredential[]

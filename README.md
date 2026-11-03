@@ -51,7 +51,7 @@ Architecture diagrams: [docs/architecture.md](docs/architecture.md).
 
 - Baseline: the first commit is tagged `pre-hackathon`; the submission is tagged `hackathon-submission`. The hackathon work is the diff between them.
 - No existing product on another chain.
-- AI-generated code is listed in [docs/AI_USAGE.md](docs/AI_USAGE.md). The iOS app is written by hand.
+- AI-generated code is listed in [docs/AI_USAGE.md](docs/AI_USAGE.md). The iOS app is built with Claude Code, directed and reviewed by Frank.
 
 ## Libraries
 
@@ -61,6 +61,11 @@ Architecture diagrams: [docs/architecture.md](docs/architecture.md).
 | @redocly/cli | spec | Lint the OpenAPI spec |
 | ajv, ajv-formats, yaml | spec | Validate fixtures against the spec |
 | tsx, vitest, typescript | services/api | Run and test the API |
+| fastify | services/api | HTTP server; validates requests against schemas built from the OpenAPI spec |
+| prisma, @prisma/client | services/api | Database schema, migrations and typed queries on Postgres |
+| @simplewebauthn/server | services/api | Verify passkey registration and sign-in (WebAuthn) |
+| ioredis | services/api | Redis client for the atomic token-bucket rate limiter |
+| yaml | services/api | Read spec/openapi.yaml at startup to register routes |
 | prettier | root | Formatting |
 
 ## Contributing

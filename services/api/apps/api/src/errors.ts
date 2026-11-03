@@ -35,3 +35,8 @@ export function settle<T>(outcome: Outcome<T>): T {
 }
 
 export const notFound = (message: string) => new ApiError(404, "not_found", message);
+
+export function requireHttpsUrl(value: string | null | undefined): void {
+  if (!value) return;
+  if (!URL.canParse(value) || new URL(value).protocol !== "https:") throw invalidRequest("photo_url must be an https URL.");
+}

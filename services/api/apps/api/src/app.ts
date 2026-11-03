@@ -7,6 +7,7 @@ import type { Unit } from "./db.js";
 import { ApiError, unauthorized } from "./errors.js";
 import type { Reply } from "./idempotency.js";
 import { loadSpec, operations } from "./openapi.js";
+import { rateLimitHook, type Limiter } from "./rate-limit.js";
 
 export interface AuthContext {
   userId: string;
@@ -26,6 +27,7 @@ export interface AppDeps {
   unit: Unit;
   handlers: Record<string, Handler>;
   logger?: boolean;
+  limiter?: Limiter;
 }
 
 function errorBody(code: string, message: string) {
@@ -38,12 +40,17 @@ function bearerToken(request: FastifyRequest): string | null {
 }
 
 export function buildApp(deps: AppDeps): FastifyInstance {
-  const app = Fastify({
+  const trustedHops = Number(process.env.TRUST_PROXY_HOPS ?? 1);
+  const app: FastifyInstance = Fastify({
     logger: deps.logger ?? false,
     requestIdHeader: "x-trace-id",
+    // One proxy hop (Render) sits in front, so the client address is the last one it appended; trusting more would let callers spoof it.
+    trustProxy: (_address: string, hop: number) => hop < trustedHops,
     genReqId: () => randomUUID(),
     ajv: { customOptions: { removeAdditional: false, coerceTypes: false, allErrors: false } },
   });
+
+  if (deps.limiter) app.addHook("onRequest", rateLimitHook(deps.limiter, deps.config.accessSecret));
 
   app.addHook("onSend", async (request, reply) => {
     reply.header("x-trace-id", request.id);

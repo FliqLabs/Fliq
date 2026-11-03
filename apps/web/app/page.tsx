@@ -1,5 +1,6 @@
 import Image from "next/image";
 import { JoinWaitlistLink } from "./components/join-waitlist-link";
+import { MarketingShell } from "./components/marketing-shell";
 import { siteContainer } from "./components/site-container";
 import { IconRow, eyebrow } from "./landing/components";
 import { providerIcons } from "./landing/data";
@@ -59,15 +60,17 @@ function Hero() {
 }
 export default function HomePage() {
   return (
-    <div className="overflow-hidden bg-[linear-gradient(180deg,#171717_0%,#0b0b0b_60%,#000_100%)]">
-      <main>
-        <Hero />
-        <HowItWorks />
-        <Developers />
-        <Agents />
-        <Trust />
-        <Sandbox />
-      </main>
-    </div>
+    <MarketingShell>
+      <div className="overflow-hidden bg-[linear-gradient(180deg,#171717_0%,#0b0b0b_60%,#000_100%)]">
+        <main>
+          <Hero />
+          <HowItWorks />
+          <Developers />
+          <Agents />
+          <Trust />
+          <Sandbox />
+        </main>
+      </div>
+    </MarketingShell>
   );
 }
