@@ -9,7 +9,11 @@ struct SendingView: View {
             content(payout)
                 .task { await flow.track() }
                 .onChange(of: payout.state) { _, state in
-                    if state == .settled { environment.router.replace(with: .payPaid) }
+                    switch state {
+                    case .settled: environment.router.replace(with: .payPaid)
+                    case .refunded: environment.router.replace(with: .payRefunded)
+                    default: break
+                    }
                 }
         }
     }

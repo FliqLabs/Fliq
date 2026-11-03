@@ -1,17 +1,13 @@
 import SwiftUI
 
+/// The receipt for a settled payout. Opened at the end of Pay, and from Activity.
 struct PaidView: View {
-    let flow: PayFlow
-    let onPayAgain: () -> Void
+    let payout: Payout
+    var onPayAgain: (() -> Void)?
     @Environment(AppEnvironment.self) private var environment
+    @State private var showingNotReceived = false
 
     var body: some View {
-        if let payout = flow.payout {
-            content(payout)
-        }
-    }
-
-    private func content(_ payout: Payout) -> some View {
         VStack(spacing: 0) {
             VStack(spacing: 8) {
                 Image(systemName: "checkmark")
@@ -21,10 +17,11 @@ struct PaidView: View {
                     .background(Color(hex: 0x0F2E19), in: Circle())
                     .padding(.bottom, 8)
                 HeroAmount(symbol: payout.currency.symbol, value: payout.receive.formatted())
-                Text("landed in \(payout.accountName)'s account")
+                Text("landed in \(payout.accountName)'s \(payout.institutionName) account")
                     .font(.system(size: 15))
                     .foregroundStyle(Theme.textSecondary)
-                if let settledLine = settledLine(payout) {
+                    .multilineTextAlignment(.center)
+                if let settledLine {
                     Text(settledLine)
                         .font(.system(size: 13))
                         .foregroundStyle(Theme.textTertiary)
@@ -44,7 +41,7 @@ struct PaidView: View {
             }
             .padding(.top, 30)
 
-            ShareLink(item: receipt(payout)) {
+            ShareLink(item: receipt) {
                 Label("Share receipt", systemImage: "square.and.arrow.up")
                     .font(.system(size: 15, weight: .medium))
                     .frame(maxWidth: .infinity, minHeight: 50)
@@ -55,28 +52,43 @@ struct PaidView: View {
 
             Spacer()
 
-            Button("Pay again", action: onPayAgain)
-                .buttonStyle(PrimaryButtonStyle())
-                .padding(.bottom, 12)
+            Button("Not received yet?") { showingNotReceived = true }
+                .font(.system(size: 14))
+                .foregroundStyle(Theme.textSecondary)
+                .frame(height: 40)
+                .padding(.bottom, 14)
+
+            if let onPayAgain {
+                Button("Pay again", action: onPayAgain)
+                    .buttonStyle(PrimaryButtonStyle())
+                    .padding(.bottom, 12)
+            }
         }
         .fliqScreen("Paid")
-        .navigationBarBackButtonHidden()
+        .navigationBarBackButtonHidden(onPayAgain != nil)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button { environment.router.reset() } label: { Image(systemName: "xmark") }
-                    .accessibilityLabel("Close")
+            if onPayAgain != nil {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { environment.router.reset() } label: { Image(systemName: "xmark") }
+                        .accessibilityLabel("Close")
+                }
             }
+        }
+        .sheet(isPresented: $showingNotReceived) {
+            NotReceivedSheet(payout: payout)
+                .presentationDetents([.medium])
+                .presentationBackground(Color(hex: 0x141414))
         }
     }
 
-    private func settledLine(_ payout: Payout) -> String? {
+    private var settledLine: String? {
         guard let settled = payout.history.last(where: { $0.state == .settled }) else { return nil }
         let time = settled.at.formatted(date: .omitted, time: .standard)
         guard let seconds = payout.seconds else { return time }
         return "\(time) · \(seconds) seconds"
     }
 
-    private func receipt(_ payout: Payout) -> String {
+    private var receipt: String {
         var lines = [
             "fliq receipt",
             "\(Money.local(payout.receive, payout.currency)) to \(payout.accountName)",
@@ -86,5 +98,11 @@ struct PaidView: View {
         if let reference = payout.bankReference { lines.append("NIP session \(reference)") }
         if let receipt = payout.vaultReceipt { lines.append("Vault receipt \(receipt)") }
         return lines.joined(separator: "\n")
+    }
+}
+
+extension Payout {
+    var institutionName: String {
+        Institution.supported.first { $0.code == account.bank }?.name ?? "bank"
     }
 }
