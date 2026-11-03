@@ -27,7 +27,10 @@ final class PayFlow {
     private let activity: ActivityStore?
     private let vault: VaultStore?
 
-    init(api: any FliqAPI, activity: ActivityStore? = nil, vault: VaultStore? = nil) {
+    private let accounts: AccountBook?
+
+    init(api: any FliqAPI, activity: ActivityStore? = nil, vault: VaultStore? = nil, accounts: AccountBook? = nil) {
+        self.accounts = accounts
         self.api = api
         self.activity = activity
         self.vault = vault
@@ -89,6 +92,7 @@ final class PayFlow {
             if let payout {
                 activity?.record(payout, at: sentAt ?? .now)
                 vault?.debit(payout.amount)
+                if saveAccount { accounts?.save(verified) }
             }
             errorMessage = nil
             return true

@@ -13,6 +13,10 @@ enum AppRoute: Hashable {
     case receiveArriving
     case activity
     case agents
+    case settings
+    case settingsAccounts
+    case settingsSecurity
+    case settingsNotifications
     case agentConnect
     case receipt(payoutId: String)
 }

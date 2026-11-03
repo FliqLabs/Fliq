@@ -14,6 +14,8 @@ final class AppEnvironment {
     let vault: VaultStore
     let deposits: any DepositAPI
     let agents: AgentStore
+    let accounts: AccountBook
+    let preferences: Preferences
     let biometrics: any Biometrics
 
     init(
@@ -25,6 +27,8 @@ final class AppEnvironment {
         vault: VaultStore = VaultStore(),
         deposits: any DepositAPI = FixtureDepositAPI(),
         agentAPI: any AgentAPI = FixtureAgentAPI(),
+        accounts: AccountBook = AccountBook(),
+        preferences: Preferences = Preferences(),
         biometrics: any Biometrics = DeviceBiometrics()
     ) {
         self.api = api
@@ -34,6 +38,8 @@ final class AppEnvironment {
         self.activity = activity
         self.vault = vault
         self.deposits = deposits
+        self.accounts = accounts
+        self.preferences = preferences
         agents = AgentStore(api: agentAPI, vault: { profile.name ?? "fliq-vault.testnet" })
         self.biometrics = biometrics
     }
@@ -70,7 +76,10 @@ final class AppEnvironment {
         defaults.removePersistentDomain(forName: "ui-testing")
         let profile = ProfileStore(defaults: defaults)
         if arguments.contains("--onboarded") { profile.completeOnboarding(name: nil, displayName: nil) }
-        return AppEnvironment(api: FixtureClient(bundle: bundle), profile: profile, biometrics: AlwaysApprove())
+        return AppEnvironment(
+            api: FixtureClient(bundle: bundle), profile: profile, accounts: AccountBook(keychain: nil),
+            preferences: Preferences(defaults: defaults), biometrics: AlwaysApprove()
+        )
     }
     #endif
 }
