@@ -13,6 +13,7 @@ final class AppEnvironment {
     let activity: ActivityStore
     let vault: VaultStore
     let deposits: any DepositAPI
+    let agents: AgentStore
     let biometrics: any Biometrics
 
     init(
@@ -23,6 +24,7 @@ final class AppEnvironment {
         activity: ActivityStore = ActivityStore(),
         vault: VaultStore = VaultStore(),
         deposits: any DepositAPI = FixtureDepositAPI(),
+        agentAPI: any AgentAPI = FixtureAgentAPI(),
         biometrics: any Biometrics = DeviceBiometrics()
     ) {
         self.api = api
@@ -32,6 +34,7 @@ final class AppEnvironment {
         self.activity = activity
         self.vault = vault
         self.deposits = deposits
+        agents = AgentStore(api: agentAPI, vault: { profile.name ?? "fliq-vault.testnet" })
         self.biometrics = biometrics
     }
 

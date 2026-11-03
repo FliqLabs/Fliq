@@ -30,15 +30,16 @@ struct PrimaryButtonStyle: ButtonStyle {
 struct HeroAmount: View {
     let symbol: String
     let value: String
+    var size: CGFloat = 64
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 4) {
             Text(symbol)
-                .font(.system(size: 30, weight: .light))
+                .font(.system(size: size * 0.47, weight: .light))
                 .foregroundStyle(Theme.textSecondary)
             Text(value)
-                .font(Theme.hero())
-                .tracking(-1.9)
+                .font(Theme.hero(size))
+                .tracking(-size * 0.03)
                 .foregroundStyle(Theme.textPrimary)
                 .contentTransition(.numericText())
         }
