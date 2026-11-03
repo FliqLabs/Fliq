@@ -1,23 +1,12 @@
 import SwiftUI
 
+/// The "Receive from" sheet over Home. Picking a token closes it and opens the next step.
 struct ReceiveSourceView: View {
     let flow: ReceiveFlow
-    @Environment(AppEnvironment.self) private var environment
+    let onPicked: (AppRoute) -> Void
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        VStack(spacing: 0) {
-            Wordmark(size: 24)
-                .opacity(0.25)
-                .padding(.top, 25)
-            Spacer(minLength: 0)
-            sheet
-        }
-        .background(Color(hex: 0x050505).ignoresSafeArea())
-        .toolbar(.hidden, for: .navigationBar)
-        .task { await flow.loadSources() }
-    }
-
-    private var sheet: some View {
         VStack(alignment: .leading, spacing: 8) {
             Capsule()
                 .fill(Color(hex: 0x3A3A3A))
@@ -44,18 +33,13 @@ struct ReceiveSourceView: View {
         }
         .padding(.horizontal, 16)
         .padding(.top, 10)
-        .frame(maxWidth: .infinity, alignment: .top)
-        .frame(height: 666)
-        .background(
-            UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24)
-                .fill(Color(hex: 0x141414))
-                .ignoresSafeArea(edges: .bottom)
-        )
+        .frame(maxHeight: .infinity, alignment: .top)
+        .task { await flow.loadSources() }
     }
 
     private var header: some View {
         HStack {
-            Button { environment.router.reset() } label: {
+            Button { dismiss() } label: {
                 Image(systemName: "chevron.left").font(.system(size: 18, weight: .medium))
                     .frame(width: 32, height: 32, alignment: .leading)
             }
@@ -63,7 +47,7 @@ struct ReceiveSourceView: View {
             Spacer()
             Text("Receive from").font(.system(size: 17, weight: .semibold))
             Spacer()
-            Button { environment.router.reset() } label: {
+            Button { dismiss() } label: {
                 Image(systemName: "xmark").font(.system(size: 17, weight: .medium))
                     .frame(width: 32, height: 32, alignment: .trailing)
             }
@@ -79,11 +63,8 @@ struct ReceiveSourceView: View {
 
     private func pick(_ source: DepositSource) {
         flow.source = source
-        if source.isDirect {
-            Task { if await flow.reserve() { environment.router.push(.receiveAddress) } }
-        } else {
-            environment.router.push(.receiveAmount)
-        }
+        guard source.isDirect else { return onPicked(.receiveAmount) }
+        Task { if await flow.reserve() { onPicked(.receiveAddress) } }
     }
 }
 
