@@ -1,3 +1,4 @@
 # GitHub usernames of the contract team, one per line. Two of them must approve changes in contracts/vault/src.
 Dapperdavidd
 jamesonchain
+iamariya101
