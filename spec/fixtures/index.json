@@ -6,5 +6,16 @@
   "payout.created.json": "Payout",
   "payout.settled.json": "Payout",
   "payout.refused.json": "Refusal",
-  "error.unauthorized.json": "Error"
+  "error.unauthorized.json": "Error",
+  "session.signed-in.json": "Session",
+  "user.new.json": "User",
+  "name.available.json": "NameAvailability",
+  "workspace.created.json": "WorkspaceCreated",
+  "passkey.options.json": "PasskeyOptions",
+  "email-link.sent.json": "EmailLinkSent",
+  "workspace.current.json": "Workspace",
+  "keys.first-login.json": "KeyList",
+  "onboarding.first-login.json": "Onboarding",
+  "payouts.empty.json": "PayoutList",
+  "payouts.list.json": "PayoutList"
 }
