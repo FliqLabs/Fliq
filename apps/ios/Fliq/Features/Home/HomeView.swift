@@ -105,5 +105,5 @@ private struct TrailingIconLabelStyle: LabelStyle {
 }
 
 #Preview {
-    HomeView(model: HomeModel(api: FixtureClient()))
+    HomeView(model: HomeModel(api: AppEnvironment.preview.api))
 }

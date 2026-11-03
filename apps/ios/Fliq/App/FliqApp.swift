@@ -2,11 +2,12 @@ import SwiftUI
 
 @main
 struct FliqApp: App {
-    private let api = AppConfig.makeAPI()
+    @State private var environment = AppEnvironment.live()
 
     var body: some Scene {
         WindowGroup {
-            HomeView(model: HomeModel(api: api))
+            HomeView(model: HomeModel(api: environment.api))
+                .environment(environment)
                 .preferredColorScheme(.dark)
         }
     }

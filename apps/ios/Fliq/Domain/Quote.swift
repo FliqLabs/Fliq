@@ -22,7 +22,7 @@ struct Quote: Codable, Sendable, Equatable {
     let quoteId: String
     let token: Token
     let currency: Currency
-    let amount: String
+    let amount: TokenAmount
     let rateBeforeFees: Double
     let fees: Fees
     let rate: Double
@@ -36,5 +36,5 @@ struct Quote: Codable, Sendable, Equatable {
 struct QuoteRequest: Codable, Sendable, Equatable {
     let token: Token
     let currency: Currency
-    let amount: String
+    let amount: TokenAmount
 }

@@ -37,7 +37,7 @@ struct StateChange: Codable, Sendable, Equatable {
 struct Deposit: Codable, Sendable, Equatable {
     let chain: String
     let address: String
-    let amount: String
+    let amount: TokenAmount
 }
 
 struct Payout: Codable, Sendable, Equatable, Identifiable {
@@ -45,7 +45,7 @@ struct Payout: Codable, Sendable, Equatable, Identifiable {
     let state: PayoutState
     let accountName: String
     let account: Account
-    let amount: String
+    let amount: TokenAmount
     let receive: Int
     let currency: Currency
     let rate: Double

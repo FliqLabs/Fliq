@@ -8,7 +8,7 @@ final class HomeModel {
     private(set) var rateFailed = false
 
     /// The spec has no balance endpoint yet, so Home starts from the empty state.
-    private(set) var balance: Decimal = 0
+    private(set) var balance: TokenAmount = .zero
 
     private let api: any FliqAPI
 
@@ -16,7 +16,7 @@ final class HomeModel {
         self.api = api
     }
 
-    var hasBalance: Bool { balance > 0 }
+    var hasBalance: Bool { balance > .zero }
 
     func load() async {
         do {

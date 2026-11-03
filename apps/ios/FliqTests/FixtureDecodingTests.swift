@@ -45,5 +45,23 @@ final class FixtureDecodingTests: XCTestCase {
 
         XCTAssertEqual(Money.rate(rate.rate, rate.currency), "₦1,376.32")
         XCTAssertEqual(Money.local(68816, .ngn), "₦68,816")
+        XCTAssertEqual(Money.dollars(TokenAmount(baseUnits: 128_180_000)), "128.18")
+        XCTAssertEqual(Money.dollars(.zero), "0")
+    }
+
+    func testTokenAmountIsExactOnTheWire() throws {
+        let quote: Quote = try fixtures.load("quote.usdc-ngn-50")
+
+        XCTAssertEqual(quote.amount.baseUnits, 50_000_000)
+        XCTAssertEqual(TokenAmount(decimalString: "12.345678")?.decimalString, "12.345678")
+        XCTAssertEqual(TokenAmount(decimalString: "50")?.decimalString, "50.00")
+        let encoded = try FliqJSON.encoder().encode(QuoteRequest(token: .usdc, currency: .ngn, amount: quote.amount))
+        XCTAssertTrue(String(decoding: encoded, as: UTF8.self).contains(#""amount":"50.00""#))
+    }
+
+    func testTokenAmountRejectsBadInput() {
+        for bad in ["", "-1", "1.2345678", "1.2.3", "abc", "١٢"] {
+            XCTAssertNil(TokenAmount(decimalString: bad), bad)
+        }
     }
 }
