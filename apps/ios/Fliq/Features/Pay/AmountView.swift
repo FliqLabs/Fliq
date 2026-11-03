@@ -4,8 +4,6 @@ struct AmountView: View {
     let flow: PayFlow
     @Environment(AppEnvironment.self) private var environment
 
-    private let keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "⌫"]
-
     var body: some View {
         VStack(spacing: 0) {
             Spacer()
@@ -53,7 +51,7 @@ struct AmountView: View {
             .disabled((flow.amount ?? .zero) <= .zero || flow.isQuoting)
             .padding(.bottom, 12)
 
-            keypad
+            Keypad(onKey: flow.tapKey)
         }
         .fliqScreen()
         .toolbar {
@@ -77,29 +75,6 @@ struct AmountView: View {
                 .frame(height: 36)
                 .background(Color.white.opacity(0.08), in: Capsule())
         }
-    }
-
-    private var keypad: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 0) {
-            ForEach(keys, id: \.self) { key in
-                Button { flow.tapKey(key) } label: {
-                    Group {
-                        if key == "⌫" {
-                            Image(systemName: "delete.left").font(.system(size: 22))
-                        } else {
-                            Text(key).font(.system(size: 26))
-                        }
-                    }
-                    .frame(maxWidth: .infinity, minHeight: 54)
-                    .contentShape(Rectangle())
-                }
-                .foregroundStyle(Theme.textPrimary)
-                .accessibilityLabel(key == "⌫" ? "Delete" : key)
-            }
-        }
-        .padding(.vertical, 10)
-        .background(Color(hex: 0x0A0A0A).ignoresSafeArea(edges: .bottom))
-        .padding(.horizontal, -16)
     }
 }
 

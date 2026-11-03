@@ -4,6 +4,7 @@ struct RootView: View {
     @Environment(AppEnvironment.self) private var environment
     @State private var home: HomeModel?
     @State private var flow: PayFlow?
+    @State private var receive: ReceiveFlow?
 
     var body: some View {
         @Bindable var router = environment.router
@@ -11,33 +12,44 @@ struct RootView: View {
         NavigationStack(path: $router.path) {
             Group {
                 if let home {
-                    HomeView(model: home, onSend: startPayment, onActivity: { router.push(.activity) })
+                    HomeView(model: home, onSend: startPayment, onActivity: { router.push(.activity) }, onReceive: startReceive)
                 }
             }
             .navigationDestination(for: AppRoute.self, destination: destination)
         }
         .tint(Theme.textPrimary)
         .onAppear {
-            if home == nil { home = HomeModel(api: environment.api) }
+            if home == nil { home = HomeModel(api: environment.api, vault: environment.vault) }
         }
     }
 
     private func startPayment() {
-        flow = PayFlow(api: environment.api, activity: environment.activity)
+        flow = PayFlow(api: environment.api, activity: environment.activity, vault: environment.vault)
         environment.router.push(.payNew)
+    }
+
+    private func startReceive() {
+        receive = ReceiveFlow(
+            api: environment.deposits,
+            vault: environment.vault,
+            vaultAccount: environment.profile.name ?? "fliq-vault.testnet"
+        )
+        environment.router.replace(with: .receiveSource)
     }
 
     @ViewBuilder
     private func destination(_ route: AppRoute) -> some View {
         switch route {
         case .activity:
-            ActivityView(store: environment.activity, onReceive: { environment.router.reset() })
+            ActivityView(store: environment.activity, onReceive: startReceive)
         case .receipt(let id):
             if let payout = environment.activity.entry(id: id)?.payout {
                 receipt(for: payout)
             }
         case .payNew, .payAmount, .payQuote, .paySending, .payPaid, .payRefunded:
             if let flow { payStep(route, flow) }
+        case .receiveSource, .receiveAmount, .receiveAddress, .receiveArriving:
+            if let receive { receiveStep(route, receive) }
         }
     }
 
@@ -54,7 +66,18 @@ struct RootView: View {
             if let payout = flow.payout {
                 RefundedView(payout: payout, quote: flow.quote, onTryAgain: startPayment)
             }
-        case .activity, .receipt: EmptyView()
+        case .activity, .receipt, .receiveSource, .receiveAmount, .receiveAddress, .receiveArriving: EmptyView()
+        }
+    }
+
+    @ViewBuilder
+    private func receiveStep(_ route: AppRoute, _ receive: ReceiveFlow) -> some View {
+        switch route {
+        case .receiveSource: ReceiveSourceView(flow: receive)
+        case .receiveAmount: ReceiveAmountView(flow: receive)
+        case .receiveAddress: DepositAddressView(flow: receive)
+        case .receiveArriving: ArrivingView(flow: receive)
+        default: EmptyView()
         }
     }
 
