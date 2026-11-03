@@ -1,0 +1,12 @@
+{
+  "access_token": "at_demo_f3k9",
+  "expires_in": 900,
+  "refresh_token": "rf_demo_b81q",
+  "user": {
+    "user_id": "usr_5d1c0a9e",
+    "near_account": "frank.fliq.near",
+    "display_name": "Frank",
+    "occupation": null,
+    "vault": "fliq-vault.testnet"
+  }
+}
