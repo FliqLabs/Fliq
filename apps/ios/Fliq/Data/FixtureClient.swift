@@ -2,9 +2,14 @@ import Foundation
 
 /// Serves the canonical responses in `spec/fixtures`, bundled with the app, so every screen
 /// shows the same numbers as the web, the mock server and the demo.
+///
+/// Demo knob: a payout quoted at exactly $13 is refunded instead of settled, so the
+/// failure path in the demo script can be shown on purpose.
 struct FixtureClient: FliqAPI {
+    static let refundDemoAmount = TokenAmount(baseUnits: 13_000_000)
+
     var bundle: Bundle = .main
-    private let progress = PayoutProgress()
+    private let ledger = FixtureLedger()
 
     func health() async throws -> Health {
         try load("health")
@@ -15,7 +20,8 @@ struct FixtureClient: FliqAPI {
     }
 
     func quote(_ request: QuoteRequest) async throws -> Quote {
-        try load("quote.usdc-ngn-50")
+        await ledger.quoted(request.amount)
+        return try load("quote.usdc-ngn-50")
     }
 
     func verify(_ account: Account) async throws -> VerifiedAccount {
@@ -23,15 +29,18 @@ struct FixtureClient: FliqAPI {
     }
 
     func createPayout(_ request: PayoutRequest, idempotencyKey: String) async throws -> Payout {
-        try load("payout.created")
+        let created: Payout = try load("payout.created")
+        let id = await ledger.open(idempotencyKey: idempotencyKey)
+        return created.with(id: id)
     }
 
-    /// Each poll moves one step along the settled fixture's own history, so the Sending
-    /// timeline plays out the way a real payout does instead of jumping to the end.
+    /// Each poll moves one step along the fixture's history, so the Sending timeline plays
+    /// out the way a real payout does instead of jumping to the end.
     func payout(id: String) async throws -> Payout {
         let settled: Payout = try load("payout.settled")
-        let step = await progress.next(for: id)
-        return settled.upTo(step: min(step, settled.history.count - 1))
+        let (step, refunds) = await ledger.poll(id)
+        let path = refunds ? settled.refundedPath() : settled
+        return path.with(id: id).upTo(step: min(step, path.history.count - 1))
     }
 
     func load<Value: Decodable>(_ name: String) throws -> Value {
@@ -46,30 +55,78 @@ struct FixtureClient: FliqAPI {
     }
 }
 
-private actor PayoutProgress {
+private actor FixtureLedger {
+    private var lastQuoted: TokenAmount?
+    private var refunds: Set<String> = []
     private var polls: [String: Int] = [:]
+    private var byKey: [String: String] = [:]
 
-    func next(for id: String) -> Int {
+    func quoted(_ amount: TokenAmount) {
+        lastQuoted = amount
+    }
+
+    /// The same Idempotency-Key always returns the same payout, as the real API must.
+    func open(idempotencyKey: String) -> String {
+        if let existing = byKey[idempotencyKey] { return existing }
+        let id = "po_" + UUID().uuidString.prefix(8).lowercased()
+        byKey[idempotencyKey] = id
+        if lastQuoted == FixtureClient.refundDemoAmount { refunds.insert(id) }
+        return id
+    }
+
+    func poll(_ id: String) -> (step: Int, refunds: Bool) {
         let step = (polls[id] ?? 0) + 1
         polls[id] = step
-        return step
+        return (step, refunds.contains(id))
     }
 }
 
 private extension Payout {
+    func with(id: String) -> Payout {
+        copy(payoutId: id)
+    }
+
+    /// The settled fixture's first three steps, then the provider fails and the vault refunds.
+    func refundedPath() -> Payout {
+        var steps = Array(history.prefix(3))
+        if let last = steps.last {
+            steps.append(StateChange(state: .refunded, at: last.at.addingTimeInterval(19)))
+        }
+        return copy(state: .refunded, history: steps)
+    }
+
     func upTo(step: Int) -> Payout {
-        let history = Array(history.prefix(step + 1))
-        let state = history.last?.state ?? state
+        let reached = Array(history.prefix(step + 1))
+        let state = reached.last?.state ?? state
         let settled = state == .settled
-        return Payout(
-            payoutId: payoutId, state: state, accountName: accountName, account: account,
-            amount: amount, receive: receive, currency: currency, rate: rate, fees: fees,
-            provider: provider, deposit: deposit,
+        return copy(
+            state: state,
             providerOrder: step >= 2 ? providerOrder : nil,
             vaultReceipt: step >= 1 ? vaultReceipt : nil,
             bankReference: settled ? bankReference : nil,
             seconds: settled ? seconds : nil,
-            history: history
+            history: reached
+        )
+    }
+
+    func copy(
+        payoutId: String? = nil,
+        state: PayoutState? = nil,
+        providerOrder: String?? = .none,
+        vaultReceipt: String?? = .none,
+        bankReference: String?? = .none,
+        seconds: Int?? = .none,
+        history: [StateChange]? = nil
+    ) -> Payout {
+        Payout(
+            payoutId: payoutId ?? self.payoutId, state: state ?? self.state,
+            accountName: accountName, account: account, amount: amount, receive: receive,
+            currency: currency, rate: rate, fees: fees, provider: provider, deposit: deposit,
+            providerOrder: providerOrder ?? self.providerOrder,
+            vaultReceipt: vaultReceipt ?? self.vaultReceipt,
+            bankReference: bankReference ?? self.bankReference,
+            seconds: seconds ?? self.seconds,
+            history: history ?? self.history
         )
     }
 }

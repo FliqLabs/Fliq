@@ -6,6 +6,9 @@ enum AppRoute: Hashable {
     case payQuote
     case paySending
     case payPaid
+    case payRefunded
+    case activity
+    case receipt(payoutId: String)
 }
 
 @MainActor

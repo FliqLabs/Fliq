@@ -42,6 +42,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: cash.fliq.app
         TARGETED_DEVICE_FAMILY: "1"
+        # No AppIcon set in Assets.xcassets yet; set this to AppIcon once the icon is added.
+        ASSETCATALOG_COMPILER_APPICON_NAME: ""
     scheme:
       testTargets:
         - FliqTests

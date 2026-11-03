@@ -10,7 +10,7 @@ final class PayFlowUITests: XCTestCase {
     @MainActor
     func testPayDaraFromHomeToPaid() {
         let app = XCUIApplication()
-        app.launchArguments = ["--ui-testing"]
+        app.launchArguments = ["--ui-testing", "--onboarded"]
         app.launch()
 
         XCTAssertTrue(app.staticTexts["Vault balance"].waitForExistence(timeout: 5))
@@ -43,6 +43,7 @@ final class PayFlowUITests: XCTestCase {
         XCTAssertTrue(paid)
     }
 
+    @MainActor
     private func snap(_ name: String) {
         let png = XCUIScreen.main.screenshot().pngRepresentation
         add(XCTAttachment(data: png, uniformTypeIdentifier: "public.png"))

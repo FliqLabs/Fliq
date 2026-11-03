@@ -1,27 +1,14 @@
 import Foundation
 import Observation
 
-struct Institution: Hashable, Sendable {
-    let code: String
-    let name: String
-
-    /// Only banks with a fixture behind them are listed until the spec has an institutions endpoint.
-    static let supported = [Institution(code: "058", name: "GTBank")]
-}
-
 @MainActor
 @Observable
 final class PayFlow {
-    static let accountNumberLength = 10
     static let pollInterval: Duration = .seconds(1.5)
 
-    var institution = Institution.supported[0]
-    var accountNumber = "" {
-        didSet { if accountNumber != oldValue { verified = nil } }
-    }
+    let recipient: AccountEntry
     var saveAccount = true
-    private(set) var verified: VerifiedAccount?
-    private(set) var isVerifying = false
+    var verified: VerifiedAccount? { recipient.verified }
 
     private(set) var amountText = ""
     private(set) var rate: Rate?
@@ -37,27 +24,12 @@ final class PayFlow {
     private(set) var errorMessage: String?
 
     private let api: any FliqAPI
+    private let activity: ActivityStore?
 
-    init(api: any FliqAPI) {
+    init(api: any FliqAPI, activity: ActivityStore? = nil) {
         self.api = api
-    }
-
-    // MARK: Recipient
-
-    var isAccountNumberComplete: Bool {
-        accountNumber.count == Self.accountNumberLength && accountNumber.allSatisfy(\.isNumber)
-    }
-
-    func verifyAccount() async {
-        guard isAccountNumberComplete, verified == nil, !isVerifying else { return }
-        isVerifying = true
-        defer { isVerifying = false }
-        do {
-            verified = try await api.verify(Account(bank: institution.code, number: accountNumber))
-            errorMessage = nil
-        } catch {
-            errorMessage = "We couldn't confirm this account with \(institution.name)."
-        }
+        self.activity = activity
+        recipient = AccountEntry(api: api)
     }
 
     // MARK: Amount
@@ -124,6 +96,7 @@ final class PayFlow {
                 idempotencyKey: UUID().uuidString
             )
             sentAt = .now
+            if let payout { activity?.record(payout, at: sentAt ?? .now) }
             errorMessage = nil
             return true
         } catch APIError.refused(let refusal) {
@@ -141,6 +114,7 @@ final class PayFlow {
             try? await Task.sleep(for: Self.pollInterval)
             if let next = try? await api.payout(id: current.payoutId) {
                 payout = next
+                activity?.record(next)
             }
         }
     }
