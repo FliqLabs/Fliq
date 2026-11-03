@@ -21,8 +21,7 @@ struct AmountView: View {
                 .foregroundStyle(Theme.textSecondary)
                 .padding(.horizontal, 14)
                 .frame(height: 36)
-                .background(Color.white.opacity(0.08), in: Capsule())
-                .overlay(Capsule().strokeBorder(Color.white.opacity(0.12)))
+                .fliqGlass(Capsule(), interactive: true)
 
                 if let rate = flow.rate {
                     Text("$1 = \(Money.rate(rate.rate, rate.currency))")
@@ -73,7 +72,7 @@ struct AmountView: View {
                 .fixedSize()
                 .padding(.horizontal, 12)
                 .frame(height: 36)
-                .background(Color.white.opacity(0.08), in: Capsule())
+                .fliqGlass(Capsule())
         }
     }
 }

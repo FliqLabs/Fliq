@@ -47,6 +47,8 @@ struct ArrivingView: View {
                 .padding(.bottom, 12)
         }
         .fliqScreen("Arriving")
+        .animation(.snappy, value: stage)
+        .sensoryFeedback(.success, trigger: stage) { _, new in new == .landed }
         .navigationBarBackButtonHidden()
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {

@@ -67,7 +67,6 @@ struct QuoteView: View {
         .sheet(isPresented: $showingRoutes) {
             RoutesSheet(quote: quote)
                 .presentationDetents([.fraction(0.68)])
-                .presentationBackground(Color(hex: 0x141414))
         }
     }
 

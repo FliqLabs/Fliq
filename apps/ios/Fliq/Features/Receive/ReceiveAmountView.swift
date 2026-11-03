@@ -66,8 +66,7 @@ struct ReceiveAmountView: View {
         .font(.system(size: 14))
         .padding(.horizontal, 14)
         .frame(height: 36)
-        .background(Color.white.opacity(0.08), in: Capsule())
-        .overlay(Capsule().strokeBorder(Color.white.opacity(0.12)))
+        .fliqGlass(Capsule())
         .padding(.top, 4)
     }
 }

@@ -53,7 +53,6 @@ struct SettingsView: View {
         .sheet(isPresented: $showingRates) {
             LiveRatesSheet()
                 .presentationDetents([.medium])
-                .presentationBackground(Color(hex: 0x141414))
         }
         .confirmationDialog("Sign out of fliq on this iPhone?", isPresented: $confirmingSignOut, titleVisibility: .visible) {
             Button("Sign out", role: .destructive) {

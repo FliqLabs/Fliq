@@ -77,7 +77,7 @@ struct HomeView: View {
                 .foregroundStyle(Theme.textSecondary)
                 .padding(.horizontal, 14)
                 .frame(height: 32)
-                .background(Theme.surface, in: Capsule())
+                .fliqGlass(Capsule())
                 .padding(.top, 6)
         } else if model.rateFailed {
             Text("Rate unavailable")

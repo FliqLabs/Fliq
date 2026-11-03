@@ -61,7 +61,6 @@ struct ChipLabel: View {
         .foregroundStyle(color)
         .padding(.horizontal, 14)
         .frame(height: 40)
-        .background(Color.white.opacity(0.08), in: Capsule())
-        .overlay(Capsule().strokeBorder(Color.white.opacity(0.12)))
+        .fliqGlass(Capsule(), interactive: true)
     }
 }
