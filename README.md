@@ -37,7 +37,7 @@ Mock mode needs no keys or accounts. Hosted demo, video and app build: linked he
 | [`contracts/vault`](contracts/vault) | NEAR USDC vault: balances, orders, agent policy | sQuiDbOb, Dapper, Aria |
 | [`spec`](spec) | OpenAPI contract, canonical fixtures, event schemas | shared |
 | [`analytics`](analytics) | Rollups, status data | Sejiro |
-| [`docs`](docs) | Architecture, decisions, AI usage | Frank |
+| [`docs`](docs) | Architecture and decisions | Frank |
 
 Architecture diagrams: [docs/architecture.md](docs/architecture.md).
 
@@ -51,7 +51,6 @@ Architecture diagrams: [docs/architecture.md](docs/architecture.md).
 
 - Baseline: the first commit is tagged `pre-hackathon`; the submission is tagged `hackathon-submission`. The hackathon work is the diff between them.
 - No existing product on another chain.
-- AI-generated code is listed in [docs/AI_USAGE.md](docs/AI_USAGE.md). The iOS app is built with Claude Code, directed and reviewed by Frank.
 
 ## Libraries
 
