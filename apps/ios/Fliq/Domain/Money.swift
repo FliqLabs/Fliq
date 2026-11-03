@@ -66,6 +66,25 @@ enum Money {
         currency.symbol + rate.formatted(.number.precision(.fractionLength(2)).locale(locale))
     }
 
+    /// Minor units (kobo) to the whole-unit string the receipt shows: 34400 -> "₦344".
+    static func fee(_ minorUnits: Int, _ currency: Currency) -> String {
+        local(minorUnits / 100, currency)
+    }
+
+    /// A preview before the quote lands, rounded down so it never promises more than the quote.
+    /// The number the user commits to is always `Quote.receive` from the server.
+    static func estimate(_ amount: TokenAmount, at rate: Double) -> Int {
+        Int((Double(amount.baseUnits) * rate / Double(TokenAmount.base)).rounded(.down))
+    }
+
+    /// How much more the routed provider pays than the next live one, in whole local units.
+    static func routeAdvantage(_ quote: Quote) -> Int? {
+        let live = quote.routes.filter { $0.status == .live }.compactMap(\.rate).sorted(by: >)
+        guard live.count >= 2 else { return nil }
+        let units = Double(quote.amount.baseUnits) / Double(TokenAmount.base)
+        return Int(((live[0] - live[1]) * units).rounded())
+    }
+
     /// Whole dollars without decimals ("128"), otherwise cents rounded half up ("128.18").
     static func dollars(_ amount: TokenAmount) -> String {
         let cents = (amount.baseUnits + TokenAmount.base / 200) / (TokenAmount.base / 100)

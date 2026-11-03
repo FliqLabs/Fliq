@@ -32,6 +32,7 @@ targets:
         FliqAPIBaseURL: $(FLIQ_API_BASE_URL)
         FliqAPIKey: $(FLIQ_API_KEY)
         FliqDataSource: $(FLIQ_DATA_SOURCE)
+        NSFaceIDUsageDescription: fliq asks for Face ID before any money leaves your vault.
         UILaunchScreen: {}
         UIUserInterfaceStyle: Dark
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
@@ -44,6 +45,7 @@ targets:
     scheme:
       testTargets:
         - FliqTests
+        - FliqUITests
 
   FliqTests:
     type: bundle.unit-test
@@ -55,3 +57,15 @@ targets:
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
+
+  FliqUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: FliqUITests
+    dependencies:
+      - target: Fliq
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: Fliq
