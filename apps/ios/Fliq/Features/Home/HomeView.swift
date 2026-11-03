@@ -5,6 +5,7 @@ struct HomeView: View {
     var onSend: () -> Void = {}
     var onActivity: () -> Void = {}
     var onReceive: () -> Void = {}
+    var onMenu: () -> Void = {}
 
     var body: some View {
         VStack(spacing: 0) {
@@ -30,11 +31,13 @@ struct HomeView: View {
             Spacer()
             Wordmark()
             Spacer()
-            Image(systemName: "line.3.horizontal.decrease")
-                .font(.system(size: 18))
-                .foregroundStyle(Theme.textSecondary)
-                .frame(width: 32, height: 32)
-                .accessibilityLabel("Menu")
+            Button(action: onMenu) {
+                Image(systemName: "line.3.horizontal.decrease")
+                    .font(.system(size: 18))
+                    .foregroundStyle(Theme.textSecondary)
+                    .frame(width: 32, height: 32)
+            }
+            .accessibilityLabel("Menu")
         }
         .padding(.horizontal, 24)
         .padding(.top, 16)

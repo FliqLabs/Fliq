@@ -12,7 +12,7 @@ struct RootView: View {
         NavigationStack(path: $router.path) {
             Group {
                 if let home {
-                    HomeView(model: home, onSend: startPayment, onActivity: { router.push(.activity) }, onReceive: startReceive)
+                    HomeView(model: home, onSend: startPayment, onActivity: { router.push(.activity) }, onReceive: startReceive, onMenu: { router.push(.agents) })
                 }
             }
             .navigationDestination(for: AppRoute.self, destination: destination)
@@ -50,6 +50,8 @@ struct RootView: View {
             if let flow { payStep(route, flow) }
         case .receiveSource, .receiveAmount, .receiveAddress, .receiveArriving:
             if let receive { receiveStep(route, receive) }
+        case .agents: AgentsView(store: environment.agents)
+        case .agentConnect: AgentConnectView(store: environment.agents)
         }
     }
 
@@ -66,7 +68,7 @@ struct RootView: View {
             if let payout = flow.payout {
                 RefundedView(payout: payout, quote: flow.quote, onTryAgain: startPayment)
             }
-        case .activity, .receipt, .receiveSource, .receiveAmount, .receiveAddress, .receiveArriving: EmptyView()
+        case .activity, .receipt, .receiveSource, .receiveAmount, .receiveAddress, .receiveArriving, .agents, .agentConnect: EmptyView()
         }
     }
 
