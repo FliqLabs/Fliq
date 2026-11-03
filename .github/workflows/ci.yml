@@ -203,12 +203,13 @@ jobs:
       - run: xcodegen generate
       - name: Build and unit test
         run: |
+          set -o pipefail
           xcodebuild test \
             -project Fliq.xcodeproj \
             -scheme Fliq \
             -destination 'platform=iOS Simulator,name=iPhone 16' \
             -only-testing:FliqTests \
-            CODE_SIGNING_ALLOWED=NO | xcbeautify || exit ${PIPESTATUS[0]}
+            CODE_SIGNING_ALLOWED=NO 2>&1 | xcbeautify --renderer github-actions
 
   ci-gate:
     if: always()
