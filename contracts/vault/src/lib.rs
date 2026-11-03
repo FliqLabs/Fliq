@@ -14,7 +14,12 @@ pub struct Contract {
 #[near]
 impl Contract {
     #[init]
+    #[private]
     pub fn new(approved_usdc: AccountId) -> Self {
+        near_sdk::require!(
+            near_sdk::env::predecessor_account_id() == near_sdk::env::current_account_id(),
+            "initialization may only be called by the vault account"
+        );
         Self {
             approved_usdc,
             vault: Vault::new(),
@@ -105,6 +110,15 @@ mod tests {
             PromiseOrValue::Value(amount) => amount,
             PromiseOrValue::Promise(_) => panic!("deposit unexpectedly returned a promise"),
         }
+    }
+
+    #[test]
+    #[should_panic(expected = "initialization may only be called by the vault account")]
+    fn outsider_cannot_initialize_contract() {
+        let attacker = account("attacker.testnet");
+        testing_env!(context(&attacker, NearToken::from_yoctonear(0)));
+
+        Contract::new(account("fake-token.testnet"));
     }
 
     #[test]

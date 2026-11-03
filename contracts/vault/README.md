@@ -10,6 +10,8 @@ Accounts must call `storage_deposit` before depositing USDC. The vault accepts `
 
 The crate-private reservation helpers move funds between `available` and `reserved`, consume a successful outflow once, and release a failed outflow once. Refund recredit is not implemented until the team approves the refund proof and attribution design.
 
+This milestone does not expose a withdrawal or payout path. Deposited USDC remains in the vault until the contract lead integrates the order execution flow. Reservation records are retained to prevent replay; their storage funding or cleanup policy must be finalized before reservations become externally reachable.
+
 Rules:
 
 - Changes to balances, permissions or outgoing transfers need two contract owners to approve.
