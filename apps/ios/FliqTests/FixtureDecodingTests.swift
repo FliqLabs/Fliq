@@ -18,6 +18,16 @@ final class FixtureDecodingTests: XCTestCase {
             "Payout": decode(Payout.self),
             "Refusal": decode(Refusal.self),
             "Error": decode(ErrorBody.self),
+            "Session": decode(Session.self),
+            "User": decode(User.self),
+            "NameAvailability": decode(NameAvailability.self),
+            "WorkspaceCreated": decode(WorkspaceCreated.self),
+            "PasskeyOptions": decode(PasskeyOptions.self),
+            "EmailLinkSent": decode(EmailLinkSent.self),
+            "Workspace": decode(Workspace.self),
+            "KeyList": decode(KeyList.self),
+            "Onboarding": decode(OnboardingChecklist.self),
+            "PayoutList": decode(PayoutList.self),
         ]
     }()
 
@@ -63,5 +73,27 @@ final class FixtureDecodingTests: XCTestCase {
         for bad in ["", "-1", "1.2345678", "1.2.3", "abc", "١٢"] {
             XCTAssertNil(TokenAmount(decimalString: bad), bad)
         }
+    }
+}
+
+final class NewEndpointFixtureTests: XCTestCase {
+    private let fixtures = FixtureClient()
+
+    func testPayoutListMatchesTheSettledPayout() throws {
+        let list: PayoutList = try fixtures.load("payouts.list")
+        let row = try XCTUnwrap(list.items.first)
+
+        XCTAssertEqual(row.state, .settled)
+        XCTAssertEqual(row.receive, 68816)
+        XCTAssertEqual(row.amount.decimalString, "50.00")
+        XCTAssertEqual(row.bank.name, "GTBank")
+        XCTAssertNil(list.nextCursor)
+    }
+
+    func testSignedInSessionCarriesTheClaimedName() throws {
+        let session: Session = try fixtures.load("session.signed-in")
+        XCTAssertEqual(session.user.nearAccount, "frank.fliq.near")
+        let newUser: User = try fixtures.load("user.new")
+        XCTAssertNil(newUser.nearAccount, "A new user has no fliq name until onboarding claims one")
     }
 }

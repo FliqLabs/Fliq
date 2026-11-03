@@ -65,3 +65,29 @@ struct PayoutRequest: Codable, Sendable, Equatable {
     let quoteId: String
     let account: Account
 }
+
+/// One row of `GET /payouts`, newest first.
+struct PayoutSummary: Codable, Sendable, Equatable, Identifiable {
+    struct Bank: Codable, Sendable, Equatable {
+        let code: String
+        let name: String
+    }
+
+    let payoutId: String
+    let state: PayoutState
+    let accountName: String
+    let bank: Bank
+    let accountLast4: String
+    let amount: TokenAmount
+    let receive: Int
+    let currency: Currency
+    let provider: ProviderID
+    let createdAt: Date
+
+    var id: String { payoutId }
+}
+
+struct PayoutList: Codable, Sendable, Equatable {
+    let items: [PayoutSummary]
+    let nextCursor: String?
+}
