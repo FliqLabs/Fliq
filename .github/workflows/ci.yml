@@ -199,16 +199,21 @@ jobs:
         working-directory: apps/ios
     steps:
       - uses: actions/checkout@v4
+      - name: Use the newest Xcode on the runner
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)" && xcodebuild -version
       - run: brew install xcodegen
       - run: xcodegen generate
       - name: Build and unit test
         run: |
+          set -o pipefail
           xcodebuild test \
             -project Fliq.xcodeproj \
             -scheme Fliq \
             -destination 'platform=iOS Simulator,name=iPhone 16' \
             -only-testing:FliqTests \
-            CODE_SIGNING_ALLOWED=NO | xcbeautify || exit ${PIPESTATUS[0]}
+            -resultBundlePath build.xcresult \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | xcbeautify --renderer github-actions \
+            || { xcodebuild build -quiet -project Fliq.xcodeproj -scheme Fliq -destination 'platform=iOS Simulator,name=iPhone 16' CODE_SIGNING_ALLOWED=NO 2>&1 | tail -150; exit 1; }
 
   ci-gate:
     if: always()

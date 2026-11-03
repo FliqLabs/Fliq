@@ -88,12 +88,12 @@ extension DetailRow where Value == Text {
 
 extension View {
     /// The dark gradient ground every pushed screen uses, with the brand aurora on top when given.
-    func fliqScreen(_ title: String = "", aurora: Aurora? = nil) -> some View {
+    func fliqScreen(_ title: String = "", ground: LinearGradient = Theme.ground, aurora: Aurora? = nil) -> some View {
         frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .padding(.horizontal, 16)
             .background {
                 ZStack(alignment: .top) {
-                    Theme.ground
+                    ground
                     aurora
                 }
                 .ignoresSafeArea()

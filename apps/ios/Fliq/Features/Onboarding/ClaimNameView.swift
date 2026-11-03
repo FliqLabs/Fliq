@@ -11,6 +11,7 @@ struct ClaimNameView: View {
             VStack(spacing: 6) {
                 Text("Claim your name")
                     .font(.system(size: 26, weight: .bold))
+                    .tracking(-0.52)
                 Text("Pay and get paid by it, anywhere on fliq")
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(Theme.textSecondary)
@@ -34,6 +35,7 @@ struct ClaimNameView: View {
                             .padding(.horizontal, 14)
                             .frame(height: 34)
                             .background(Color.white.opacity(0.08), in: Capsule())
+                            .overlay(Capsule().strokeBorder(Color.white.opacity(0.1)))
                     }
                 }
                 .padding(.top, 18)
@@ -51,7 +53,7 @@ struct ClaimNameView: View {
             }
             .padding(.bottom, 14)
         }
-        .fliqScreen(aurora: Aurora(accent: accent))
+        .fliqScreen(ground: Theme.onboardingGround, aurora: Aurora(accent: accent))
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Skip", action: onSkip).fontWeight(.semibold)
@@ -63,10 +65,12 @@ struct ClaimNameView: View {
     private var nameCapsule: some View {
         HStack(spacing: 0) {
             Text(flow.nameText.isEmpty ? "yourname" : flow.nameText)
+                .tracking(-0.26)
                 .hidden()
                 .overlay(alignment: .leading) {
                     TextField("yourname", text: $flow.nameText)
                         .font(.system(size: 26, weight: .bold))
+                        .tracking(-0.26)
                         .focused($focused)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
@@ -87,10 +91,10 @@ struct ClaimNameView: View {
         .padding(.horizontal, 24)
         .frame(maxWidth: .infinity, minHeight: 64)
         .background(Color.white.opacity(0.06), in: Capsule())
-        .overlay(Capsule().strokeBorder((accent ?? .white).opacity(0.6), lineWidth: 1.4))
+        .overlay(TravellingBorder(tint: tint))
         .background {
             Capsule()
-                .fill(accent ?? .clear)
+                .fill(tint)
                 .opacity(0.22)
                 .blur(radius: 46)
                 .padding(-14)
@@ -104,11 +108,11 @@ struct ClaimNameView: View {
         case .empty, .invalid:
             EmptyView()
         case .checking:
-            ChipLabel(text: "Checking", symbol: "ellipsis", color: Theme.textSecondary)
+            ChipLabel(text: "Checking…", symbol: "hourglass", color: Theme.textMuted)
         case .available:
-            ChipLabel(text: "Available", symbol: "checkmark.circle.fill", color: Theme.confirmed)
+            ChipLabel(text: "Available", symbol: "checkmark.circle.fill", color: Theme.confirmed, badge: true)
         case .taken:
-            ChipLabel(text: "Taken", symbol: "xmark.circle.fill", color: Theme.danger)
+            ChipLabel(text: "Taken", symbol: "xmark.circle.fill", color: Theme.danger, badge: true)
         case .unreachable:
             ChipLabel(text: "Can't check right now", symbol: "wifi.exclamationmark", color: Theme.warning)
         }
@@ -117,8 +121,13 @@ struct ClaimNameView: View {
     private var hint: String {
         switch flow.status {
         case .invalid, .taken: "Letters, digits and hyphens, up to \(FliqName.maxLength)"
+        case .checking: " "
         default: "Free · yours for life · one tap to claim"
         }
+    }
+
+    private var tint: Color {
+        accent ?? Color.white.opacity(0.35)
     }
 
     private var accent: Color? {

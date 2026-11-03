@@ -46,10 +46,15 @@ struct ChipLabel: View {
     let text: String
     var symbol: String?
     var color: Color = Theme.textPrimary
+    var badge = false
 
     var body: some View {
         HStack(spacing: 6) {
-            if let symbol { Image(systemName: symbol) }
+            if let symbol {
+                Image(systemName: symbol)
+                    .symbolRenderingMode(badge ? .palette : .monochrome)
+                    .foregroundStyle(badge ? Color.black : color, color)
+            }
             Text(text)
         }
         .font(.system(size: 13, weight: .bold))
