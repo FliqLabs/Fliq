@@ -1,0 +1,7 @@
+// fixtures: the app reads spec/fixtures from its bundle, no server needed.
+// api: the app calls FLIQ_API_BASE_URL. Run `make dev-mock` first for localhost.
+FLIQ_DATA_SOURCE = fixtures
+FLIQ_API_BASE_URL = http:/$()/localhost:4000/v1
+FLIQ_API_KEY = rt_test_7Kp2demo00c9Qe
+
+#include? "Debug.xcconfig.local"
