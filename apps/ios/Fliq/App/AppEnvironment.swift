@@ -11,6 +11,8 @@ final class AppEnvironment {
     let router: AppRouter
     let profile: ProfileStore
     let activity: ActivityStore
+    let vault: VaultStore
+    let deposits: any DepositAPI
     let biometrics: any Biometrics
 
     init(
@@ -19,6 +21,8 @@ final class AppEnvironment {
         router: AppRouter = AppRouter(),
         profile: ProfileStore = ProfileStore(),
         activity: ActivityStore = ActivityStore(),
+        vault: VaultStore = VaultStore(),
+        deposits: any DepositAPI = FixtureDepositAPI(),
         biometrics: any Biometrics = DeviceBiometrics()
     ) {
         self.api = api
@@ -26,6 +30,8 @@ final class AppEnvironment {
         self.router = router
         self.profile = profile
         self.activity = activity
+        self.vault = vault
+        self.deposits = deposits
         self.biometrics = biometrics
     }
 

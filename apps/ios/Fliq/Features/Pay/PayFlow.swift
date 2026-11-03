@@ -25,10 +25,12 @@ final class PayFlow {
 
     private let api: any FliqAPI
     private let activity: ActivityStore?
+    private let vault: VaultStore?
 
-    init(api: any FliqAPI, activity: ActivityStore? = nil) {
+    init(api: any FliqAPI, activity: ActivityStore? = nil, vault: VaultStore? = nil) {
         self.api = api
         self.activity = activity
+        self.vault = vault
         recipient = AccountEntry(api: api)
     }
 
@@ -47,19 +49,7 @@ final class PayFlow {
     }
 
     func tapKey(_ key: String) {
-        if key == "⌫" {
-            if !amountText.isEmpty { amountText.removeLast() }
-            return
-        }
-        if key == "." && amountText.contains(".") { return }
-        if let dot = amountText.firstIndex(of: "."), amountText[dot...].count > 2 { return }
-        let next: String
-        switch (amountText, key) {
-        case ("", "."): next = "0."
-        case ("0", _) where key != ".": next = key
-        default: next = amountText + key
-        }
-        if next.count <= 9 { amountText = next }
+        amountText = AmountTyping.apply(key, to: amountText)
     }
 
     // MARK: Quote and send
@@ -96,7 +86,10 @@ final class PayFlow {
                 idempotencyKey: UUID().uuidString
             )
             sentAt = .now
-            if let payout { activity?.record(payout, at: sentAt ?? .now) }
+            if let payout {
+                activity?.record(payout, at: sentAt ?? .now)
+                vault?.debit(payout.amount)
+            }
             errorMessage = nil
             return true
         } catch APIError.refused(let refusal) {
@@ -115,6 +108,7 @@ final class PayFlow {
             if let next = try? await api.payout(id: current.payoutId) {
                 payout = next
                 activity?.record(next)
+                if next.state == .refunded, current.state != .refunded { vault?.credit(next.amount) }
             }
         }
     }
