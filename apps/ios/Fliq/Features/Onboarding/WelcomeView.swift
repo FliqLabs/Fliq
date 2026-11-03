@@ -6,13 +6,11 @@ struct WelcomeView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Wordmark(size: 32)
-                .padding(.top, 24)
             Spacer()
             VStack(spacing: 14) {
                 Text("Dollars in,\nyour bank account out\(Text(".").foregroundStyle(Color(hex: 0x8E8E8E)))")
                     .font(.system(size: 36, weight: .bold))
-                    .tracking(-1)
+                    .tracking(-1.08)
                     .multilineTextAlignment(.center)
                 Text("Global crypto. Local money.")
                     .font(.system(size: 15, weight: .medium))
@@ -22,32 +20,49 @@ struct WelcomeView: View {
                     .foregroundStyle(Color(hex: 0x8E8E8E))
                     .multilineTextAlignment(.center)
                     .lineSpacing(4)
+                    .padding(.top, -8)
             }
             .padding(.bottom, 84)
 
             VStack(spacing: 18) {
                 Button(action: onStart) {
-                    Label("Continue with passkey", systemImage: "person.badge.key")
+                    HStack(spacing: 10) {
+                        icon("IconPasskey")
+                        Text("Continue with passkey")
+                    }
                 }
                 .buttonStyle(PrimaryButtonStyle())
                 Button(action: onExistingAccount) {
-                    Label("I already have an account", systemImage: "arrow.down.to.line")
-                        .font(.system(size: 15, weight: .medium))
+                    HStack(spacing: 8) {
+                        icon("IconDownload")
+                        Text("I already have an account")
+                    }
+                    .font(.system(size: 15, weight: .medium))
                 }
                 .foregroundStyle(Theme.textPrimary)
             }
-            .padding(.bottom, 20)
+            .padding(.bottom, 10)
         }
         .padding(.horizontal, 20)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background {
-            ZStack {
-                Color.black
-                Aurora()
-            }
-            .ignoresSafeArea()
+            Image("WelcomeBackground")
+                .resizable()
+                .scaledToFill()
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .clipped()
+                .background(Color.black)
+                .ignoresSafeArea()
+                .accessibilityHidden(true)
         }
         .toolbar(.hidden, for: .navigationBar)
+    }
+
+    private func icon(_ name: String) -> some View {
+        Image(name)
+            .resizable()
+            .renderingMode(.template)
+            .frame(width: 18, height: 18)
     }
 }
 
