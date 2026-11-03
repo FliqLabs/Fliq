@@ -10,6 +10,7 @@ export function toUserView(user: User) {
     user_id: user.id,
     near_account: user.nearAccount,
     display_name: user.displayName,
+    photo_url: user.photoUrl,
     occupation: user.occupation,
     vault: user.vaultAccount,
   };

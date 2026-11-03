@@ -16,7 +16,8 @@ export function encrypt(plaintext: string, key: Buffer): Buffer {
   return Buffer.concat([iv, cipher.getAuthTag(), body]);
 }
 
-export function decrypt(payload: Buffer, key: Buffer): string {
+export function decrypt(sealed: Uint8Array, key: Buffer): string {
+  const payload = Buffer.from(sealed);
   const iv = payload.subarray(0, IV_BYTES);
   const tag = payload.subarray(IV_BYTES, IV_BYTES + TAG_BYTES);
   const body = payload.subarray(IV_BYTES + TAG_BYTES);

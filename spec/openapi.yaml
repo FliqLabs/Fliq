@@ -832,8 +832,11 @@ components:
           type: string
     User:
       type: object
-      required: [user_id, near_account, display_name, occupation, vault]
+      required: [user_id, near_account, display_name, photo_url, occupation, vault]
       properties:
+        photo_url:
+          type: [string, "null"]
+          description: https URL of the profile photo the client uploaded to storage
         user_id:
           type: string
         near_account:
@@ -881,6 +884,11 @@ components:
     ProfileUpdate:
       type: object
       properties:
+        photo_url:
+          type: [string, "null"]
+          format: uri
+          maxLength: 2048
+          description: https URL of the uploaded photo, or null to remove it
         display_name:
           type: string
         occupation:

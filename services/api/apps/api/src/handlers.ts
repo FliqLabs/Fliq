@@ -7,7 +7,7 @@ import { revokeFamily, rotateSession, toUserView } from "./auth/sessions.js";
 import type { Config } from "./config.js";
 import type { Unit } from "./db.js";
 import { currentWorkspace, listKeys, listPayouts, onboardingProgress, parseLimit, workspaceView } from "./dashboard.js";
-import { settle } from "./errors.js";
+import { requireHttpsUrl, settle } from "./errors.js";
 import { withIdempotency } from "./idempotency.js";
 import { createWorkspace } from "./workspaces.js";
 
@@ -60,9 +60,14 @@ export function createHandlers({ config, unit, email, provisioner }: HandlerDeps
       body: await unit(async (tx) => toUserView(await tx.user.findUniqueOrThrow({ where: { id: auth(request).userId } }))),
     }),
     updateMe: async (request) => {
-      const { display_name, occupation } = body<{ display_name?: string; occupation?: string | null }>(request);
+      const { display_name, occupation, photo_url } = body<{
+        display_name?: string;
+        occupation?: string | null;
+        photo_url?: string | null;
+      }>(request);
+      requireHttpsUrl(photo_url);
       const user = await unit((tx) =>
-        tx.user.update({ where: { id: auth(request).userId }, data: { displayName: display_name?.trim(), occupation } }),
+        tx.user.update({ where: { id: auth(request).userId }, data: { displayName: display_name?.trim(), occupation, photoUrl: photo_url } }),
       );
       return { status: 200, body: toUserView(user) };
     },

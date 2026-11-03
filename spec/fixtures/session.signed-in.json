@@ -7,6 +7,7 @@
     "near_account": "frank.fliq.near",
     "display_name": "Frank",
     "occupation": null,
-    "vault": "fliq-vault.testnet"
+    "vault": "fliq-vault.testnet",
+    "photo_url": null
   }
 }
