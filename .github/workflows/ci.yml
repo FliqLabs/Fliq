@@ -211,7 +211,7 @@ jobs:
             -only-testing:FliqTests \
             -resultBundlePath build.xcresult \
             CODE_SIGNING_ALLOWED=NO 2>&1 | xcbeautify --renderer github-actions \
-            || { xcrun xcresulttool get build-results --path build.xcresult --format json | jq -r '.errors[] | "\(.sourceURL // "") \(.message)"'; exit 1; }
+            || { xcrun xcresulttool get build-results --path build.xcresult --format json | jq -r '.errors[] | "\(.sourceURL // "") \(.message)"'; xcrun xcresulttool get log --type build --path build.xcresult --format json | jq -r '.. | .emittedOutput? // empty' | grep -iE -A6 "error" | head -120; exit 1; }
 
   ci-gate:
     if: always()
