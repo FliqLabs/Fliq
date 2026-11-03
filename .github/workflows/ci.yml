@@ -210,7 +210,7 @@ jobs:
             -destination 'platform=iOS Simulator,name=iPhone 16' \
             -only-testing:FliqTests \
             CODE_SIGNING_ALLOWED=NO 2>&1 | tee xcodebuild.log | xcbeautify --renderer github-actions \
-            || { grep -E "error:" xcodebuild.log | sort -u; exit 1; }
+            || { grep -iE "error|fatal|stack dump|failed" xcodebuild.log | sort -u | head -100; exit 1; }
 
   ci-gate:
     if: always()
