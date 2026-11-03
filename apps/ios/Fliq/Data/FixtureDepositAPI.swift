@@ -14,9 +14,9 @@ struct FixtureDepositAPI: DepositAPI {
             DepositSource(token: "USDC", chain: "Solana", group: .dollars),
             DepositSource(token: "USDT", chain: "Tron", group: .dollars, minimum: TokenAmount(baseUnits: 100_000_000)),
             DepositSource(token: "USDC", chain: "Arbitrum", group: .dollars),
-            DepositSource(token: "USDC", chain: "Ethereum", group: .dollars),
+            DepositSource(token: "USDC", chain: "Ethereum", group: .dollars, note: "Ethereum · Polygon"),
             DepositSource(token: "BTC", chain: "Bitcoin", group: .bitcoin, note: "Lands as dollars · about 10 min"),
-            DepositSource(token: "USDC", chain: "NEAR", group: .near, note: "Your vault address"),
+            DepositSource(token: "USDC", chain: "NEAR", group: .near, note: "NEAR · your vault address"),
         ]
     }
 

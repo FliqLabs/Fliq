@@ -46,6 +46,7 @@ struct Keypad: View {
         }
         .padding(.vertical, 10)
         .background(Color(hex: 0x0A0A0A).ignoresSafeArea(edges: .bottom))
+        .overlay(alignment: .top) { Rectangle().fill(Theme.surface).frame(height: 1) }
         .padding(.horizontal, -16)
     }
 }

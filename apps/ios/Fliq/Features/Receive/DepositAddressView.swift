@@ -16,8 +16,10 @@ struct DepositAddressView: View {
         VStack(spacing: 0) {
             Text(heading(deposit))
                 .font(.system(size: 22, weight: .semibold))
+                .tracking(-0.44)
+                .lineSpacing(2)
                 .multilineTextAlignment(.center)
-                .padding(.top, 28)
+                .padding(.top, 36)
 
             if deposit.isDemo {
                 Label("Demo address. Don't send real funds to it.", systemImage: "exclamationmark.triangle.fill")
@@ -33,7 +35,7 @@ struct DepositAddressView: View {
                 .padding(16)
                 .frame(width: 232, height: 232)
                 .background(.white, in: RoundedRectangle(cornerRadius: 20))
-                .padding(.top, 20)
+                .padding(.top, 28)
 
             HStack(spacing: 8) {
                 Button {
@@ -42,7 +44,7 @@ struct DepositAddressView: View {
                 } label: {
                     HStack(spacing: 10) {
                         Text(Self.short(deposit.address)).font(.system(size: 15, design: .monospaced))
-                        Image(systemName: copied ? "checkmark" : "doc.on.doc").font(.system(size: 14))
+                        Image(systemName: copied ? "checkmark" : "square.on.square").font(.system(size: 15))
                     }
                     .padding(.horizontal, 16)
                     .frame(height: 44)
@@ -70,16 +72,20 @@ struct DepositAddressView: View {
 
             Button("I have sent it") { environment.router.push(.receiveArriving) }
                 .buttonStyle(PrimaryButtonStyle())
-                .padding(.bottom, 12)
+                .padding(.bottom, 6)
         }
         .fliqScreen()
         .toolbar {
             ToolbarItem(placement: .principal) {
                 HStack(spacing: 8) {
-                    SourceBadge(source: deposit.source, size: 26)
+                    SourceBadge(source: deposit.source, size: 26, ring: Theme.field)
                     Text(deposit.source.title)
                 }
                 .font(.system(size: 14, weight: .medium))
+                .padding(.leading, 6)
+                .padding(.trailing, 12)
+                .frame(height: 36)
+                .background(Theme.field, in: Capsule())
                 .fixedSize()
             }
         }
@@ -98,7 +104,16 @@ struct DepositAddressView: View {
             }
             .font(.system(size: 13))
             .foregroundStyle(Theme.textSecondary)
-            ProgressView(value: Double(left), total: FixtureDepositAPI.watchWindow).tint(.white)
+            GeometryReader { proxy in
+                Capsule().fill(Color(hex: 0x262626))
+                    .overlay(alignment: .leading) {
+                        Rectangle().fill(.white)
+                            .frame(width: proxy.size.width * min(1, Double(left) / FixtureDepositAPI.watchWindow))
+                    }
+                    .clipShape(Capsule())
+            }
+            .frame(height: 2)
+            .animation(.linear(duration: 1), value: left)
             Text("We watch this address for 10 minutes. Nothing sent is lost.")
                 .font(.system(size: 13))
                 .foregroundStyle(Color(hex: 0x8E8E8E))

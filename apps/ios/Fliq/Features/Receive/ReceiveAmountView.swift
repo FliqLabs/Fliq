@@ -3,6 +3,7 @@ import SwiftUI
 struct ReceiveAmountView: View {
     let flow: ReceiveFlow
     @Environment(AppEnvironment.self) private var environment
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         VStack(spacing: 0) {
@@ -34,16 +35,25 @@ struct ReceiveAmountView: View {
 
             Keypad(onKey: flow.tapKey)
         }
-        .fliqScreen(aurora: Aurora())
+        .fliqScreen(aurora: Aurora(accent: Color(hex: 0x4D3DFF).opacity(0.77), strength: 0.72))
         .toolbar {
             ToolbarItem(placement: .principal) {
                 if let source = flow.source {
-                    HStack(spacing: 8) {
-                        SourceBadge(source: source, size: 26)
-                        Text(source.title)
+                    Button { dismiss() } label: {
+                        HStack(spacing: 8) {
+                            SourceBadge(source: source, size: 26, ring: Color(hex: 0x1C1C1C))
+                            Text(source.title).font(.system(size: 14, weight: .medium))
+                            Image(systemName: "chevron.down").font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(Theme.textSecondary)
+                        }
+                        .padding(.leading, 6)
+                        .padding(.trailing, 12)
+                        .frame(height: 36)
+                        .fliqGlass(Capsule(), interactive: true)
                     }
-                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Theme.textPrimary)
                     .fixedSize()
+                    .accessibilityLabel("Change network, \(source.title)")
                 }
             }
         }
