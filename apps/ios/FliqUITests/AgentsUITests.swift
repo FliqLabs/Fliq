@@ -13,6 +13,9 @@ final class AgentsUITests: XCTestCase {
         app.launch()
 
         app.buttons["Menu"].tap()
+        let agentsRow = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Agents")).firstMatch
+        XCTAssertTrue(agentsRow.waitForExistence(timeout: 3))
+        agentsRow.tap()
         XCTAssertTrue(app.staticTexts["Spent today"].waitForExistence(timeout: 3))
         let refused = app.otherElements.matching(NSPredicate(format: "label CONTAINS %@", "Refused")).firstMatch
         XCTAssertTrue(refused.exists || app.staticTexts["Refused"].exists, "The refused ₦500,000 is listed")

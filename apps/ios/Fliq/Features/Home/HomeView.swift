@@ -23,11 +23,13 @@ struct HomeView: View {
 
     private var header: some View {
         HStack {
-            Circle()
-                .fill(Theme.surfaceRaised)
-                .frame(width: 32, height: 32)
-                .overlay(Image(systemName: "person.fill").font(.system(size: 14)).foregroundStyle(Theme.textSecondary))
-                .accessibilityLabel("Profile")
+            Button(action: onMenu) {
+                Circle()
+                    .fill(Theme.surfaceRaised)
+                    .frame(width: 32, height: 32)
+                    .overlay(Image(systemName: "person.fill").font(.system(size: 14)).foregroundStyle(Theme.textSecondary))
+            }
+            .accessibilityLabel("Profile")
             Spacer()
             Wordmark()
             Spacer()

@@ -7,11 +7,13 @@ enum OnboardingStep: Hashable {
 /// Welcome, claim a name, add a face, add your own account, then Home.
 struct OnboardingView: View {
     private let profile: ProfileStore
+    private let accounts: AccountBook
     @State private var flow: OnboardingFlow
     @State private var path: [OnboardingStep] = []
 
     init(environment: AppEnvironment) {
         profile = environment.profile
+        accounts = environment.accounts
         _flow = State(initialValue: OnboardingFlow(api: environment.api, names: environment.names))
     }
 
@@ -36,6 +38,7 @@ struct OnboardingView: View {
     }
 
     private func finish() {
+        if let own = flow.ownAccount.verified { accounts.setOwn(own) }
         profile.completeOnboarding(name: flow.canClaim ? flow.name : nil, displayName: flow.displayName)
     }
 }

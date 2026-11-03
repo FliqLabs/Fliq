@@ -12,7 +12,7 @@ struct RootView: View {
         NavigationStack(path: $router.path) {
             Group {
                 if let home {
-                    HomeView(model: home, onSend: startPayment, onActivity: { router.push(.activity) }, onReceive: startReceive, onMenu: { router.push(.agents) })
+                    HomeView(model: home, onSend: startPayment, onActivity: { router.push(.activity) }, onReceive: startReceive, onMenu: { router.push(.settings) })
                 }
             }
             .navigationDestination(for: AppRoute.self, destination: destination)
@@ -24,7 +24,7 @@ struct RootView: View {
     }
 
     private func startPayment() {
-        flow = PayFlow(api: environment.api, activity: environment.activity, vault: environment.vault)
+        flow = PayFlow(api: environment.api, activity: environment.activity, vault: environment.vault, accounts: environment.accounts)
         environment.router.push(.payNew)
     }
 
@@ -51,6 +51,10 @@ struct RootView: View {
         case .receiveSource, .receiveAmount, .receiveAddress, .receiveArriving:
             if let receive { receiveStep(route, receive) }
         case .agents: AgentsView(store: environment.agents)
+        case .settings: SettingsView()
+        case .settingsAccounts: AccountsView(onAdd: startPayment)
+        case .settingsSecurity: SecurityView()
+        case .settingsNotifications: NotificationsView()
         case .agentConnect: AgentConnectView(store: environment.agents)
         }
     }
@@ -68,7 +72,7 @@ struct RootView: View {
             if let payout = flow.payout {
                 RefundedView(payout: payout, quote: flow.quote, onTryAgain: startPayment)
             }
-        case .activity, .receipt, .receiveSource, .receiveAmount, .receiveAddress, .receiveArriving, .agents, .agentConnect: EmptyView()
+        case .activity, .receipt, .receiveSource, .receiveAmount, .receiveAddress, .receiveArriving, .agents, .agentConnect, .settings, .settingsAccounts, .settingsSecurity, .settingsNotifications: EmptyView()
         }
     }
 
