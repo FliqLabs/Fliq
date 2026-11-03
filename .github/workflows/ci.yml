@@ -209,7 +209,8 @@ jobs:
             -scheme Fliq \
             -destination 'platform=iOS Simulator,name=iPhone 16' \
             -only-testing:FliqTests \
-            CODE_SIGNING_ALLOWED=NO 2>&1 | xcbeautify --renderer github-actions
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee xcodebuild.log | xcbeautify --renderer github-actions \
+            || { grep -E "error:" xcodebuild.log | sort -u; exit 1; }
 
   ci-gate:
     if: always()
