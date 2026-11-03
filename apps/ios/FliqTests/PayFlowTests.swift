@@ -22,15 +22,15 @@ final class PayFlowTests: XCTestCase {
 
     func testAccountIsVerifiedOnlyWhenComplete() async {
         let flow = makeFlow()
-        flow.accountNumber = "012345678"
-        await flow.verifyAccount()
+        flow.recipient.number = "012345678"
+        await flow.recipient.verify()
         XCTAssertNil(flow.verified)
 
-        flow.accountNumber = "0123456789"
-        await flow.verifyAccount()
+        flow.recipient.number = "0123456789"
+        await flow.recipient.verify()
         XCTAssertEqual(flow.verified?.accountName, "DARA OKONKWO")
 
-        flow.accountNumber = "0123456780"
+        flow.recipient.number = "0123456780"
         XCTAssertNil(flow.verified, "Editing the number must drop the old confirmation")
     }
 
@@ -61,8 +61,8 @@ final class PayFlowTests: XCTestCase {
         let sentWithoutAccount = await flow.send()
         XCTAssertFalse(sentWithoutAccount)
 
-        flow.accountNumber = "0123456789"
-        await flow.verifyAccount()
+        flow.recipient.number = "0123456789"
+        await flow.recipient.verify()
         let sent = await flow.send()
         XCTAssertTrue(sent)
         XCTAssertEqual(flow.payout?.state, .awaitingDeposit)

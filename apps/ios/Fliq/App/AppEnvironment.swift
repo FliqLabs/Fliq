@@ -2,31 +2,42 @@ import Foundation
 import Observation
 
 /// The composition root. The app builds one from Info.plist; tests and previews pass
-/// their own `api`, so no screen ever constructs a client itself.
+/// their own parts, so no screen ever constructs a client itself.
 @MainActor
 @Observable
 final class AppEnvironment {
     let api: any FliqAPI
+    let names: any NameDirectory
     let router: AppRouter
+    let profile: ProfileStore
     let biometrics: any Biometrics
 
-    init(api: any FliqAPI, router: AppRouter = AppRouter(), biometrics: any Biometrics = DeviceBiometrics()) {
+    init(
+        api: any FliqAPI,
+        names: any NameDirectory = FixtureNameDirectory(),
+        router: AppRouter = AppRouter(),
+        profile: ProfileStore = ProfileStore(),
+        biometrics: any Biometrics = DeviceBiometrics()
+    ) {
         self.api = api
+        self.names = names
         self.router = router
+        self.profile = profile
         self.biometrics = biometrics
     }
 
     static func live(bundle: Bundle = .main) -> AppEnvironment {
-        let api = makeAPI(info: bundle.infoDictionary ?? [:], bundle: bundle)
         #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("--ui-testing") {
-            return AppEnvironment(api: FixtureClient(bundle: bundle), biometrics: AlwaysApprove())
-        }
+        if let testing = uiTesting(bundle: bundle) { return testing }
         #endif
-        return AppEnvironment(api: api)
+        return AppEnvironment(api: makeAPI(info: bundle.infoDictionary ?? [:], bundle: bundle))
     }
 
-    static let preview = AppEnvironment(api: FixtureClient(), biometrics: AlwaysApprove())
+    static let preview = AppEnvironment(
+        api: FixtureClient(),
+        profile: ProfileStore(defaults: UserDefaults(suiteName: "preview") ?? .standard),
+        biometrics: AlwaysApprove()
+    )
 
     private static func makeAPI(info: [String: Any], bundle: Bundle) -> any FliqAPI {
         guard
@@ -37,4 +48,17 @@ final class AppEnvironment {
         }
         return HTTPClient(baseURL: base, apiKey: info["FliqAPIKey"] as? String ?? "")
     }
+
+    #if DEBUG
+    /// `--ui-testing` runs on fixtures with a fresh profile and no Face ID prompt.
+    /// Add `--onboarded` to start on Home.
+    private static func uiTesting(bundle: Bundle) -> AppEnvironment? {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard arguments.contains("--ui-testing"), let defaults = UserDefaults(suiteName: "ui-testing") else { return nil }
+        defaults.removePersistentDomain(forName: "ui-testing")
+        let profile = ProfileStore(defaults: defaults)
+        if arguments.contains("--onboarded") { profile.completeOnboarding(name: nil, displayName: nil) }
+        return AppEnvironment(api: FixtureClient(bundle: bundle), profile: profile, biometrics: AlwaysApprove())
+    }
+    #endif
 }
