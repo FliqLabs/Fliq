@@ -33,6 +33,7 @@ targets:
         FliqAPIKey: $(FLIQ_API_KEY)
         FliqDataSource: $(FLIQ_DATA_SOURCE)
         NSFaceIDUsageDescription: fliq asks for Face ID before any money leaves your vault.
+        NSCameraUsageDescription: fliq uses the camera only when you take a profile photo.
         UILaunchScreen: {}
         UIUserInterfaceStyle: Dark
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]

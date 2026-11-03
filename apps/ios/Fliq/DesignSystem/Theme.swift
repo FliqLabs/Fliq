@@ -9,6 +9,7 @@ enum Theme {
 
     static let textPrimary = Color.white
     static let textSecondary = Color(hex: 0xA3A3A3)
+    static let textMuted = Color(hex: 0x8E8E8E)
     static let textTertiary = Color(hex: 0x6E6E6E)
     static let textDisabled = Color(hex: 0x5A5A5A)
 
@@ -18,6 +19,16 @@ enum Theme {
 
     static let ground = LinearGradient(
         colors: [Color(hex: 0x171717), Color(hex: 0x0B0B0B), .black],
+        startPoint: .top,
+        endPoint: .bottom
+    )
+
+    static let onboardingGround = LinearGradient(
+        stops: [
+            .init(color: Color(hex: 0x121212), location: 0),
+            .init(color: Color(hex: 0x080808), location: 0.4),
+            .init(color: .black, location: 1),
+        ],
         startPoint: .top,
         endPoint: .bottom
     )
