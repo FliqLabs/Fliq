@@ -2,7 +2,7 @@
 
 The fliq iPhone app. SwiftUI, iOS 17 minimum, Swift 6 strict concurrency. Owner: Frank.
 
-Every line of Swift in this folder is written by hand. Coding agents must not create or edit files here (see `AGENTS.md`).
+The Swift in this folder is written with Claude Code at Frank's direction, and Frank reviews every change. Other agents must not create or edit files here (see `AGENTS.md`).
 
 ## Layout
 
