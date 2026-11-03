@@ -6,14 +6,15 @@ import type { OneClickStatus } from "./types";
 // 1Click OpenAPI 0.1.10, prices stablecoins 1:1, and picks each swap's outcome from the requested amount:
 // ending in 01 refunds, 02 fails, 03 is held in PROCESSING, anything else succeeds.
 
+// The stablecoins live 1Click listed for these chains on 3 November 2026 (no USDT on Base).
 const CHAINS: Record<string, readonly string[]> = {
-  base: ["USDC", "USDT"],
+  base: ["USDC"],
   pol: ["USDC", "USDT"],
   arb: ["USDC"],
   eth: ["USDC", "USDT"],
   sol: ["USDC", "USDT"],
   tron: ["USDT"],
-  near: ["USDC"],
+  near: ["USDC", "USDT"],
 };
 const DECIMALS = 6;
 const BPS = 10_000n;
@@ -111,7 +112,7 @@ export function createOneClickMock(options: OneClickMockOptions) {
         deposit: null,
       });
     }
-    return [200, envelope(body, quote)];
+    return [201, envelope(body, quote)];
   }
 
   function recordDeposit(depositAddress: string, amount: bigint | null, txHash: string): Reply {

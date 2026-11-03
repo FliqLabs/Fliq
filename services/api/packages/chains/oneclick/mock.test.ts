@@ -90,6 +90,11 @@ describe("mock 1Click quotes", () => {
     await expect(oneClick.quote(input(50_000_000n, { originAsset: "mock:btc:btc" }))).rejects.toMatchObject({
       message: "1click quote rejected: unknown asset",
     });
+    await expect(oneClick.quote(input(50_000_000n, { originAsset: "mock:base:usdt" }))).rejects.toMatchObject(
+      {
+        message: "1click quote rejected: unknown asset",
+      },
+    );
     await expect(oneClick.quote(input(50_000_000n, { deadline: now }))).rejects.toMatchObject({
       kind: "rejected",
     });
