@@ -10,6 +10,7 @@ final class AppEnvironment {
     let names: any NameDirectory
     let router: AppRouter
     let profile: ProfileStore
+    let activity: ActivityStore
     let biometrics: any Biometrics
 
     init(
@@ -17,12 +18,14 @@ final class AppEnvironment {
         names: any NameDirectory = FixtureNameDirectory(),
         router: AppRouter = AppRouter(),
         profile: ProfileStore = ProfileStore(),
+        activity: ActivityStore = ActivityStore(),
         biometrics: any Biometrics = DeviceBiometrics()
     ) {
         self.api = api
         self.names = names
         self.router = router
         self.profile = profile
+        self.activity = activity
         self.biometrics = biometrics
     }
 

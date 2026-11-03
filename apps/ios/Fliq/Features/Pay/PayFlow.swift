@@ -24,9 +24,11 @@ final class PayFlow {
     private(set) var errorMessage: String?
 
     private let api: any FliqAPI
+    private let activity: ActivityStore?
 
-    init(api: any FliqAPI) {
+    init(api: any FliqAPI, activity: ActivityStore? = nil) {
         self.api = api
+        self.activity = activity
         recipient = AccountEntry(api: api)
     }
 
@@ -94,6 +96,7 @@ final class PayFlow {
                 idempotencyKey: UUID().uuidString
             )
             sentAt = .now
+            if let payout { activity?.record(payout, at: sentAt ?? .now) }
             errorMessage = nil
             return true
         } catch APIError.refused(let refusal) {
@@ -111,6 +114,7 @@ final class PayFlow {
             try? await Task.sleep(for: Self.pollInterval)
             if let next = try? await api.payout(id: current.payoutId) {
                 payout = next
+                activity?.record(next)
             }
         }
     }

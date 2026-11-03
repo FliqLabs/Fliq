@@ -3,6 +3,7 @@ import SwiftUI
 struct HomeView: View {
     @State var model: HomeModel
     var onSend: () -> Void = {}
+    var onActivity: () -> Void = {}
 
     var body: some View {
         VStack(spacing: 0) {
@@ -91,7 +92,7 @@ struct HomeView: View {
             ActionBarItem(title: "Receive", symbol: "square.and.arrow.down") {},
             ActionBarItem(title: "Send", symbol: "paperplane", action: onSend),
             ActionBarItem(title: "Request", symbol: "link", isEnabled: model.hasBalance) {},
-            ActionBarItem(title: "Activity", symbol: "clock.arrow.circlepath") {},
+            ActionBarItem(title: "Activity", symbol: "clock.arrow.circlepath", action: onActivity),
         ]
     }
 }

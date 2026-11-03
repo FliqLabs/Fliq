@@ -3,6 +3,7 @@ import SwiftUI
 struct QuoteView: View {
     let flow: PayFlow
     @Environment(AppEnvironment.self) private var environment
+    @State private var showingRoutes = false
 
     var body: some View {
         if let quote = flow.quote {
@@ -24,16 +25,22 @@ struct QuoteView: View {
                 DetailRow("You send", "$" + quote.amount.decimalString)
                 DetailRow("Rate after fees", "$1 = " + Money.rate(quote.rate, quote.currency))
                 DetailRow("Fees", Money.fee(quote.fees.total, quote.currency))
-                DetailRow(label: "Route", isLast: true) {
-                    HStack(spacing: 8) {
-                        Text("Best of \(quote.bestOf)")
-                        if let advantage = Money.routeAdvantage(quote) {
-                            Text("+" + Money.local(advantage, quote.currency))
-                                .font(.system(size: 13))
-                                .foregroundStyle(Theme.confirmed)
+                Button { showingRoutes = true } label: {
+                    DetailRow(label: "Route", isLast: true) {
+                        HStack(spacing: 8) {
+                            Text("Best of \(quote.bestOf)")
+                            if let advantage = Money.routeAdvantage(quote) {
+                                Text("+" + Money.local(advantage, quote.currency))
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(Theme.confirmed)
+                            }
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(Theme.textTertiary)
                         }
                     }
                 }
+                .foregroundStyle(Theme.textPrimary)
             }
             .padding(.top, 32)
 
@@ -57,6 +64,11 @@ struct QuoteView: View {
             }
         }
         .fliqScreen("Confirm")
+        .sheet(isPresented: $showingRoutes) {
+            RoutesSheet(quote: quote)
+                .presentationDetents([.fraction(0.68)])
+                .presentationBackground(Color(hex: 0x141414))
+        }
     }
 
     private func countdown(_ quote: Quote, now: Date) -> some View {
