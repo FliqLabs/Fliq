@@ -8,4 +8,7 @@ regexes = [
   '''rt_test_mcp_Q8demo001fA''',
   # USDC token contract on Base, public on every explorer. Watcher tests use it.
   '''(?i)0x833589fcd6edb6e08f4c7c32d4f71b54bda02913''',
+  # An empty ONECLICK_API_KEY= in services/api/.env.example (f6f28ed) makes the generic rule
+  # read the next line, a public NEAR fee-recipient account, as the key.
+  '''^ONECLICK_FEE_RECIPIENT=''',
 ]
