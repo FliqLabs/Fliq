@@ -7,7 +7,8 @@ final class HomeModel {
     private(set) var rate: Rate?
     private(set) var rateFailed = false
 
-    /// The spec has no balance endpoint yet, so Home starts from the empty state.
+    /// The spec has no balance endpoint yet, so Home shows the empty state. Send stays
+    /// enabled meanwhile: the vault enforces caps and balance on chain either way.
     private(set) var balance: TokenAmount = .zero
 
     private let api: any FliqAPI

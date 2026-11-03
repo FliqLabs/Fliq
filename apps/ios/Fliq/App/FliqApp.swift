@@ -6,7 +6,7 @@ struct FliqApp: App {
 
     var body: some Scene {
         WindowGroup {
-            HomeView(model: HomeModel(api: environment.api))
+            RootView()
                 .environment(environment)
                 .preferredColorScheme(.dark)
         }
