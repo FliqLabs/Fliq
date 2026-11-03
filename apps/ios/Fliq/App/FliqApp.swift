@@ -6,9 +6,16 @@ struct FliqApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView()
-                .environment(environment)
-                .preferredColorScheme(.dark)
+            Group {
+                if environment.profile.isOnboarded {
+                    RootView()
+                } else {
+                    OnboardingView(environment: environment)
+                }
+            }
+            .animation(.easeInOut(duration: 0.3), value: environment.profile.isOnboarded)
+            .environment(environment)
+            .preferredColorScheme(.dark)
         }
     }
 }

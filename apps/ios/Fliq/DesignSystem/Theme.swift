@@ -4,6 +4,7 @@ enum Theme {
     static let surface = Color(hex: 0x1A1A1A)
     static let surfaceRaised = Color(hex: 0x242424)
     static let actionBar = Color(hex: 0x1C1C1C)
+    static let field = Color(hex: 0x1C1C1C)
     static let hairline = Color(hex: 0x2C2C2C)
 
     static let textPrimary = Color.white
@@ -13,6 +14,7 @@ enum Theme {
 
     static let confirmed = Color(hex: 0x32B35A)
     static let warning = Color(hex: 0xE8A317)
+    static let danger = Color(hex: 0xE5484D)
 
     static let ground = LinearGradient(
         colors: [Color(hex: 0x171717), Color(hex: 0x0B0B0B), .black],
