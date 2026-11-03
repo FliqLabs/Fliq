@@ -6,18 +6,26 @@ struct PrimaryButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
+        let shape = RoundedRectangle(cornerRadius: 14)
+        return configuration.label
             .font(.system(size: 16, weight: .medium))
             .frame(maxWidth: .infinity, minHeight: 54)
             .foregroundStyle(foreground)
-            .background(filled && isEnabled ? Color.white : .clear, in: RoundedRectangle(cornerRadius: 14))
-            .overlay {
-                if !filled || !isEnabled {
-                    RoundedRectangle(cornerRadius: 14)
-                        .strokeBorder(isEnabled ? Color.white.opacity(0.55) : Color(hex: 0x333333))
+            .background {
+                if filled && isEnabled {
+                    shape.fill(Color.white)
+                } else if isEnabled {
+                    Color.clear.fliqGlass(shape, interactive: true)
                 }
             }
-            .opacity(configuration.isPressed ? 0.7 : 1)
+            .overlay {
+                if !filled || !isEnabled {
+                    shape.strokeBorder(isEnabled ? Color.white.opacity(0.35) : Color(hex: 0x333333))
+                }
+            }
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .animation(.spring(response: 0.3, dampingFraction: 0.65), value: configuration.isPressed)
+            .sensoryFeedback(.impact(weight: .light), trigger: configuration.isPressed) { _, pressed in pressed }
     }
 
     private var foreground: Color {
@@ -43,6 +51,7 @@ struct HeroAmount: View {
                 .foregroundStyle(Theme.textPrimary)
                 .contentTransition(.numericText())
         }
+        .animation(.snappy(duration: 0.35), value: value)
         .accessibilityElement(children: .combine)
     }
 }

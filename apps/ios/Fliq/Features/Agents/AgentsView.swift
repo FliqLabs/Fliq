@@ -23,12 +23,10 @@ struct AgentsView: View {
         .sheet(item: $editing) { agent in
             AgentLimitsSheet(store: store, agent: agent)
                 .presentationDetents([.height(500)])
-                .presentationBackground(Color(hex: 0x141414))
         }
         .sheet(item: $revoking) { agent in
             AgentRevokeSheet(store: store, agent: agent)
                 .presentationDetents([.height(380)])
-                .presentationBackground(Color(hex: 0x141414))
         }
     }
 
@@ -214,10 +212,12 @@ struct CompactButtonStyle: ButtonStyle {
             .font(.system(size: 15, weight: .medium))
             .frame(maxWidth: .infinity, minHeight: 46)
             .foregroundStyle(prominent ? Theme.textPrimary : Color(hex: 0xE5E5E5))
+            .fliqGlass(RoundedRectangle(cornerRadius: 14), interactive: true)
             .overlay(
                 RoundedRectangle(cornerRadius: 14)
-                    .strokeBorder(prominent ? Color.white.opacity(0.55) : Color(hex: 0x3A3A3A))
+                    .strokeBorder(prominent ? Color.white.opacity(0.35) : Color(hex: 0x3A3A3A))
             )
-            .opacity(configuration.isPressed ? 0.7 : 1)
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .animation(.spring(response: 0.3, dampingFraction: 0.65), value: configuration.isPressed)
     }
 }

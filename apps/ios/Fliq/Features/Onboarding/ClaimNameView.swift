@@ -34,8 +34,7 @@ struct ClaimNameView: View {
                             .foregroundStyle(Theme.textPrimary)
                             .padding(.horizontal, 14)
                             .frame(height: 34)
-                            .background(Color.white.opacity(0.08), in: Capsule())
-                            .overlay(Capsule().strokeBorder(Color.white.opacity(0.1)))
+                            .fliqGlass(Capsule(), interactive: true)
                     }
                 }
                 .padding(.top, 18)

@@ -77,7 +77,6 @@ struct PaidView: View {
         .sheet(isPresented: $showingNotReceived) {
             NotReceivedSheet(payout: payout)
                 .presentationDetents([.medium])
-                .presentationBackground(Color(hex: 0x141414))
         }
     }
 

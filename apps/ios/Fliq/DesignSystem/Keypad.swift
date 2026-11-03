@@ -39,6 +39,7 @@ struct Keypad: View {
                     .frame(maxWidth: .infinity, minHeight: 54)
                     .contentShape(Rectangle())
                 }
+                .buttonStyle(.pressable)
                 .foregroundStyle(Theme.textPrimary)
                 .accessibilityLabel(key == AmountTyping.delete ? "Delete" : key)
             }
