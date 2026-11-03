@@ -6,4 +6,4 @@ The NEAR HACKATHON rules require listing AI-generated code. Add a row whenever a
 | --- | --- | --- | --- |
 | 2026-10-31 | Repository skeleton: root config, `.github/`, `docs/`, `spec/`, `services/api/src/mock.ts`, area READMEs | Claude | Initial monorepo structure, CI, contribution rules, OpenAPI spec draft, fixtures and mock server |
 
-The iOS app (`apps/ios`) is written by hand.
+The iOS app (`apps/ios`) is built with Claude Code, directed and reviewed by Frank. Each iOS PR adds its rows to this table.
