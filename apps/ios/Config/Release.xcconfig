@@ -1,0 +1,3 @@
+FLIQ_DATA_SOURCE = api
+FLIQ_API_BASE_URL = https:/$()/api.fliq.cash/v1
+FLIQ_API_KEY =
