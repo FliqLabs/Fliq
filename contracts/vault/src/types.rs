@@ -27,6 +27,21 @@ pub struct Config {
     pub max_expiry: Timestamp,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(crate = "near_sdk::serde")]
+pub struct BalanceView {
+    pub total: String,
+    pub available: String,
+    pub reserved: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(crate = "near_sdk::serde")]
+pub struct PayoutCaller {
+    pub account_id: AccountId,
+    // OPEN: identity for relayed agent calls.
+}
+
 #[derive(BorshDeserialize, BorshSerialize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
 pub enum TransferState {

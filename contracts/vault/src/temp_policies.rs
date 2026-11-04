@@ -1,10 +1,53 @@
-use near_sdk::AccountId;
+use crate::types::PayoutCaller;
+use near_sdk::borsh::{from_slice, to_vec, BorshDeserialize, BorshSerialize};
+use near_sdk::{env, AccountId};
 
-/// Temporary stand-in for Aria's policy implementation.
-pub fn can_spend(_agent: &AccountId, _amount: u128) -> bool {
-    true
+#[derive(BorshDeserialize, BorshSerialize)]
+struct PendingSpend {
+    payer: AccountId,
+    amount: u128,
 }
 
-pub fn policy_for(_public_key: &str) -> String {
-    String::new()
+// TEMPORARY: derives a private storage key for pending policy spend.
+fn pending_key(order_id: &str) -> Vec<u8> {
+    format!("fliq:temp:pending:{order_id}").into_bytes()
+}
+
+/// TEMPORARY: checks the payer-only policy and records one pending spend.
+pub fn evaluate_payout(
+    caller: &PayoutCaller,
+    payer: &AccountId,
+    order_id: &str,
+    amount: u128,
+    _corridor: &str,
+) -> Result<(), String> {
+    if caller.account_id != *payer {
+        return Err("temporary policy allows only the payer to spend".to_string());
+    }
+    if env::storage_has_key(&pending_key(order_id)) {
+        return Err("temporary policy already has a pending spend for this order".to_string());
+    }
+    let pending = PendingSpend {
+        payer: payer.clone(),
+        amount,
+    };
+    let value =
+        to_vec(&pending).map_err(|_| "temporary pending spend cannot be encoded".to_string())?;
+    env::storage_write(&pending_key(order_id), &value);
+    Ok(())
+}
+
+/// TEMPORARY: removes a pending spend after a failed transfer.
+pub fn release_pending(order_id: &str) {
+    env::storage_remove(&pending_key(order_id));
+}
+
+/// TEMPORARY: removes a pending spend after a successful transfer.
+pub fn settle_pending(order_id: &str) {
+    let key = pending_key(order_id);
+    let value = env::storage_read(&key)
+        .unwrap_or_else(|| env::panic_str("temporary pending spend does not exist"));
+    let _pending = from_slice::<PendingSpend>(&value)
+        .unwrap_or_else(|_| env::panic_str("temporary pending spend is corrupt"));
+    env::storage_remove(&key);
 }
