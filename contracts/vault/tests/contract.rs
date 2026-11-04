@@ -2,7 +2,9 @@ use fliq_vault::orders::{transition, validate_deposit_address, validate_order};
 use fliq_vault::types::{PayoutOrder, TransferState};
 use fliq_vault::Contract;
 use near_sdk::test_utils::{accounts, VMContextBuilder};
-use near_sdk::{test_vm_config, testing_env, AccountId, PromiseResult, RuntimeFeesConfig};
+#[cfg(feature = "testing")]
+use near_sdk::{test_vm_config, PromiseResult, RuntimeFeesConfig};
+use near_sdk::{testing_env, AccountId};
 
 const NOW: u64 = 1_000_000_000;
 
@@ -13,6 +15,7 @@ fn set_caller(account: AccountId, timestamp: u64) {
         .build());
 }
 
+#[cfg(feature = "testing")]
 fn set_promise_result(context: near_sdk::VMContext, result: PromiseResult) {
     testing_env!(
         context,
@@ -27,6 +30,7 @@ fn contract() -> Contract {
     Contract::new(accounts(0), accounts(1), accounts(2))
 }
 
+#[cfg(feature = "testing")]
 fn register_payout_order(contract: &mut Contract, amount: u128, expiry: u64) {
     set_caller(accounts(1), NOW);
     contract.register_order(
