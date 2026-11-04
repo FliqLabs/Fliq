@@ -6,25 +6,29 @@ mod receipts;
 mod temp_policies;
 mod temp_vault;
 
-use near_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use near_sdk::collections::LookupMap;
-use near_sdk::{env, near_bindgen, require, AccountId, Promise};
+use near_sdk::{env, near, require, AccountId, Promise};
 
-use crate::orders::{set_status, validate_deposit_address, validate_order};
+use crate::orders::{set_status as apply_status, validate_deposit_address, validate_order};
 use crate::receipts::FliqEvent;
 use crate::types::{
     now, Amount, Config, PayoutOrder, Receipt, StorageKey, TransferState, DEFAULT_MAX_EXPIRY,
 };
 
-#[near_bindgen]
-#[derive(BorshDeserialize, BorshSerialize)]
+#[near(contract_state)]
 pub struct Contract {
     pub(crate) config: Config,
     pub(crate) orders: LookupMap<String, PayoutOrder>,
     pub(crate) receipts: LookupMap<String, Receipt>,
 }
 
-#[near_bindgen]
+impl Default for Contract {
+    fn default() -> Self {
+        env::panic_str("contract state is not initialized")
+    }
+}
+
+#[near]
 impl Contract {
     #[init]
     /// The deployer supplies the immutable owner and approved USDC token contract.
@@ -131,7 +135,7 @@ impl Contract {
 
     /// May be called by the approved backend reporting account; it cannot move value.
     pub fn set_status(&mut self, order_id: String, status: String, refs: String) {
-        set_status(self, order_id, status, refs);
+        apply_status(self, order_id, status, refs);
     }
 
     /// May be called only after the approved refund design is implemented.

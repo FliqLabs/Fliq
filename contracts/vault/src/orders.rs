@@ -190,6 +190,12 @@ pub fn payout(contract: &mut Contract, order_id: String) -> Promise {
         env::panic_str(&error);
     }
     contract.orders.insert(&order_id, &order);
+    if let Some(mut receipt) = contract.receipts.get(&order_id) {
+        receipt.order = order.clone();
+        receipt.transfer_state = TransferState::Executing;
+        receipt.last_updated = now();
+        contract.receipts.insert(&order_id, &receipt);
+    }
 
     let transfer_gas = Gas::from_tgas(30);
     let callback_gas = Gas::from_tgas(20);

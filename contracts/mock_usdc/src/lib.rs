@@ -1,15 +1,19 @@
-use near_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use near_sdk::collections::LookupMap;
-use near_sdk::{env, near_bindgen, require, AccountId, NearToken};
+use near_sdk::{env, near, require, AccountId, NearToken};
 
-#[near_bindgen]
-#[derive(BorshDeserialize, BorshSerialize)]
+#[near(contract_state)]
 pub struct MockUsdc {
     balances: LookupMap<AccountId, u128>,
     failing: bool,
 }
 
-#[near_bindgen]
+impl Default for MockUsdc {
+    fn default() -> Self {
+        env::panic_str("mock USDC state is not initialized")
+    }
+}
+
+#[near]
 impl MockUsdc {
     #[init]
     pub fn new() -> Self {
@@ -58,11 +62,5 @@ impl MockUsdc {
         self.balances.insert(&sender, &(sender_balance - amount));
         self.balances.insert(&receiver_id, &receiver_balance);
         let _ = memo;
-    }
-}
-
-impl Default for MockUsdc {
-    fn default() -> Self {
-        Self::new()
     }
 }

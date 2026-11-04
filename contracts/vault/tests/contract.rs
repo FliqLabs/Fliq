@@ -34,12 +34,16 @@ fn contract() -> Contract {
 }
 
 fn register_status_order(contract: &mut Contract) {
+    register_named_order(contract, "order-1", accounts(3), 10);
+}
+
+fn register_named_order(contract: &mut Contract, order_id: &str, payer: AccountId, amount: u128) {
     set_caller(accounts(1), NOW);
     contract.register_order(
-        "order-1".to_string(),
-        accounts(3),
+        order_id.to_string(),
+        payer,
         accounts(4),
-        10,
+        amount,
         NOW + 3_600_000_000_000,
         "USDC-NGN".to_string(),
     );
@@ -465,6 +469,183 @@ fn order_helpers_are_read_only_views() {
         Some(TransferState::Registered)
     );
     assert!(!order_exists(&contract, "missing"));
+}
+
+#[cfg(feature = "testing")]
+#[test]
+fn two_orders_cannot_reserve_more_than_the_balance() {
+    let mut contract = contract();
+    contract.credit_for_testing(accounts(3), 10);
+    register_named_order(&mut contract, "order-1", accounts(3), 6);
+    register_named_order(&mut contract, "order-2", accounts(3), 6);
+    set_caller(accounts(3), NOW);
+    let _first = contract.payout("order-1".to_string());
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = contract.payout("order-2".to_string());
+    }))
+    .is_err());
+    let balance = contract.get_balance(accounts(3));
+    assert_eq!(balance.available, "4");
+    assert_eq!(balance.reserved, "6");
+    set_promise_result(
+        VMContextBuilder::new()
+            .current_account_id(accounts(0))
+            .predecessor_account_id(accounts(0))
+            .block_timestamp(NOW)
+            .build(),
+        near_sdk::PromiseResult::Failed,
+    );
+    contract.on_payout_complete("order-1".to_string());
+    assert_eq!(contract.get_balance(accounts(3)).available, "10");
+    assert_eq!(contract.get_balance(accounts(3)).reserved, "0");
+}
+
+#[cfg(feature = "testing")]
+#[test]
+fn amount_edges_and_overflow_are_safe() {
+    let mut one_contract = contract();
+    one_contract.credit_for_testing(accounts(3), 1);
+    register_named_order(&mut one_contract, "one-unit", accounts(3), 1);
+    set_caller(accounts(3), NOW);
+    let _promise = one_contract.payout("one-unit".to_string());
+    set_promise_result(
+        VMContextBuilder::new()
+            .current_account_id(accounts(0))
+            .predecessor_account_id(accounts(0))
+            .block_timestamp(NOW)
+            .build(),
+        near_sdk::PromiseResult::Successful(vec![]),
+    );
+    one_contract.on_payout_complete("one-unit".to_string());
+    assert_eq!(one_contract.get_balance(accounts(3)).total, "0");
+
+    let mut max_contract = contract();
+    max_contract.credit_for_testing(accounts(3), u128::MAX);
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        max_contract.credit_for_testing(accounts(3), 1);
+    }))
+    .is_err());
+    register_named_order(&mut max_contract, "max-unit", accounts(3), u128::MAX);
+    set_caller(accounts(3), NOW);
+    let _promise = max_contract.payout("max-unit".to_string());
+    assert_eq!(
+        max_contract.get_balance(accounts(3)).reserved,
+        u128::MAX.to_string()
+    );
+}
+
+#[cfg(feature = "testing")]
+#[test]
+fn payout_keeps_stored_destination_and_amount() {
+    let mut contract = contract();
+    contract.credit_for_testing(accounts(3), 10);
+    register_named_order(&mut contract, "order-1", accounts(3), 10);
+    let before = contract.get_receipt("order-1".to_string()).order;
+    set_caller(accounts(3), NOW);
+    let _promise = contract.payout("order-1".to_string());
+    let during = contract.get_receipt("order-1".to_string()).order;
+    assert_eq!(during.amount, before.amount);
+    assert_eq!(during.deposit_address, before.deposit_address);
+    assert_eq!(during.order_id, before.order_id);
+}
+
+#[cfg(feature = "testing")]
+#[test]
+fn random_sequence_preserves_balance_and_single_send_invariants() {
+    use std::collections::HashSet;
+
+    let mut contract = contract();
+    let payer = accounts(3);
+    let mut credited = 500_u128;
+    let mut seed = 0x5eed_u64;
+    let mut next_order = 0_u64;
+    let mut order_ids = Vec::new();
+    let mut sent = HashSet::new();
+    contract.credit_for_testing(payer.clone(), credited);
+
+    for _step in 0..120 {
+        seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+        match seed % 5 {
+            0 => {
+                let amount = u128::from((seed % 30) + 1);
+                contract.credit_for_testing(payer.clone(), amount);
+                credited += amount;
+            }
+            1 => {
+                let order_id = format!("random-{next_order}");
+                next_order += 1;
+                let amount = u128::from((seed % 40) + 1);
+                register_named_order(&mut contract, &order_id, payer.clone(), amount);
+                order_ids.push(order_id);
+            }
+            2 if !order_ids.is_empty() => {
+                let index = (seed as usize) % order_ids.len();
+                let order_id = order_ids[index].clone();
+                let receipt = contract.get_receipt(order_id.clone());
+                if order_transfer_state(&contract, &order_id) == Some(TransferState::Registered) {
+                    let amount = receipt.order.amount;
+                    let available = contract
+                        .get_balance(payer.clone())
+                        .available
+                        .parse::<u128>()
+                        .unwrap_or(0);
+                    set_caller(payer.clone(), NOW);
+                    let payout_result =
+                        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                            contract.payout(order_id.clone())
+                        }));
+                    if available >= amount {
+                        assert!(payout_result.is_ok());
+                        let succeeded = seed.is_multiple_of(2);
+                        set_promise_result(
+                            VMContextBuilder::new()
+                                .current_account_id(accounts(0))
+                                .predecessor_account_id(accounts(0))
+                                .block_timestamp(NOW)
+                                .build(),
+                            if succeeded {
+                                near_sdk::PromiseResult::Successful(vec![])
+                            } else {
+                                near_sdk::PromiseResult::Failed
+                            },
+                        );
+                        contract.on_payout_complete(order_id.clone());
+                        if succeeded {
+                            credited -= amount;
+                            assert!(sent.insert(order_id));
+                        }
+                    } else {
+                        assert!(payout_result.is_err());
+                    }
+                }
+            }
+            3 if !order_ids.is_empty() => {
+                let index = (seed as usize) % order_ids.len();
+                let order_id = order_ids[index].clone();
+                set_caller(accounts(1), NOW);
+                let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    contract.set_status(order_id, "routing".to_string(), "random-ref".to_string());
+                }));
+            }
+            4 if !order_ids.is_empty() => {
+                let index = (seed as usize) % order_ids.len();
+                let order_id = order_ids[index].clone();
+                set_caller(payer.clone(), NOW);
+                let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    let _ = contract.payout(order_id);
+                }));
+            }
+            _ => {}
+        }
+
+        let balance = contract.get_balance(payer.clone());
+        let available = balance.available.parse::<u128>().unwrap_or(0);
+        let reserved = balance.reserved.parse::<u128>().unwrap_or(0);
+        let total = balance.total.parse::<u128>().unwrap_or(0);
+        assert_eq!(available.checked_add(reserved), Some(total));
+        assert_eq!(total, credited);
+    }
+    assert!(sent.iter().all(|order_id| order_ids.contains(order_id)));
 }
 
 #[cfg(feature = "testing")]
