@@ -1,6 +1,6 @@
 use crate::{temp_policies, temp_vault};
-use near_sdk::{AccountId, Promise};
 use near_sdk::require;
+use near_sdk::{AccountId, Promise};
 
 pub fn authorize_payout(agent: &AccountId, amount: u128) {
     require!(
