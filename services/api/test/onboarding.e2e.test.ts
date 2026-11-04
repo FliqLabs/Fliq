@@ -9,7 +9,9 @@ import { loadConfig } from "../apps/api/src/config.js";
 import { createDatabase, unitOf } from "../apps/api/src/db.js";
 import { createHandlers } from "../apps/api/src/handlers.js";
 
-const enabled = Boolean(process.env.DATABASE_URL && process.env.FLIQ_ACCESS_SECRET);
+// Only ever run against a throwaway local database: Prisma loads services/api/.env, which may point at a shared one.
+const isLocalDatabase = /@(localhost|127\.0\.0\.1)[:/]/.test(process.env.DATABASE_URL ?? "");
+const enabled = isLocalDatabase && Boolean(process.env.FLIQ_ACCESS_SECRET);
 
 class CapturingSender implements EmailSender {
   links: string[] = [];
