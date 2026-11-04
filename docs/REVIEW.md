@@ -1,0 +1,33 @@
+# Security review: sQuiDbOb contract surface
+
+Scope: `lib.rs`, `orders.rs`, `types.rs`, `receipts.rs`, `integration.rs`, and the temporary stand-ins. `vault.rs` and `policies.rs` were not inspected or changed.
+
+## Public methods and callbacks
+
+| Method | Who can call | State changed | Failure and balance effect |
+| --- | --- | --- | --- |
+| `new` | Deploying account during initialization | Writes owner, registration account, token contract, empty order/receipt maps | Initialization has no balance effect; invalid account arguments fail before initialization. |
+| `set_registration_account` | Owner only | Changes the registration account | Authorization failure changes nothing; no balance effect. |
+| `get_config` | Anyone | None | Read-only. |
+| `register_order` | Registration account only | Adds one immutable order and its initial receipt; emits `order_registered` | Validation, authorization, duplicate, or storage failure aborts the transaction; no reservation or balance movement occurs. |
+| `payout` | Any predecessor accepted by the temporary payer policy; the policy currently allows only the payer | Reserves funds, records pending policy spend, changes `Registered` to `Executing`, creates the USDC transfer and callback | Any pre-promise panic rolls back the transaction, including reservation and pending spend. The transfer itself is resolved only by the private callback. |
+| `set_status` | Registration account only | Changes backend status, refs, and `last_updated`; emits `status_set` | Unknown order/status, invalid refs, backward transition, or transfer-state contradiction aborts with no balance, transfer-state, or policy-count change. Exact replay is a no-op. |
+| `recredit` | Public entry point, but intentionally always disabled | None | Always fails before changing state or balances until refund design is approved. |
+| `get_receipt` | Anyone | None | Unknown order fails clearly; otherwise read-only and exposes the order plus separate verified/reported tracks. |
+| `get_balance` | Anyone | None | Delegates to the integration layer; read-only. |
+| `get_policy` | Anyone | None | Temporary empty-policy view; it cannot move value. Real policy wiring remains outside this side's implementation. |
+| `credit_for_testing` | Only compiled with `testing` and debug assertions | Adds temporary available balance | Test-only funding; absent from release builds and not a production deposit path. |
+| `on_payout_complete` | Contract account only, with exactly one promise result | Commits or releases reservation, settles or releases pending policy spend, updates transfer state/receipt, emits `payout_executed` | Outsider, malformed, or stale callbacks change nothing. A transfer failure restores the reservation. Any callback panic rolls back its whole state change. |
+
+## Findings and fixes
+
+- Added an exact one-promise-result guard to the private payout callback. This prevents interpreting an unexpected promise result set as the USDC transfer result.
+- Confirmed that state changes happen before the transfer promise and that callback success/failure paths are single-use through transfer-state and reservation checks.
+- Confirmed that backend status updates cannot move funds or alter the verified transfer state.
+- Confirmed that the testing credit method is gated by both the `testing` feature and debug assertions.
+
+## Residual risks
+
+- Temporary vault and policy modules are not production custody or authorization implementations. They must be replaced through `integration.rs` before holding real funds.
+- The refs character policy reduces accidental personal-data storage but cannot prove that an identifier is not personal data; backend approval and operational controls remain required.
+- Refund/recredit behavior remains intentionally disabled and OPEN.

@@ -171,6 +171,10 @@ impl Contract {
             env::predecessor_account_id() == env::current_account_id(),
             "callback may only be called by this contract"
         );
+        require!(
+            env::promise_results_count() == 1,
+            "payout callback must have exactly one promise result"
+        );
         orders::on_payout_complete(self, order_id);
     }
 }
