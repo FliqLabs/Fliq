@@ -1,0 +1,83 @@
+// What apps/api uses to reach the private relayer. The relayer is never exposed publicly; the API authenticates
+// the user first, then forwards with the shared RELAYER_AUTH_TOKEN.
+
+const DEFAULT_TIMEOUT_MS = 45_000;
+
+export type RelayResponse = {
+  status: "succeeded" | "failed" | "pending";
+  tx_hash: string;
+  delegate_hash: string;
+  sender_id: string;
+  receiver_id: string;
+  failures: string[];
+};
+
+export type AccountResponse = {
+  status: "created" | "linked" | "pending";
+  account_id: string;
+  public_key: string;
+  tx_hashes: string[];
+  storage: Record<string, "registered" | "already_registered" | "not_deployed" | "pending">;
+};
+
+export class RelayerClientError extends Error {
+  readonly status: number;
+  readonly code: string;
+
+  constructor(status: number, code: string, message: string) {
+    super(message);
+    this.name = "RelayerClientError";
+    this.status = status;
+    this.code = code;
+  }
+}
+
+export type RelayerClientOptions = {
+  url: string;
+  authToken: string;
+  fetch?: typeof fetch;
+  timeoutMs?: number;
+};
+
+export type RelayerClient = {
+  relay(signedDelegateBase64: string): Promise<RelayResponse>;
+  relayStatus(delegateHash: string): Promise<RelayResponse>;
+  provisionAccount(accountId: string, publicKey: string): Promise<AccountResponse>;
+};
+
+export function createRelayerClient(options: RelayerClientOptions): RelayerClient {
+  const doFetch = options.fetch ?? fetch;
+  const base = options.url.replace(/\/+$/, "");
+
+  async function call<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
+    let response: Response;
+    try {
+      response = await doFetch(`${base}${path}`, {
+        method,
+        headers: { authorization: `Bearer ${options.authToken}`, "content-type": "application/json" },
+        body: body === undefined ? undefined : JSON.stringify(body),
+        signal: AbortSignal.timeout(options.timeoutMs ?? DEFAULT_TIMEOUT_MS),
+      });
+    } catch {
+      throw new RelayerClientError(0, "relayer_unreachable", "the relayer did not answer");
+    }
+    const payload = (await response.json().catch(() => null)) as {
+      error?: { code?: string; message?: string };
+    } | null;
+    if (!response.ok) {
+      throw new RelayerClientError(
+        response.status,
+        payload?.error?.code ?? "relayer_error",
+        payload?.error?.message ?? `HTTP ${response.status}`,
+      );
+    }
+    return payload as T;
+  }
+
+  return {
+    relay: (signedDelegate) => call("POST", "/v1/relays", { signed_delegate: signedDelegate }),
+    relayStatus: (delegateHash) => call("GET", `/v1/relays/${encodeURIComponent(delegateHash)}`),
+    provisionAccount: (accountId, publicKey) =>
+      call("POST", "/v1/accounts", { account_id: accountId, public_key: publicKey }),
+  };
+}
