@@ -1,4 +1,7 @@
-use fliq_vault::orders::{transition, validate_deposit_address, validate_order};
+use fliq_vault::orders::{
+    order_amount, order_exists, order_payer, order_transfer_state, transition,
+    validate_deposit_address, validate_order,
+};
 use fliq_vault::types::{PayoutOrder, TransferState};
 use fliq_vault::Contract;
 use near_sdk::test_utils::{accounts, VMContextBuilder};
@@ -28,6 +31,18 @@ fn set_promise_result(context: near_sdk::VMContext, result: PromiseResult) {
 
 fn contract() -> Contract {
     Contract::new(accounts(0), accounts(1), accounts(2))
+}
+
+fn register_status_order(contract: &mut Contract) {
+    set_caller(accounts(1), NOW);
+    contract.register_order(
+        "order-1".to_string(),
+        accounts(3),
+        accounts(4),
+        10,
+        NOW + 3_600_000_000_000,
+        "USDC-NGN".to_string(),
+    );
 }
 
 #[cfg(feature = "testing")]
@@ -280,6 +295,209 @@ fn registration_event_contains_order_fields() {
     assert!(logs
         .iter()
         .any(|log| log.contains("order-1") && log.contains("USDC-NGN") && log.contains("10")));
+}
+
+#[test]
+fn status_rejects_non_registration_caller() {
+    let mut contract = contract();
+    register_status_order(&mut contract);
+    set_caller(accounts(5), NOW);
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        contract.set_status(
+            "order-1".to_string(),
+            "routing".to_string(),
+            "ref-1".to_string(),
+        );
+    }))
+    .is_err());
+}
+
+#[test]
+fn status_rejects_unknown_order_and_status() {
+    let mut contract = contract();
+    set_caller(accounts(1), NOW);
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        contract.set_status(
+            "missing".to_string(),
+            "routing".to_string(),
+            "ref-1".to_string(),
+        );
+    }))
+    .is_err());
+    register_status_order(&mut contract);
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        contract.set_status(
+            "order-1".to_string(),
+            "not_a_status".to_string(),
+            "ref-1".to_string(),
+        );
+    }))
+    .is_err());
+}
+
+#[test]
+fn status_replay_is_a_no_op() {
+    let mut contract = contract();
+    register_status_order(&mut contract);
+    set_caller(accounts(1), NOW);
+    contract.set_status(
+        "order-1".to_string(),
+        "routing".to_string(),
+        "ref-1".to_string(),
+    );
+    let before = contract.get_receipt("order-1".to_string());
+    contract.set_status(
+        "order-1".to_string(),
+        "routing".to_string(),
+        "ref-1".to_string(),
+    );
+    assert_eq!(contract.get_receipt("order-1".to_string()), before);
+}
+
+#[test]
+fn earlier_status_is_rejected() {
+    let mut contract = contract();
+    register_status_order(&mut contract);
+    set_caller(accounts(1), NOW);
+    contract.set_status(
+        "order-1".to_string(),
+        "routing".to_string(),
+        "ref-1".to_string(),
+    );
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        contract.set_status(
+            "order-1".to_string(),
+            "deposit_seen".to_string(),
+            "ref-2".to_string(),
+        );
+    }))
+    .is_err());
+}
+
+#[test]
+fn paying_out_and_settled_require_dispatched_transfer_state() {
+    let mut contract = contract();
+    register_status_order(&mut contract);
+    set_caller(accounts(1), NOW);
+    for status in ["paying_out", "settled"] {
+        assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            contract.set_status(
+                "order-1".to_string(),
+                status.to_string(),
+                "ref-1".to_string(),
+            );
+        }))
+        .is_err());
+    }
+}
+
+#[test]
+fn receipt_shows_order_and_both_status_tracks() {
+    let mut contract = contract();
+    register_status_order(&mut contract);
+    set_caller(accounts(1), NOW);
+    contract.set_status(
+        "order-1".to_string(),
+        "routing".to_string(),
+        "ref-1".to_string(),
+    );
+    let receipt = contract.get_receipt("order-1".to_string());
+    assert_eq!(receipt.order.amount, 10);
+    assert_eq!(receipt.order.deposit_address, accounts(4));
+    assert_eq!(receipt.transfer_state, TransferState::Registered);
+    assert_eq!(receipt.order.transfer_state, TransferState::Registered);
+    assert_eq!(receipt.backend_status, "routing");
+    assert_eq!(receipt.refs, "ref-1");
+}
+
+#[test]
+fn status_does_not_change_transfer_state_or_balance() {
+    let mut contract = contract();
+    register_status_order(&mut contract);
+    let before_balance = contract.get_balance(accounts(3));
+    set_caller(accounts(1), NOW);
+    contract.set_status(
+        "order-1".to_string(),
+        "routing".to_string(),
+        "ref-1".to_string(),
+    );
+    let receipt = contract.get_receipt("order-1".to_string());
+    let after_balance = contract.get_balance(accounts(3));
+    assert_eq!(receipt.transfer_state, TransferState::Registered);
+    assert_eq!(before_balance, after_balance);
+}
+
+#[test]
+fn status_event_has_reporting_fields_without_personal_data() {
+    let mut contract = contract();
+    register_status_order(&mut contract);
+    set_caller(accounts(1), NOW);
+    contract.set_status(
+        "order-1".to_string(),
+        "routing".to_string(),
+        "ref-1".to_string(),
+    );
+    let logs = near_sdk::test_utils::get_logs();
+    let event = logs
+        .iter()
+        .find(|log| log.contains("\"event\":\"status_set\""));
+    assert!(event.is_some());
+    let event = match event {
+        Some(value) => value.clone(),
+        None => panic!("status_set event was not emitted"),
+    };
+    assert!(event.contains("order-1"));
+    assert!(event.contains("routing"));
+    assert!(event.contains("ref-1"));
+    assert!(!event.contains(&accounts(3).to_string()));
+    assert!(!event.contains(&accounts(4).to_string()));
+}
+
+#[test]
+fn order_helpers_are_read_only_views() {
+    let mut contract = contract();
+    register_status_order(&mut contract);
+    assert!(order_exists(&contract, "order-1"));
+    assert_eq!(order_payer(&contract, "order-1"), Some(accounts(3)));
+    assert_eq!(order_amount(&contract, "order-1"), Some(10));
+    assert_eq!(
+        order_transfer_state(&contract, "order-1"),
+        Some(TransferState::Registered)
+    );
+    assert!(!order_exists(&contract, "missing"));
+}
+
+#[cfg(feature = "testing")]
+#[test]
+fn paying_out_and_settled_are_accepted_after_dispatched() {
+    let mut contract = contract();
+    contract.credit_for_testing(accounts(3), 100);
+    register_status_order(&mut contract);
+    set_caller(accounts(3), NOW);
+    let _promise = contract.payout("order-1".to_string());
+    set_promise_result(
+        VMContextBuilder::new()
+            .current_account_id(accounts(0))
+            .predecessor_account_id(accounts(0))
+            .block_timestamp(NOW)
+            .build(),
+        near_sdk::PromiseResult::Successful(vec![]),
+    );
+    contract.on_payout_complete("order-1".to_string());
+    set_caller(accounts(1), NOW);
+    contract.set_status(
+        "order-1".to_string(),
+        "paying_out".to_string(),
+        "ref-1".to_string(),
+    );
+    contract.set_status(
+        "order-1".to_string(),
+        "settled".to_string(),
+        "ref-2".to_string(),
+    );
+    let receipt = contract.get_receipt("order-1".to_string());
+    assert_eq!(receipt.transfer_state, TransferState::Dispatched);
+    assert_eq!(receipt.backend_status, "settled");
 }
 
 #[cfg(feature = "testing")]
