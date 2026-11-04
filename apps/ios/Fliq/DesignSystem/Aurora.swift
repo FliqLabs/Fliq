@@ -4,13 +4,14 @@ import SwiftUI
 /// green while a name is free, red when it is taken.
 struct Aurora: View {
     var accent: Color?
+    var strength = 1.0
     @State private var drift = false
 
     var body: some View {
         ZStack {
-            blob(Color(hex: 0x1E2CFF).opacity(0.75), x: 0.22, y: 0.38, size: 260)
-            blob(Color(hex: 0x7158FF).opacity(0.7), x: 0.7, y: 0.3, size: 300)
-            blob(Color(hex: 0xC9AAFF).opacity(0.45), x: 0.52, y: 0.62, size: 240)
+            blob(Color(hex: 0x1E2CFF).opacity(0.75 * strength), x: 0.22, y: 0.38, size: 260)
+            blob(Color(hex: 0x7158FF).opacity(0.7 * strength), x: 0.7, y: 0.3, size: 300)
+            blob(Color(hex: 0xC9AAFF).opacity(0.45 * strength), x: 0.52, y: 0.62, size: 240)
             if let accent {
                 blob(accent.opacity(0.35), x: 0.85, y: 0.7, size: 220)
             }
