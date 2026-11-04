@@ -2,7 +2,7 @@ use fliq_vault::orders::{transition, validate_deposit_address, validate_order};
 use fliq_vault::types::{PayoutOrder, TransferState};
 use fliq_vault::Contract;
 use near_sdk::test_utils::{accounts, VMContextBuilder};
-use near_sdk::{testing_env, AccountId};
+use near_sdk::{test_vm_config, testing_env, AccountId, PromiseResult, RuntimeFeesConfig};
 
 const NOW: u64 = 1_000_000_000;
 
@@ -13,8 +13,30 @@ fn set_caller(account: AccountId, timestamp: u64) {
         .build());
 }
 
+fn set_promise_result(context: near_sdk::VMContext, result: PromiseResult) {
+    testing_env!(
+        context,
+        test_vm_config(),
+        RuntimeFeesConfig::test(),
+        Default::default(),
+        vec![result]
+    );
+}
+
 fn contract() -> Contract {
     Contract::new(accounts(0), accounts(1), accounts(2))
+}
+
+fn register_payout_order(contract: &mut Contract, amount: u128, expiry: u64) {
+    set_caller(accounts(1), NOW);
+    contract.register_order(
+        "order-1".to_string(),
+        accounts(3),
+        accounts(4),
+        amount,
+        expiry,
+        "USDC-NGN".to_string(),
+    );
 }
 
 fn order(state: TransferState) -> PayoutOrder {
@@ -50,7 +72,7 @@ fn every_other_transition_fails() {
         TransferState::Dispatched,
         TransferState::TransferFailed,
     ];
-    for from in states.iter().cloned() {
+    for from in states.iter() {
         for to in states.iter().cloned() {
             let valid = matches!(
                 (&from, &to),
@@ -254,4 +276,161 @@ fn registration_event_contains_order_fields() {
     assert!(logs
         .iter()
         .any(|log| log.contains("order-1") && log.contains("USDC-NGN") && log.contains("10")));
+}
+
+#[cfg(feature = "testing")]
+#[test]
+fn happy_path_reserves_and_commits_once() {
+    let mut contract = contract();
+    contract.credit_for_testing(accounts(3), 100);
+    register_payout_order(&mut contract, 10, NOW + 3_600_000_000_000);
+    set_caller(accounts(3), NOW);
+    let _promise = contract.payout("order-1".to_string());
+    let pending = contract.get_balance(accounts(3));
+    assert_eq!(pending.available, "90");
+    assert_eq!(pending.reserved, "10");
+
+    set_promise_result(
+        VMContextBuilder::new()
+            .current_account_id(accounts(0))
+            .predecessor_account_id(accounts(0))
+            .block_timestamp(NOW)
+            .build(),
+        PromiseResult::Successful(vec![]),
+    );
+    contract.on_payout_complete("order-1".to_string());
+    let settled = contract.get_balance(accounts(3));
+    assert_eq!(settled.available, "90");
+    assert_eq!(settled.reserved, "0");
+    assert_eq!(
+        contract.get_receipt("order-1".to_string()).transfer_state,
+        TransferState::Dispatched
+    );
+}
+
+#[cfg(feature = "testing")]
+#[test]
+fn second_payout_and_same_block_duplicate_fail() {
+    let mut contract = contract();
+    contract.credit_for_testing(accounts(3), 100);
+    register_payout_order(&mut contract, 10, NOW + 3_600_000_000_000);
+    set_caller(accounts(3), NOW);
+    let _promise = contract.payout("order-1".to_string());
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = contract.payout("order-1".to_string());
+    }))
+    .is_err());
+    set_promise_result(
+        VMContextBuilder::new()
+            .current_account_id(accounts(0))
+            .predecessor_account_id(accounts(0))
+            .block_timestamp(NOW)
+            .build(),
+        PromiseResult::Successful(vec![]),
+    );
+    contract.on_payout_complete("order-1".to_string());
+    assert_eq!(
+        contract.get_receipt("order-1".to_string()).transfer_state,
+        TransferState::Dispatched
+    );
+}
+
+#[cfg(feature = "testing")]
+#[test]
+fn expired_order_and_wrong_caller_leave_balance_unchanged() {
+    let mut contract = contract();
+    contract.credit_for_testing(accounts(3), 100);
+    register_payout_order(&mut contract, 10, NOW + 1);
+    set_caller(accounts(5), NOW);
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = contract.payout("order-1".to_string());
+    }))
+    .is_err());
+    assert_eq!(contract.get_balance(accounts(3)).available, "100");
+    set_caller(accounts(3), NOW + 1);
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = contract.payout("order-1".to_string());
+    }))
+    .is_err());
+    assert_eq!(contract.get_balance(accounts(3)).available, "100");
+}
+
+#[cfg(feature = "testing")]
+#[test]
+fn insufficient_balance_leaves_available_funds_unchanged() {
+    let mut contract = contract();
+    contract.credit_for_testing(accounts(3), 9);
+    register_payout_order(&mut contract, 10, NOW + 3_600_000_000_000);
+    set_caller(accounts(3), NOW);
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = contract.payout("order-1".to_string());
+    }))
+    .is_err());
+    let balance = contract.get_balance(accounts(3));
+    assert_eq!(balance.available, "9");
+    assert_eq!(balance.reserved, "0");
+}
+
+#[cfg(feature = "testing")]
+#[test]
+fn failed_transfer_restores_balance_and_marks_failed() {
+    let mut contract = contract();
+    contract.credit_for_testing(accounts(3), 100);
+    register_payout_order(&mut contract, 10, NOW + 3_600_000_000_000);
+    set_caller(accounts(3), NOW);
+    let _promise = contract.payout("order-1".to_string());
+    set_promise_result(
+        VMContextBuilder::new()
+            .current_account_id(accounts(0))
+            .predecessor_account_id(accounts(0))
+            .block_timestamp(NOW)
+            .build(),
+        PromiseResult::Failed,
+    );
+    contract.on_payout_complete("order-1".to_string());
+    let balance = contract.get_balance(accounts(3));
+    assert_eq!(balance.available, "100");
+    assert_eq!(balance.reserved, "0");
+    assert_eq!(
+        contract.get_receipt("order-1".to_string()).transfer_state,
+        TransferState::TransferFailed
+    );
+}
+
+#[cfg(feature = "testing")]
+#[test]
+fn outsider_callback_and_stale_callback_change_nothing() {
+    let mut contract = contract();
+    contract.credit_for_testing(accounts(3), 100);
+    register_payout_order(&mut contract, 10, NOW + 3_600_000_000_000);
+    set_promise_result(
+        VMContextBuilder::new()
+            .current_account_id(accounts(0))
+            .predecessor_account_id(accounts(5))
+            .block_timestamp(NOW)
+            .build(),
+        PromiseResult::Successful(vec![]),
+    );
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        contract.on_payout_complete("order-1".to_string());
+    }))
+    .is_err());
+    assert_eq!(contract.get_balance(accounts(3)).available, "100");
+    set_caller(accounts(3), NOW);
+    let _promise = contract.payout("order-1".to_string());
+    set_promise_result(
+        VMContextBuilder::new()
+            .current_account_id(accounts(0))
+            .predecessor_account_id(accounts(0))
+            .block_timestamp(NOW)
+            .build(),
+        PromiseResult::Successful(vec![]),
+    );
+    contract.on_payout_complete("order-1".to_string());
+    contract.on_payout_complete("order-1".to_string());
+    assert_eq!(
+        contract.get_receipt("order-1".to_string()).transfer_state,
+        TransferState::Dispatched
+    );
+    assert_eq!(contract.get_balance(accounts(3)).reserved, "0");
 }
