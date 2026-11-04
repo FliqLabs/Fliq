@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev:mock": "tsx src/mock.ts",
+    "dev:oneclick-mock": "tsx packages/chains/oneclick/server.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "dev": "tsx --env-file=.env apps/api/src/server.ts",
