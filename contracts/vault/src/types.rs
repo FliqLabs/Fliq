@@ -70,6 +70,7 @@ pub struct PayoutOrder {
 #[serde(crate = "near_sdk::serde")]
 pub struct Receipt {
     pub order_id: String,
+    pub order: PayoutOrder,
     pub transfer_state: TransferState,
     pub backend_status: String,
     pub refs: String,

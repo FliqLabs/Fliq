@@ -1,6 +1,8 @@
 use crate::integration;
 use crate::receipts::FliqEvent;
-use crate::types::{Amount, PayoutCaller, PayoutOrder, Timestamp, TransferState};
+use crate::types::{
+    now, Amount, PayoutCaller, PayoutOrder, Receipt, Timestamp, TransferState, BACKEND_STATUSES,
+};
 use crate::Contract;
 use near_sdk::json_types::U128;
 use near_sdk::{env, require, AccountId, Gas, NearToken, Promise};
@@ -13,6 +15,48 @@ pub const ERR_ZERO_AMOUNT: &str = "amount must be greater than zero";
 pub const ERR_EMPTY_CORRIDOR: &str = "corridor must not be empty";
 pub const ERR_LONG_CORRIDOR: &str = "corridor must be at most 32 characters";
 pub const ERR_BAD_DEPOSIT_ADDRESS: &str = "deposit_address must be a well formed NEAR account ID";
+pub const MAX_REFS_LENGTH: usize = 256;
+pub const ERR_REFS_TOO_LONG: &str = "refs must be at most 256 characters";
+pub const ERR_REFS_FORMAT: &str = "refs may contain only identifier characters";
+
+pub fn backend_status_rank(status: &str) -> Option<usize> {
+    BACKEND_STATUSES
+        .iter()
+        .position(|candidate| *candidate == status)
+}
+
+pub fn validate_refs(refs: &str) {
+    require!(refs.chars().count() <= MAX_REFS_LENGTH, ERR_REFS_TOO_LONG);
+    require!(
+        refs.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, ':' | '/' | '.' | '_' | '-')
+        }),
+        ERR_REFS_FORMAT
+    );
+}
+
+pub fn validate_status_transition(
+    receipt: &Receipt,
+    status: &str,
+    refs: &str,
+    transfer_state: &TransferState,
+) -> Result<bool, String> {
+    let current_rank = backend_status_rank(&receipt.backend_status)
+        .ok_or_else(|| "stored backend status is invalid".to_string())?;
+    let next_rank =
+        backend_status_rank(status).ok_or_else(|| "unknown backend status".to_string())?;
+    validate_refs(refs);
+    if receipt.backend_status == status && receipt.refs == refs {
+        return Ok(false);
+    }
+    if next_rank < current_rank {
+        return Err("backend status cannot move backwards".to_string());
+    }
+    if matches!(status, "paying_out" | "settled") && *transfer_state != TransferState::Dispatched {
+        return Err("paying_out and settled require Dispatched transfer_state".to_string());
+    }
+    Ok(true)
+}
 
 pub fn validate_order(order_id: &str, amount: Amount, corridor: &str) {
     require!(!order_id.is_empty(), ERR_EMPTY_ORDER_ID);
@@ -55,6 +99,65 @@ pub fn transition(order: &mut PayoutOrder, next: TransferState) -> Result<(), St
 
 pub fn is_expired(expiry: Timestamp, current: Timestamp) -> bool {
     current >= expiry
+}
+
+pub fn set_status(contract: &mut Contract, order_id: String, status: String, refs: String) {
+    require!(
+        env::predecessor_account_id() == contract.config.registration_account,
+        "only registration_account may set status"
+    );
+    require!(
+        order_exists(contract, &order_id),
+        "order_id is not registered"
+    );
+    let Some(mut receipt) = contract.receipts.get(&order_id) else {
+        env::panic_str("receipt not found for order_id");
+    };
+    let changed =
+        match validate_status_transition(&receipt, &status, &refs, &receipt.transfer_state) {
+            Ok(changed) => changed,
+            Err(error) => env::panic_str(&error),
+        };
+    if !changed {
+        return;
+    }
+    receipt.backend_status = status.clone();
+    receipt.refs = refs.clone();
+    receipt.last_updated = now();
+    let last_updated = receipt.last_updated.to_string();
+    contract.receipts.insert(&order_id, &receipt);
+    FliqEvent::StatusSet {
+        order_id,
+        status,
+        refs,
+        last_updated,
+    }
+    .emit();
+}
+
+pub fn order_exists(contract: &Contract, order_id: &str) -> bool {
+    contract.orders.contains_key(&order_id.to_string())
+}
+
+pub fn order_payer(contract: &Contract, order_id: &str) -> Option<AccountId> {
+    contract
+        .orders
+        .get(&order_id.to_string())
+        .map(|order| order.payer.clone())
+}
+
+pub fn order_amount(contract: &Contract, order_id: &str) -> Option<Amount> {
+    contract
+        .orders
+        .get(&order_id.to_string())
+        .map(|order| order.amount)
+}
+
+pub fn order_transfer_state(contract: &Contract, order_id: &str) -> Option<TransferState> {
+    contract
+        .orders
+        .get(&order_id.to_string())
+        .map(|order| order.transfer_state.clone())
 }
 
 pub fn payout(contract: &mut Contract, order_id: String) -> Promise {
@@ -139,6 +242,7 @@ pub fn on_payout_complete(contract: &mut Contract, order_id: String) {
     }
     contract.orders.insert(&order_id, &order);
     if let Some(mut receipt) = contract.receipts.get(&order_id) {
+        receipt.order = order.clone();
         receipt.transfer_state = order.transfer_state.clone();
         receipt.last_updated = crate::types::now();
         contract.receipts.insert(&order_id, &receipt);

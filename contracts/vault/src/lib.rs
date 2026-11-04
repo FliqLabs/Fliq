@@ -10,7 +10,7 @@ use near_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use near_sdk::collections::LookupMap;
 use near_sdk::{env, near_bindgen, require, AccountId, Promise};
 
-use crate::orders::{validate_deposit_address, validate_order};
+use crate::orders::{set_status, validate_deposit_address, validate_order};
 use crate::receipts::FliqEvent;
 use crate::types::{
     now, Amount, Config, PayoutOrder, Receipt, StorageKey, TransferState, DEFAULT_MAX_EXPIRY,
@@ -103,6 +103,7 @@ impl Contract {
             &order_id,
             &Receipt {
                 order_id: order_id.clone(),
+                order: order.clone(),
                 transfer_state: TransferState::Registered,
                 backend_status: "created".to_string(),
                 refs: String::new(),
@@ -130,26 +131,7 @@ impl Contract {
 
     /// May be called by the approved backend reporting account; it cannot move value.
     pub fn set_status(&mut self, order_id: String, status: String, refs: String) {
-        require!(
-            env::predecessor_account_id() == self.config.registration_account,
-            "only registration_account may set status"
-        );
-        require!(
-            types::BACKEND_STATUSES.contains(&status.as_str()),
-            "unknown backend status"
-        );
-        let Some(mut receipt) = self.receipts.get(&order_id) else {
-            env::panic_str("order_id is not registered")
-        };
-        receipt.backend_status = status;
-        receipt.refs = refs;
-        receipt.last_updated = now();
-        self.receipts.insert(&order_id, &receipt);
-        FliqEvent::StatusSet {
-            order_id,
-            status: receipt.backend_status,
-        }
-        .emit();
+        set_status(self, order_id, status, refs);
     }
 
     /// May be called only after the approved refund design is implemented.

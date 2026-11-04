@@ -16,7 +16,12 @@ pub enum FliqEvent {
         transfer_state: TransferState,
     },
     #[event_version("1.0.0")]
-    StatusSet { order_id: String, status: String },
+    StatusSet {
+        order_id: String,
+        status: String,
+        refs: String,
+        last_updated: String,
+    },
     #[event_version("1.0.0")]
     Recredited { order_id: String, amount: String },
 }
