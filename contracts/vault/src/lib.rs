@@ -7,10 +7,11 @@ mod temp_policies;
 mod temp_vault;
 
 use near_sdk::borsh::{BorshDeserialize, BorshSerialize};
-use near_sdk::{env, near_bindgen, require, AccountId, LookupMap, Promise};
+use near_sdk::collections::LookupMap;
+use near_sdk::{env, near_bindgen, require, AccountId, Promise};
 
-use crate::orders::{transition, validate_deposit_address, validate_order};
-use crate::receipts::OrderRegisteredEvent;
+use crate::orders::{validate_deposit_address, validate_order};
+use crate::receipts::FliqEvent;
 use crate::types::{
     now, Amount, Config, PayoutOrder, Receipt, StorageKey, TransferState, DEFAULT_MAX_EXPIRY,
 };
@@ -18,9 +19,9 @@ use crate::types::{
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize)]
 pub struct Contract {
-    config: Config,
-    orders: LookupMap<String, PayoutOrder>,
-    receipts: LookupMap<String, Receipt>,
+    pub(crate) config: Config,
+    pub(crate) orders: LookupMap<String, PayoutOrder>,
+    pub(crate) receipts: LookupMap<String, Receipt>,
 }
 
 #[near_bindgen]
@@ -80,7 +81,7 @@ impl Contract {
             !self.orders.contains_key(&order_id),
             "order_id is already registered"
         );
-        validate_deposit_address(&deposit_address.to_string());
+        validate_deposit_address(deposit_address.as_ref());
         let current_time = now();
         require!(expiry > current_time, "expiry must be in the future");
         require!(
@@ -108,7 +109,7 @@ impl Contract {
                 last_updated: now(),
             },
         );
-        OrderRegisteredEvent {
+        FliqEvent::OrderRegistered {
             order_id: order_id.clone(),
             amount: amount.to_string(),
             expiry: expiry.to_string(),
@@ -124,15 +125,7 @@ impl Contract {
             env::attached_deposit().is_zero(),
             "payout must not carry NEAR deposit"
         );
-        let Some(mut order) = self.orders.get(&order_id) else {
-            env::panic_str("order_id is not registered")
-        };
-        if let Err(error) = transition(&mut order, TransferState::Executing) {
-            env::panic_str(&error);
-        }
-        integration::authorize_payout(&env::predecessor_account_id(), order.amount);
-        self.orders.insert(&order_id, &order);
-        integration::create_transfer(&order.deposit_address, order.amount)
+        orders::payout(self, order_id)
     }
 
     /// May be called by the approved backend reporting account; it cannot move value.
@@ -152,6 +145,11 @@ impl Contract {
         receipt.refs = refs;
         receipt.last_updated = now();
         self.receipts.insert(&order_id, &receipt);
+        FliqEvent::StatusSet {
+            order_id,
+            status: receipt.backend_status,
+        }
+        .emit();
     }
 
     /// May be called only after the approved refund design is implemented.
@@ -168,12 +166,29 @@ impl Contract {
     }
 
     /// May be called by anyone; this temporary view reports no vault balance.
-    pub fn get_balance(&self, _account: AccountId) -> Amount {
-        0
+    pub fn get_balance(&self, account: AccountId) -> types::BalanceView {
+        integration::get_balance(&account)
     }
 
     /// May be called by anyone; this temporary view reports the policy stand-in.
     pub fn get_policy(&self, public_key: String) -> String {
-        integration::get_policy(&public_key)
+        let _ = public_key;
+        String::new()
+    }
+
+    /// May be called only by tests compiled with the opt-in `testing` feature.
+    #[cfg(all(feature = "testing", debug_assertions))]
+    pub fn credit_for_testing(&mut self, account: AccountId, amount: Amount) {
+        temp_vault::credit_for_testing(&account, amount);
+    }
+
+    /// May be called only by this contract's own callback promise.
+    #[private]
+    pub fn on_payout_complete(&mut self, order_id: String) {
+        require!(
+            env::predecessor_account_id() == env::current_account_id(),
+            "callback may only be called by this contract"
+        );
+        orders::on_payout_complete(self, order_id);
     }
 }

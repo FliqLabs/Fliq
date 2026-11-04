@@ -12,7 +12,7 @@ pub fn now() -> Timestamp {
     near_sdk::env::block_timestamp()
 }
 
-#[derive(BorshStorageKey)]
+#[derive(BorshSerialize, BorshStorageKey)]
 pub enum StorageKey {
     Orders,
     Receipts,

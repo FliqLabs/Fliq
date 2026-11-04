@@ -11,11 +11,12 @@ default = []
 testing = []
 
 [dependencies]
-near-sdk = "5.17.2"
+borsh = "1"
+near-sdk = { version = "5.17.2", features = ["legacy"] }
 
 [dev-dependencies]
 anyhow = "1"
-near-sdk = { version = "5.17.2", features = ["unit-testing"] }
+near-sdk = { version = "5.17.2", features = ["legacy", "unit-testing"] }
 near-workspaces = "0.15"
 serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

@@ -1,33 +1,24 @@
-use near_sdk::borsh::{BorshDeserialize, BorshSerialize};
-use near_sdk::serde::{Deserialize, Serialize};
+use crate::types::TransferState;
 
-#[near_sdk::near(event_json(standard = "fliq", version = "1.0.0"))]
-#[derive(BorshDeserialize, BorshSerialize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct OrderRegisteredEvent {
-    pub order_id: String,
-    pub amount: String,
-    pub expiry: String,
-    pub corridor: String,
-}
-
-#[near_sdk::near(event_json(standard = "fliq", version = "1.0.0"))]
-#[derive(BorshDeserialize, BorshSerialize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PayoutExecutedEvent {
-    pub order_id: String,
-}
-
-#[near_sdk::near(event_json(standard = "fliq", version = "1.0.0"))]
-#[derive(BorshDeserialize, BorshSerialize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct StatusSetEvent {
-    pub order_id: String,
-    pub status: String,
-}
-
-#[near_sdk::near(event_json(standard = "fliq", version = "1.0.0"))]
-#[derive(BorshDeserialize, BorshSerialize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RecreditedEvent {
-    pub order_id: String,
-    pub amount: String,
+#[allow(dead_code)]
+#[near_sdk::near(event_json(standard = "fliq"))]
+pub enum FliqEvent {
+    #[event_version("1.0.0")]
+    OrderRegistered {
+        order_id: String,
+        amount: String,
+        expiry: String,
+        corridor: String,
+    },
+    #[event_version("1.0.0")]
+    PayoutExecuted {
+        order_id: String,
+        transfer_state: TransferState,
+    },
+    #[event_version("1.0.0")]
+    StatusSet { order_id: String, status: String },
+    #[event_version("1.0.0")]
+    Recredited { order_id: String, amount: String },
 }
 
 // OPEN: event payload fields need backend approval; these payloads contain no personal data.
