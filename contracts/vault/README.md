@@ -14,3 +14,25 @@ Rules:
 ```
 make test-contract
 ```
+
+## sQuiDbOb side
+
+This side owns order registration, payout state transitions, backend status reporting, receipts, and the integration boundary for balances and policy decisions. It verifies on-chain transfer state separately from backend-reported progress, reserves before creating a USDC transfer, and restores temporary reservations when a transfer fails.
+
+It does not implement real USDC custody, refund proof, recredit, provider allowlists, rate comparison, money conversion, bank transfers, or Aria/Dapper production policy and vault behavior. The `temp_vault` and `temp_policies` modules are temporary stand-ins.
+
+From a fresh clone, run the vault tests and mock-token tests with one shell command:
+
+```sh
+(cd contracts/vault && cargo test --features testing) && cargo test --manifest-path contracts/mock_usdc/Cargo.toml
+```
+
+## TEMPORARY and OPEN items
+
+Search all temporary and unresolved design markers with:
+
+```sh
+rg -n 'TEMPORARY|OPEN:' contracts docs
+```
+
+The current OPEN list is maintained in [docs/DECISIONS.md](../../docs/DECISIONS.md): order/`po_` ID mapping, expiry units, corridor encoding, registration key rotation, refs/status format, event approval, provider allowlists, relayed-agent identity, daily limits, and refund/recredit proof and reconciliation rules.
