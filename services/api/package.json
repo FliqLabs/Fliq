@@ -5,6 +5,9 @@
   "type": "module",
   "scripts": {
     "dev:mock": "tsx src/mock.ts",
+    "stack:up": "docker compose -f infra/compose.yaml up --build --wait",
+    "stack:down": "docker compose -f infra/compose.yaml down",
+    "stack:reset": "docker compose -f infra/compose.yaml down --volumes",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "dev": "tsx --env-file=.env apps/api/src/server.ts",
