@@ -5,6 +5,7 @@ use near_sdk::AccountId;
 
 pub fn reserve_for_order(order_id: &str, payer: &AccountId, amount: Amount) {
     temp_vault::reserve_for_order(order_id, payer, amount);
+    temp_policies::track_pending(order_id, payer, amount);
 }
 
 pub fn commit_outflow(order_id: &str) {
