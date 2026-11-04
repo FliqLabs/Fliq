@@ -36,19 +36,10 @@ impl From<Balance> for BalanceView {
 }
 
 #[near(serializers = [borsh])]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum ReservationState {
-    Pending,
-    Committed,
-    Released,
-}
-
-#[near(serializers = [borsh])]
 #[derive(Clone)]
 struct Reservation {
     payer: AccountId,
     amount: u128,
-    state: ReservationState,
 }
 
 #[near(serializers = [borsh, json])]
@@ -69,7 +60,6 @@ pub struct StorageBalanceBounds {
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum ReservationError {
     AlreadyExists,
-    AlreadyFinalized,
     AmountMustBePositive,
     ArithmeticOverflow,
     InsufficientBalance,
@@ -158,7 +148,6 @@ impl Vault {
             &Reservation {
                 payer: payer.clone(),
                 amount,
-                state: ReservationState::Pending,
             },
         );
         Ok(())
@@ -166,7 +155,7 @@ impl Vault {
 
     #[allow(dead_code)]
     pub(crate) fn commit_outflow(&mut self, order_id: &str) -> Result<(), ReservationError> {
-        let mut reservation = self.pending_reservation(order_id)?;
+        let reservation = self.reservation(order_id)?;
         let Some(balance) = self.balances.get(&reservation.payer) else {
             return Err(ReservationError::NotFound);
         };
@@ -181,14 +170,13 @@ impl Vault {
                 reserved,
             },
         );
-        reservation.state = ReservationState::Committed;
-        self.reservations.insert(&order_id.to_owned(), &reservation);
+        self.reservations.remove(&order_id.to_owned());
         Ok(())
     }
 
     #[allow(dead_code)]
     pub(crate) fn release_reservation(&mut self, order_id: &str) -> Result<(), ReservationError> {
-        let mut reservation = self.pending_reservation(order_id)?;
+        let reservation = self.reservation(order_id)?;
         let Some(balance) = self.balances.get(&reservation.payer) else {
             return Err(ReservationError::NotFound);
         };
@@ -206,8 +194,7 @@ impl Vault {
                 reserved,
             },
         );
-        reservation.state = ReservationState::Released;
-        self.reservations.insert(&order_id.to_owned(), &reservation);
+        self.reservations.remove(&order_id.to_owned());
         Ok(())
     }
 
@@ -286,14 +273,11 @@ impl Vault {
         true
     }
 
-    fn pending_reservation(&self, order_id: &str) -> Result<Reservation, ReservationError> {
+    fn reservation(&self, order_id: &str) -> Result<Reservation, ReservationError> {
         let Some(reservation) = self.reservations.get(&order_id.to_owned()) else {
             return Err(ReservationError::NotFound);
         };
-        if reservation.state != ReservationState::Pending {
-            return Err(ReservationError::AlreadyFinalized);
-        }
-        Ok(reservation.clone())
+        Ok(reservation)
     }
 
     fn minimum_storage_balance(&self) -> NearToken {
@@ -452,7 +436,7 @@ mod tests {
         assert_eq!(vault.release_reservation("po_failed"), Ok(()));
         assert_eq!(
             vault.release_reservation("po_failed"),
-            Err(ReservationError::AlreadyFinalized)
+            Err(ReservationError::NotFound)
         );
         assert_eq!(
             vault.balance_of(&payer),
@@ -477,7 +461,7 @@ mod tests {
         assert_eq!(vault.commit_outflow("po_paid"), Ok(()));
         assert_eq!(
             vault.commit_outflow("po_paid"),
-            Err(ReservationError::AlreadyFinalized)
+            Err(ReservationError::NotFound)
         );
         assert_eq!(
             vault.balance_of(&payer),
@@ -514,6 +498,52 @@ mod tests {
         assert_eq!(
             vault.reserve_for_order("po_zero", &payer, 0),
             Err(ReservationError::AmountMustBePositive)
+        );
+    }
+
+    #[test]
+    fn finalizing_reservation_reclaims_its_storage() {
+        let mut vault = vault();
+        let payer = account("ada.testnet");
+        register(&mut vault, &payer);
+        deposit(&mut vault, &payer, 100_000_000);
+        let storage_before_reservation = env::storage_usage();
+
+        assert_eq!(
+            vault.reserve_for_order("po_storage", &payer, 30_000_000),
+            Ok(())
+        );
+        assert!(env::storage_usage() > storage_before_reservation);
+
+        assert_eq!(vault.commit_outflow("po_storage"), Ok(()));
+        assert_eq!(env::storage_usage(), storage_before_reservation);
+    }
+
+    #[test]
+    fn mixed_reservation_outcomes_preserve_accounting() {
+        let mut vault = vault();
+        let payer = account("ada.testnet");
+        register(&mut vault, &payer);
+        deposit(&mut vault, &payer, 100_000_000);
+        assert_eq!(
+            vault.reserve_for_order("po_paid", &payer, 30_000_000),
+            Ok(())
+        );
+        assert_eq!(
+            vault.reserve_for_order("po_failed", &payer, 20_000_000),
+            Ok(())
+        );
+        deposit(&mut vault, &payer, 10_000_000);
+
+        assert_eq!(vault.commit_outflow("po_paid"), Ok(()));
+        assert_eq!(vault.release_reservation("po_failed"), Ok(()));
+
+        assert_eq!(
+            vault.balance_of(&payer),
+            Balance {
+                available: 80_000_000,
+                reserved: 0,
+            }
         );
     }
 }
