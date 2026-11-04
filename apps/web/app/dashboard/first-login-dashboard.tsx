@@ -52,6 +52,7 @@ export function FirstLoginDashboard({ onCreatePayout }: Props) {
             <span aria-hidden="true" className="hidden h-px max-w-6 flex-1 bg-zinc-200 md:block" />
           </div>
 
+
           <div className="flex items-center justify-between">
             <Step number={2} title="Add a webhook endpoint" description="Receive payout events" />
             <span aria-hidden="true" className="hidden h-px max-w-6 flex-1 bg-zinc-200 md:block" />
