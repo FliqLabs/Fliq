@@ -5,6 +5,7 @@ struct RootView: View {
     @State private var home: HomeModel?
     @State private var flow: PayFlow?
     @State private var receive: ReceiveFlow?
+    @State private var choosingSource = false
 
     var body: some View {
         @Bindable var router = environment.router
@@ -18,6 +19,18 @@ struct RootView: View {
             .navigationDestination(for: AppRoute.self, destination: destination)
         }
         .tint(Theme.textPrimary)
+        .sheet(isPresented: $choosingSource) {
+            if let receive {
+                ReceiveSourceView(flow: receive, onPicked: { route in
+                    choosingSource = false
+                    router.push(route)
+                })
+                .presentationDetents([.height(700)])
+                .presentationDragIndicator(.hidden)
+                .presentationCornerRadius(24)
+                .presentationBackground(Color(hex: 0x141414))
+            }
+        }
         .onAppear {
             if home == nil { home = HomeModel(api: environment.api, vault: environment.vault) }
         }
@@ -34,7 +47,7 @@ struct RootView: View {
             vault: environment.vault,
             vaultAccount: environment.profile.name ?? "fliq-vault.testnet"
         )
-        environment.router.replace(with: .receiveSource)
+        choosingSource = true
     }
 
     @ViewBuilder
@@ -48,7 +61,7 @@ struct RootView: View {
             }
         case .payNew, .payAmount, .payQuote, .paySending, .payPaid, .payRefunded:
             if let flow { payStep(route, flow) }
-        case .receiveSource, .receiveAmount, .receiveAddress, .receiveArriving:
+        case .receiveAmount, .receiveAddress, .receiveArriving:
             if let receive { receiveStep(route, receive) }
         case .agents: AgentsView(store: environment.agents)
         case .settings: SettingsView()
@@ -72,14 +85,13 @@ struct RootView: View {
             if let payout = flow.payout {
                 RefundedView(payout: payout, quote: flow.quote, onTryAgain: startPayment)
             }
-        case .activity, .receipt, .receiveSource, .receiveAmount, .receiveAddress, .receiveArriving, .agents, .agentConnect, .settings, .settingsAccounts, .settingsSecurity, .settingsNotifications: EmptyView()
+        case .activity, .receipt, .receiveAmount, .receiveAddress, .receiveArriving, .agents, .agentConnect, .settings, .settingsAccounts, .settingsSecurity, .settingsNotifications: EmptyView()
         }
     }
 
     @ViewBuilder
     private func receiveStep(_ route: AppRoute, _ receive: ReceiveFlow) -> some View {
         switch route {
-        case .receiveSource: ReceiveSourceView(flow: receive)
         case .receiveAmount: ReceiveAmountView(flow: receive)
         case .receiveAddress: DepositAddressView(flow: receive)
         case .receiveArriving: ArrivingView(flow: receive)
