@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { inspect } from "node:util";
 import { describe, expect, it } from "vitest";
 import {
+  accountCreator,
   amqp,
   chainRpc,
   ConfigError,
@@ -18,7 +19,18 @@ import {
   type Env,
 } from "./index";
 
-const all = { database, redis, amqp, chainRpc, near, vaultRegistration, oneClick, relayer, relayerClient };
+const all = {
+  database,
+  redis,
+  amqp,
+  chainRpc,
+  near,
+  vaultRegistration,
+  oneClick,
+  relayer,
+  relayerClient,
+  accountCreator,
+};
 
 const key = (char: string) => `ed25519:${char.repeat(88)}`;
 const token = (char: string) => char.repeat(32);
@@ -45,6 +57,10 @@ const sandbox: Env = {
   RELAYER_ACCOUNT_ID: "relayer.fliq.testnet",
   RELAYER_PRIVATE_KEYS: ["3", "4", "5", "6", "7"].map(key).join(","),
   RELAYER_AUTH_TOKEN: token("a"),
+  RELAYER_PORT: "4200",
+  NEAR_ROOT_ACCOUNT: "fliq.testnet",
+  NEAR_ROOT_PRIVATE_KEY: key("8"),
+  NEAR_ACCOUNT_FUNDING_YOCTO: "0",
 };
 
 const production: Env = {
@@ -55,6 +71,7 @@ const production: Env = {
   USDC_CONTRACT_ID: "usdc.fliq.near",
   NEAR_REGISTRATION_ACCOUNT_ID: "registrar.fliq.near",
   RELAYER_ACCOUNT_ID: "relayer.fliq.near",
+  NEAR_ROOT_ACCOUNT: "fliq.near",
   ONECLICK_API_KEY: token("k"),
 };
 
@@ -172,6 +189,24 @@ describe("network rules", () => {
   });
 });
 
+describe("account creator", () => {
+  it("reads the root account, its key and a yocto funding amount beyond the safe integer range", () => {
+    const config = loadConfig(all, { ...sandbox, NEAR_ACCOUNT_FUNDING_YOCTO: "10000000000000000000000" });
+    expect(config.accountCreator.rootAccountId).toBe("fliq.testnet");
+    expect(config.accountCreator.fundingYocto).toBe(10n ** 22n);
+    expect(String(config.accountCreator.rootPrivateKey)).toBe("[redacted]");
+  });
+
+  it("caps funding at 0.1 NEAR and keeps the root on the configured network", () => {
+    expect(problems({ ...sandbox, NEAR_ACCOUNT_FUNDING_YOCTO: "100000000000000000000001" })).toEqual({
+      NEAR_ACCOUNT_FUNDING_YOCTO: "must be a whole number from 0 to 100000000000000000000000",
+    });
+    expect(problems({ ...sandbox, NEAR_ROOT_ACCOUNT: "fliq.near" })).toEqual({
+      NEAR_ROOT_ACCOUNT: "is a mainnet account on testnet",
+    });
+  });
+});
+
 describe("secret rotation", () => {
   it("accepts the current and previous secret and nothing else", () => {
     const config = loadConfig(all, { ...sandbox, RELAYER_AUTH_TOKEN_PREVIOUS: token("b") });
@@ -212,7 +247,11 @@ describe("redaction", () => {
 
   it("keeps secrets out of logged or serialised config", () => {
     const config = loadConfig(all, sandbox);
-    const renderings = [JSON.stringify(config), inspect(config, { depth: 10 }), `${config.database.url}`];
+    const renderings = [
+      JSON.stringify(config, (_, value: unknown) => (typeof value === "bigint" ? value.toString() : value)),
+      inspect(config, { depth: 10 }),
+      `${config.database.url}`,
+    ];
     for (const text of renderings) {
       for (const secret of [key("2"), key("3"), token("a"), RPC_WITH_KEY, sandbox.DATABASE_URL ?? ""]) {
         expect(text).not.toContain(secret);
