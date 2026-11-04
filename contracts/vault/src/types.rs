@@ -5,6 +5,8 @@ use near_sdk::{AccountId, BorshStorageKey};
 pub type Amount = u128;
 pub type Timestamp = u64;
 
+pub const DEFAULT_MAX_EXPIRY: Timestamp = 24 * 60 * 60 * 1_000_000_000;
+
 // OPEN: expiry unit is not agreed; this currently follows NEAR block timestamp nanoseconds.
 pub fn now() -> Timestamp {
     near_sdk::env::block_timestamp()
@@ -14,6 +16,15 @@ pub fn now() -> Timestamp {
 pub enum StorageKey {
     Orders,
     Receipts,
+}
+
+#[derive(BorshDeserialize, BorshSerialize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(crate = "near_sdk::serde")]
+pub struct Config {
+    pub owner: AccountId,
+    pub registration_account: AccountId,
+    pub approved_usdc_token_contract: AccountId,
+    pub max_expiry: Timestamp,
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

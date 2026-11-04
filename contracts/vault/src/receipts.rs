@@ -5,6 +5,9 @@ use near_sdk::serde::{Deserialize, Serialize};
 #[derive(BorshDeserialize, BorshSerialize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OrderRegisteredEvent {
     pub order_id: String,
+    pub amount: String,
+    pub expiry: String,
+    pub corridor: String,
 }
 
 #[near_sdk::near(event_json(standard = "fliq", version = "1.0.0"))]
