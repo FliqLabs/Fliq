@@ -59,3 +59,20 @@ The baseline payout and workspace come from `spec/fixtures/payout.settled.json` 
 and failure reasons; extra test identities are generated at runtime rather than adding canonical fixtures.
 Coverage includes local midnight edges, both DST transitions, workspace isolation, empty/null samples,
 missing parameters, duplicate refusal events, and provider settlement ranges.
+
+## Manual database check
+
+```sh
+~/projects/cashout-router-analytics/.venv/bin/python /Users/USER/projects/Fliq/analytics/check_payout_metrics.py
+```
+
+The runner prompts privately for `DATABASE_URL`, then for a workspace ID. A blank workspace lists
+available IDs and requires selecting one. It executes the existing SQL files in a read-only transaction,
+with a 10-second connection timeout and a 15-second statement timeout. Daily metrics use 5 November
+2026 in `Africa/Lagos`; provider medians cover local dates `[2026-11-03, 2026-11-06)`.
+Output contains query results; database errors show only their exception type and SQLSTATE.
+
+## Libraries
+
+- `psycopg` 3.3.6, already installed in the environment above: `RawCursor` binds the SQL files'
+  numbered PostgreSQL parameters directly, without rewriting queries or interpolating values.
