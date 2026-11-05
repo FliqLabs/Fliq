@@ -4,7 +4,8 @@ FLIQ_DATA_SOURCE = fixtures
 FLIQ_API_BASE_URL = http:/$()/localhost:4000/v1
 FLIQ_API_KEY = rt_test_7Kp2demo00c9Qe
 
-// Debug reads fliq.cash's apple-app-site-association directly instead of through Apple's CDN.
-FLIQ_ASSOCIATED_DOMAIN_MODE = ?mode=developer
+// Set to ?mode=developer to read fliq.cash's apple-app-site-association directly instead of through Apple's CDN.
+// That needs Settings > Developer > Associated Domains Development on the device.
+FLIQ_ASSOCIATED_DOMAIN_MODE =
 
 #include? "Debug.xcconfig.local"
