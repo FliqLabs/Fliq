@@ -10,6 +10,7 @@ import { createDatabase, unitOf } from "./db.js";
 import { createHandlers } from "./handlers.js";
 import { OneClickHops } from "./hop.js";
 import { DEFAULT_DEADLINE_MARGIN_MS, DEFAULT_GUARD_BPS, DEFAULT_VELOCITY } from "./payouts.js";
+import { receiveProviderWebhook } from "./provider-hooks.js";
 import { createLimiter } from "./rate-limit.js";
 import { sandboxAdapters } from "./sandbox.js";
 
@@ -60,5 +61,13 @@ const handlers = createHandlers({
   },
 });
 
-const app = buildApp({ config, unit, handlers, logger: true, limiter: createLimiter(process.env.REDIS_URL) });
+const app = buildApp({
+  config,
+  unit,
+  handlers,
+  logger: true,
+  limiter: createLimiter(process.env.REDIS_URL),
+  providerHook: (provider, headers, rawBody) =>
+    receiveProviderWebhook({ config, unit, adapters }, provider, headers, rawBody),
+});
 await app.listen({ port: config.port, host: "0.0.0.0" });

@@ -22,12 +22,19 @@ declare module "fastify" {
 
 export type Handler = (request: FastifyRequest) => Promise<Reply>;
 
+export type ProviderHook = (
+  provider: string,
+  headers: FastifyRequest["headers"],
+  rawBody: string,
+) => Promise<Reply>;
+
 export interface AppDeps {
   config: Config;
   unit: Unit;
   handlers: Record<string, Handler>;
   logger?: boolean;
   limiter?: Limiter;
+  providerHook?: ProviderHook;
 }
 
 function errorBody(code: string, message: string) {
@@ -87,6 +94,20 @@ export function buildApp(deps: AppDeps): FastifyInstance {
         const result = await handler(request);
         return reply.status(result.status).send(result.body);
       },
+    });
+  }
+
+  // Provider webhooks are signed over the exact bytes sent, so this scope keeps the body as a raw string.
+  const providerHook = deps.providerHook;
+  if (providerHook) {
+    app.register(async (scope) => {
+      scope.removeAllContentTypeParsers();
+      scope.addContentTypeParser("*", { parseAs: "string" }, (_request, body, done) => done(null, body));
+      scope.post<{ Params: { provider: string } }>("/hooks/:provider", async (request, reply) => {
+        const rawBody = typeof request.body === "string" ? request.body : "";
+        const result = await providerHook(request.params.provider, request.headers, rawBody);
+        return reply.status(result.status).send(result.body);
+      });
     });
   }
   return app;
