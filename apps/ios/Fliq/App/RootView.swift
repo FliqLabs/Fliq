@@ -64,7 +64,7 @@ struct RootView: View {
             }
         case .payNew, .payAmount, .payQuote, .paySending, .payPaid, .payRefunded:
             if let flow { payStep(route, flow) }
-        case .receiveAmount, .receiveAddress, .receiveArriving:
+        case .receiveAddress, .receiveArriving:
             if let receive { receiveStep(route, receive) }
         case .agents: AgentsView(store: environment.agents)
         case .settings: SettingsView()
@@ -88,14 +88,13 @@ struct RootView: View {
             if let payout = flow.payout {
                 RefundedView(payout: payout, quote: flow.quote, onTryAgain: startPayment)
             }
-        case .activity, .receipt, .receiveAmount, .receiveAddress, .receiveArriving, .agents, .agentConnect, .settings, .settingsAccounts, .settingsSecurity, .settingsNotifications: EmptyView()
+        case .activity, .receipt, .receiveAddress, .receiveArriving, .agents, .agentConnect, .settings, .settingsAccounts, .settingsSecurity, .settingsNotifications: EmptyView()
         }
     }
 
     @ViewBuilder
     private func receiveStep(_ route: AppRoute, _ receive: ReceiveFlow) -> some View {
         switch route {
-        case .receiveAmount: ReceiveAmountView(flow: receive)
         case .receiveAddress: DepositAddressView(flow: receive)
         case .receiveArriving: ArrivingView(flow: receive)
         default: EmptyView()
