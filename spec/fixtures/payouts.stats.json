@@ -1,0 +1,30 @@
+{
+  "timezone": "Africa/Lagos",
+  "window": {
+    "start": "2026-10-28T23:00:00Z",
+    "end": "2026-10-29T23:00:00Z"
+  },
+  "settled": {
+    "count": 4,
+    "totals": [
+      {
+        "currency": "kes",
+        "amount": 6450
+      },
+      {
+        "currency": "ngn",
+        "amount": 174082
+      }
+    ]
+  },
+  "median_seconds_to_bank": 21,
+  "refused": {
+    "count": 1,
+    "totals": [
+      {
+        "currency": "ngn",
+        "amount": 500000
+      }
+    ]
+  }
+}
