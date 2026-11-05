@@ -2,7 +2,7 @@ import Image from "next/image";
 import { JoinWaitlistLink } from "../components/join-waitlist-link";
 import { siteContainer } from "../components/site-container";
 import { IconRow, eyebrow } from "./components";
-import { claudeIcon, fliqIcon, steps, trustPoints } from "./data";
+import { claudeIcon, steps, trustPoints } from "./data";
 
 export function HowItWorks() {
   return (
@@ -128,26 +128,6 @@ export function Trust() {
             <p className="text-sm leading-[22px] text-zinc-400">{point.description}</p>
           </article>
         ))}
-      </div>
-    </section>
-  );
-}
-
-export function Sandbox() {
-  return (
-    <section
-      id="sandbox"
-      className={`${siteContainer} mb-12 flex flex-col md:flex-row items-center gap-5 rounded-[22px] border border-[#2c2c2c] py-6 lg:mb-18 lg:py-10`}
-    >
-      <Image src={fliqIcon} alt="" width={72} height={72} className="size-12 rounded-xl lg:size-[72px]" />
-      <div className="min-w-0 flex-1">
-        <h2 className="mb-2 text-3xl font-bold tracking-tight">Start in sandbox. Nothing real moves.</h2>
-        <p className="text-sm leading-6 text-zinc-400">
-          A test key, a demo recipient, and a payout you can follow all the way.
-        </p>
-      </div>
-      <div className="flex flex-wrap gap-2.5">
-        <JoinWaitlistLink />
       </div>
     </section>
   );
