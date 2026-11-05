@@ -24,5 +24,6 @@
   "institutions.ng.json": "InstitutionList",
   "vault.balance.json": "VaultBalance",
   "person.tobi.json": "Person",
-  "people.recent.json": "RecentPeopleList"
+  "people.recent.json": "RecentPeopleList",
+  "status.report.json": "StatusReport"
 }

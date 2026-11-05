@@ -99,7 +99,7 @@ struct RefundedView: View {
         case .depositSeen: "Left your vault"
         case .payingOut: "\(payout.provider.displayName) could not pay out"
         case .refunded: "Refunded to your vault · $\(payout.amount.decimalString)"
-        case .awaitingDeposit, .settled, .refused, .notReceived: nil
+        default: nil
         }
     }
 

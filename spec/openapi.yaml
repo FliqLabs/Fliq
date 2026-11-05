@@ -22,6 +22,8 @@ tags:
     description: Banks and account verification
   - name: payouts
     description: Create and track payouts
+  - name: status
+    description: Public health of services and providers
   - name: vault
     description: The user's vault balance
   - name: people
@@ -213,6 +215,24 @@ paths:
           description: Removed
         "404":
           $ref: "#/components/responses/Error"
+  /status:
+    get:
+      operationId: getStatus
+      summary: Service and provider health for the status page
+      description: |
+        Each component has one entry per UTC calendar day for the last 60 days, oldest first, and a current state.
+        A day is an outage when 5% or more of its checks failed, degraded when any check was not clean, operational otherwise,
+        and no_data when nothing ran. Incidents open after three failed checks in a row and close after three clean ones.
+        Cached for 10 seconds.
+      tags: [status]
+      security: []
+      responses:
+        "200":
+          description: Components with their daily bars, and recent incidents, newest first
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusReport"
   /vault:
     get:
       operationId: getVaultBalance
@@ -1457,3 +1477,77 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/RecentPerson"
+    StatusDay:
+      type: object
+      required: [date, status, checks, uptime_percent]
+      properties:
+        date:
+          type: string
+          format: date
+          description: UTC calendar day
+        status:
+          type: string
+          enum: [operational, degraded, outage, no_data]
+        checks:
+          type: integer
+        uptime_percent:
+          type: [number, "null"]
+          description: Share of checks that answered, slow or not. Null when nothing ran.
+    StatusComponent:
+      type: object
+      required: [id, name, kind, state, days]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        kind:
+          type: string
+          enum: [service, provider]
+        state:
+          type: string
+          enum: [healthy, degraded, down, unknown]
+          description: unknown when the last check is more than five minutes old
+        days:
+          type: array
+          items:
+            $ref: "#/components/schemas/StatusDay"
+    StatusIncident:
+      type: object
+      required: [incident_id, component, title, impact, state, summary, started_at, resolved_at]
+      properties:
+        incident_id:
+          type: string
+        component:
+          type: string
+        title:
+          type: string
+        impact:
+          type: string
+          enum: [degraded, outage]
+        state:
+          type: string
+          enum: [open, resolved]
+        summary:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        resolved_at:
+          type: [string, "null"]
+          format: date-time
+    StatusReport:
+      type: object
+      required: [updated_at, components, incidents]
+      properties:
+        updated_at:
+          type: string
+          format: date-time
+        components:
+          type: array
+          items:
+            $ref: "#/components/schemas/StatusComponent"
+        incidents:
+          type: array
+          items:
+            $ref: "#/components/schemas/StatusIncident"

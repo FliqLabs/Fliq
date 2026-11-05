@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { decrypt, encrypt, keyedHash } from "../../../packages/db/src/crypto.js";
 import { newId } from "../../../packages/db/src/ids.js";
 import { transitionPayout } from "../../../packages/domain/transition.js";
@@ -71,6 +72,14 @@ function isDefiniteRejection(error: unknown): boolean {
   return error instanceof ProviderError && error.kind === "rejected";
 }
 
+// The provider's fiat reference arrives on its settled webhook and is kept on that event.
+function bankReference(events: readonly { toState: string; detail: Prisma.JsonValue }[]): string | null {
+  const detail = events.find((event) => event.toState === "settled")?.detail;
+  if (!detail || typeof detail !== "object" || Array.isArray(detail)) return null;
+  const reference = detail.fiat_reference;
+  return typeof reference === "string" ? reference : null;
+}
+
 export async function payoutView(tx: Db, config: Config, payoutId: string) {
   const payout = await tx.payout.findUniqueOrThrow({
     where: { id: payoutId },
@@ -105,7 +114,7 @@ export async function payoutView(tx: Db, config: Config, payoutId: string) {
     },
     provider_order: payout.providerOrderId,
     vault_receipt: payout.routeKind === "intents" && payout.depositChain === "near" ? payout.id : null,
-    bank_reference: null,
+    bank_reference: bankReference(payout.events),
     seconds: settledAt && depositAt ? Math.round((settledAt.getTime() - depositAt.getTime()) / 1000) : null,
     history: payout.events.map((event) => ({ state: event.toState, at: event.createdAt.toISOString() })),
   };

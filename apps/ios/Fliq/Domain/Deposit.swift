@@ -19,17 +19,21 @@ struct DepositSource: Hashable, Sendable, Identifiable {
     var isDirect: Bool { group == .near }
 }
 
-/// A deposit address reserved for one top-up.
+/// A deposit address for one top-up. It takes any amount from `minimum` up, so nobody has to
+/// say how much they will send first (NEAR Intents FLEX_INPUT).
 struct DepositAddress: Equatable, Sendable {
     let source: DepositSource
     let address: String
-    let expected: TokenAmount
-    let lands: TokenAmount
+    let minimum: TokenAmount
     let fee: TokenAmount
     let reservedUntil: Date
     let estimatedSeconds: Int
     /// True for fixture addresses. Nothing sent to them is received.
     let isDemo: Bool
+
+    func landing(_ received: TokenAmount) -> TokenAmount {
+        TokenAmount(baseUnits: max(0, received.baseUnits - fee.baseUnits))
+    }
 }
 
 /// Where a top-up is: seen on the source chain, moving to NEAR, in the vault.
@@ -49,6 +53,6 @@ struct DepositStatus: Equatable, Sendable {
 
 protocol DepositAPI: Sendable {
     func sources() async throws -> [DepositSource]
-    func reserve(_ source: DepositSource, expected: TokenAmount, vault: String) async throws -> DepositAddress
+    func reserve(_ source: DepositSource, vault: String) async throws -> DepositAddress
     func status(of deposit: DepositAddress) async throws -> DepositStatus
 }

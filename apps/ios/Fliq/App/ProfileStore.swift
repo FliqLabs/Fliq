@@ -26,7 +26,11 @@ final class ProfileStore {
     }
 
     func completeOnboarding(name: FliqName?, displayName: String?) {
-        self.name = name?.account
+        completeOnboarding(account: name?.account, displayName: displayName)
+    }
+
+    func completeOnboarding(account: String?, displayName: String?) {
+        name = account
         self.displayName = displayName.flatMap { $0.isEmpty ? nil : $0 }
         isOnboarded = true
         defaults.set(true, forKey: Key.onboarded)

@@ -7,6 +7,8 @@ import Observation
 @Observable
 final class AppEnvironment {
     let api: any FliqAPI
+    /// True when `api` is the real server: balances come from it and onboarding signs in first.
+    let isLive: Bool
     let names: any NameDirectory
     let router: AppRouter
     let profile: ProfileStore
@@ -20,7 +22,8 @@ final class AppEnvironment {
 
     init(
         api: any FliqAPI,
-        names: any NameDirectory = FixtureNameDirectory(),
+        isLive: Bool = false,
+        names: (any NameDirectory)? = nil,
         router: AppRouter = AppRouter(),
         profile: ProfileStore = ProfileStore(),
         activity: ActivityStore = ActivityStore(),
@@ -32,7 +35,8 @@ final class AppEnvironment {
         biometrics: any Biometrics = DeviceBiometrics()
     ) {
         self.api = api
-        self.names = names
+        self.isLive = isLive
+        self.names = names ?? (isLive ? APINameDirectory(api: api) : FixtureNameDirectory())
         self.router = router
         self.profile = profile
         self.activity = activity
@@ -48,7 +52,8 @@ final class AppEnvironment {
         #if DEBUG
         if let testing = uiTesting(bundle: bundle) { return testing }
         #endif
-        return AppEnvironment(api: makeAPI(info: bundle.infoDictionary ?? [:], bundle: bundle))
+        guard let api = liveAPI(info: bundle.infoDictionary ?? [:]) else { return AppEnvironment(api: FixtureClient(bundle: bundle)) }
+        return AppEnvironment(api: api, isLive: true)
     }
 
     static let preview = AppEnvironment(
@@ -57,14 +62,18 @@ final class AppEnvironment {
         biometrics: AlwaysApprove()
     )
 
-    private static func makeAPI(info: [String: Any], bundle: Bundle) -> any FliqAPI {
+    private static func liveAPI(info: [String: Any]) -> HTTPClient? {
         guard
             info["FliqDataSource"] as? String == "api",
             let base = (info["FliqAPIBaseURL"] as? String).flatMap(URL.init(string:))
-        else {
-            return FixtureClient(bundle: bundle)
-        }
+        else { return nil }
         return HTTPClient(baseURL: base, apiKey: info["FliqAPIKey"] as? String ?? "")
+    }
+
+    /// Reads the balance from the API. On fixtures the vault mirrors this device's own top-ups and payouts.
+    func refreshVault() async {
+        guard isLive, let balance = try? await api.vaultBalance() else { return }
+        vault.sync(balance)
     }
 
     #if DEBUG
