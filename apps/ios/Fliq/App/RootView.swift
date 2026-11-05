@@ -34,6 +34,9 @@ struct RootView: View {
         .onAppear {
             if home == nil { home = HomeModel(api: environment.api, vault: environment.vault) }
         }
+        .task(id: router.path.isEmpty) {
+            if router.path.isEmpty { await environment.refreshVault() }
+        }
     }
 
     private func startPayment() {

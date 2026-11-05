@@ -29,6 +29,12 @@ final class FixtureDecodingTests: XCTestCase {
             "Onboarding": decode(OnboardingChecklist.self),
             "PayoutList": decode(PayoutList.self),
             "PayoutStats": decode(PayoutStats.self),
+            "Recipient": decode(Recipient.self),
+            "RecipientList": decode(RecipientList.self),
+            "InstitutionList": decode(InstitutionList.self),
+            "VaultBalance": decode(VaultBalance.self),
+            "Person": decode(Person.self),
+            "RecentPeopleList": decode(RecentPeopleList.self),
         ]
     }()
 

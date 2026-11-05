@@ -43,6 +43,64 @@ struct FixtureClient: FliqAPI {
         return path.with(id: id).upTo(step: min(step, path.history.count - 1))
     }
 
+    func payouts() async throws -> PayoutList {
+        try load("payouts.list")
+    }
+
+    var needsSignIn: Bool {
+        get async { false }
+    }
+
+    func sendEmailLink(to email: String) async throws -> EmailLinkSent {
+        try load("email-link.sent")
+    }
+
+    func verifyEmailLink(token: String) async throws -> User {
+        let session: Session = try load("session.signed-in")
+        return session.user
+    }
+
+    func signOut() async {}
+
+    func me() async throws -> User {
+        try load("user.new")
+    }
+
+    func checkName(_ name: FliqName) async throws -> NameAvailability {
+        let free = try await FixtureNameDirectory().isAvailable(name)
+        return NameAvailability(name: name.value, available: free, reason: free ? nil : "taken")
+    }
+
+    func claimName(_ name: FliqName) async throws -> User {
+        let user: User = try load("user.new")
+        return user.named(name.account)
+    }
+
+    func updateProfile(displayName: String) async throws -> User {
+        try load("user.new")
+    }
+
+    func institutions() async throws -> [Institution] {
+        let list: InstitutionList = try load("institutions.ng")
+        return list.items
+    }
+
+    func vaultBalance() async throws -> VaultBalance {
+        try load("vault.balance")
+    }
+
+    func recipients() async throws -> RecipientList {
+        try load("recipients.list")
+    }
+
+    func recentPeople() async throws -> RecentPeopleList {
+        try load("people.recent")
+    }
+
+    func person(named name: String) async throws -> Person {
+        try load("person.tobi")
+    }
+
     func load<Value: Decodable>(_ name: String) throws -> Value {
         try FliqJSON.decoder().decode(Value.self, from: data(name))
     }
@@ -78,6 +136,12 @@ private actor FixtureLedger {
         let step = (polls[id] ?? 0) + 1
         polls[id] = step
         return (step, refunds.contains(id))
+    }
+}
+
+private extension User {
+    func named(_ account: String) -> User {
+        User(userId: userId, nearAccount: account, displayName: displayName, occupation: occupation, vault: vault, photoUrl: photoUrl)
     }
 }
 

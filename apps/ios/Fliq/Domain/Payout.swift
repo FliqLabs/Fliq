@@ -13,18 +13,37 @@ struct VerifiedAccount: Codable, Sendable, Equatable {
 }
 
 enum PayoutState: String, Codable, Sendable, CaseIterable {
+    case created
+    case providerTimeout = "provider_timeout"
+    case awaitingRecon = "awaiting_recon"
     case awaitingDeposit = "awaiting_deposit"
     case depositSeen = "deposit_seen"
+    case routing
+    case withProvider = "with_provider"
     case payingOut = "paying_out"
     case settled
-    case refused
+    case refunding
     case refunded
+    case expired
+    case failed
+    case refused
     case notReceived = "not_received"
 
     var isFinal: Bool {
         switch self {
-        case .settled, .refused, .refunded, .notReceived: true
-        case .awaitingDeposit, .depositSeen, .payingOut: false
+        case .settled, .refunded, .expired, .failed, .refused, .notReceived: true
+        default: false
+        }
+    }
+
+    /// The step of the Sending timeline this state belongs to. The server has more states than the screen has rows.
+    var stage: PayoutState {
+        switch self {
+        case .created, .providerTimeout, .awaitingRecon, .awaitingDeposit: .awaitingDeposit
+        case .depositSeen, .routing: .depositSeen
+        case .withProvider, .payingOut, .refunding: .payingOut
+        case .expired, .failed: .refused
+        default: self
         }
     }
 }
