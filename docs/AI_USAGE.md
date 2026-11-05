@@ -10,5 +10,6 @@ The NEAR HACKATHON rules require listing AI-generated code. Add a row whenever a
 | 2026-11-05 | `contracts/vault`, `README.md` | Codex | Standard NEP-141 receiver and NEP-145 storage interfaces using the official NEAR contract standards crate |
 | 2026-11-05 | `contracts/vault/src` | Codex | Storage lifecycle, refund-recipient, forced-unregister and adversarial reservation regression tests |
 | 2026-11-05 | `contracts/vault/src/vault.rs` | Codex | Combined available-and-reserved balance overflow protection and regression coverage |
+| 2026-11-05 | `contracts/vault/src`, `contracts/vault/README.md` | Codex | Strict beneficiary top-ups, deposit events, aggregate liability tracking, guarded refund recredit accounting and regression tests |
 
 The iOS app (`apps/ios`) is written by hand.
