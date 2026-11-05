@@ -63,6 +63,7 @@ Architecture diagrams: [docs/architecture.md](docs/architecture.md).
 | tsx, vitest, typescript | services/api | Run and test the API |
 | fastify | services/api | HTTP server; validates requests against schemas built from the OpenAPI spec |
 | prisma, @prisma/client | services/api | Database schema, migrations and typed queries on Postgres |
+| near-api-js, borsh | services/api | NEAR transaction and delegate-action encoding, signing and verification for the relayer and account creation |
 | @simplewebauthn/server | services/api | Verify passkey registration and sign-in (WebAuthn) |
 | ioredis | services/api | Redis client for the atomic token-bucket rate limiter |
 | yaml | services/api | Read spec/openapi.yaml at startup to register routes |

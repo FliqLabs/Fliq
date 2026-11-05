@@ -24,3 +24,11 @@ Design source of truth: fliq Web Design v4 (Claude Design canvas).
 | --- | --- |
 | `@tanstack/react-query` | Submit waitlist requests and expose loading, success, and error states. |
 | `zustand` | Keep the waitlist email draft in a small route-specific store. |
+
+## Live API integration
+
+Copy `.env.example` to `.env.local` to override the backend URL. The web app calls the Render API through `/api/fliq/*` so browser requests stay on the same origin. Access and refresh tokens are stored in HTTP-only cookies; the proxy rotates the refresh token when the access token expires.
+
+The connected screens cover passkey and email-link sign-in, name availability and claiming, workspace creation, profile editing, masked API keys, onboarding progress, and paginated payout listing. The sandbox key is shown once after workspace creation. Quote, account verification, payout submission, payout detail, and webhook replay remain disabled until their backend handlers are available.
+
+Passkeys on a deployed `fliq.cash` site require the backend `WEBAUTHN_RP_ID` and `WEBAUTHN_ORIGINS` to match that site. The current Render deployment returns `rpId: localhost`, which only supports local browser testing. The backend name-claim handler currently uses a mock NEAR provisioner, so it does not create an on-chain vault yet.

@@ -54,6 +54,15 @@ export class Reader {
     });
   }
 
+  // For amounts beyond Number's safe range, such as yoctoNEAR.
+  units(name: string, max: bigint): bigint {
+    return this.#read<bigint>(name, 0n, (raw) =>
+      /^\d+$/.test(raw) && BigInt(raw) <= max
+        ? { value: BigInt(raw) }
+        : { problem: `must be a whole number from 0 to ${max}` },
+    );
+  }
+
   url(name: string, schemes: readonly string[]): string {
     const expected = `must be a URL starting with ${schemes.map((scheme) => `${scheme}//`).join(" or ")}`;
     return this.#read<string>(name, "", (raw) => {
