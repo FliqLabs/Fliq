@@ -7,7 +7,7 @@ import { JoinWaitlistLink } from "../components/join-waitlist-link";
 const CARD_MAX_WIDTH = 1136;
 const CARD_HEIGHT = 440;
 const CARD_RADIUS = 26;
-const GROW_SHARE_OF_RUNWAY = 0.6;
+const HEADER_HEIGHT = 68;
 
 type Star = { x: number; y: number; r: number; phase: number };
 type Building = { x: number; w: number; h: number; lit: boolean[] };
@@ -81,7 +81,6 @@ function paintSky(
 }
 
 export function Finale() {
-  const runway = useRef<HTMLElement>(null);
   const card = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
 
@@ -104,15 +103,15 @@ export function Finale() {
     };
 
     const grow = () => {
-      if (!runway.current || !card.current) return;
+      if (!card.current) return;
       const viewport = document.documentElement.clientWidth;
+      const screen = window.innerHeight - HEADER_HEIGHT;
       const startWidth = Math.min(CARD_MAX_WIDTH, viewport - 40);
-      const travelled = -runway.current.getBoundingClientRect().top;
-      const span = Math.max(1, (runway.current.offsetHeight - window.innerHeight) * GROW_SHARE_OF_RUNWAY);
-      const progress = still ? 1 : Math.min(1, Math.max(0, travelled / span));
+      const top = card.current.getBoundingClientRect().top;
+      const progress = still ? 1 : Math.min(1, Math.max(0, (window.innerHeight - top) / screen));
       const eased = 1 - Math.pow(1 - progress, 3);
       card.current.style.width = `${startWidth + (viewport - startWidth) * eased}px`;
-      card.current.style.height = `${CARD_HEIGHT + (window.innerHeight - CARD_HEIGHT) * eased}px`;
+      card.current.style.height = `${CARD_HEIGHT + (screen - CARD_HEIGHT) * eased}px`;
       card.current.style.borderRadius = `${CARD_RADIUS * (1 - eased)}px`;
       if (Math.abs(element.clientWidth * Math.min(2, window.devicePixelRatio || 1) - element.width) > 2)
         resize();
@@ -144,32 +143,30 @@ export function Finale() {
   }, []);
 
   return (
-    <section id="sandbox" ref={runway} className="relative mt-8 h-[200vh]">
-      <div className="sticky top-0 flex h-screen items-center justify-center overflow-hidden">
-        <div
-          ref={card}
-          className="relative flex h-[440px] w-[min(1136px,calc(100vw-40px))] shrink-0 items-center justify-center overflow-hidden rounded-[26px] border border-[#1d1a33] bg-[#05040c] text-center"
-        >
-          <canvas ref={canvas} aria-hidden="true" className="absolute inset-0 size-full" />
-          <div className="relative z-10 flex flex-col items-center gap-4 px-6 pt-14 pb-28">
-            <Image
-              src="/landing/mark.webp"
-              alt=""
-              width={88}
-              height={88}
-              className="rounded-[22px] shadow-[0_0_40px_rgba(113,88,255,0.45)]"
-            />
-            <p className="text-[clamp(56px,9vw,96px)] leading-none font-bold tracking-[-0.04em]">fliq</p>
-            <p className="text-[17px] text-[#cfcaf0]">
-              <strong className="font-semibold text-white">Global crypto.</strong> Local money.
-            </p>
-            <h2 className="mt-2 text-2xl font-bold tracking-tight">Start in sandbox. Nothing real moves.</h2>
-            <p className="max-w-[440px] text-sm leading-6 text-[#9d97c7]">
-              A test key, a demo recipient, and a payout you can follow all the way.
-            </p>
-            <div className="mt-1 flex flex-wrap justify-center gap-2.5">
-              <JoinWaitlistLink />
-            </div>
+    <section id="sandbox" className="relative mt-8 flex justify-center">
+      <div
+        ref={card}
+        className="relative flex h-[440px] w-[min(1136px,calc(100vw-40px))] max-w-none shrink-0 items-center justify-center overflow-hidden rounded-[26px] border border-[#1d1a33] bg-[#05040c] text-center"
+      >
+        <canvas ref={canvas} aria-hidden="true" className="absolute inset-0 size-full" />
+        <div className="relative z-10 flex flex-col items-center gap-4 px-6 pt-14 pb-28">
+          <Image
+            src="/landing/mark.webp"
+            alt=""
+            width={88}
+            height={88}
+            className="rounded-[22px] shadow-[0_0_40px_rgba(113,88,255,0.45)]"
+          />
+          <p className="text-[clamp(56px,9vw,96px)] leading-none font-bold tracking-[-0.04em]">fliq</p>
+          <p className="text-[17px] text-[#cfcaf0]">
+            <strong className="font-semibold text-white">Global crypto.</strong> Local money.
+          </p>
+          <h2 className="mt-2 text-2xl font-bold tracking-tight">Start in sandbox. Nothing real moves.</h2>
+          <p className="max-w-[440px] text-sm leading-6 text-[#9d97c7]">
+            A test key, a demo recipient, and a payout you can follow all the way.
+          </p>
+          <div className="mt-1 flex flex-wrap justify-center gap-2.5">
+            <JoinWaitlistLink />
           </div>
         </div>
       </div>
