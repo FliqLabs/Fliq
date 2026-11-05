@@ -3,6 +3,8 @@ import SwiftUI
 struct WelcomeView: View {
     let onStart: () -> Void
     let onExistingAccount: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var arrived = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -23,6 +25,8 @@ struct WelcomeView: View {
                     .padding(.top, -8)
             }
             .padding(.bottom, 84)
+            .opacity(arrived ? 1 : 0)
+            .offset(y: arrived ? 0 : 18)
 
             VStack(spacing: 18) {
                 Button(action: onStart) {
@@ -45,17 +49,12 @@ struct WelcomeView: View {
         }
         .padding(.horizontal, 20)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background {
-            Image("WelcomeBackground")
-                .resizable()
-                .scaledToFill()
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                .clipped()
-                .background(Color.black)
-                .ignoresSafeArea()
-                .accessibilityHidden(true)
-        }
+        .background { WelcomeBackdrop() }
         .toolbar(.hidden, for: .navigationBar)
+        .onAppear {
+            guard !reduceMotion else { return arrived = true }
+            withAnimation(.spring(duration: 0.9, bounce: 0.15).delay(0.45)) { arrived = true }
+        }
     }
 
     private func icon(_ name: String) -> some View {
