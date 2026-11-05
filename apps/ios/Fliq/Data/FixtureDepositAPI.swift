@@ -4,6 +4,9 @@ import Foundation
 /// are marked demo and must never be funded: nothing watches them.
 struct FixtureDepositAPI: DepositAPI {
     static let fee = TokenAmount(baseUnits: 20_000)
+    static let anyAmountFloor = TokenAmount(baseUnits: 1_000_000)
+    /// What the demo script sends: 200 USDC from Solana.
+    static let demoReceived = TokenAmount(baseUnits: 200_000_000)
     static let watchWindow: TimeInterval = 10 * 60
 
     private let clock = DepositClock()
@@ -20,15 +23,12 @@ struct FixtureDepositAPI: DepositAPI {
         ]
     }
 
-    func reserve(_ source: DepositSource, expected: TokenAmount, vault: String) async throws -> DepositAddress {
-        let fee = source.isDirect ? .zero : Self.fee
-        let lands = TokenAmount(baseUnits: max(0, expected.baseUnits - fee.baseUnits))
+    func reserve(_ source: DepositSource, vault: String) async throws -> DepositAddress {
         let deposit = DepositAddress(
             source: source,
             address: source.isDirect ? vault : Self.demoAddress(for: source.chain),
-            expected: expected,
-            lands: lands,
-            fee: fee,
+            minimum: source.minimum ?? Self.anyAmountFloor,
+            fee: source.isDirect ? .zero : Self.fee,
             reservedUntil: .now.addingTimeInterval(Self.watchWindow),
             estimatedSeconds: source.group == .bitcoin ? 600 : 35,
             isDemo: true
@@ -49,7 +49,7 @@ struct FixtureDepositAPI: DepositAPI {
         }
         return DepositStatus(
             stage: stage,
-            received: stage >= .seen ? deposit.expected : nil,
+            received: stage >= .seen ? Self.demoReceived : nil,
             seenAt: stage >= .seen ? now.addingTimeInterval(-7) : nil,
             bridgingAt: stage >= .bridging ? now : nil,
             landedAt: stage >= .landed ? now : nil

@@ -16,6 +16,10 @@ final class VaultStore {
         balance = TokenAmount(baseUnits: balance.baseUnits + amount.baseUnits)
     }
 
+    func sync(_ live: VaultBalance) {
+        balance = live.available
+    }
+
     func debit(_ amount: TokenAmount) {
         balance = TokenAmount(baseUnits: max(0, balance.baseUnits - amount.baseUnits))
     }

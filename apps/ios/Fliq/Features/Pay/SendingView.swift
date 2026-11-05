@@ -72,11 +72,11 @@ struct SendingView: View {
     }
 
     private func outcome(for state: PayoutState) -> String? {
-        switch state {
+        switch state.stage {
         case .refunded: "The provider didn't pay out. Your money is back in your vault."
         case .refused: "The vault refused this payout. Nothing moved."
         case .notReceived: "The bank hasn't confirmed this yet. We're chasing it."
-        case .awaitingDeposit, .depositSeen, .payingOut, .settled: nil
+        default: nil
         }
     }
 }
@@ -87,12 +87,12 @@ private enum Step: CaseIterable {
     enum Progress { case done, active, waiting }
 
     func progress(for state: PayoutState) -> Progress {
-        let reached: Int = switch state {
+        let reached: Int = switch state.stage {
         case .awaitingDeposit: 0
         case .depositSeen: 1
         case .payingOut: 2
         case .settled: 3
-        case .refused, .refunded, .notReceived: 1
+        default: 1
         }
         let index = Self.allCases.firstIndex(of: self) ?? 0
         if index < reached { return .done }

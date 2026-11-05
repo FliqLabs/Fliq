@@ -1,20 +1,13 @@
 import Foundation
 import Observation
 
-struct Institution: Hashable, Sendable {
-    let code: String
-    let name: String
-
-    /// Only banks with a fixture behind them are listed until the spec has an institutions endpoint.
-    static let supported = [Institution(code: "058", name: "GTBank")]
-}
-
 /// A bank account being typed in and confirmed by the bank. Used by Pay and by onboarding.
 @MainActor
 @Observable
 final class AccountEntry {
     static let numberLength = 10
 
+    private(set) var institutions = Institution.supported
     var institution = Institution.supported[0]
     var number = "" {
         didSet { if number != oldValue { verified = nil } }
@@ -31,6 +24,12 @@ final class AccountEntry {
 
     var isComplete: Bool {
         number.count == Self.numberLength && number.allSatisfy(\.isNumber)
+    }
+
+    func loadInstitutions() async {
+        guard let listed = try? await api.institutions(), !listed.isEmpty else { return }
+        institutions = listed
+        if !listed.contains(institution), let first = listed.first { institution = first }
     }
 
     func verify() async {
