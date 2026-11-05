@@ -99,3 +99,63 @@ export function parseLimit(raw: unknown): number {
   if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw invalidRequest("limit must be a whole number from 1 to 100.");
   return limit;
 }
+
+export function parseTimezone(raw: unknown): string {
+  if (raw === undefined) return "UTC";
+  const valid =
+    typeof raw === "string" &&
+    (() => {
+      try {
+        new Intl.DateTimeFormat("en", { timeZone: raw });
+        return true;
+      } catch {
+        return false;
+      }
+    })();
+  if (!valid) throw invalidRequest("tz must be an IANA time zone such as Africa/Lagos.");
+  return raw as string;
+}
+
+interface CurrencyTotal {
+  currency: string;
+  amount: number;
+}
+
+const totals = (rows: { currency: string; amount: bigint }[]): CurrencyTotal[] =>
+  rows.map((row) => ({ currency: row.currency, amount: Number(row.amount) }));
+
+// Timestamps are stored in UTC. "Today" is the caller's calendar day in their own timezone, turned into a UTC range.
+export async function payoutStats(db: Db, workspaceId: string, timezone: string, now: Date) {
+  const known = await db.$queryRaw<unknown[]>`SELECT 1 FROM pg_timezone_names WHERE name = ${timezone}`;
+  if (known.length === 0) throw invalidRequest("tz is not a time zone this server knows.");
+
+  const [day] = await db.$queryRaw<{ start_at: Date; end_at: Date }[]>`
+    SELECT
+      date_trunc('day', ${now}::timestamptz AT TIME ZONE ${timezone}) AT TIME ZONE ${timezone} AS start_at,
+      (date_trunc('day', ${now}::timestamptz AT TIME ZONE ${timezone}) + interval '1 day') AT TIME ZONE ${timezone} AS end_at`;
+  const { start_at: start, end_at: end } = day as NonNullable<typeof day>;
+
+  const settled = await db.$queryRaw<{ currency: string; amount: bigint; count: bigint }[]>`
+    SELECT currency, floor(sum(local_amount))::bigint AS amount, count(*)::bigint AS count
+    FROM analytics.payouts
+    WHERE workspace_id = ${workspaceId} AND settled_at >= ${start} AND settled_at < ${end}
+    GROUP BY currency ORDER BY currency`;
+  const [median] = await db.$queryRaw<{ seconds: number | null }[]>`
+    SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY seconds_to_bank)::float8 AS seconds
+    FROM analytics.payouts
+    WHERE workspace_id = ${workspaceId} AND settled_at >= ${start} AND settled_at < ${end}`;
+  const refused = await db.$queryRaw<{ currency: string; amount: bigint; count: bigint }[]>`
+    SELECT currency, floor(sum(local_amount))::bigint AS amount, count(*)::bigint AS count
+    FROM analytics.payouts
+    WHERE workspace_id = ${workspaceId} AND is_refusal AND created_at >= ${start} AND created_at < ${end}
+    GROUP BY currency ORDER BY currency`;
+
+  const count = (rows: { count: bigint }[]) => rows.reduce((sum, row) => sum + Number(row.count), 0);
+  return {
+    timezone,
+    window: { start: start.toISOString(), end: end.toISOString() },
+    settled: { count: count(settled), totals: totals(settled) },
+    median_seconds_to_bank: median?.seconds ?? null,
+    refused: { count: count(refused), totals: totals(refused) },
+  };
+}

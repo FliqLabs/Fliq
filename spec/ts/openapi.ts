@@ -79,10 +79,31 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** List the workspace's payouts, newest first */
+        get: operations["listPayouts"];
         put?: never;
         /** Create a payout */
         post: operations["createPayout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/payouts/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Today's payout numbers for the dashboard cards
+         * @description Timestamps are stored in UTC. "Today" is the calendar day in the tz query parameter.
+         */
+        get: operations["getPayoutStats"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -98,6 +119,262 @@ export interface paths {
         };
         /** Get a payout and its receipt */
         get: operations["getPayout"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/passkeys/register/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start creating a passkey for a new user */
+        post: operations["startPasskeyRegistration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/passkeys/register/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Finish passkey registration and open a session */
+        post: operations["finishPasskeyRegistration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/passkeys/login/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start signing in with an existing passkey */
+        post: operations["startPasskeyLogin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/passkeys/login/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Finish passkey sign-in and open a session */
+        post: operations["finishPasskeyLogin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/email-links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Email a one-time sign-in link */
+        post: operations["sendEmailLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/email-links/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Exchange a sign-in link token for a session */
+        post: operations["verifyEmailLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rotate the refresh token and get a new access token */
+        post: operations["refreshSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke the current session */
+        post: operations["logout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The signed-in user */
+        get: operations["getMe"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Set the display name and what the user does */
+        patch: operations["updateMe"];
+        trace?: never;
+    };
+    "/names/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Is a fliq name free to claim */
+        get: operations["checkName"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/name": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Claim a fliq name and create the NEAR account and vault behind it */
+        post: operations["claimName"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workspaces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create a developer workspace and its first sandbox key */
+        post: operations["createWorkspace"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workspaces/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The signed-in user's workspace */
+        get: operations["getCurrentWorkspace"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** API keys of the workspace, masked */
+        get: operations["listKeys"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/onboarding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Progress through the dashboard's getting-started steps */
+        get: operations["getOnboarding"];
         put?: never;
         post?: never;
         delete?: never;
@@ -188,7 +465,7 @@ export interface components {
             account: components["schemas"]["Account"];
         };
         /** @enum {string} */
-        PayoutState: "awaiting_deposit" | "deposit_seen" | "paying_out" | "settled" | "refused" | "refunded" | "not_received";
+        PayoutState: "created" | "provider_timeout" | "awaiting_recon" | "awaiting_deposit" | "deposit_seen" | "routing" | "with_provider" | "paying_out" | "settled" | "refunding" | "refunded" | "expired" | "failed" | "refused" | "not_received";
         StateChange: {
             state: components["schemas"]["PayoutState"];
             /** Format: date-time */
@@ -232,6 +509,165 @@ export interface components {
         Error: {
             error: components["schemas"]["ErrorBody"];
         };
+        PasskeyOptions: {
+            /** @description Send back with the signed credential */
+            challenge_id: string;
+            /** @description WebAuthn PublicKeyCredentialCreationOptions or RequestOptions as JSON */
+            options: {
+                [key: string]: unknown;
+            };
+        };
+        PasskeyCredential: {
+            challenge_id: string;
+            /** @description WebAuthn attestation or assertion as JSON */
+            credential: {
+                [key: string]: unknown;
+            };
+        };
+        EmailLinkRequest: {
+            /** Format: email */
+            email: string;
+        };
+        EmailLinkSent: {
+            /** @enum {string} */
+            status: "sent";
+        };
+        EmailLinkToken: {
+            token: string;
+        };
+        RefreshRequest: {
+            refresh_token: string;
+        };
+        User: {
+            /** @description https URL of the profile photo the client uploaded to storage */
+            photo_url: string | null;
+            user_id: string;
+            /** @description The claimed name, for example frank.fliq.near. Null until a name is claimed. */
+            near_account: string | null;
+            display_name: string | null;
+            occupation: string | null;
+            /** @description Vault contract account holding the user's balance. Null until a name is claimed. */
+            vault: string | null;
+        };
+        Session: {
+            access_token: string;
+            /** @description Seconds until the access token expires */
+            expires_in: number;
+            refresh_token: string;
+            user: components["schemas"]["User"];
+        };
+        NameAvailability: {
+            /** @description Full name, for example frank.fliq.near */
+            name: string;
+            available: boolean;
+            /** @enum {string|null} */
+            reason: "taken" | "invalid" | "reserved" | null;
+        };
+        ClaimNameRequest: {
+            /** @description The label before .fliq.near */
+            name: string;
+        };
+        ProfileUpdate: {
+            /**
+             * Format: uri
+             * @description https URL of the uploaded photo, or null to remove it
+             */
+            photo_url?: string | null;
+            display_name?: string;
+            occupation?: string | null;
+        };
+        /** @enum {string} */
+        WorkspaceUseCase: "wallet" | "payroll" | "marketplace" | "agent" | "other";
+        /** @enum {string} */
+        PayoutCountry: "ng" | "ke" | "gh" | "id" | "ph";
+        WorkspaceRequest: {
+            name: string;
+            use_case: components["schemas"]["WorkspaceUseCase"];
+            countries: components["schemas"]["PayoutCountry"][];
+        };
+        Workspace: {
+            /** @description False until the business passes KYB */
+            live_enabled: boolean;
+            workspace_id: string;
+            name: string;
+            use_case: components["schemas"]["WorkspaceUseCase"];
+            countries: components["schemas"]["PayoutCountry"][];
+        };
+        SandboxKey: {
+            key_id: string;
+            /** @description Starts with rt_test_. Returned once and never again. */
+            key: string;
+        };
+        WorkspaceCreated: {
+            workspace: components["schemas"]["Workspace"];
+            sandbox_key: components["schemas"]["SandboxKey"];
+        };
+        ApiKeyView: {
+            key_id: string;
+            /** @enum {string} */
+            environment: "test" | "live";
+            /** @description First characters and last four, for example rt_test_7Kp2...c9Qe */
+            masked: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        KeyList: {
+            items: components["schemas"]["ApiKeyView"][];
+        };
+        OnboardingStep: {
+            /** @enum {string} */
+            id: "create_test_payout" | "add_webhook" | "go_live";
+            done: boolean;
+        };
+        Onboarding: {
+            steps: components["schemas"]["OnboardingStep"][];
+        };
+        Bank: {
+            code: string;
+            name: string;
+        };
+        PayoutSummary: {
+            payout_id: string;
+            state: components["schemas"]["PayoutState"];
+            account_name: string;
+            bank: components["schemas"]["Bank"];
+            account_last4: string;
+            /** @description Token amount as a decimal string */
+            amount: string;
+            /** @description Whole local currency units */
+            receive: number;
+            currency: string;
+            provider: components["schemas"]["ProviderId"];
+            /** Format: date-time */
+            created_at: string;
+        };
+        PayoutList: {
+            items: components["schemas"]["PayoutSummary"][];
+            next_cursor: string | null;
+        };
+        CurrencyTotal: {
+            currency: string;
+            /** @description Whole local currency units */
+            amount: number;
+        };
+        PayoutCount: {
+            count: number;
+            totals: components["schemas"]["CurrencyTotal"][];
+        };
+        PayoutStats: {
+            timezone: string;
+            /** @description The day being counted, as UTC instants */
+            window: {
+                /** Format: date-time */
+                start: string;
+                /** Format: date-time */
+                end: string;
+            };
+            settled: components["schemas"]["PayoutCount"];
+            /** @description Median seconds from deposit seen to the bank credit, for payouts settled today */
+            median_seconds_to_bank: number | null;
+            refused: components["schemas"]["PayoutCount"];
+        };
     };
     responses: {
         /** @description Error */
@@ -245,6 +681,7 @@ export interface components {
         };
     };
     parameters: {
+        IdempotencyKey: string;
         Token: "usdc" | "usdt";
         Currency: "ngn" | "kes";
     };
@@ -348,6 +785,31 @@ export interface operations {
             404: components["responses"]["Error"];
         };
     };
+    listPayouts: {
+        parameters: {
+            query?: {
+                limit?: number;
+                /** @description next_cursor from the previous page */
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of payouts. Empty for a new workspace. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayoutList"];
+                };
+            };
+            400: components["responses"]["Error"];
+        };
+    };
     createPayout: {
         parameters: {
             query?: never;
@@ -384,6 +846,30 @@ export interface operations {
             };
         };
     };
+    getPayoutStats: {
+        parameters: {
+            query?: {
+                /** @description IANA time zone of the person looking, for example Africa/Lagos. Defaults to UTC. */
+                tz?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Settled and refused payouts today, and the median time to the bank */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayoutStats"];
+                };
+            };
+            400: components["responses"]["Error"];
+        };
+    };
     getPayout: {
         parameters: {
             query?: never;
@@ -402,6 +888,375 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Payout"];
+                };
+            };
+            404: components["responses"]["Error"];
+        };
+    };
+    startPasskeyRegistration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description WebAuthn creation options and the challenge to sign */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasskeyOptions"];
+                };
+            };
+        };
+    };
+    finishPasskeyRegistration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasskeyCredential"];
+            };
+        };
+        responses: {
+            /** @description User created and signed in */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            400: components["responses"]["Error"];
+        };
+    };
+    startPasskeyLogin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description WebAuthn request options and the challenge to sign */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasskeyOptions"];
+                };
+            };
+        };
+    };
+    finishPasskeyLogin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasskeyCredential"];
+            };
+        };
+        responses: {
+            /** @description Signed in */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            401: components["responses"]["Error"];
+        };
+    };
+    sendEmailLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmailLinkRequest"];
+            };
+        };
+        responses: {
+            /** @description Accepted. The response is identical whether or not the email has an account. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailLinkSent"];
+                };
+            };
+            429: components["responses"]["Error"];
+        };
+    };
+    verifyEmailLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmailLinkToken"];
+            };
+        };
+        responses: {
+            /** @description Signed in */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            401: components["responses"]["Error"];
+        };
+    };
+    refreshSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RefreshRequest"];
+            };
+        };
+        responses: {
+            /** @description New tokens. Reusing an old refresh token revokes the whole session family. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            401: components["responses"]["Error"];
+        };
+    };
+    logout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session revoked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The user, with their fliq name once claimed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"];
+                };
+            };
+            401: components["responses"]["Error"];
+        };
+    };
+    updateMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfileUpdate"];
+            };
+        };
+        responses: {
+            /** @description Updated user */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"];
+                };
+            };
+            400: components["responses"]["Error"];
+        };
+    };
+    checkName: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The label before .fliq.near */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Availability of the name */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NameAvailability"];
+                };
+            };
+        };
+    };
+    claimName: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClaimNameRequest"];
+            };
+        };
+        responses: {
+            /** @description Name claimed */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"];
+                };
+            };
+            409: components["responses"]["Error"];
+        };
+    };
+    createWorkspace: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkspaceRequest"];
+            };
+        };
+        responses: {
+            /** @description Workspace created. The sandbox key is shown once. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceCreated"];
+                };
+            };
+            400: components["responses"]["Error"];
+        };
+    };
+    getCurrentWorkspace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The workspace */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Workspace"];
+                };
+            };
+            404: components["responses"]["Error"];
+        };
+    };
+    listKeys: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Active keys. The full key is only shown at creation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeyList"];
+                };
+            };
+            404: components["responses"]["Error"];
+        };
+    };
+    getOnboarding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Each step and whether it is done */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Onboarding"];
                 };
             };
             404: components["responses"]["Error"];

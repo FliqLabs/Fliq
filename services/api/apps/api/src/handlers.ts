@@ -6,7 +6,16 @@ import { finishLogin, finishRegistration, startLogin, startRegistration } from "
 import { revokeFamily, rotateSession, toUserView } from "./auth/sessions.js";
 import type { Config } from "./config.js";
 import type { Unit } from "./db.js";
-import { currentWorkspace, listKeys, listPayouts, onboardingProgress, parseLimit, workspaceView } from "./dashboard.js";
+import {
+  currentWorkspace,
+  listKeys,
+  listPayouts,
+  onboardingProgress,
+  parseLimit,
+  parseTimezone,
+  payoutStats,
+  workspaceView,
+} from "./dashboard.js";
 import { requireHttpsUrl, settle } from "./errors.js";
 import { withIdempotency } from "./idempotency.js";
 import { createWorkspace } from "./workspaces.js";
@@ -16,12 +25,13 @@ export interface HandlerDeps {
   unit: Unit;
   email: EmailSender;
   provisioner: NearProvisioner;
+  now?: () => Date;
 }
 
 const body = <T>(request: FastifyRequest) => request.body as T;
 const auth = (request: FastifyRequest) => request.auth as NonNullable<FastifyRequest["auth"]>;
 
-export function createHandlers({ config, unit, email, provisioner }: HandlerDeps): Record<string, Handler> {
+export function createHandlers({ config, unit, email, provisioner, now = () => new Date() }: HandlerDeps): Record<string, Handler> {
   return {
     getHealth: async () => ({ status: 200, body: { status: "ok", version: "0.1.0" } }),
 
@@ -99,6 +109,14 @@ export function createHandlers({ config, unit, email, provisioner }: HandlerDeps
       return {
         status: 200,
         body: await unit(async (tx) => listPayouts(tx, config, (await currentWorkspace(tx, auth(request).userId)).id, limit, cursor)),
+      };
+    },
+
+    getPayoutStats: async (request) => {
+      const timezone = parseTimezone((request.query as { tz?: string }).tz);
+      return {
+        status: 200,
+        body: await unit(async (tx) => payoutStats(tx, (await currentWorkspace(tx, auth(request).userId)).id, timezone, now())),
       };
     },
 
