@@ -1,5 +1,6 @@
 import { createBitnobAdapter } from "./bitnob/bitnob";
 import { createBushaAdapter } from "./busha/busha";
+import { createFonbnkAdapter } from "./fonbnk/fonbnk";
 import { createPaycrestAdapter } from "./paycrest/paycrest";
 import type { AdapterDeps, ProviderAdapter } from "./types";
 
@@ -75,6 +76,34 @@ export function enabledAdapters(env: Env, deps: AdapterDeps): ProviderAdapter[] 
         secretKey: busha("BUSHA_SECRET_KEY"),
         environment: environment("Busha", busha("BUSHA_ENVIRONMENT")),
         webhookSecrets: webhookSecrets(env, "BUSHA"),
+        deps,
+      }),
+    );
+  }
+
+  const fonbnk = section(
+    env,
+    "Fonbnk",
+    [
+      "FONBNK_CLIENT_ID",
+      "FONBNK_SIGNATURE_SECRET",
+      "FONBNK_ENVIRONMENT",
+      "FONBNK_WEBHOOK_SECRET",
+      "FONBNK_USER_EMAIL",
+      "FONBNK_USER_IP",
+    ],
+    ["FONBNK_WEBHOOK_URL"],
+  );
+  if (fonbnk) {
+    const webhookUrl = fonbnk("FONBNK_WEBHOOK_URL");
+    adapters.push(
+      createFonbnkAdapter({
+        clientId: fonbnk("FONBNK_CLIENT_ID"),
+        signatureSecret: fonbnk("FONBNK_SIGNATURE_SECRET"),
+        environment: environment("Fonbnk", fonbnk("FONBNK_ENVIRONMENT")),
+        webhookSecrets: webhookSecrets(env, "FONBNK"),
+        endUser: { email: fonbnk("FONBNK_USER_EMAIL"), ip: fonbnk("FONBNK_USER_IP") },
+        ...(webhookUrl ? { webhookUrl } : {}),
         deps,
       }),
     );
