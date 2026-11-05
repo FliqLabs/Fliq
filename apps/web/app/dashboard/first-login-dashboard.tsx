@@ -3,8 +3,9 @@
 import Image from "next/image";
 import { useState } from "react";
 import fliqMark from "../image/fliq image.png";
+import type { Onboarding } from "../lib/fliq-api";
 
-type Props = { onCreatePayout: () => void };
+type Props = { onCreatePayout: () => void; onboarding?: Onboarding };
 type ExampleLanguage = "curl" | "TypeScript";
 
 const examples: Record<ExampleLanguage, string> = {
@@ -26,7 +27,7 @@ const examples: Record<ExampleLanguage, string> = {
 });`,
 };
 
-export function FirstLoginDashboard({ onCreatePayout }: Props) {
+export function FirstLoginDashboard({ onCreatePayout, onboarding }: Props) {
   const [showSteps, setShowSteps] = useState(true);
   const [language, setLanguage] = useState<ExampleLanguage>("curl");
   const [copied, setCopied] = useState(false);
@@ -48,18 +49,33 @@ export function FirstLoginDashboard({ onCreatePayout }: Props) {
           className="grid grid-cols-1 md:grid-cols-[30%_30%_30%_5%] items-center gap-4 rounded-xl border border-zinc-200 px-4 py-3 text-xs"
         >
           <div className="flex items-center justify-between">
-            <Step number={1} title="Create a test payout" description="Start in your sandbox" active />
+            <Step
+              number={1}
+              title="Create a test payout"
+              description="Start in your sandbox"
+              active
+              done={onboarding?.steps.find((step) => step.id === "create_test_payout")?.done}
+            />
             <span aria-hidden="true" className="hidden h-px max-w-6 flex-1 bg-zinc-200 md:block" />
           </div>
 
-
           <div className="flex items-center justify-between">
-            <Step number={2} title="Add a webhook endpoint" description="Receive payout events" />
+            <Step
+              number={2}
+              title="Add a webhook endpoint"
+              description="Receive payout events"
+              done={onboarding?.steps.find((step) => step.id === "add_webhook")?.done}
+            />
             <span aria-hidden="true" className="hidden h-px max-w-6 flex-1 bg-zinc-200 md:block" />
           </div>
 
           <div className="flex items-center justify-between">
-            <Step number={3} title="Go live after KYB" description="Enable live payouts" />
+            <Step
+              number={3}
+              title="Go live after KYB"
+              description="Enable live payouts"
+              done={onboarding?.steps.find((step) => step.id === "go_live")?.done}
+            />
           </div>
 
           <button
@@ -203,18 +219,20 @@ function Step({
   title,
   description,
   active = false,
+  done = false,
 }: {
   number: number;
   title: string;
   description: string;
   active?: boolean;
+  done?: boolean;
 }) {
   return (
     <div className="flex min-w-40 items-center gap-2">
       <span
         className={`grid size-6 shrink-0 place-items-center rounded-full text-[11px] ${active ? "bg-zinc-950 text-white" : "border border-zinc-200 text-zinc-500"}`}
       >
-        {number}
+        {done ? "✓" : number}
       </span>
       <span>
         <span className={`block font-semibold ${active ? "text-zinc-950" : "text-zinc-500"}`}>{title}</span>

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRef, useState } from "react";
 import { CreateTestPayoutDrawer } from "./create-test-payout-drawer";
 import { FirstLoginDashboard } from "./first-login-dashboard";
+import type { Onboarding } from "../lib/fliq-api";
 
 export type PayoutRow = {
   id: string;
@@ -17,18 +18,22 @@ export type PayoutRow = {
 };
 
 export type DashboardSummary = {
-  settledToday: number;
-  medianSecondsToBank: number;
-  refusedByVaultCaps: number;
-  bestRate: number;
+  settledToday: number | null;
+  medianSecondsToBank: number | null;
+  refusedByVaultCaps: number | null;
+  bestRate: number | null;
 };
 
 type Props = {
   payouts: PayoutRow[];
   summary: DashboardSummary;
+  onboarding?: Onboarding;
+  hasMore?: boolean;
+  loadingMore?: boolean;
+  onLoadMore?: () => void;
 };
 
-export function PayoutsDashboard({ payouts, summary }: Props) {
+export function PayoutsDashboard({ payouts, summary, onboarding, hasMore, loadingMore, onLoadMore }: Props) {
   const [search, setSearch] = useState("");
   const drawerRef = useRef<HTMLDialogElement>(null);
   const visiblePayouts = payouts.filter((payout) =>
@@ -44,7 +49,7 @@ export function PayoutsDashboard({ payouts, summary }: Props) {
   if (payouts.length === 0) {
     return (
       <main>
-        <FirstLoginDashboard onCreatePayout={openCreatePayout} />
+        <FirstLoginDashboard onCreatePayout={openCreatePayout} onboarding={onboarding} />
         <CreateTestPayoutDrawer dialogRef={drawerRef} />
       </main>
     );
@@ -82,11 +87,18 @@ export function PayoutsDashboard({ payouts, summary }: Props) {
       </div>
 
       <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <SummaryCard label="Settled today" value={String(summary.settledToday)} />
-        <SummaryCard label="Median time to bank" value={`${summary.medianSecondsToBank}s`} />
-        <SummaryCard label="Refused by vault caps" value={String(summary.refusedByVaultCaps)} />
-        <SummaryCard label="Best rate now" value={`₦${summary.bestRate.toFixed(2)}`} />
+        <SummaryCard label="Settled today" value={summary.settledToday?.toString() ?? "—"} />
+        <SummaryCard
+          label="Median time to bank"
+          value={summary.medianSecondsToBank === null ? "—" : `${summary.medianSecondsToBank}s`}
+        />
+        <SummaryCard label="Refused by vault caps" value={summary.refusedByVaultCaps?.toString() ?? "—"} />
+        <SummaryCard
+          label="Best rate now"
+          value={summary.bestRate === null ? "—" : `₦${summary.bestRate.toFixed(2)}`}
+        />
       </div>
+      <p className="mt-2 text-xs text-zinc-500">Summary metrics are not available yet.</p>
 
       <section aria-label="Payouts list" className="mt-4 overflow-hidden rounded-xl border border-zinc-200">
         <div className="hidden grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr] gap-4 border-b border-zinc-200 px-4 py-3 text-[11px] font-semibold uppercase text-zinc-500 md:grid">
@@ -134,6 +146,16 @@ export function PayoutsDashboard({ payouts, summary }: Props) {
           </div>
         )}
       </section>
+      {hasMore && onLoadMore && (
+        <button
+          type="button"
+          disabled={loadingMore}
+          onClick={onLoadMore}
+          className="mt-4 rounded-lg border border-zinc-200 px-4 py-2.5 text-sm font-semibold disabled:opacity-50"
+        >
+          {loadingMore ? "Loading…" : "Load more payouts"}
+        </button>
+      )}
       <CreateTestPayoutDrawer dialogRef={drawerRef} />
     </main>
   );
