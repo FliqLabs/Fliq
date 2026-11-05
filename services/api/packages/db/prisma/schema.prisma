@@ -136,6 +136,8 @@ model Payout {
   currency        String      @db.Text
   rate            Decimal     @db.Decimal(24, 10)
   retryOfId       String?     @map("retry_of_id") @db.Text
+  // Why a payout ended in failed. Reasons starting with vault_ are refusals by the vault caps.
+  failureReason   String?     @map("failure_reason") @db.Text
   createdAt       DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime    @default(now()) @map("updated_at") @db.Timestamptz(6)
   quote           Quote       @relation(fields: [quoteId], references: [id])
