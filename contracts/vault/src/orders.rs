@@ -1,11 +1,11 @@
+use crate::Contract;
 use crate::integration;
 use crate::receipts::FliqEvent;
 use crate::types::{
-    now, Amount, PayoutCaller, PayoutOrder, Receipt, Timestamp, TransferState, BACKEND_STATUSES,
+    Amount, BACKEND_STATUSES, PayoutCaller, PayoutOrder, Receipt, Timestamp, TransferState, now,
 };
-use crate::Contract;
 use near_sdk::json_types::U128;
-use near_sdk::{env, require, AccountId, Gas, NearToken, Promise};
+use near_sdk::{AccountId, Gas, NearToken, Promise, env, require};
 
 pub const MAX_ORDER_ID_LENGTH: usize = 64;
 pub const MAX_CORRIDOR_LENGTH: usize = 32;

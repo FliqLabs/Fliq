@@ -6,7 +6,7 @@ Branch: `sQuiDbOb-Orders-and-Payouts`
 
 | Method or area | File | What it does | Test evidence |
 | --- | --- | --- | --- |
-| `new` | `contracts/vault/src/lib.rs` | Stores owner, registration account, approved USDC token, and 24-hour expiry limit. | Configuration tests in `tests/contract.rs`. |
+| `new` | `contracts/vault/src/lib.rs` | Stores owner, registration account, approved USDC token, and 24-hour expiry limit; only the vault account itself may call it, and it can run only once. | Configuration and initialization authorization tests in `tests/contract.rs`. |
 | `set_registration_account` | `lib.rs` | Lets only the owner rotate the registration account. | Owner and non-owner tests. |
 | `get_config` | `lib.rs` | Read-only configuration view. | Used by configuration tests. |
 | `register_order` | `lib.rs`, `orders.rs` | Authorizes the registration account, validates fields and expiry, stores an immutable order, and emits `order_registered`. It does not reserve funds. | Registration, duplicate, field, expiry, authorization, and event tests. |
@@ -20,6 +20,8 @@ Branch: `sQuiDbOb-Orders-and-Payouts`
 | Integration boundary | `integration.rs` | Expects seven small functions so Dapper and Aria can replace only this layer. | Temporary-ledger and payout tests. |
 
 Current vault result: 37 tests passed, 0 failed with `--features testing`; the default `make test-contract` run passes 26 tests. The near-workspaces smoke test is present but ignored by default. The standalone mock USDC crate builds and its test target has 0 tests and 0 failures.
+
+The deploy workflow intentionally uses `without-init-call`. After deployment, initialize by sending `new(owner, registration_account, approved_usdc_token_contract)` from the vault account itself. The initializer is private and rejects calls from any other predecessor; initialization cannot be repeated.
 
 The latest `origin/Contract` branch was fetched and was already an ancestor; the merge was up to date and had no conflicts. There are currently no real `vault.rs` or `policies.rs` files in this checkout.
 

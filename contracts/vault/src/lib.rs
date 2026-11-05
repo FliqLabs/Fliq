@@ -7,12 +7,12 @@ mod temp_policies;
 mod temp_vault;
 
 use near_sdk::collections::LookupMap;
-use near_sdk::{env, near, require, AccountId, Promise};
+use near_sdk::{AccountId, Promise, env, near, require};
 
 use crate::orders::{set_status as apply_status, validate_deposit_address, validate_order};
 use crate::receipts::FliqEvent;
 use crate::types::{
-    now, Amount, Config, PayoutOrder, Receipt, StorageKey, TransferState, DEFAULT_MAX_EXPIRY,
+    Amount, Config, DEFAULT_MAX_EXPIRY, PayoutOrder, Receipt, StorageKey, TransferState, now,
 };
 
 #[near(contract_state)]
@@ -31,6 +31,7 @@ impl Default for Contract {
 #[near]
 impl Contract {
     #[init]
+    #[private]
     /// The deployer supplies the immutable owner and approved USDC token contract.
     /// Only the owner may later change `registration_account`; owner and token contract
     /// cannot be changed after initialization. A provider allowlist is intentionally absent;
@@ -40,6 +41,14 @@ impl Contract {
         registration_account: AccountId,
         approved_usdc_token_contract: AccountId,
     ) -> Self {
+        require!(
+            env::predecessor_account_id() == env::current_account_id(),
+            "initialization may only be called by the vault account"
+        );
+        require!(
+            env::state_read::<Self>().is_none(),
+            "contract is already initialized"
+        );
         Self {
             config: Config {
                 owner,

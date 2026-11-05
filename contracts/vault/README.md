@@ -17,7 +17,9 @@ Rules:
 - Changes to balances, permissions or outgoing transfers need two contract owners to approve.
 - Fixed integer token amounts only. No `unwrap()` or `expect()` on caller-reachable paths.
 - Tests read the canonical payout from `spec/fixtures/quote.usdc-ngn-50.json`.
-- Deploys to testnet run through the `Deploy contract` workflow, approved by sQuiDbOb. No deployer keys in the repository.
+- Deploys to testnet run through the `Deploy contract` workflow, approved by sQuiDbOb. The workflow deploys without an init call; after deployment, the vault account itself must call `new(owner, registration_account, approved_usdc_token_contract)` as the predecessor. No deployer keys in the repository.
+
+Initialization is deliberately self-authorized. The `new` call must be signed and sent by the deployed vault account, with the vault account as the transaction predecessor; an external deployer or any other account cannot initialize it. The initialization arguments are the immutable owner, registration account, and approved USDC token contract.
 
 ```
 make test-contract

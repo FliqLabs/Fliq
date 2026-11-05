@@ -1,21 +1,25 @@
+use fliq_vault::Contract;
 use fliq_vault::orders::{
     order_amount, order_exists, order_payer, order_transfer_state, transition,
     validate_deposit_address, validate_order,
 };
 use fliq_vault::types::{PayoutOrder, TransferState};
-use fliq_vault::Contract;
-use near_sdk::test_utils::{accounts, VMContextBuilder};
+use near_sdk::env;
+use near_sdk::test_utils::{VMContextBuilder, accounts};
+use near_sdk::{AccountId, testing_env};
 #[cfg(feature = "testing")]
-use near_sdk::{test_vm_config, PromiseResult, RuntimeFeesConfig};
-use near_sdk::{testing_env, AccountId};
+use near_sdk::{PromiseResult, RuntimeFeesConfig, test_vm_config};
 
 const NOW: u64 = 1_000_000_000;
 
 fn set_caller(account: AccountId, timestamp: u64) {
-    testing_env!(VMContextBuilder::new()
-        .predecessor_account_id(account)
-        .block_timestamp(timestamp)
-        .build());
+    testing_env!(
+        VMContextBuilder::new()
+            .current_account_id(accounts(0))
+            .predecessor_account_id(account)
+            .block_timestamp(timestamp)
+            .build()
+    );
 }
 
 #[cfg(feature = "testing")]
@@ -30,7 +34,40 @@ fn set_promise_result(context: near_sdk::VMContext, result: PromiseResult) {
 }
 
 fn contract() -> Contract {
+    set_caller(accounts(0), NOW);
     Contract::new(accounts(0), accounts(1), accounts(2))
+}
+
+#[test]
+fn contract_account_can_initialize_contract() {
+    set_caller(accounts(0), NOW);
+    let contract = Contract::new(accounts(0), accounts(1), accounts(2));
+
+    assert_eq!(contract.get_config().owner, accounts(0));
+}
+
+#[test]
+fn initialization_cannot_run_twice() {
+    set_caller(accounts(0), NOW);
+    let contract = Contract::new(accounts(0), accounts(1), accounts(2));
+    env::state_write(&contract);
+
+    let result = std::panic::catch_unwind(|| {
+        Contract::new(accounts(0), accounts(1), accounts(2));
+    });
+
+    assert!(result.is_err());
+}
+
+#[test]
+fn different_predecessor_cannot_initialize_contract() {
+    set_caller(accounts(3), NOW);
+
+    let result = std::panic::catch_unwind(|| {
+        Contract::new(accounts(0), accounts(1), accounts(2));
+    });
+
+    assert!(result.is_err());
 }
 
 fn register_status_order(contract: &mut Contract) {
@@ -259,17 +296,19 @@ fn registered_order_fields_cannot_be_changed() {
     );
     let receipt_before = contract.get_receipt("order-1".to_string());
     assert_eq!(receipt_before.transfer_state, TransferState::Registered);
-    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        contract.register_order(
-            "order-1".to_string(),
-            accounts(5),
-            accounts(6),
-            20,
-            NOW + 7_200_000_000_000,
-            "USDC-KES".to_string(),
-        );
-    }))
-    .is_err());
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            contract.register_order(
+                "order-1".to_string(),
+                accounts(5),
+                accounts(6),
+                20,
+                NOW + 7_200_000_000_000,
+                "USDC-KES".to_string(),
+            );
+        }))
+        .is_err()
+    );
     let receipt_after = contract.get_receipt("order-1".to_string());
     assert_eq!(receipt_after, receipt_before);
 }
@@ -277,10 +316,12 @@ fn registered_order_fields_cannot_be_changed() {
 #[test]
 fn unknown_receipt_fails_clearly() {
     let contract = contract();
-    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        contract.get_receipt("missing".to_string());
-    }))
-    .is_err());
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            contract.get_receipt("missing".to_string());
+        }))
+        .is_err()
+    );
 }
 
 #[test]
@@ -296,9 +337,10 @@ fn registration_event_contains_order_fields() {
         "USDC-NGN".to_string(),
     );
     let logs = near_sdk::test_utils::get_logs();
-    assert!(logs
-        .iter()
-        .any(|log| log.contains("order-1") && log.contains("USDC-NGN") && log.contains("10")));
+    assert!(
+        logs.iter()
+            .any(|log| log.contains("order-1") && log.contains("USDC-NGN") && log.contains("10"))
+    );
 }
 
 #[test]
@@ -306,37 +348,43 @@ fn status_rejects_non_registration_caller() {
     let mut contract = contract();
     register_status_order(&mut contract);
     set_caller(accounts(5), NOW);
-    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        contract.set_status(
-            "order-1".to_string(),
-            "routing".to_string(),
-            "ref-1".to_string(),
-        );
-    }))
-    .is_err());
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            contract.set_status(
+                "order-1".to_string(),
+                "routing".to_string(),
+                "ref-1".to_string(),
+            );
+        }))
+        .is_err()
+    );
 }
 
 #[test]
 fn status_rejects_unknown_order_and_status() {
     let mut contract = contract();
     set_caller(accounts(1), NOW);
-    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        contract.set_status(
-            "missing".to_string(),
-            "routing".to_string(),
-            "ref-1".to_string(),
-        );
-    }))
-    .is_err());
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            contract.set_status(
+                "missing".to_string(),
+                "routing".to_string(),
+                "ref-1".to_string(),
+            );
+        }))
+        .is_err()
+    );
     register_status_order(&mut contract);
-    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        contract.set_status(
-            "order-1".to_string(),
-            "not_a_status".to_string(),
-            "ref-1".to_string(),
-        );
-    }))
-    .is_err());
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            contract.set_status(
+                "order-1".to_string(),
+                "not_a_status".to_string(),
+                "ref-1".to_string(),
+            );
+        }))
+        .is_err()
+    );
 }
 
 #[test]
@@ -368,14 +416,16 @@ fn earlier_status_is_rejected() {
         "routing".to_string(),
         "ref-1".to_string(),
     );
-    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        contract.set_status(
-            "order-1".to_string(),
-            "deposit_seen".to_string(),
-            "ref-2".to_string(),
-        );
-    }))
-    .is_err());
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            contract.set_status(
+                "order-1".to_string(),
+                "deposit_seen".to_string(),
+                "ref-2".to_string(),
+            );
+        }))
+        .is_err()
+    );
 }
 
 #[test]
@@ -384,14 +434,16 @@ fn paying_out_and_settled_require_dispatched_transfer_state() {
     register_status_order(&mut contract);
     set_caller(accounts(1), NOW);
     for status in ["paying_out", "settled"] {
-        assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            contract.set_status(
-                "order-1".to_string(),
-                status.to_string(),
-                "ref-1".to_string(),
-            );
-        }))
-        .is_err());
+        assert!(
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                contract.set_status(
+                    "order-1".to_string(),
+                    status.to_string(),
+                    "ref-1".to_string(),
+                );
+            }))
+            .is_err()
+        );
     }
 }
 
@@ -480,10 +532,12 @@ fn two_orders_cannot_reserve_more_than_the_balance() {
     register_named_order(&mut contract, "order-2", accounts(3), 6);
     set_caller(accounts(3), NOW);
     let _first = contract.payout("order-1".to_string());
-    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let _ = contract.payout("order-2".to_string());
-    }))
-    .is_err());
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = contract.payout("order-2".to_string());
+        }))
+        .is_err()
+    );
     let balance = contract.get_balance(accounts(3));
     assert_eq!(balance.available, "4");
     assert_eq!(balance.reserved, "6");
@@ -521,10 +575,12 @@ fn amount_edges_and_overflow_are_safe() {
 
     let mut max_contract = contract();
     max_contract.credit_for_testing(accounts(3), u128::MAX);
-    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        max_contract.credit_for_testing(accounts(3), 1);
-    }))
-    .is_err());
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            max_contract.credit_for_testing(accounts(3), 1);
+        }))
+        .is_err()
+    );
     register_named_order(&mut max_contract, "max-unit", accounts(3), u128::MAX);
     set_caller(accounts(3), NOW);
     let _promise = max_contract.payout("max-unit".to_string());
@@ -719,10 +775,12 @@ fn second_payout_and_same_block_duplicate_fail() {
     register_payout_order(&mut contract, 10, NOW + 3_600_000_000_000);
     set_caller(accounts(3), NOW);
     let _promise = contract.payout("order-1".to_string());
-    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let _ = contract.payout("order-1".to_string());
-    }))
-    .is_err());
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = contract.payout("order-1".to_string());
+        }))
+        .is_err()
+    );
     set_promise_result(
         VMContextBuilder::new()
             .current_account_id(accounts(0))
@@ -745,16 +803,20 @@ fn expired_order_and_wrong_caller_leave_balance_unchanged() {
     contract.credit_for_testing(accounts(3), 100);
     register_payout_order(&mut contract, 10, NOW + 1);
     set_caller(accounts(5), NOW);
-    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let _ = contract.payout("order-1".to_string());
-    }))
-    .is_err());
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = contract.payout("order-1".to_string());
+        }))
+        .is_err()
+    );
     assert_eq!(contract.get_balance(accounts(3)).available, "100");
     set_caller(accounts(3), NOW + 1);
-    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let _ = contract.payout("order-1".to_string());
-    }))
-    .is_err());
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = contract.payout("order-1".to_string());
+        }))
+        .is_err()
+    );
     assert_eq!(contract.get_balance(accounts(3)).available, "100");
 }
 
@@ -765,10 +827,12 @@ fn insufficient_balance_leaves_available_funds_unchanged() {
     contract.credit_for_testing(accounts(3), 9);
     register_payout_order(&mut contract, 10, NOW + 3_600_000_000_000);
     set_caller(accounts(3), NOW);
-    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let _ = contract.payout("order-1".to_string());
-    }))
-    .is_err());
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = contract.payout("order-1".to_string());
+        }))
+        .is_err()
+    );
     let balance = contract.get_balance(accounts(3));
     assert_eq!(balance.available, "9");
     assert_eq!(balance.reserved, "0");
@@ -814,10 +878,12 @@ fn outsider_callback_and_stale_callback_change_nothing() {
             .build(),
         PromiseResult::Successful(vec![]),
     );
-    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        contract.on_payout_complete("order-1".to_string());
-    }))
-    .is_err());
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            contract.on_payout_complete("order-1".to_string());
+        }))
+        .is_err()
+    );
     assert_eq!(contract.get_balance(accounts(3)).available, "100");
     set_caller(accounts(3), NOW);
     let _promise = contract.payout("order-1".to_string());

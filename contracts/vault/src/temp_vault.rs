@@ -1,6 +1,6 @@
 use crate::types::BalanceView;
-use near_sdk::borsh::{from_slice, to_vec, BorshDeserialize, BorshSerialize};
-use near_sdk::{env, AccountId};
+use near_sdk::borsh::{BorshDeserialize, BorshSerialize, from_slice, to_vec};
+use near_sdk::{AccountId, env};
 
 #[derive(BorshDeserialize, BorshSerialize)]
 struct Reservation {

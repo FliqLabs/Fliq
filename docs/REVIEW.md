@@ -6,7 +6,7 @@ Scope: `lib.rs`, `orders.rs`, `types.rs`, `receipts.rs`, `integration.rs`, and t
 
 | Method | Who can call | State changed | Failure and balance effect |
 | --- | --- | --- | --- |
-| `new` | Deploying account during initialization | Writes owner, registration account, token contract, empty order/receipt maps | Initialization has no balance effect; invalid account arguments fail before initialization. |
+| `new` | Vault account only during initialization | Writes owner, registration account, token contract, empty order/receipt maps | Calls from another predecessor and repeated initialization fail before state is changed. |
 | `set_registration_account` | Owner only | Changes the registration account | Authorization failure changes nothing; no balance effect. |
 | `get_config` | Anyone | None | Read-only. |
 | `register_order` | Registration account only | Adds one immutable order and its initial receipt; emits `order_registered` | Validation, authorization, duplicate, or storage failure aborts the transaction; no reservation or balance movement occurs. |
@@ -25,6 +25,7 @@ Scope: `lib.rs`, `orders.rs`, `types.rs`, `receipts.rs`, `integration.rs`, and t
 - Confirmed that state changes happen before the transfer promise and that callback success/failure paths are single-use through transfer-state and reservation checks.
 - Confirmed that backend status updates cannot move funds or alter the verified transfer state.
 - Confirmed that the testing credit method is gated by both the `testing` feature and debug assertions.
+- Fixed initializer takeover risk by marking `Contract::new` private; deployment now requires a one-time `new` call made by the vault account itself.
 
 ## Residual risks
 
