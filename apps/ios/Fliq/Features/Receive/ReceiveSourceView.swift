@@ -47,23 +47,18 @@ struct ReceiveSourceView: View {
     }
 
     private var header: some View {
-        HStack {
-            Button { dismiss() } label: {
-                Image(systemName: "chevron.left").font(.system(size: 18, weight: .medium))
-                    .frame(width: 32, height: 32, alignment: .leading)
+        Text("Receive from")
+            .font(.system(size: 17, weight: .semibold))
+            .frame(maxWidth: .infinity)
+            .overlay(alignment: .trailing) {
+                Button { dismiss() } label: {
+                    Image(systemName: "xmark").font(.system(size: 17, weight: .medium))
+                        .frame(width: 44, height: 44, alignment: .trailing)
+                }
+                .accessibilityLabel("Close")
             }
-            .accessibilityLabel("Back")
-            Spacer()
-            Text("Receive from").font(.system(size: 17, weight: .semibold))
-            Spacer()
-            Button { dismiss() } label: {
-                Image(systemName: "xmark").font(.system(size: 17, weight: .medium))
-                    .frame(width: 32, height: 32, alignment: .trailing)
-            }
-            .accessibilityLabel("Close")
-        }
-        .foregroundStyle(Theme.textPrimary)
-        .frame(height: 32)
+            .foregroundStyle(Theme.textPrimary)
+            .frame(height: 32)
     }
 
     private var groups: [DepositSource.Group] {
