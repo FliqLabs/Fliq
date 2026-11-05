@@ -76,3 +76,37 @@ Output contains query results; database errors show only their exception type an
 
 - `psycopg` 3.3.6, already installed in the environment above: `RawCursor` binds the SQL files'
   numbered PostgreSQL parameters directly, without rewriting queries or interpolating values.
+
+## Provider delivery-time chart
+
+From the repository root:
+
+```sh
+~/projects/cashout-router-analytics/.venv/bin/python -B analytics/export_provider_chart.py \
+  --workspace-id ws_2b7e41c0 \
+  --start-date 2026-11-03 --end-date-exclusive 2026-11-06 \
+  --timezone Africa/Lagos --data-label test \
+  --output analytics/exports/provider-delivery-time.svg
+```
+
+All flags are required. Replace the workspace with your selected workspace. Choose `test` or `live`
+explicitly based on the source data; the exporter never infers the label from workspace names.
+Test exports visibly say **TEST DATA — not real payout performance**. Dates are local settlement
+dates, with an inclusive start and exclusive end, converted by the existing `provider_medians.sql`.
+
+The runner prompts privately for `DATABASE_URL` and uses the checker's read-only transaction,
+10-second connection timeout, 15-second statement timeout, and native numbered parameter binding.
+Credentials are never printed or saved; errors show only exception type and SQLSTATE.
+Exports are standalone SVGs in the ignored `analytics/exports/` directory; existing files are never
+overwritten. Rendering uses the Python standard library and adds no dependencies.
+
+Bars start at zero and show median seconds from **deposit_seen to settled**, with sample counts
+for non-null durations. Empty results have no bars; null medians say “Median unavailable” rather
+than zero. Provider medians alone do not establish provider quality or comparable routes; these
+aggregates do not control for route, corridor, currency, or sample composition.
+
+Run only the chart rendering tests (no database required):
+
+```sh
+python3 -B -m unittest discover -s analytics/tests -p test_provider_chart.py -v
+```
