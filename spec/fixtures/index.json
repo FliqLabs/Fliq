@@ -17,5 +17,6 @@
   "keys.first-login.json": "KeyList",
   "onboarding.first-login.json": "Onboarding",
   "payouts.empty.json": "PayoutList",
-  "payouts.list.json": "PayoutList"
+  "payouts.list.json": "PayoutList",
+  "payouts.stats.json": "PayoutStats"
 }
