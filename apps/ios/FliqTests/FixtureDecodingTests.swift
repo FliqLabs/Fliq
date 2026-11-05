@@ -28,6 +28,7 @@ final class FixtureDecodingTests: XCTestCase {
             "KeyList": decode(KeyList.self),
             "Onboarding": decode(OnboardingChecklist.self),
             "PayoutList": decode(PayoutList.self),
+            "PayoutStats": decode(PayoutStats.self),
         ]
     }()
 

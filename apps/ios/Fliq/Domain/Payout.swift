@@ -91,3 +91,27 @@ struct PayoutList: Codable, Sendable, Equatable {
     let items: [PayoutSummary]
     let nextCursor: String?
 }
+
+/// Today's numbers from `GET /payouts/stats`, counted in the workspace's time zone.
+struct PayoutStats: Codable, Sendable, Equatable {
+    struct Window: Codable, Sendable, Equatable {
+        let start: Date
+        let end: Date
+    }
+
+    struct Count: Codable, Sendable, Equatable {
+        struct Total: Codable, Sendable, Equatable {
+            let currency: Currency
+            let amount: Int
+        }
+
+        let count: Int
+        let totals: [Total]
+    }
+
+    let timezone: String
+    let window: Window
+    let settled: Count
+    let medianSecondsToBank: Double?
+    let refused: Count
+}
