@@ -1,5 +1,6 @@
 export type ErrorCode =
   | "invalid_request"
+  | "no_route"
   | "unauthorized"
   | "not_found"
   | "conflict"

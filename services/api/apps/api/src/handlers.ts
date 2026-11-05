@@ -18,6 +18,7 @@ import {
 } from "./dashboard.js";
 import { requireHttpsUrl, settle } from "./errors.js";
 import { withIdempotency } from "./idempotency.js";
+import { requestQuote, type QuoteDeps, type QuoteInput } from "./quotes.js";
 import { createWorkspace } from "./workspaces.js";
 
 export interface HandlerDeps {
@@ -25,13 +26,14 @@ export interface HandlerDeps {
   unit: Unit;
   email: EmailSender;
   provisioner: NearProvisioner;
+  quotes: QuoteDeps;
   now?: () => Date;
 }
 
 const body = <T>(request: FastifyRequest) => request.body as T;
 const auth = (request: FastifyRequest) => request.auth as NonNullable<FastifyRequest["auth"]>;
 
-export function createHandlers({ config, unit, email, provisioner, now = () => new Date() }: HandlerDeps): Record<string, Handler> {
+export function createHandlers({ config, unit, email, provisioner, quotes, now = () => new Date() }: HandlerDeps): Record<string, Handler> {
   return {
     getHealth: async () => ({ status: 200, body: { status: "ok", version: "0.1.0" } }),
 
@@ -111,6 +113,11 @@ export function createHandlers({ config, unit, email, provisioner, now = () => n
         body: await unit(async (tx) => listPayouts(tx, config, (await currentWorkspace(tx, auth(request).userId)).id, limit, cursor)),
       };
     },
+
+    requestQuote: async (request) => ({
+      status: 200,
+      body: await unit((tx) => requestQuote(tx, quotes, auth(request).userId, body<QuoteInput>(request))),
+    }),
 
     getPayoutStats: async (request) => {
       const timezone = parseTimezone((request.query as { tz?: string }).tz);

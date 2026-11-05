@@ -79,6 +79,33 @@ paths:
           $ref: "#/components/responses/Error"
         "401":
           $ref: "#/components/responses/Error"
+  /quotes:
+    post:
+      operationId: requestQuote
+      summary: Quote every provider and rank the routes
+      description: Runs every eligible provider in parallel under a 1.5 second budget. The best route is returned as the quote and every route is stored with its score breakdown.
+      tags: [quotes]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QuoteRequest"
+      responses:
+        "200":
+          description: The ranked quote. It holds until expires_in runs out.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Quote"
+        "400":
+          $ref: "#/components/responses/Error"
+        "422":
+          description: No provider can pay this out right now
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /institutions/verify:
     post:
       operationId: verifyAccount
@@ -504,7 +531,7 @@ components:
       required: true
       schema:
         type: string
-        enum: [ngn, kes]
+        enum: [ngn, kes, ghs, idr, php]
   responses:
     Error:
       description: Error
@@ -524,7 +551,7 @@ components:
           type: string
     ProviderId:
       type: string
-      enum: [paycrest, busha, fonbnk, bitnob]
+      enum: [paycrest, busha, fonbnk, bitnob, transfi, mock]
     ProviderStatus:
       type: string
       enum: [live, stale, paused]
@@ -586,10 +613,26 @@ components:
           enum: [usdc, usdt]
         currency:
           type: string
-          enum: [ngn, kes]
+          enum: [ngn, kes, ghs, idr, php]
         amount:
           type: string
-          description: Token amount as a decimal string, never a float
+          description: Token amount as a decimal string, never a float. With mode receive it is the local amount the recipient gets.
+        payout_type:
+          type: string
+          enum: [bank, mobile_money]
+          default: bank
+        source_chain:
+          type: string
+          description: Chain the funds start on. Defaults to near, the vault's chain.
+        mode:
+          type: string
+          enum: [send, receive]
+          default: send
+          description: send fixes what the sender pays, receive fixes what the recipient gets
+        preference:
+          type: string
+          enum: [best_rate, most_reliable, fastest]
+          default: best_rate
     Fees:
       type: object
       required: [provider, network, total]
@@ -615,6 +658,23 @@ components:
           type: integer
         routed:
           type: boolean
+        receive:
+          type: integer
+          description: Whole local currency units this route would pay
+        fee:
+          type: integer
+          description: Total fees of this route in minor units of the local currency
+        eta_seconds:
+          type: integer
+        on_time_percent:
+          type: integer
+          description: Smoothed 30-day success rate
+        less_than_best:
+          type: integer
+          description: Whole local currency units below the best route, 0 for the best
+        not_offered_reason:
+          type: [string, "null"]
+          enum: [breaker_open, timeout, error, half_open_over_limit, null]
     Quote:
       type: object
       required:
@@ -660,6 +720,12 @@ components:
             $ref: "#/components/schemas/Route"
         expires_in:
           type: integer
+        eta_seconds:
+          type: integer
+          description: Estimated seconds until the money lands, from the chosen route
+        saving_vs_next:
+          type: integer
+          description: Whole local currency units the chosen route pays over the next best, 0 when there is only one
     Account:
       type: object
       required: [bank, number]
