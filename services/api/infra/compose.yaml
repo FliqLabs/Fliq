@@ -1,0 +1,78 @@
+name: fliq-local
+
+x-local-only: &local-only
+  restart: unless-stopped
+
+services:
+  postgres:
+    <<: *local-only
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: fliq
+      POSTGRES_PASSWORD: fliq-local-only
+      POSTGRES_DB: fliq
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fliq -d fliq"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    <<: *local-only
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # 3.13 matches what Amazon MQ runs on the mq.t3 brokers the hosted environments use.
+  rabbitmq:
+    <<: *local-only
+    image: rabbitmq:3.13-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: fliq
+      RABBITMQ_DEFAULT_PASS: fliq-local-only
+    ports:
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+
+  mock-api:
+    <<: *local-only
+    build:
+      context: ../../..
+      dockerfile: services/api/infra/Dockerfile.dev
+    command: ["./node_modules/.bin/tsx", "src/mock.ts"]
+    environment:
+      PORT: "4000"
+    ports:
+      - "127.0.0.1:4000:4000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:4000/v1/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))",
+        ]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  postgres-data:
+  rabbitmq-data:

@@ -4,7 +4,7 @@ This file applies to every AI coding agent working in this repository: Claude Co
 
 ## Hard rules
 
-1. **Never create, edit, generate or delete anything under `apps/ios`.** The iOS app is written by hand. You may read it and explain it. Suggestions go in prose in the chat, never as files or patches.
+1. **Only Frank's agent writes in `apps/ios`, and only when Frank asks.** Frank reviews every iOS change before it merges. Every other agent may read `apps/ios` and explain it, but must not create, edit or delete anything there. Each iOS PR written with an agent adds its rows to `docs/AI_USAGE.md`.
 2. **No AI attribution in git.** Do not add `Co-Authored-By`, `Generated with`, `Claude-Session` or any similar trailer or footer to commit messages, PR titles or PR descriptions. Commits are authored by the human who runs you.
 3. **Stay in your owner's area.** Work only in the folder that belongs to the person you are working for (see `.github/CODEOWNERS`). If the task needs a change in another area or in `spec/`, stop and say which file and why.
 4. **Never commit secrets.** No keys, tokens, seed phrases, `.env` files or NEAR credentials. Use `.env.example` with placeholder values.

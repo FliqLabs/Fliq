@@ -155,7 +155,15 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: make test-api
+      - name: Generate the Prisma client
+        run: pnpm --filter @fliq/api db:generate
+      - name: Unit tests
+        # Throwaway values so the app config loads. The database e2e test skips without DATABASE_URL.
+        env:
+          FLIQ_ACCESS_SECRET: ci-only-not-a-secret
+          FLIQ_DATA_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+          FLIQ_HASH_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+        run: make test-api
 
   web:
     needs: changes
@@ -199,16 +207,28 @@ jobs:
         working-directory: apps/ios
     steps:
       - uses: actions/checkout@v4
+      - name: Use the newest Xcode on the runner
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)" && xcodebuild -version
       - run: brew install xcodegen
       - run: xcodegen generate
+      - name: Pick an iPhone simulator
+        id: sim
+        # Runner images change which simulators exist; take the newest available iPhone by id.
+        run: |
+          udid=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(x['udid'] for k in sorted(d, reverse=True) if 'iOS' in k for x in d[k] if x['name'].startswith('iPhone')))")
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+          xcrun simctl list devices available | grep "$udid"
       - name: Build and unit test
         run: |
+          set -o pipefail
           xcodebuild test \
             -project Fliq.xcodeproj \
             -scheme Fliq \
-            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            -destination 'platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}' \
             -only-testing:FliqTests \
-            CODE_SIGNING_ALLOWED=NO | xcbeautify || exit ${PIPESTATUS[0]}
+            -resultBundlePath build.xcresult \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | xcbeautify --renderer github-actions \
+            || { xcodebuild build -quiet -project Fliq.xcodeproj -scheme Fliq -destination 'platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}' CODE_SIGNING_ALLOWED=NO 2>&1 | tail -150; exit 1; }
 
   ci-gate:
     if: always()
