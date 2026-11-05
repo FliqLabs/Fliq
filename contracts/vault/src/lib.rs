@@ -234,6 +234,27 @@ mod tests {
     }
 
     #[test]
+    fn wrong_token_cannot_attribute_a_top_up() {
+        let mut contract = contract();
+        let beneficiary = account("ada.testnet");
+        register(&mut contract, &beneficiary);
+        testing_env!(context(
+            &account("fake-token.testnet"),
+            NearToken::from_yoctonear(0)
+        ));
+
+        let unused = contract.ft_on_transfer(
+            account("intents.testnet"),
+            U128(50_000_000),
+            r#"{"top_up":{"account_id":"ada.testnet"}}"#.to_owned(),
+        );
+
+        assert_eq!(returned_amount(unused), U128(50_000_000));
+        assert_eq!(contract.get_balance(beneficiary), BalanceView::default());
+        assert!(get_logs().is_empty());
+    }
+
+    #[test]
     fn strict_top_up_message_credits_beneficiary_not_sender() {
         let mut contract = contract();
         let sender = account("intents.testnet");
@@ -260,6 +281,40 @@ mod tests {
                 total: U128(50_000_000),
             }
         );
+    }
+
+    #[test]
+    fn repeated_top_up_requires_and_credits_each_real_transfer() {
+        let mut contract = contract();
+        let sender = account("intents.testnet");
+        let beneficiary = account("ada.testnet");
+        register(&mut contract, &beneficiary);
+        testing_env!(context(
+            &account("usdc.testnet"),
+            NearToken::from_yoctonear(0)
+        ));
+        let msg = r#"{"top_up":{"account_id":"ada.testnet"}}"#.to_owned();
+
+        assert_eq!(
+            returned_amount(
+                contract.ft_on_transfer(sender.clone(), U128(25_000_000), msg.clone(),)
+            ),
+            U128(0)
+        );
+        assert_eq!(
+            returned_amount(contract.ft_on_transfer(sender, U128(25_000_000), msg)),
+            U128(0)
+        );
+
+        assert_eq!(
+            contract.get_balance(beneficiary),
+            BalanceView {
+                available: U128(50_000_000),
+                reserved: U128(0),
+                total: U128(50_000_000),
+            }
+        );
+        assert_eq!(get_logs().len(), 2);
     }
 
     #[test]

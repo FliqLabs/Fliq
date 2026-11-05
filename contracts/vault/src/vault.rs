@@ -81,7 +81,6 @@ pub(crate) struct Vault {
     reservations: LookupMap<String, Reservation>,
     refunds: LookupMap<String, RefundRecord>,
     total_liabilities: u128,
-    unallocated_balance: u128,
     account_storage_usage: u64,
 }
 
@@ -102,7 +101,6 @@ impl Vault {
             reservations: LookupMap::new(RESERVATION_PREFIX),
             refunds: LookupMap::new(REFUND_PREFIX),
             total_liabilities: 0,
-            unallocated_balance: 0,
             account_storage_usage,
         }
     }
@@ -238,23 +236,11 @@ impl Vault {
     }
 
     #[allow(dead_code)]
-    pub(crate) fn sync_backing_balance(
-        &mut self,
-        actual_token_balance: u128,
-    ) -> Result<(), RefundError> {
-        let Some(unallocated_balance) = actual_token_balance.checked_sub(self.total_liabilities)
-        else {
-            return Err(RefundError::Underbacked);
-        };
-        self.unallocated_balance = unallocated_balance;
-        Ok(())
-    }
-
-    #[allow(dead_code)]
     pub(crate) fn recredit_refund(
         &mut self,
         order_id: &str,
         amount: u128,
+        actual_token_balance: u128,
     ) -> Result<(), RefundError> {
         if amount == 0 {
             return Err(RefundError::AmountMustBePositive);
@@ -268,9 +254,13 @@ impl Vault {
         if amount > refund.outflow_amount {
             return Err(RefundError::ExceedsOutflow);
         }
-        let Some(unallocated_balance) = self.unallocated_balance.checked_sub(amount) else {
-            return Err(RefundError::ExceedsUnallocatedBalance);
+        let Some(unallocated_balance) = actual_token_balance.checked_sub(self.total_liabilities)
+        else {
+            return Err(RefundError::Underbacked);
         };
+        if amount > unallocated_balance {
+            return Err(RefundError::ExceedsUnallocatedBalance);
+        }
         let Some(balance) = self.balances.get(&refund.payer) else {
             return Err(RefundError::PayerNotRegistered);
         };
@@ -294,7 +284,6 @@ impl Vault {
         );
         self.refunds.insert(&order_id.to_owned(), &refund);
         self.total_liabilities = total_liabilities;
-        self.unallocated_balance = unallocated_balance;
         let event = near_sdk::serde_json::json!({
             "standard": "fliq_vault",
             "version": "1.0.0",
@@ -315,8 +304,10 @@ impl Vault {
     }
 
     #[allow(dead_code)]
-    pub(crate) fn unallocated_balance(&self) -> u128 {
-        self.unallocated_balance
+    pub(crate) fn recredited_amount(&self, order_id: &str) -> u128 {
+        self.refunds
+            .get(&order_id.to_owned())
+            .map_or(0, |refund| refund.recredited_amount)
     }
 
     pub(crate) fn storage_balance_bounds(&self) -> StorageBalanceBounds {
@@ -761,18 +752,19 @@ mod tests {
         assert_eq!(vault.total_liabilities(), 70_000_000);
 
         assert_eq!(
-            vault.recredit_refund("po_refund", 30_000_000),
+            vault.recredit_refund("po_refund", 30_000_000, 70_000_000),
             Err(RefundError::ExceedsUnallocatedBalance)
         );
-        assert_eq!(vault.sync_backing_balance(100_000_000), Ok(()));
-        assert_eq!(vault.unallocated_balance(), 30_000_000);
-        assert_eq!(vault.recredit_refund("po_refund", 30_000_000), Ok(()));
         assert_eq!(
-            vault.recredit_refund("po_refund", 30_000_000),
+            vault.recredit_refund("po_refund", 30_000_000, 100_000_000),
+            Ok(())
+        );
+        assert_eq!(
+            vault.recredit_refund("po_refund", 30_000_000, 100_000_000),
             Err(RefundError::AlreadyRecredited)
         );
         assert_eq!(vault.total_liabilities(), 100_000_000);
-        assert_eq!(vault.unallocated_balance(), 0);
+        assert_eq!(vault.recredited_amount("po_refund"), 30_000_000);
         assert_eq!(
             near_sdk::test_utils::get_logs(),
             vec![
@@ -800,13 +792,41 @@ mod tests {
             Ok(())
         );
         assert_eq!(vault.commit_outflow("po_refund"), Ok(()));
-        assert_eq!(vault.sync_backing_balance(50_000_001), Ok(()));
 
         assert_eq!(
-            vault.recredit_refund("po_refund", 20_000_001),
+            vault.recredit_refund("po_refund", 20_000_001, 50_000_001),
             Err(RefundError::ExceedsOutflow)
         );
         assert_eq!(vault.balance_of(&payer).available, 30_000_000);
+    }
+
+    #[test]
+    fn invalid_refund_requests_do_not_change_accounting() {
+        let mut vault = vault();
+        let payer = account("ada.testnet");
+        register(&mut vault, &payer);
+        deposit(&mut vault, &payer, 50_000_000);
+        assert_eq!(
+            vault.reserve_for_order("po_refund", &payer, 20_000_000),
+            Ok(())
+        );
+        assert_eq!(vault.commit_outflow("po_refund"), Ok(()));
+        let balance_before = vault.balance_of(&payer);
+        let liabilities_before = vault.total_liabilities();
+
+        assert_eq!(
+            vault.recredit_refund("po_refund", 0, 50_000_000),
+            Err(RefundError::AmountMustBePositive)
+        );
+        assert_eq!(
+            vault.recredit_refund("unknown", 1, 50_000_000),
+            Err(RefundError::NotFound)
+        );
+
+        assert_eq!(vault.balance_of(&payer), balance_before);
+        assert_eq!(vault.total_liabilities(), liabilities_before);
+        assert_eq!(vault.recredited_amount("po_refund"), 0);
+        assert!(near_sdk::test_utils::get_logs().is_empty());
     }
 
     #[test]
@@ -816,23 +836,30 @@ mod tests {
         register(&mut vault, &payer);
         deposit(&mut vault, &payer, 40_000_000);
 
-        assert_eq!(vault.sync_backing_balance(45_000_000), Ok(()));
-
-        assert_eq!(vault.unallocated_balance(), 5_000_000);
+        assert_eq!(
+            vault.recredit_refund("unknown", 5_000_000, 45_000_000),
+            Err(RefundError::NotFound)
+        );
+        assert_eq!(vault.recredited_amount("unknown"), 0);
         assert_eq!(vault.balance_of(&payer).available, 40_000_000);
     }
 
     #[test]
-    fn backing_sync_rejects_an_underbacked_vault() {
+    fn recredit_rejects_an_underbacked_vault() {
         let mut vault = vault();
         let payer = account("ada.testnet");
         register(&mut vault, &payer);
         deposit(&mut vault, &payer, 40_000_000);
+        assert_eq!(
+            vault.reserve_for_order("po_refund", &payer, 10_000_000),
+            Ok(())
+        );
+        assert_eq!(vault.commit_outflow("po_refund"), Ok(()));
 
         assert_eq!(
-            vault.sync_backing_balance(39_999_999),
+            vault.recredit_refund("po_refund", 1, 29_999_999),
             Err(RefundError::Underbacked)
         );
-        assert_eq!(vault.unallocated_balance(), 0);
+        assert_eq!(vault.recredited_amount("po_refund"), 0);
     }
 }
