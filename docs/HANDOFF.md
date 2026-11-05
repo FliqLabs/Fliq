@@ -15,28 +15,23 @@ Branch: `sQuiDbOb-Orders-and-Payouts`
 | `set_status` | `lib.rs`, `orders.rs` | Lets only the registration account report monotonic backend progress. Replays are no-ops; it cannot change transfer state or balances. | Authorization, unknown values, replay, backward, gating, receipt, balance, and event tests. |
 | `recredit` | `lib.rs` | Deliberately disabled until refund design approval. | Existing disabled-path behavior. |
 | `get_receipt` | `lib.rs`, `types.rs` | Shows the stored order, verified NEAR transfer state, backend status, refs, and update time as separate tracks. | Receipt separation and unknown-order tests. |
-| `get_balance` | `lib.rs`, `integration.rs` | Read-only balance view delegated through the integration layer. | Balance and invariant tests. |
+| `get_balance` | `lib.rs`, `integration.rs`, `vault.rs` | Read-only `vault::BalanceView` backed by Dapper's real ledger. | Dapper deposit/isolation/overflow tests and payout invariants. |
 | Recredit read helpers | `orders.rs` | `order_exists`, `order_payer`, `order_amount`, and `order_transfer_state`. | Read-helper test. |
-| Integration boundary | `integration.rs` | Expects seven small functions so Dapper and Aria can replace only this layer. | Temporary-ledger and payout tests. |
+| Integration boundary | `integration.rs` | Routes balance, reservation, commit, and release operations to `Vault`; keeps policy lifecycle calls on the temporary policy module. | Dapper vault tests and payout tests. |
 
 Current vault result: 40 tests passed, 0 failed with `--features testing`; the default `make test-contract` run passes 29 tests. The near-workspaces smoke test is present but ignored by default. The standalone mock USDC crate builds and its test target has 0 tests and 0 failures.
 
 The deploy workflow intentionally uses `without-init-call`. After deployment, initialize by sending `new(owner, registration_account, approved_usdc_token_contract)` from the vault account itself. The initializer is private and rejects calls from any other predecessor; initialization cannot be repeated.
 
-The latest `origin/Contract` branch was merged into this branch. Its real `vault.rs` is present but intentionally remains unwired; no incoming `policies.rs` exists. Integration changes required to wire the vault and future policy implementation are listed below.
+The latest `origin/Contract` branch was merged into this branch. Its real `vault.rs` is wired through `integration.rs`; no incoming `policies.rs` exists, so policy calls remain on the temporary policy module.
 
 ## What is still a placeholder
 
-Every marker below is intentional. Replace the temporary implementation only through `integration.rs`; do not make the stand-ins production custody or policy code.
+Every marker below is intentional. Replace the temporary policy implementation only through `integration.rs`; do not make the stand-ins production custody or policy code.
 
 ### `contracts/vault/src/temp_vault.rs`
 
-- Lines 11, 16: temporary storage-key builders. Dapper replaces them with its real balance/reservation storage.
-- Lines 21, 32, 39, 46: temporary amount, reservation read/write/remove helpers. Dapper replaces the ledger operations with checked persistent balance operations.
-- Line 51: temporary available/reserved ledger. Replace with Dapper's authoritative reservation API.
-- Lines 78, 90: temporary commit and release behavior. Replace with Dapper's single-use outflow and rollback behavior.
-- Line 108: temporary string balance view. Replace with Dapper's canonical total/available/reserved view.
-- Line 122: test-only credit hook. It must disappear from release builds and never represent a real deposit path.
+Retained as an unused historical fallback only. Runtime custody and reservation operations no longer call it; `vault.rs` is the single source of truth for balances.
 
 ### `contracts/vault/src/temp_policies.rs`
 
@@ -67,16 +62,9 @@ Every marker below is intentional. Replace the temporary implementation only thr
 | Which testnet vault and mock USDC account IDs will be used? | Integration tests and deployment configuration need stable addresses. | The standalone mock crate is used locally; the configured token account is supplied at init. | `contracts/mock_usdc`, workspace tests, deployment docs. |
 | What gas should relayers attach for `payout`? | Too little gas prevents the transfer or callback; too much changes relayer economics. | Requires at least 50 Tgas: 30 Tgas transfer plus 20 Tgas callback. | `orders.rs`, tests, relayer docs. |
 
-## What I need from Dapper
+## Dapper integration status
 
-Replace only the temporary vault calls behind these `integration.rs` functions:
-
-- `reserve_for_order(order_id, payer, amount)`: atomically verify available balance, move amount from available to an order reservation, and fail without partial state.
-- `commit_outflow(order_id)`: consume the one reservation after a successful USDC transfer; never allow a second commit.
-- `release_reservation(order_id)`: return the one reservation to available after a failed transfer; never release twice.
-- `get_balance(account)`: return authoritative total, available, and reserved amounts as JSON-safe strings.
-
-The integration layer also owns `release_pending` and `settle_pending` calls, which must be coordinated with Aria's policy implementation. Dapper should provide these read helpers for future recredit review: `order_exists(order_id)`, `order_payer(order_id)`, `order_amount(order_id)`, and `order_transfer_state(order_id)`. Recredit stays disabled until refund proof and reconciliation are approved.
+`integration.rs` now calls Dapper's real `Vault` methods for `reserve_for_order`, `commit_outflow`, `release_reservation`, and `get_balance`. All required methods are `pub(crate)` and no additional exposure is needed. The integration layer also owns `release_pending` and `settle_pending`, which remain coordinated with the temporary policy implementation. Recredit stays disabled until refund proof and reconciliation are approved.
 
 ## What I need from Aria
 
@@ -105,12 +93,12 @@ The open question is what identity is authoritative for a relayed agent call. Th
 | Register only through the configured account | Done | Authorization and forged-caller tests pass. |
 | Validate order ID, amount, corridor, destination, and expiry | Done | Validation and edge-value tests pass. |
 | Never send an order twice | Done | Duplicate, same-block, terminal-state, and invariant tests pass. |
-| Reserve before transfer and restore after failure | Done, temporary | 37 feature-enabled tests pass; real balance authority still belongs to Dapper. |
+| Reserve before transfer and restore after failure | Done, real vault | Dapper vault tests and 40 feature-enabled order tests pass. |
 | Callback is private and stale-safe | Done | Outsider, exact-result, failure, and stale callback tests pass. |
 | Separate verified transfer state from backend status | Done | Receipt and status-gating tests pass. |
 | Backend status replay and monotonicity | Done, proposed | Tests pass; rules remain marked PROPOSED pending backend approval. |
 | No value movement from `set_status` | Done | Transfer-state and balance-invariance tests pass. |
 | Refund proof and `recredit` | Not yet | Method intentionally fails until the OPEN design is approved. |
-| Dapper/Aria production integration | Not yet | Only temporary stand-ins exist; no real modules are present. |
+| Dapper/Aria production integration | Dapper done, Aria pending | Real `vault.rs` is wired; policy calls still use `temp_policies.rs`. |
 | Test-only credit absent from release build | Done | Release WASM check passes with `testing` enabled and debug assertions disabled. |
 | Formatting and lint | Done | `cargo fmt --check` and strict clippy pass. |

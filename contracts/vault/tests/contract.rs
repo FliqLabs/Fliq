@@ -6,6 +6,7 @@ use fliq_vault::orders::{
 use fliq_vault::types::{PayoutOrder, TransferState};
 use near_contract_standards::storage_management::StorageManagement;
 use near_sdk::env;
+#[cfg(feature = "testing")]
 use near_sdk::json_types::U128;
 use near_sdk::test_utils::{VMContextBuilder, accounts};
 use near_sdk::{AccountId, testing_env};
