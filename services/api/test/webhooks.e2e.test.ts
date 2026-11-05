@@ -35,6 +35,7 @@ describe.skipIf(!enabled)("provider webhooks against a real database", () => {
   const sender: EmailSender = { sendSignInLink: async (_to, link) => void links.push(link) };
   const suffix = randomBytes(4).toString("hex");
   const email = `webhook+${suffix}@example.test`;
+  const started = new Date();
 
   // The sandbox provider creates the orders; Paycrest's own adapter verifies and reads the webhooks.
   const sandbox = sandboxAdapters(() => NOW)[0] as ProviderAdapter;
@@ -45,7 +46,7 @@ describe.skipIf(!enabled)("provider webhooks against a real database", () => {
   const app = buildApp({
     config,
     unit,
-    webhooks: createWebhookHandler({ unit, adapters: [adapter] }),
+    webhooks: createWebhookHandler({ unit, adapters: [adapter], dataKey: config.dataKey }),
     handlers: createHandlers({
       config,
       unit,
@@ -116,6 +117,7 @@ describe.skipIf(!enabled)("provider webhooks against a real database", () => {
       await tx.$executeRaw`DELETE FROM core.payout_events WHERE payout_id IN (SELECT id FROM core.payouts WHERE developer_id = ANY(${ids}::text[]))`;
       await tx.$executeRaw`DELETE FROM core.payouts WHERE developer_id = ANY(${ids}::text[])`;
       await tx.$executeRaw`DELETE FROM messaging.inbox WHERE message_id LIKE ANY(${providerOrders.map((id) => `${id}:%`)}::text[])`;
+      await tx.$executeRaw`DELETE FROM integration.inbound_events WHERE provider_order_id = ANY(${[...providerOrders, "missing-order"]}::text[]) OR (provider_event_id IS NULL AND received_at >= ${started})`;
       await tx.$executeRaw`DELETE FROM core.recipients WHERE user_id = ${userId}`;
       await tx.$executeRaw`DELETE FROM core.quote_routes WHERE quote_id IN (SELECT id FROM core.quotes WHERE developer_id = ${userId})`;
       await tx.$executeRaw`DELETE FROM core.quotes WHERE developer_id = ${userId}`;
@@ -186,5 +188,72 @@ describe.skipIf(!enabled)("provider webhooks against a real database", () => {
     expect(ignored.statusCode).toBe(200);
     expect(ignored.json()).toEqual({ outcome: "ignored" });
     expect(await stateOf(payout.payout_id)).toBe("awaiting_deposit");
+  }, 60_000);
+
+  it("keeps each delivery encrypted, linked to its payout, and shows the bank reference", async () => {
+    const payout = await newPayout();
+    expect((await deliver(payout, "settled")).json()).toEqual({ outcome: "advanced" });
+
+    const view = await app.inject({
+      method: "GET",
+      url: `/v1/payouts/${payout.payout_id}`,
+      headers: { authorization: `Bearer ${access}` },
+    });
+    const reference = view.json().bank_reference as string;
+    expect(reference).toMatch(/^\d{10,}$/);
+
+    const kept = await probe.inboundEvent.findFirstOrThrow({
+      where: { providerOrderId: payout.provider_order },
+    });
+    expect(kept).toMatchObject({
+      provider: "mock",
+      signatureValid: true,
+      payoutId: payout.payout_id,
+      providerEventId: `${payout.provider_order}:payment_order.settled`,
+    });
+    expect(kept.processedAt).not.toBeNull();
+    expect(Buffer.from(kept.bodyCipher).toString("utf8")).not.toContain(reference);
+  }, 60_000);
+
+  it("keeps a bad signature flagged with nothing trusted from its body", async () => {
+    const flaggedSince = { where: { signatureValid: false, receivedAt: { gte: started } } };
+    const before = await probe.inboundEvent.count(flaggedSince);
+    const payout = await newPayout();
+    expect((await deliver(payout, "settled", { signature: "00".repeat(32) })).statusCode).toBe(401);
+    const flagged = await probe.inboundEvent.findMany({ ...flaggedSince, orderBy: { receivedAt: "asc" } });
+    expect(flagged).toHaveLength(before + 1);
+    expect(flagged.at(-1)).toMatchObject({
+      providerEventId: null,
+      providerOrderId: null,
+      payoutId: null,
+      processedAt: null,
+    });
+  }, 60_000);
+
+  it("keeps an event for an order it does not know yet, unlinked and unprocessed", async () => {
+    const unknown = await deliver({ payout_id: "pay_missing", provider_order: "missing-order" }, "settled");
+    expect(unknown.statusCode).toBe(404);
+    const kept = await probe.inboundEvent.findFirstOrThrow({ where: { providerOrderId: "missing-order" } });
+    expect(kept).toMatchObject({ payoutId: null, processedAt: null });
+  }, 60_000);
+
+  it("records the provider's reason when a refund ends in failure", async () => {
+    const payout = await newPayout();
+    await deliver(payout, "deposited");
+    await deliver(payout, "refunding");
+    const failing: ProviderAdapter = {
+      ...adapter,
+      parseWebhook: () => ({
+        eventId: `${payout.provider_order}:refund_failed`,
+        providerOrderId: payout.provider_order,
+        reference: payout.payout_id,
+        order: { status: "failed", code: "refund_rejected", retryable: false },
+      }),
+    };
+    const receive = createWebhookHandler({ unit, adapters: [failing], dataKey: config.dataKey });
+    expect((await receive("mock", { headers: {}, rawBody: "{}" })).body).toEqual({ outcome: "advanced" });
+    expect(await stateOf(payout.payout_id)).toBe("failed");
+    const row = await database.payout.findUniqueOrThrow({ where: { id: payout.payout_id } });
+    expect(row.failureReason).toBe("provider_refund_rejected");
   }, 60_000);
 });
