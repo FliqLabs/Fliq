@@ -1,7 +1,8 @@
 import { createOneClickClient } from "../../../packages/chains/oneclick/index.js";
 import { MockVault } from "../../../packages/chains/vault/index.js";
 import { DEFAULT_ROUTING_CONFIG, NO_SIGNALS } from "../../../packages/domain/routing.js";
-import { createPaycrestAdapter } from "../../../packages/providers/paycrest/paycrest.js";
+import { withCache } from "../../../packages/providers/cache.js";
+import { enabledAdapters } from "../../../packages/providers/enabled.js";
 import { MockProvisioner } from "./accounts.js";
 import { buildApp } from "./app.js";
 import { createEmailSender } from "./auth/email-links.js";
@@ -16,16 +17,11 @@ import { sandboxAdapters } from "./sandbox.js";
 const config = loadConfig();
 const unit = unitOf(createDatabase());
 
-// Real Paycrest when a key is set, otherwise the sandbox provider so a fresh clone needs no keys.
-const adapters = process.env.PAYCREST_API_KEY
-  ? [
-      createPaycrestAdapter({
-        apiKey: process.env.PAYCREST_API_KEY,
-        webhookSecrets: [process.env.PAYCREST_WEBHOOK_SECRET ?? ""],
-        deps: { alert: (alert) => console.warn(`[provider alert] ${alert.provider} ${alert.kind}`) },
-      }),
-    ]
-  : sandboxAdapters();
+// Every provider whose keys are set, otherwise the sandbox provider so a fresh clone needs no keys.
+const configured = enabledAdapters(process.env, {
+  alert: (alert) => console.warn(`[provider alert] ${alert.provider} ${alert.kind}`),
+}).map((adapter) => withCache(adapter, { hashKey: config.hashKey }));
+const adapters = configured.length > 0 ? configured : sandboxAdapters();
 
 // Until a testnet deployment exists, the vault is Ladipeo's in-memory model.
 const vault = new MockVault({
