@@ -62,5 +62,5 @@ const handlers = createHandlers({
 });
 
 const app = buildApp({ config, unit, handlers, logger: true, limiter: createLimiter(process.env.REDIS_URL),
-  webhooks: createWebhookHandler({ unit, adapters }) });
+  webhooks: createWebhookHandler({ unit, adapters, dataKey: config.dataKey }) });
 await app.listen({ port: config.port, host: "0.0.0.0" });
