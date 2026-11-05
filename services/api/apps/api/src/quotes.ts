@@ -5,17 +5,19 @@ import {
   type Preference,
   type Route,
   type RoutingConfig,
+  type HopPricer,
   type RoutingSignals,
 } from "../../../packages/domain/routing.js";
 import { newId } from "../../../packages/db/src/ids.js";
 import { InvalidAmountError, toUnits } from "../../../packages/providers/money.js";
-import type { Asset, Chain, Country, FiatCurrency, PayoutType, ProviderAdapter, QuoteAmount } from "../../../packages/providers/types.js";
+import type { Asset, Chain, Country, FiatCurrency, PayoutType, ProviderAdapter, ProviderQuote, QuoteAmount } from "../../../packages/providers/types.js";
 import { formatTokenAmount } from "./dashboard.js";
 import type { Db } from "./db.js";
 import { ApiError, invalidRequest } from "./errors.js";
 
 export interface QuoteDeps {
   adapters: readonly ProviderAdapter[];
+  hop?: HopPricer;
   routing: RoutingConfig;
   signals: RoutingSignals;
   now: () => Date;
@@ -31,13 +33,47 @@ export interface QuoteInput {
   preference?: Preference;
 }
 
-const COUNTRY: Record<QuoteInput["currency"], Country> = { ngn: "NG", kes: "KE", ghs: "GH", idr: "ID", php: "PH" };
+export const COUNTRY: Record<QuoteInput["currency"], Country> = { ngn: "NG", kes: "KE", ghs: "GH", idr: "ID", php: "PH" };
 const NOT_OFFERED: Partial<Record<Dropped["reason"], "breaker_open" | "timeout" | "error" | "half_open_over_limit">> = {
   breaker_open: "breaker_open",
   timeout: "timeout",
   error: "error",
   half_open_over_limit: "half_open_over_limit",
 };
+
+// bigint amounts travel as strings so the stored quote survives JSON.
+function serializeProviderQuote(quote: ProviderQuote, hop: Route["hop"]): Prisma.InputJsonObject {
+  return {
+    hop: hop ? { chain: hop.chain, amountIn: hop.amountIn.toString(), amountOut: hop.amountOut.toString(), seconds: hop.seconds } : null,
+    provider: quote.provider,
+    providerQuoteId: quote.providerQuoteId ?? null,
+    sendUnits: quote.sendUnits.toString(),
+    receiveMinorUnits: quote.receiveMinorUnits.toString(),
+    rate: quote.rate,
+    fees: quote.fees.map((fee) => ({ kind: fee.kind, amount: fee.amount.toString(), unit: fee.unit })),
+    estimatedSettleSeconds: quote.estimatedSettleSeconds ?? null,
+    expiresAt: quote.expiresAt.toISOString(),
+  };
+}
+
+export function reviveHop(json: unknown): { chain: Chain; amountIn: bigint; amountOut: bigint; seconds: number } | null {
+  const hop = (json as { hop?: { chain: Chain; amountIn: string; amountOut: string; seconds: number } | null }).hop;
+  return hop ? { chain: hop.chain, amountIn: BigInt(hop.amountIn), amountOut: BigInt(hop.amountOut), seconds: hop.seconds } : null;
+}
+
+export function reviveProviderQuote(json: unknown): ProviderQuote {
+  const stored = json as ReturnType<typeof serializeProviderQuote> & Record<string, any>;
+  return {
+    provider: stored.provider,
+    ...(stored.providerQuoteId ? { providerQuoteId: stored.providerQuoteId } : {}),
+    sendUnits: BigInt(stored.sendUnits),
+    receiveMinorUnits: BigInt(stored.receiveMinorUnits),
+    rate: stored.rate,
+    fees: stored.fees.map((fee: { kind: "provider" | "network"; amount: string; unit: Asset | FiatCurrency }) => ({ ...fee, amount: BigInt(fee.amount) })),
+    ...(stored.estimatedSettleSeconds !== null ? { estimatedSettleSeconds: stored.estimatedSettleSeconds } : {}),
+    expiresAt: new Date(stored.expiresAt),
+  };
+}
 
 function parseAmount(input: QuoteInput): QuoteAmount {
   try {
@@ -54,7 +90,7 @@ const rateOf = (minor: bigint, amountIn: bigint) => Number((minor * 10n ** 8n) /
 const wholeUnits = (minor: bigint) => Number(minor / 100n);
 const total = (route: Route) => route.fees.provider + route.fees.network + route.fees.intents + route.fees.ours;
 
-async function developerIdFor(tx: Db, userId: string): Promise<string> {
+export async function developerIdFor(tx: Db, userId: string): Promise<string> {
   const workspace = await tx.workspace.findFirst({ where: { ownerId: userId }, orderBy: { createdAt: "desc" }, select: { id: true } });
   return workspace?.id ?? userId;
 }
@@ -77,6 +113,7 @@ export async function requestQuote(tx: Db, deps: QuoteDeps, userId: string, inpu
     deps.routing,
     deps.signals,
     now,
+    deps.hop,
   );
   const best = routes[0];
   if (!best || expiresAt <= now) throw new ApiError(422, "no_route", "No provider can pay this out right now.");
@@ -103,7 +140,7 @@ export async function requestQuote(tx: Db, deps: QuoteDeps, userId: string, inpu
       id: routeIds[index] as string,
       quoteId,
       provider: route.provider,
-      kind: "direct" as const,
+      kind: route.kind,
       rank: route.rank,
       amountIn: route.amountIn,
       amountOutMinor: route.amountOutMinor,
@@ -115,6 +152,7 @@ export async function requestQuote(tx: Db, deps: QuoteDeps, userId: string, inpu
       etaSeconds: route.etaSeconds,
       expiresAt: route.expiresAt,
       scoreBreakdown: route.breakdown as unknown as Prisma.InputJsonObject,
+      providerQuote: serializeProviderQuote(route.providerQuote, route.hop),
     })),
   });
 
@@ -142,6 +180,7 @@ export async function requestQuote(tx: Db, deps: QuoteDeps, userId: string, inpu
         eta_seconds: route.etaSeconds,
         on_time_percent: Math.round(route.breakdown.reliability * 100),
         less_than_best: wholeUnits(best.amountOutMinor - route.amountOutMinor),
+        via_intents: route.kind === "intents",
         not_offered_reason: null,
       })),
       ...dropped.flatMap((drop) => {

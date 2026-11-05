@@ -22,6 +22,12 @@ tags:
     description: Banks and account verification
   - name: payouts
     description: Create and track payouts
+  - name: vault
+    description: The user's vault balance
+  - name: people
+    description: Other fliq users, for paying by name
+  - name: recipients
+    description: Saved accounts the user pays often
   - name: auth
     description: Passkey and email-link sign-in, sessions
   - name: accounts
@@ -106,6 +112,155 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /institutions:
+    get:
+      operationId: listInstitutions
+      summary: Banks and mobile-money providers for a country
+      tags: [institutions]
+      security: []
+      parameters:
+        - name: country
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [ng, ke, gh, id, ph]
+            default: ng
+      responses:
+        "200":
+          description: Institutions the app can offer, with the logo key to show
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InstitutionList"
+        "400":
+          $ref: "#/components/responses/Error"
+  /accounts/verify:
+    post:
+      operationId: verifyAccountName
+      summary: Ask the bank for the name on an account
+      tags: [institutions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccountLookup"
+      responses:
+        "200":
+          description: The name as returned by the bank
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerifiedAccount"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+  /recipients:
+    get:
+      operationId: listRecipients
+      summary: The user's saved recipients, newest first
+      tags: [recipients]
+      responses:
+        "200":
+          description: Saved recipients. Account numbers are never returned in full.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecipientList"
+    post:
+      operationId: saveRecipient
+      summary: Verify an account with the bank and save it
+      description: Saving an account that is already saved returns the existing recipient.
+      tags: [recipients]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccountLookup"
+      responses:
+        "201":
+          description: Saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Recipient"
+        "200":
+          description: Already saved, the existing recipient
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Recipient"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+  /recipients/{recipientId}:
+    delete:
+      operationId: deleteRecipient
+      summary: Remove a saved recipient
+      tags: [recipients]
+      parameters:
+        - name: recipientId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Removed
+        "404":
+          $ref: "#/components/responses/Error"
+  /vault:
+    get:
+      operationId: getVaultBalance
+      summary: The user's vault balance, free and reserved
+      description: The chain is authoritative. in_sync says whether the ledger mirror agrees with it.
+      tags: [vault]
+      responses:
+        "200":
+          description: Balance in USDC as decimal strings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VaultBalance"
+        "404":
+          $ref: "#/components/responses/Error"
+  /people/recent:
+    get:
+      operationId: listRecentPeople
+      summary: People on fliq the user has paid, most recent first
+      tags: [people]
+      responses:
+        "200":
+          description: Up to 10 people
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecentPeopleList"
+  /people/{name}:
+    get:
+      operationId: lookupPerson
+      summary: Find a person on fliq by name before paying them
+      tags: [people]
+      parameters:
+        - name: name
+          in: path
+          required: true
+          description: A fliq name such as tobi, or the full account tobi.fliq.near
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Who the name belongs to
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Person"
+        "404":
+          $ref: "#/components/responses/Error"
   /institutions/verify:
     post:
       operationId: verifyAccount
@@ -172,6 +327,8 @@ paths:
             schema:
               $ref: "#/components/schemas/PayoutRequest"
       responses:
+        "400":
+          $ref: "#/components/responses/Error"
         "201":
           description: Payout created, waiting for the deposit
           content:
@@ -672,6 +829,9 @@ components:
         less_than_best:
           type: integer
           description: Whole local currency units below the best route, 0 for the best
+        via_intents:
+          type: boolean
+          description: True when the money crosses chains through NEAR Intents before reaching the provider
         not_offered_reason:
           type: [string, "null"]
           enum: [breaker_open, timeout, error, half_open_over_limit, null]
@@ -745,6 +905,9 @@ components:
               type: string
             institution:
               type: string
+            name_verified:
+              type: boolean
+              description: False when the sender supplied the name because the bank could not look it up
     PayoutRequest:
       type: object
       required: [quote_id, account]
@@ -753,6 +916,15 @@ components:
           type: string
         account:
           $ref: "#/components/schemas/Account"
+        client_reference:
+          type: string
+          description: Your own reference. Unique per account, so a second payout with the same one is refused.
+        refund_address:
+          type: string
+          description: Where a failed payout is refunded. Defaults to the signed-in user's fliq name.
+        account_name:
+          type: string
+          description: Only needed when the bank cannot return a name for the account.
     PayoutState:
       type: string
       enum:
@@ -871,6 +1043,9 @@ components:
       properties:
         error:
           $ref: "#/components/schemas/ErrorBody"
+        quote:
+          $ref: "#/components/schemas/Quote"
+          description: Only with the quote_changed error. A fresh quote to confirm, since the rate moved and nothing was sent.
     PasskeyOptions:
       type: object
       required: [challenge_id, options]
@@ -1162,3 +1337,123 @@ components:
           description: Median seconds from deposit seen to the bank credit, for payouts settled today
         refused:
           $ref: "#/components/schemas/PayoutCount"
+    AccountLookup:
+      type: object
+      required: [bank, number]
+      properties:
+        bank:
+          type: string
+          description: Institution code, for example 058 for GTBank
+        number:
+          type: string
+        country:
+          type: string
+          enum: [ng, ke, gh, id, ph]
+          default: ng
+        account_name:
+          type: string
+          description: Only needed when the bank cannot return a name for the account. Then name_verified is false.
+    Institution:
+      type: object
+      required: [code, name, type, country, logo_key]
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+          enum: [bank, mobile_money]
+        country:
+          type: string
+        logo_key:
+          type: [string, "null"]
+          description: Names the logo asset the apps ship
+    InstitutionList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Institution"
+    RecipientBank:
+      type: object
+      required: [code, name, logo_key]
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        logo_key:
+          type: [string, "null"]
+    Recipient:
+      type: object
+      required: [recipient_id, account_name, bank, account_last4, created_at]
+      properties:
+        recipient_id:
+          type: string
+        account_name:
+          type: string
+        bank:
+          $ref: "#/components/schemas/RecipientBank"
+        account_last4:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    RecipientList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Recipient"
+    VaultBalance:
+      type: object
+      required: [account, available, reserved, total, in_sync]
+      properties:
+        account:
+          type: string
+        available:
+          type: string
+          description: USDC free to spend, as a decimal string
+        reserved:
+          type: string
+          description: USDC held for registered, unexecuted orders
+        total:
+          type: string
+        in_sync:
+          type: boolean
+          description: False when the ledger mirror disagrees with the chain
+    Person:
+      type: object
+      required: [near_account, display_name, photo_url, member_since]
+      properties:
+        near_account:
+          type: string
+        display_name:
+          type: [string, "null"]
+        photo_url:
+          type: [string, "null"]
+        member_since:
+          type: string
+          format: date-time
+    RecentPerson:
+      allOf:
+        - $ref: "#/components/schemas/Person"
+        - type: object
+          required: [last_paid_at]
+          properties:
+            last_paid_at:
+              type: string
+              format: date-time
+    RecentPeopleList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecentPerson"

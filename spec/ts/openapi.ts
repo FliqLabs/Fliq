@@ -75,6 +75,132 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/institutions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Banks and mobile-money providers for a country */
+        get: operations["listInstitutions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/accounts/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ask the bank for the name on an account */
+        post: operations["verifyAccountName"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/recipients": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The user's saved recipients, newest first */
+        get: operations["listRecipients"];
+        put?: never;
+        /**
+         * Verify an account with the bank and save it
+         * @description Saving an account that is already saved returns the existing recipient.
+         */
+        post: operations["saveRecipient"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/recipients/{recipientId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove a saved recipient */
+        delete: operations["deleteRecipient"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vault": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The user's vault balance, free and reserved
+         * @description The chain is authoritative. in_sync says whether the ledger mirror agrees with it.
+         */
+        get: operations["getVaultBalance"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/people/recent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** People on fliq the user has paid, most recent first */
+        get: operations["listRecentPeople"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/people/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Find a person on fliq by name before paying them */
+        get: operations["lookupPerson"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/institutions/verify": {
         parameters: {
             query?: never;
@@ -482,6 +608,8 @@ export interface components {
             on_time_percent?: number;
             /** @description Whole local currency units below the best route, 0 for the best */
             less_than_best?: number;
+            /** @description True when the money crosses chains through NEAR Intents before reaching the provider */
+            via_intents?: boolean;
             /** @enum {string|null} */
             not_offered_reason?: "breaker_open" | "timeout" | "error" | "half_open_over_limit" | null;
         };
@@ -512,10 +640,18 @@ export interface components {
         VerifiedAccount: components["schemas"]["Account"] & {
             account_name: string;
             institution: string;
+            /** @description False when the sender supplied the name because the bank could not look it up */
+            name_verified?: boolean;
         };
         PayoutRequest: {
             quote_id: string;
             account: components["schemas"]["Account"];
+            /** @description Your own reference. Unique per account, so a second payout with the same one is refused. */
+            client_reference?: string;
+            /** @description Where a failed payout is refunded. Defaults to the signed-in user's fliq name. */
+            refund_address?: string;
+            /** @description Only needed when the bank cannot return a name for the account. */
+            account_name?: string;
         };
         /** @enum {string} */
         PayoutState: "created" | "provider_timeout" | "awaiting_recon" | "awaiting_deposit" | "deposit_seen" | "routing" | "with_provider" | "paying_out" | "settled" | "refunding" | "refunded" | "expired" | "failed" | "refused" | "not_received";
@@ -561,6 +697,8 @@ export interface components {
         };
         Error: {
             error: components["schemas"]["ErrorBody"];
+            /** @description Only with the quote_changed error. A fresh quote to confirm, since the rate moved and nothing was sent. */
+            quote?: components["schemas"]["Quote"];
         };
         PasskeyOptions: {
             /** @description Send back with the signed credential */
@@ -721,6 +859,70 @@ export interface components {
             median_seconds_to_bank: number | null;
             refused: components["schemas"]["PayoutCount"];
         };
+        AccountLookup: {
+            /** @description Institution code, for example 058 for GTBank */
+            bank: string;
+            number: string;
+            /**
+             * @default ng
+             * @enum {string}
+             */
+            country: "ng" | "ke" | "gh" | "id" | "ph";
+            /** @description Only needed when the bank cannot return a name for the account. Then name_verified is false. */
+            account_name?: string;
+        };
+        Institution: {
+            code: string;
+            name: string;
+            /** @enum {string} */
+            type: "bank" | "mobile_money";
+            country: string;
+            /** @description Names the logo asset the apps ship */
+            logo_key: string | null;
+        };
+        InstitutionList: {
+            items: components["schemas"]["Institution"][];
+        };
+        RecipientBank: {
+            code: string;
+            name: string;
+            logo_key: string | null;
+        };
+        Recipient: {
+            recipient_id: string;
+            account_name: string;
+            bank: components["schemas"]["RecipientBank"];
+            account_last4: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        RecipientList: {
+            items: components["schemas"]["Recipient"][];
+        };
+        VaultBalance: {
+            account: string;
+            /** @description USDC free to spend, as a decimal string */
+            available: string;
+            /** @description USDC held for registered, unexecuted orders */
+            reserved: string;
+            total: string;
+            /** @description False when the ledger mirror disagrees with the chain */
+            in_sync: boolean;
+        };
+        Person: {
+            near_account: string;
+            display_name: string | null;
+            photo_url: string | null;
+            /** Format: date-time */
+            member_since: string;
+        };
+        RecentPerson: components["schemas"]["Person"] & {
+            /** Format: date-time */
+            last_paid_at: string;
+        };
+        RecentPeopleList: {
+            items: components["schemas"]["RecentPerson"][];
+        };
     };
     responses: {
         /** @description Error */
@@ -847,6 +1049,196 @@ export interface operations {
             };
         };
     };
+    listInstitutions: {
+        parameters: {
+            query?: {
+                country?: "ng" | "ke" | "gh" | "id" | "ph";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Institutions the app can offer, with the logo key to show */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionList"];
+                };
+            };
+            400: components["responses"]["Error"];
+        };
+    };
+    verifyAccountName: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountLookup"];
+            };
+        };
+        responses: {
+            /** @description The name as returned by the bank */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VerifiedAccount"];
+                };
+            };
+            400: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
+    listRecipients: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Saved recipients. Account numbers are never returned in full. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecipientList"];
+                };
+            };
+        };
+    };
+    saveRecipient: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountLookup"];
+            };
+        };
+        responses: {
+            /** @description Already saved, the existing recipient */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Recipient"];
+                };
+            };
+            /** @description Saved */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Recipient"];
+                };
+            };
+            400: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
+    deleteRecipient: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recipientId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["Error"];
+        };
+    };
+    getVaultBalance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Balance in USDC as decimal strings */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultBalance"];
+                };
+            };
+            404: components["responses"]["Error"];
+        };
+    };
+    listRecentPeople: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Up to 10 people */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecentPeopleList"];
+                };
+            };
+        };
+    };
+    lookupPerson: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A fliq name such as tobi, or the full account tobi.fliq.near */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Who the name belongs to */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Person"];
+                };
+            };
+            404: components["responses"]["Error"];
+        };
+    };
     verifyAccount: {
         parameters: {
             query?: never;
@@ -921,6 +1313,7 @@ export interface operations {
                     "application/json": components["schemas"]["Payout"];
                 };
             };
+            400: components["responses"]["Error"];
             409: components["responses"]["Error"];
             /** @description Refused by the vault */
             422: {
