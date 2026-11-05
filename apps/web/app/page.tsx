@@ -1,10 +1,11 @@
-import Image from "next/image";
 import { JoinWaitlistLink } from "./components/join-waitlist-link";
 import { MarketingShell } from "./components/marketing-shell";
 import { siteContainer } from "./components/site-container";
 import { IconRow, eyebrow } from "./landing/components";
 import { providerIcons } from "./landing/data";
-import { Agents, Developers, HowItWorks, Sandbox, Trust } from "./landing/sections";
+import { Finale } from "./landing/finale";
+import { HeroStage } from "./landing/hero-stage";
+import { Agents, Developers, HowItWorks, Trust } from "./landing/sections";
 
 function Hero() {
   return (
@@ -41,34 +42,21 @@ function Hero() {
         </div>
       </div>
 
-      <div className="relative mx-auto w-full max-w-[410px] lg:mx-0 lg:max-w-none lg:pl-[124px] lg:pt-16">
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute top-0 -left-24 size-[680px] max-w-none bg-[radial-gradient(circle,#463cff6b,#7846ff36_35%,transparent_68%)]"
-        />
-        <Image
-          src="/vault-balance.png"
-          alt="Fliq vault with balance, live rate, and recent activity"
-          width={332}
-          height={716}
-          priority
-          className="relative block h-auto w-full max-w-[332px] rounded-[44px]"
-        />
-      </div>
+      <HeroStage />
     </section>
   );
 }
 export default function HomePage() {
   return (
     <MarketingShell>
-      <div className="overflow-hidden bg-[linear-gradient(180deg,#171717_0%,#0b0b0b_60%,#000_100%)]">
+      <div className="overflow-x-clip bg-[linear-gradient(180deg,#171717_0%,#0b0b0b_60%,#000_100%)]">
         <main>
           <Hero />
           <HowItWorks />
           <Developers />
           <Agents />
           <Trust />
-          <Sandbox />
+          <Finale />
         </main>
       </div>
     </MarketingShell>
