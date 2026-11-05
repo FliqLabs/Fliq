@@ -1,0 +1,12 @@
+**/node_modules
+**/.env
+**/.env.*
+!**/.env.example
+.git
+apps/ios
+apps/web/*
+!apps/web/package.json
+contracts
+analytics
+docs
+**/*.pdf

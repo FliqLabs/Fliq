@@ -80,3 +80,5 @@ final class ReceiveFlow {
         }
     }
 }
+
+extension ReceiveFlow: Identifiable {}
