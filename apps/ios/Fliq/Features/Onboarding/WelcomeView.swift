@@ -33,11 +33,13 @@ struct WelcomeView: View {
                     HStack(spacing: 12) {
                         icon("IconPasskey")
                         Text("Continue with passkey")
-                        Spacer(minLength: 0)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .overlay(alignment: .trailing) {
                         Image(systemName: "arrow.right")
                             .font(.system(size: 17, weight: .semibold))
+                            .padding(.trailing, 26)
                     }
-                    .padding(.horizontal, 26)
                 }
                 .buttonStyle(WelcomeButtonStyle())
                 Button(action: onExistingAccount) {
