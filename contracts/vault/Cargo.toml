@@ -8,6 +8,7 @@ publish = false
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+near-contract-standards = "=5.30.0"
 near-sdk = { version = "=5.30.0", features = ["legacy"] }
 
 [dev-dependencies]

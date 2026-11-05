@@ -1,8 +1,12 @@
 mod vault;
 
+use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
+use near_contract_standards::storage_management::{
+    StorageBalance, StorageBalanceBounds, StorageManagement,
+};
 use near_sdk::json_types::U128;
 use near_sdk::{AccountId, NearToken, PanicOnDefault, PromiseOrValue, near};
-use vault::{BalanceView, StorageBalance, StorageBalanceBounds, Vault};
+use vault::{BalanceView, Vault};
 
 #[near(contract_state)]
 #[derive(PanicOnDefault)]
@@ -29,17 +33,12 @@ impl Contract {
     pub fn get_balance(&self, account_id: AccountId) -> BalanceView {
         self.vault.balance_of(&account_id).into()
     }
+}
 
-    pub fn storage_balance_bounds(&self) -> StorageBalanceBounds {
-        self.vault.storage_balance_bounds()
-    }
-
-    pub fn storage_balance_of(&self, account_id: AccountId) -> Option<StorageBalance> {
-        self.vault.storage_balance_of(&account_id)
-    }
-
+#[near]
+impl StorageManagement for Contract {
     #[payable]
-    pub fn storage_deposit(
+    fn storage_deposit(
         &mut self,
         account_id: Option<AccountId>,
         registration_only: Option<bool>,
@@ -48,16 +47,27 @@ impl Contract {
     }
 
     #[payable]
-    pub fn storage_withdraw(&mut self, amount: Option<NearToken>) -> StorageBalance {
+    fn storage_withdraw(&mut self, amount: Option<NearToken>) -> StorageBalance {
         self.vault.storage_withdraw(amount)
     }
 
     #[payable]
-    pub fn storage_unregister(&mut self, force: Option<bool>) -> bool {
+    fn storage_unregister(&mut self, force: Option<bool>) -> bool {
         self.vault.storage_unregister(force)
     }
 
-    pub fn ft_on_transfer(
+    fn storage_balance_bounds(&self) -> StorageBalanceBounds {
+        self.vault.storage_balance_bounds()
+    }
+
+    fn storage_balance_of(&self, account_id: AccountId) -> Option<StorageBalance> {
+        self.vault.storage_balance_of(&account_id)
+    }
+}
+
+#[near]
+impl FungibleTokenReceiver for Contract {
+    fn ft_on_transfer(
         &mut self,
         sender_id: AccountId,
         amount: U128,
@@ -208,7 +218,12 @@ mod tests {
 
         assert_eq!(registered.total, bounds.min);
         assert!(registered.available.is_zero());
-        assert_eq!(contract.storage_balance_of(user), Some(registered));
+        let stored = match contract.storage_balance_of(user) {
+            Some(balance) => balance,
+            None => panic!("registered account has no storage balance"),
+        };
+        assert_eq!(stored.total, registered.total);
+        assert_eq!(stored.available, registered.available);
     }
 
     #[test]

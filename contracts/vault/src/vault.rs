@@ -1,3 +1,4 @@
+use near_contract_standards::storage_management::{StorageBalance, StorageBalanceBounds};
 use near_sdk::collections::LookupMap;
 use near_sdk::json_types::U128;
 use near_sdk::{AccountId, NearToken, Promise, env, near, require};
@@ -40,20 +41,6 @@ impl From<Balance> for BalanceView {
 struct Reservation {
     payer: AccountId,
     amount: u128,
-}
-
-#[near(serializers = [borsh, json])]
-#[derive(Debug, PartialEq, Eq)]
-pub struct StorageBalance {
-    pub total: NearToken,
-    pub available: NearToken,
-}
-
-#[near(serializers = [borsh, json])]
-#[derive(Debug, PartialEq, Eq)]
-pub struct StorageBalanceBounds {
-    pub min: NearToken,
-    pub max: Option<NearToken>,
 }
 
 #[allow(dead_code)]
