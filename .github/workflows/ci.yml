@@ -155,7 +155,15 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: make test-api
+      - name: Generate the Prisma client
+        run: pnpm --filter @fliq/api db:generate
+      - name: Unit tests
+        # Throwaway values so the app config loads. The database e2e test skips without DATABASE_URL.
+        env:
+          FLIQ_ACCESS_SECRET: ci-only-not-a-secret
+          FLIQ_DATA_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+          FLIQ_HASH_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+        run: make test-api
 
   web:
     needs: changes
