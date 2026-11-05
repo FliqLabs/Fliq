@@ -11,6 +11,8 @@ import { createHandlers } from "../apps/api/src/handlers.js";
 
 const enabled = Boolean(process.env.DATABASE_URL && process.env.FLIQ_ACCESS_SECRET);
 
+const NOW = new Date("2026-11-05T10:00:00Z");
+
 class CapturingSender implements EmailSender {
   links: string[] = [];
   async sendSignInLink(_to: string, link: string) {
@@ -26,7 +28,13 @@ describe.skipIf(!enabled)("onboarding against a real database", () => {
     config,
     unit: unitOf(database),
     logger: Boolean(process.env.E2E_LOG),
-    handlers: createHandlers({ config, unit: unitOf(database), email: sender, provisioner: new MockProvisioner(config.vaultAccount) }),
+    handlers: createHandlers({
+      config,
+      unit: unitOf(database),
+      email: sender,
+      provisioner: new MockProvisioner(config.vaultAccount),
+      now: () => NOW,
+    }),
   });
   const suffix = randomBytes(4).toString("hex");
   const email = `e2e+${suffix}@example.test`;
@@ -47,6 +55,10 @@ describe.skipIf(!enabled)("onboarding against a real database", () => {
     if (user) {
       const workspaces = await database.workspace.findMany({ where: { ownerId: user.id }, select: { id: true } });
       const ids = workspaces.map((w) => w.id);
+      await database.$transaction(async (tx) => {
+        await tx.$executeRaw`SET LOCAL session_replication_role = replica`;
+        await tx.$executeRaw`DELETE FROM core.payout_events WHERE payout_id IN (SELECT id FROM core.payouts WHERE developer_id = ANY(${ids}::text[]))`;
+      });
       await database.payout.deleteMany({ where: { developerId: { in: ids } } });
       await database.recipient.deleteMany({ where: { userId: user.id } });
       await database.quote.deleteMany({ where: { developerId: { in: ids } } });
@@ -241,6 +253,100 @@ describe.skipIf(!enabled)("onboarding against a real database", () => {
     expect((await call("GET", "/payouts?limit=0", undefined, authed())).statusCode).toBe(400);
     expect((await call("GET", "/payouts?cursor=garbage", undefined, authed())).statusCode).toBe(400);
     expect((await call("GET", "/onboarding", undefined, authed())).json().steps[0]).toEqual({ id: "create_test_payout", done: true });
+  }, 120_000);
+
+  it("counts today in the caller's timezone while storing UTC", async () => {
+    const workspace = (await call("GET", "/workspaces/current", undefined, authed())).json();
+    const recipient = newId("rcp");
+    const quote = newId("q");
+    const at = (iso: string) => new Date(iso);
+    const payouts = [
+      { ref: "a", state: "settled", currency: "ngn", minor: 6_881_600n, created: "2026-11-04T23:29:30Z", deposit: "2026-11-04T23:29:39Z", settled: "2026-11-04T23:30:00Z" },
+      { ref: "b", state: "settled", currency: "ngn", minor: 3_000_000n, created: "2026-11-04T11:59:30Z", deposit: "2026-11-04T11:59:40Z", settled: "2026-11-04T12:00:00Z" },
+      { ref: "k", state: "settled", currency: "kes", minor: 645_000n, created: "2026-11-05T07:59:00Z", deposit: "2026-11-05T07:59:22Z", settled: "2026-11-05T08:00:00Z" },
+      { ref: "c", state: "failed", currency: "ngn", minor: 50_000_000n, created: "2026-11-05T09:00:00Z", reason: "vault_daily_cap" },
+      { ref: "d", state: "failed", currency: "ngn", minor: 1_000_000n, created: "2026-11-05T09:30:00Z", reason: "provider_unavailable" },
+    ] as const;
+
+    await database.$transaction(async (tx) => {
+      await tx.recipient.create({
+        data: {
+          id: recipient,
+          userId,
+          institutionCode: "058",
+          accountCipher: encrypt("0000000001", config.dataKey),
+          nameCipher: encrypt("TEST RECIPIENT", config.dataKey),
+          lookupHash: keyedHash("058:0000000001", config.hashKey),
+        },
+      });
+      await tx.quote.create({
+        data: {
+          id: quote,
+          developerId: workspace.workspace_id,
+          mode: "send_exactly",
+          tokenSymbol: "USDC",
+          sourceChain: "base",
+          currency: "ngn",
+          amountIn: 50_000_000n,
+          amountOutMinor: 6_881_600n,
+          rate: "1376.32",
+          expiresAt: at("2026-11-06T00:00:00Z"),
+        },
+      });
+      for (const item of payouts) {
+        const id = newId("po");
+        await tx.payout.create({
+          data: {
+            id,
+            developerId: workspace.workspace_id,
+            clientReference: `stats-${item.ref}`,
+            quoteId: quote,
+            recipientId: recipient,
+            routeKind: "direct",
+            provider: "paycrest",
+            state: item.state,
+            amountIn: 50_000_000n,
+            amountOutMinor: item.minor,
+            currency: item.currency,
+            rate: "1376.32",
+            failureReason: "reason" in item ? item.reason : null,
+            createdAt: at(item.created),
+          },
+        });
+        if (item.state !== "settled") continue;
+        await tx.payoutEvent.createMany({
+          data: [
+            { id: newId("pev"), payoutId: id, fromState: "awaiting_deposit", toState: "deposit_seen", version: 2, cause: "deposit", createdAt: at(item.deposit) },
+            { id: newId("pev"), payoutId: id, fromState: "paying_out", toState: "settled", version: 3, cause: "provider_confirmed", createdAt: at(item.settled) },
+          ],
+        });
+      }
+    });
+
+    const lagos = (await call("GET", "/payouts/stats?tz=Africa/Lagos", undefined, authed())).json();
+    expect(lagos.window).toEqual({ start: "2026-11-04T23:00:00.000Z", end: "2026-11-05T23:00:00.000Z" });
+    expect(lagos.settled).toEqual({
+      count: 2,
+      totals: [
+        { currency: "kes", amount: 6450 },
+        { currency: "ngn", amount: 68816 },
+      ],
+    });
+    expect(lagos.median_seconds_to_bank).toBe(29.5);
+    expect(lagos.refused).toEqual({ count: 1, totals: [{ currency: "ngn", amount: 500000 }] });
+
+    const utc = (await call("GET", "/payouts/stats", undefined, authed())).json();
+    expect(utc.timezone).toBe("UTC");
+    expect(utc.settled).toEqual({ count: 1, totals: [{ currency: "kes", amount: 6450 }] });
+    expect(utc.median_seconds_to_bank).toBe(38);
+
+    const la = (await call("GET", "/payouts/stats?tz=America/Los_Angeles", undefined, authed())).json();
+    expect(la.window).toEqual({ start: "2026-11-05T08:00:00.000Z", end: "2026-11-06T08:00:00.000Z" });
+    expect(la.settled).toEqual({ count: 1, totals: [{ currency: "kes", amount: 6450 }] });
+    expect(la.refused.count).toBe(1);
+
+    expect((await call("GET", "/payouts/stats?tz=Mars/Base", undefined, authed())).statusCode).toBe(400);
+    expect((await call("GET", "/payouts/stats", undefined, {})).statusCode).toBe(401);
   }, 120_000);
 
   it("rotates refresh tokens and revokes the family when an old one is reused", async () => {
