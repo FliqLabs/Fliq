@@ -27,7 +27,7 @@ struct ArrivingView: View {
                 if !deposit.source.isDirect {
                     step("Moving to NEAR", detail: bridgeDetail(deposit), logo: "ChainNEAR", reached: .bridging, isLast: false)
                 }
-                step("In your vault", detail: "balance becomes $\(Money.dollars(balanceAfter(deposit)))", logo: "VaultMark", reached: .landed, isLast: true)
+                step("In your vault", detail: vaultDetail, logo: "VaultMark", reached: .landed, isLast: true)
             }
             .padding(.horizontal, 18)
             .padding(.vertical, 20)
@@ -69,7 +69,14 @@ struct ArrivingView: View {
             .frame(width: 66, height: 66)
             .padding(3)
             .padding(.bottom, 8)
-            HeroAmount(symbol: "+$", value: deposit.lands.decimalString)
+            if let landing = flow.landing {
+                HeroAmount(symbol: "+$", value: landing.decimalString)
+            } else {
+                Text("Waiting for your \(deposit.source.token)")
+                    .font(.system(size: 30, weight: .light))
+                    .tracking(-0.6)
+                    .frame(height: 64)
+            }
             Text(caption(deposit, now: now))
                 .font(.system(size: 15))
                 .foregroundStyle(stage == .landed ? Theme.confirmed : Theme.textSecondary)
@@ -90,6 +97,7 @@ struct ArrivingView: View {
 
     private func caption(_ deposit: DepositAddress, now: Date) -> String {
         if stage == .landed { return "in your vault" }
+        if stage == .waiting { return "We'll show it here the moment it arrives" }
         let left = secondsLeft(deposit, now: now)
         if left >= 120 { return "about \(left / 60) minutes left" }
         return left == 1 ? "about a second left" : "about \(left) seconds left"
@@ -99,10 +107,11 @@ struct ArrivingView: View {
         deposit.source.group == .bitcoin ? "TokenBTC" : "Chain\(deposit.source.chain)"
     }
 
-    /// Once landed the vault already holds it; before that, show what it will hold.
-    private func balanceAfter(_ deposit: DepositAddress) -> TokenAmount {
+    private var vaultDetail: String {
         let now = environment.vault.balance
-        return stage == .landed ? now : TokenAmount(baseUnits: now.baseUnits + deposit.lands.baseUnits)
+        if stage == .landed { return "balance is $\(Money.dollars(now))" }
+        guard let landing = flow.landing else { return "your balance updates when it lands" }
+        return "balance becomes $\(Money.dollars(TokenAmount(baseUnits: now.baseUnits + landing.baseUnits)))"
     }
 
     private func seenDetail(_ deposit: DepositAddress) -> String {

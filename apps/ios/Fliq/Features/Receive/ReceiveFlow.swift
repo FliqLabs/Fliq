@@ -8,7 +8,6 @@ final class ReceiveFlow {
 
     private(set) var sources: [DepositSource] = []
     var source: DepositSource?
-    private(set) var amountText = ""
     private(set) var deposit: DepositAddress?
     private(set) var status: DepositStatus?
     private(set) var isReserving = false
@@ -24,19 +23,10 @@ final class ReceiveFlow {
         self.vaultAccount = vaultAccount
     }
 
-    var amount: TokenAmount? { TokenAmount(decimalString: amountText) }
-
-    var belowMinimum: Bool {
-        guard let minimum = source?.minimum, let amount else { return false }
-        return amount < minimum
-    }
-
-    var canReserve: Bool { (amount ?? .zero) > .zero && !belowMinimum && !isReserving }
-
-    var estimatedLanding: TokenAmount? {
-        guard let amount, let source else { return nil }
-        let fee = source.isDirect ? .zero : FixtureDepositAPI.fee
-        return TokenAmount(baseUnits: max(0, amount.baseUnits - fee.baseUnits))
+    /// What reaches the vault once the deposit is seen; nil until then.
+    var landing: TokenAmount? {
+        guard let deposit, let received = status?.received else { return nil }
+        return deposit.landing(received)
     }
 
     func loadSources() async {
@@ -44,22 +34,17 @@ final class ReceiveFlow {
         sources = (try? await api.sources()) ?? []
     }
 
-    func tapKey(_ key: String) {
-        amountText = AmountTyping.apply(key, to: amountText)
-    }
-
     func reserve() async -> Bool {
-        guard let source else { return false }
-        let expected = amount ?? .zero
+        guard let source, !isReserving else { return false }
         isReserving = true
         defer { isReserving = false }
         do {
-            deposit = try await api.reserve(source, expected: expected, vault: vaultAccount)
+            deposit = try await api.reserve(source, vault: vaultAccount)
             status = nil
             errorMessage = nil
             return true
         } catch {
-            errorMessage = "Couldn't reserve an address. Try again."
+            errorMessage = "Couldn't get an address. Check your connection and try again."
             return false
         }
     }
@@ -76,7 +61,7 @@ final class ReceiveFlow {
             try? await Task.sleep(for: Self.pollInterval)
             guard let next = try? await api.status(of: deposit) else { continue }
             status = next
-            if next.stage == .landed { vault.credit(deposit.lands) }
+            if next.stage == .landed, let received = next.received { vault.credit(deposit.landing(received)) }
         }
     }
 }
