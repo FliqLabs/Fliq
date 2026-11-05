@@ -5,7 +5,9 @@ struct RootView: View {
     @State private var home: HomeModel?
     @State private var flow: PayFlow?
     @State private var receive: ReceiveFlow?
-    @State private var choosingSource = false
+    /// The flow the source sheet was opened with. Kept apart from `receive` so the sheet gets
+    /// its flow in the same update that presents it, and closing it leaves `receive` for the next screens.
+    @State private var sourceSheet: ReceiveFlow?
 
     var body: some View {
         @Bindable var router = environment.router
@@ -19,17 +21,15 @@ struct RootView: View {
             .navigationDestination(for: AppRoute.self, destination: destination)
         }
         .tint(Theme.textPrimary)
-        .sheet(isPresented: $choosingSource) {
-            if let receive {
-                ReceiveSourceView(flow: receive, onPicked: { route in
-                    choosingSource = false
-                    router.push(route)
-                })
-                .presentationDetents([.height(700)])
-                .presentationDragIndicator(.hidden)
-                .presentationCornerRadius(24)
-                .presentationBackground(Color(hex: 0x141414))
-            }
+        .sheet(item: $sourceSheet) { flow in
+            ReceiveSourceView(flow: flow, onPicked: { route in
+                sourceSheet = nil
+                router.push(route)
+            })
+            .presentationDetents([.height(700)])
+            .presentationDragIndicator(.hidden)
+            .presentationCornerRadius(24)
+            .presentationBackground(Color(hex: 0x141414))
         }
         .onAppear {
             if home == nil { home = HomeModel(api: environment.api, vault: environment.vault) }
@@ -47,7 +47,7 @@ struct RootView: View {
             vault: environment.vault,
             vaultAccount: environment.profile.name ?? "fliq-vault.testnet"
         )
-        choosingSource = true
+        sourceSheet = receive
     }
 
     @ViewBuilder
