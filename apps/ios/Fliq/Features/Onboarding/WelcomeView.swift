@@ -6,7 +6,7 @@ struct WelcomeView: View {
     var onSkip: (() -> Void)? = nil
 
     private static let accent = LinearGradient(
-        colors: [Color(hex: 0x4D7CFF), Color(hex: 0x5EDCFF), Color(hex: 0x9B6CFF)],
+        colors: [Color(hex: 0x7B61FF), Color(hex: 0xB39BFF)],
         startPoint: .leading,
         endPoint: .trailing
     )
@@ -14,29 +14,30 @@ struct WelcomeView: View {
     var body: some View {
         VStack(spacing: 0) {
             Spacer()
-            VStack(alignment: .leading, spacing: 20) {
-                (Text("Dollars in,\nyour bank account ") + Text("out.").foregroundStyle(Self.accent))
-                    .font(.system(size: 34, weight: .bold))
-                    .tracking(-0.8)
+            VStack(alignment: .leading, spacing: 18) {
+                (Text("Money without\n") + Text("borders").foregroundStyle(Self.accent) + Text("."))
+                    .font(.system(size: 38, weight: .bold))
+                    .tracking(-1)
                     .lineSpacing(2)
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Any chain. Any bank or mobile money.")
-                        .font(.system(size: 16, weight: .semibold))
-                    Text("Move money globally at the best live rate, in seconds.")
-                        .font(.system(size: 15))
-                        .foregroundStyle(Color(hex: 0xA9ACC7))
-                }
+                Text("Any chain. Any bank or mobile money.\nBest live rates, in seconds.")
+                    .font(.system(size: 16))
+                    .foregroundStyle(Color(hex: 0xC9CCE0))
+                    .lineSpacing(4)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 16)
-            .padding(.bottom, 32)
+            .padding(.horizontal, 10)
+            .padding(.bottom, 44)
 
-            VStack(spacing: 20) {
+            VStack(spacing: 22) {
                 Button(action: onStart) {
                     HStack(spacing: 12) {
                         icon("IconPasskey")
                         Text("Continue with passkey")
+                        Spacer(minLength: 0)
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 17, weight: .semibold))
                     }
+                    .padding(.horizontal, 26)
                 }
                 .buttonStyle(WelcomeButtonStyle())
                 Button(action: onExistingAccount) {
@@ -44,21 +45,21 @@ struct WelcomeView: View {
                         icon("IconDownload")
                         Text("I already have an account")
                     }
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.system(size: 17, weight: .medium))
                 }
                 .foregroundStyle(Theme.textPrimary)
             }
-            .padding(.bottom, 24)
+            .padding(.bottom, 36)
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, 26)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .overlay(alignment: .topTrailing) {
             if let onSkip {
                 Button("Skip", action: onSkip)
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.system(size: 17, weight: .medium))
                     .foregroundStyle(Theme.textPrimary)
                     .padding(.trailing, 24)
-                    .padding(.top, 8)
+                    .padding(.top, 12)
             }
         }
         .background {
@@ -88,13 +89,13 @@ private struct WelcomeButtonStyle: ButtonStyle {
         configuration.label
             .font(.system(size: 17, weight: .semibold))
             .foregroundStyle(Color(hex: 0x0B0B14))
-            .frame(maxWidth: .infinity, minHeight: 52)
+            .frame(maxWidth: .infinity, minHeight: 56)
             .background {
                 Capsule().fill(
-                    LinearGradient(colors: [.white, Color(hex: 0xECE8FF)], startPoint: .top, endPoint: .bottom)
+                    LinearGradient(colors: [.white, Color(hex: 0xEEEAFF)], startPoint: .top, endPoint: .bottom)
                 )
             }
-            .shadow(color: Color(hex: 0x8B6CFF).opacity(0.55), radius: 18, y: 8)
+            .shadow(color: Color(hex: 0x8B6CFF).opacity(0.45), radius: 18, y: 8)
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
             .animation(.spring(response: 0.3, dampingFraction: 0.65), value: configuration.isPressed)
             .sensoryFeedback(.impact(weight: .light), trigger: configuration.isPressed) { _, pressed in pressed }
