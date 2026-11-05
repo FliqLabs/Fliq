@@ -61,6 +61,8 @@ Architecture diagrams: [docs/architecture.md](docs/architecture.md).
 | @redocly/cli | spec | Lint the OpenAPI spec |
 | ajv, ajv-formats, yaml | spec | Validate fixtures against the spec |
 | tsx, vitest, typescript | services/api | Run and test the API |
+| near-contract-standards | contracts/vault | Expose standard NEP-141 receiver and NEP-145 storage interfaces |
+| near-sdk | contracts/vault | Build and test the NEAR USDC vault contract |
 | prettier | root | Formatting |
 
 ## Contributing
