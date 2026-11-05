@@ -55,6 +55,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/quotes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Quote every provider and rank the routes
+         * @description Runs every eligible provider in parallel under a 1.5 second budget. The best route is returned as the quote and every route is stored with its score breakdown.
+         */
+        post: operations["requestQuote"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/institutions/verify": {
         parameters: {
             query?: never;
@@ -393,7 +413,7 @@ export interface components {
             version: string;
         };
         /** @enum {string} */
-        ProviderId: "paycrest" | "busha" | "fonbnk" | "bitnob";
+        ProviderId: "paycrest" | "busha" | "fonbnk" | "bitnob" | "transfi" | "mock";
         /** @enum {string} */
         ProviderStatus: "live" | "stale" | "paused";
         ReferenceRate: {
@@ -419,9 +439,27 @@ export interface components {
             /** @enum {string} */
             token: "usdc" | "usdt";
             /** @enum {string} */
-            currency: "ngn" | "kes";
-            /** @description Token amount as a decimal string, never a float */
+            currency: "ngn" | "kes" | "ghs" | "idr" | "php";
+            /** @description Token amount as a decimal string, never a float. With mode receive it is the local amount the recipient gets. */
             amount: string;
+            /**
+             * @default bank
+             * @enum {string}
+             */
+            payout_type: "bank" | "mobile_money";
+            /** @description Chain the funds start on. Defaults to near, the vault's chain. */
+            source_chain?: string;
+            /**
+             * @description send fixes what the sender pays, receive fixes what the recipient gets
+             * @default send
+             * @enum {string}
+             */
+            mode: "send" | "receive";
+            /**
+             * @default best_rate
+             * @enum {string}
+             */
+            preference: "best_rate" | "most_reliable" | "fastest";
         };
         Fees: {
             /** @description In minor units of the local currency */
@@ -435,6 +473,17 @@ export interface components {
             rate: number | null;
             age_seconds?: number;
             routed?: boolean;
+            /** @description Whole local currency units this route would pay */
+            receive?: number;
+            /** @description Total fees of this route in minor units of the local currency */
+            fee?: number;
+            eta_seconds?: number;
+            /** @description Smoothed 30-day success rate */
+            on_time_percent?: number;
+            /** @description Whole local currency units below the best route, 0 for the best */
+            less_than_best?: number;
+            /** @enum {string|null} */
+            not_offered_reason?: "breaker_open" | "timeout" | "error" | "half_open_over_limit" | null;
         };
         Quote: {
             quote_id: string;
@@ -450,6 +499,10 @@ export interface components {
             best_of: number;
             routes: components["schemas"]["Route"][];
             expires_in: number;
+            /** @description Estimated seconds until the money lands, from the chosen route */
+            eta_seconds?: number;
+            /** @description Whole local currency units the chosen route pays over the next best, 0 when there is only one */
+            saving_vs_next?: number;
         };
         Account: {
             /** @description Institution code, for example 058 for GTBank */
@@ -683,7 +736,7 @@ export interface components {
     parameters: {
         IdempotencyKey: string;
         Token: "usdc" | "usdt";
-        Currency: "ngn" | "kes";
+        Currency: "ngn" | "kes" | "ghs" | "idr" | "php";
     };
     requestBodies: never;
     headers: never;
@@ -758,6 +811,40 @@ export interface operations {
             };
             400: components["responses"]["Error"];
             401: components["responses"]["Error"];
+        };
+    };
+    requestQuote: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuoteRequest"];
+            };
+        };
+        responses: {
+            /** @description The ranked quote. It holds until expires_in runs out. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Quote"];
+                };
+            };
+            400: components["responses"]["Error"];
+            /** @description No provider can pay this out right now */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     verifyAccount: {
