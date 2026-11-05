@@ -21,6 +21,12 @@ class CapturingSender implements EmailSender {
 }
 
 describe.skipIf(!enabled)("onboarding against a real database", () => {
+  // vitest still runs the body of a skipped suite, so stop before anything needs real configuration.
+  if (!enabled) {
+    it("needs DATABASE_URL pointing at a local database", () => {});
+    return;
+  }
+
   const database = createDatabase();
   const sender = new CapturingSender();
   const config = loadConfig();
