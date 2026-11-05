@@ -10,6 +10,7 @@ export type PostingType =
   | "REFUND_INITIATED"
   | "REFUND_COMPLETED"
   | "VAULT_CREDITED"
+  | "VAULT_TRANSFER"
   | "VAULT_RESERVED"
   | "VAULT_RELEASED";
 
@@ -159,5 +160,14 @@ export function vaultCredited(creditId: string, holder: string, asset: Asset, am
     payoutId: creditId,
     type: "VAULT_CREDITED",
     lines: [debit(account("sender_external", asset), amount), credit(account("vault_available", asset, holder), amount)],
+  };
+}
+
+// A vault-to-vault transfer moves the amount between two holders' free balances.
+export function vaultTransfer(transferId: string, from: string, to: string, asset: Asset, amount: bigint): Posting {
+  return {
+    payoutId: transferId,
+    type: "VAULT_TRANSFER",
+    lines: [debit(account("vault_available", asset, from), amount), credit(account("vault_available", asset, to), amount)],
   };
 }

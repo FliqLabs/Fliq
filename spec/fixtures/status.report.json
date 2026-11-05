@@ -1,0 +1,763 @@
+{
+  "updated_at": "2026-11-05T14:30:00Z",
+  "components": [
+    {
+      "id": "api",
+      "name": "API",
+      "kind": "service",
+      "state": "healthy",
+      "days": [
+        {
+          "date": "2026-09-07",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-09-08",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-09-09",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-09-10",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-09-11",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-09-12",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-09-13",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-09-14",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-09-15",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-09-16",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-09-17",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-09-18",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-09-19",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-09-20",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-09-21",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-09-22",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-09-23",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-09-24",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-09-25",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-09-26",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-09-27",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-09-28",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-09-29",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-09-30",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-01",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-02",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-03",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-04",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-05",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-06",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-07",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-08",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-09",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-10",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-11",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-12",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-13",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-14",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-15",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-16",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-17",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-18",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-19",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-20",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-21",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-22",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-23",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-24",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-25",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-26",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-27",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-28",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-29",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-30",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-31",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-11-01",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-11-02",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-11-03",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-11-04",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-11-05",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        }
+      ]
+    },
+    {
+      "id": "paycrest",
+      "name": "Paycrest",
+      "kind": "provider",
+      "state": "degraded",
+      "days": [
+        {
+          "date": "2026-09-07",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-09-08",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-09-09",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-09-10",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-09-11",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-09-12",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-09-13",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-09-14",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-09-15",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-09-16",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-09-17",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-09-18",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-09-19",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-09-20",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-09-21",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-09-22",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-09-23",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-09-24",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-09-25",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-09-26",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-09-27",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-09-28",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-09-29",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-09-30",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-01",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-02",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-03",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-04",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-05",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-06",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-07",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-08",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-09",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-10",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-11",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-12",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-13",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-14",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-15",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-16",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-17",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-18",
+          "status": "degraded",
+          "checks": 1440,
+          "uptime_percent": 99.79
+        },
+        {
+          "date": "2026-10-19",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-20",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-21",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-22",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-23",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-24",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-25",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-26",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-27",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-28",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-29",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-30",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-10-31",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-11-01",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-11-02",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-11-03",
+          "status": "operational",
+          "checks": 1440,
+          "uptime_percent": 100.0
+        },
+        {
+          "date": "2026-11-04",
+          "status": "outage",
+          "checks": 1440,
+          "uptime_percent": 91.67
+        },
+        {
+          "date": "2026-11-05",
+          "status": "degraded",
+          "checks": 1440,
+          "uptime_percent": 99.79
+        }
+      ]
+    }
+  ],
+  "incidents": [
+    {
+      "incident_id": "inc_01jc0demo0000000000000001",
+      "component": "paycrest",
+      "title": "Paycrest is degraded",
+      "impact": "degraded",
+      "state": "open",
+      "summary": "Paycrest failed 3 health checks in a row.",
+      "started_at": "2026-11-05T13:58:00Z",
+      "resolved_at": null
+    },
+    {
+      "incident_id": "inc_01jc0demo0000000000000000",
+      "component": "paycrest",
+      "title": "Paycrest is down",
+      "impact": "outage",
+      "state": "resolved",
+      "summary": "Paycrest failed 3 health checks in a row.",
+      "started_at": "2026-11-04T09:10:00Z",
+      "resolved_at": "2026-11-04T11:40:00Z"
+    }
+  ]
+}

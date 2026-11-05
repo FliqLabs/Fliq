@@ -102,6 +102,6 @@ struct PaidView: View {
 
 extension Payout {
     var institutionName: String {
-        Institution.supported.first { $0.code == account.bank }?.name ?? "bank"
+        Institution.name(for: account.bank) ?? "bank"
     }
 }

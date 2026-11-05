@@ -12,6 +12,8 @@ const ALLOWED_NEAR_NETWORKS: Record<Deployment, readonly NearNetwork[]> = {
 };
 
 const MAX_APP_FEE_BPS = 1_000;
+// 0.1 NEAR: a typo here would otherwise drain the root account one sign-up at a time.
+const MAX_ACCOUNT_FUNDING_YOCTO = 10n ** 23n;
 
 function publicUrlSchemes(read: Reader): string[] {
   return read.deployment === "production" ? ["https:"] : ["https:", "http:"];
@@ -89,6 +91,18 @@ export const relayer = defineSection((read) => {
     accountId: nearAccountOn(read, "RELAYER_ACCOUNT_ID", network),
     privateKeys: read.nearKeys("RELAYER_PRIVATE_KEYS", minKeys, 10),
     authToken: read.rotatingSecret("RELAYER_AUTH_TOKEN"),
+    port: read.int("RELAYER_PORT", 1, 65_535),
+  };
+});
+
+// The parent account that creates name.<root> accounts for new users. Its key is a different authority from the
+// gas pool: it can create sub-accounts and pays their funding and storage, so it is configured separately.
+export const accountCreator = defineSection((read) => {
+  const network = nearNetwork(read);
+  return {
+    rootAccountId: nearAccountOn(read, "NEAR_ROOT_ACCOUNT", network),
+    rootPrivateKey: read.nearKey("NEAR_ROOT_PRIVATE_KEY"),
+    fundingYocto: read.units("NEAR_ACCOUNT_FUNDING_YOCTO", MAX_ACCOUNT_FUNDING_YOCTO),
   };
 });
 

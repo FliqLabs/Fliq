@@ -8,11 +8,13 @@ struct DepositAddressView: View {
 
     var body: some View {
         if let deposit = flow.deposit {
-            content(deposit)
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                content(deposit, expired: !deposit.source.isDirect && flow.secondsLeft(at: context.date) == 0, now: context.date)
+            }
         }
     }
 
-    private func content(_ deposit: DepositAddress) -> some View {
+    private func content(_ deposit: DepositAddress, expired: Bool, now: Date) -> some View {
         VStack(spacing: 0) {
             Text(heading(deposit))
                 .font(.system(size: 22, weight: .semibold))
@@ -20,6 +22,11 @@ struct DepositAddressView: View {
                 .lineSpacing(2)
                 .multilineTextAlignment(.center)
                 .padding(.top, 36)
+
+            Text(amountRule(deposit))
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(Theme.textSecondary)
+                .padding(.top, 10)
 
             if deposit.isDemo {
                 Label("Demo address. Don't send real funds to it.", systemImage: "exclamationmark.triangle.fill")
@@ -35,7 +42,17 @@ struct DepositAddressView: View {
                 .padding(16)
                 .frame(width: 232, height: 232)
                 .background(.white, in: RoundedRectangle(cornerRadius: 20))
-                .padding(.top, 28)
+                .blur(radius: expired ? 10 : 0)
+                .opacity(expired ? 0.25 : 1)
+                .overlay {
+                    if expired {
+                        Text("This address has expired")
+                            .font(.system(size: 17, weight: .semibold))
+                            .multilineTextAlignment(.center)
+                    }
+                }
+                .accessibilityHidden(expired)
+                .padding(.top, 24)
 
             HStack(spacing: 8) {
                 Button {
@@ -59,20 +76,27 @@ struct DepositAddressView: View {
                 .accessibilityLabel("Share address")
             }
             .foregroundStyle(Theme.textPrimary)
+            .opacity(expired ? 0.3 : 1)
+            .disabled(expired)
             .padding(.top, 22)
 
             if !deposit.source.isDirect {
-                TimelineView(.periodic(from: .now, by: 1)) { context in
-                    reservation(deposit, now: context.date)
-                }
-                .padding(.top, 26)
+                reservation(deposit, now: now)
+                    .padding(.top, 26)
             }
 
             Spacer()
 
-            Button("I have sent it") { environment.router.push(.receiveArriving) }
-                .buttonStyle(PrimaryButtonStyle())
-                .padding(.bottom, 6)
+            if expired {
+                Button("Get a new address") { Task { _ = await flow.reserve() } }
+                    .buttonStyle(PrimaryButtonStyle(filled: true))
+                    .disabled(flow.isReserving)
+                    .padding(.bottom, 6)
+            } else {
+                Button("I have sent it") { environment.router.push(.receiveArriving) }
+                    .buttonStyle(PrimaryButtonStyle())
+                    .padding(.bottom, 6)
+            }
         }
         .fliqScreen()
         .toolbar {
@@ -95,7 +119,7 @@ struct DepositAddressView: View {
         let left = flow.secondsLeft(at: now)
         return VStack(spacing: 10) {
             HStack {
-                Text("Reserved for you until \(deposit.reservedUntil.formatted(date: .omitted, time: .shortened))")
+                Text("Open until \(deposit.reservedUntil.formatted(date: .omitted, time: .shortened))")
                 Spacer()
                 Text(Duration.seconds(left).formatted(.time(pattern: .minuteSecond)))
                     .foregroundStyle(Theme.textPrimary)
@@ -114,7 +138,7 @@ struct DepositAddressView: View {
             }
             .frame(height: 2)
             .animation(.linear(duration: 1), value: left)
-            Text("We watch this address for 10 minutes. Nothing sent is lost.")
+            Text("Send within 10 minutes. After that, get a new address.")
                 .font(.system(size: 13))
                 .foregroundStyle(Color(hex: 0x8E8E8E))
                 .multilineTextAlignment(.center)
@@ -124,8 +148,12 @@ struct DepositAddressView: View {
 
     private func heading(_ deposit: DepositAddress) -> String {
         if deposit.source.isDirect { return "Send \(deposit.source.token) on NEAR\nto your vault" }
-        let amount = Money.dollars(deposit.expected)
-        return "Send about \(amount) \(deposit.source.token)\non \(deposit.source.chain) only"
+        return "Send \(deposit.source.token)\non \(deposit.source.chain) only"
+    }
+
+    private func amountRule(_ deposit: DepositAddress) -> String {
+        if deposit.source.isDirect { return "Any amount. This address never changes." }
+        return "Any amount over $\(Money.dollars(deposit.minimum))"
     }
 
     static func short(_ address: String) -> String {

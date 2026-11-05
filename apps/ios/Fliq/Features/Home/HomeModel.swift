@@ -15,7 +15,6 @@ final class HomeModel {
         self.vault = vault
     }
 
-    /// The spec has no balance endpoint yet, so this mirrors top-ups and payouts made here.
     /// Send stays enabled at zero: the vault enforces caps and balance on chain either way.
     var balance: TokenAmount { vault.balance }
 

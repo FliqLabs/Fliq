@@ -18,6 +18,12 @@ import {
 } from "./dashboard.js";
 import { requireHttpsUrl, settle } from "./errors.js";
 import { withIdempotency } from "./idempotency.js";
+import type { VaultClient } from "../../../packages/chains/vault/index.js";
+import { lookupPerson, recentPeople } from "./people.js";
+import { DEFAULT_STATUS_CONFIG, statusReport, type Probe, type StatusConfig } from "./status.js";
+import { vaultBalance } from "./vault.js";
+import { deleteRecipient, listInstitutions, listRecipients, saveRecipient, verifyAccount, type AccountLookup } from "./recipients.js";
+import { createPayout, getPayout, type PayoutDeps, type PayoutInput } from "./payouts.js";
 import { requestQuote, type QuoteDeps, type QuoteInput } from "./quotes.js";
 import { createWorkspace } from "./workspaces.js";
 
@@ -27,13 +33,16 @@ export interface HandlerDeps {
   email: EmailSender;
   provisioner: NearProvisioner;
   quotes: QuoteDeps;
+  payouts: Omit<PayoutDeps, "quotes">;
+  vault: VaultClient;
+  status?: { probes: readonly Probe[]; config?: StatusConfig };
   now?: () => Date;
 }
 
 const body = <T>(request: FastifyRequest) => request.body as T;
 const auth = (request: FastifyRequest) => request.auth as NonNullable<FastifyRequest["auth"]>;
 
-export function createHandlers({ config, unit, email, provisioner, quotes, now = () => new Date() }: HandlerDeps): Record<string, Handler> {
+export function createHandlers({ config, unit, email, provisioner, quotes, payouts, vault, status = { probes: [] }, now = () => new Date() }: HandlerDeps): Record<string, Handler> {
   return {
     getHealth: async () => ({ status: 200, body: { status: "ok", version: "0.1.0" } }),
 
@@ -118,6 +127,39 @@ export function createHandlers({ config, unit, email, provisioner, quotes, now =
       status: 200,
       body: await unit((tx) => requestQuote(tx, quotes, auth(request).userId, body<QuoteInput>(request))),
     }),
+
+    createPayout: async (request) =>
+      createPayout(unit, { ...payouts, quotes }, auth(request).userId, request.headers["idempotency-key"] as string | undefined, body<PayoutInput>(request)),
+    getPayout: async (request) => ({
+      status: 200,
+      body: await getPayout(unit, config, auth(request).userId, (request.params as { payoutId: string }).payoutId),
+    }),
+
+    listInstitutions: async (request) => ({
+      status: 200,
+      body: await listInstitutions(quotes.adapters, (request.query as { country?: string }).country),
+    }),
+    verifyAccountName: async (request) => ({ status: 200, body: await verifyAccount(quotes.adapters, body<AccountLookup>(request)) }),
+    saveRecipient: (request) => saveRecipient(unit, { config, adapters: quotes.adapters }, auth(request).userId, body<AccountLookup>(request)),
+    listRecipients: async (request) => ({ status: 200, body: await unit((tx) => listRecipients(tx, config, auth(request).userId)) }),
+    deleteRecipient: async (request) => {
+      await unit((tx) => deleteRecipient(tx, auth(request).userId, (request.params as { recipientId: string }).recipientId));
+      return { status: 204, body: undefined };
+    },
+
+    // Public and cacheable: the status page and its bars read this, so a burst of visitors makes one query per 10 seconds.
+    getStatus: async () => ({
+      status: 200,
+      headers: { "cache-control": "public, max-age=10" },
+      body: await unit((tx) => statusReport(tx, status.probes, status.config ?? DEFAULT_STATUS_CONFIG, now())),
+    }),
+
+    getVaultBalance: async (request) => ({ status: 200, body: await vaultBalance(unit, vault, auth(request).userId) }),
+    lookupPerson: async (request) => ({
+      status: 200,
+      body: await unit((tx) => lookupPerson(tx, config, (request.params as { name: string }).name)),
+    }),
+    listRecentPeople: async (request) => ({ status: 200, body: await unit((tx) => recentPeople(tx, auth(request).userId)) }),
 
     getPayoutStats: async (request) => {
       const timezone = parseTimezone((request.query as { tz?: string }).tz);

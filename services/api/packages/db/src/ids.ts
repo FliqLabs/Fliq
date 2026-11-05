@@ -13,6 +13,9 @@ export type IdPrefix =
   | "q"
   | "qr"
   | "po"
+  | "tr"
+  | "hc"
+  | "inc"
   | "pev"
   | "rcp"
   | "acc"
@@ -20,7 +23,8 @@ export type IdPrefix =
   | "jl"
   | "obx"
   | "tmr"
-  | "dlq";
+  | "dlq"
+  | "ine";
 
 function encodeBase32(value: bigint, length: number): string {
   let out = "";

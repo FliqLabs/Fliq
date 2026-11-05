@@ -13,9 +13,13 @@ export interface NearProvisioner {
 
 // Stands in for the relayer until Ladipeo's chain client exists; creates nothing on chain.
 export class MockProvisioner implements NearProvisioner {
-  constructor(private readonly vaultAccount: string) {}
+  constructor(
+    private readonly vaultAccount: string,
+    private readonly onCreated: (account: string) => void = () => undefined,
+  ) {}
 
   async createAccount(fullName: string) {
+    this.onCreated(fullName);
     return { nearAccount: fullName, vault: this.vaultAccount };
   }
 }

@@ -8,6 +8,7 @@ import { ApiError, unauthorized } from "./errors.js";
 import type { Reply } from "./idempotency.js";
 import { loadSpec, operations } from "./openapi.js";
 import { rateLimitHook, type Limiter } from "./rate-limit.js";
+import type { InboundWebhook } from "../../../packages/providers/types.js";
 
 export interface AuthContext {
   userId: string;
@@ -28,6 +29,7 @@ export interface AppDeps {
   handlers: Record<string, Handler>;
   logger?: boolean;
   limiter?: Limiter;
+  webhooks?: (provider: string, webhook: InboundWebhook) => Promise<Reply>;
 }
 
 function errorBody(code: string, message: string) {
@@ -85,8 +87,22 @@ export function buildApp(deps: AppDeps): FastifyInstance {
       preHandler: operation.isPublic ? [] : [requireSession],
       handler: async (request, reply) => {
         const result = await handler(request);
-        return reply.status(result.status).send(result.body);
+        return reply.status(result.status).headers(result.headers ?? {}).send(result.body);
       },
+    });
+  }
+
+  const receiveWebhook = deps.webhooks;
+  if (receiveWebhook) {
+    // Its own scope: the signature covers the exact bytes sent, so this route keeps the body as a string.
+    app.register(async (scope) => {
+      scope.addContentTypeParser("application/json", { parseAs: "string" }, (_request, rawBody, done) => done(null, rawBody));
+      scope.post("/v1/webhooks/:provider", async (request, reply) => {
+        const { provider } = request.params as { provider: string };
+        const headers = Object.fromEntries(Object.entries(request.headers).map(([name, value]) => [name, Array.isArray(value) ? value[0] : value]));
+        const result = await receiveWebhook(provider, { headers, rawBody: request.body as string });
+        return reply.status(result.status).headers(result.headers ?? {}).send(result.body);
+      });
     });
   }
   return app;

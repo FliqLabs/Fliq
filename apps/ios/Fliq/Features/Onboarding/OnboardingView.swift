@@ -1,25 +1,29 @@
 import SwiftUI
 
 enum OnboardingStep: Hashable {
-    case claimName, profile, ownAccount
+    case signIn, claimName, profile, ownAccount
 }
 
-/// Welcome, claim a name, add a face, add your own account, then Home.
+/// Welcome, sign in when talking to the real API, claim a name, add a face, add your own account, then Home.
 struct OnboardingView: View {
     private let profile: ProfileStore
     private let accounts: AccountBook
+    private let isLive: Bool
     @State private var flow: OnboardingFlow
+    @State private var signIn: SignInFlow
     @State private var path: [OnboardingStep] = []
 
     init(environment: AppEnvironment) {
         profile = environment.profile
         accounts = environment.accounts
-        _flow = State(initialValue: OnboardingFlow(api: environment.api, names: environment.names))
+        isLive = environment.isLive
+        _flow = State(initialValue: OnboardingFlow(api: environment.api, names: environment.names, isLive: environment.isLive))
+        _signIn = State(initialValue: SignInFlow(api: environment.api))
     }
 
     var body: some View {
         NavigationStack(path: $path) {
-            WelcomeView(onStart: { path.append(.claimName) }, onExistingAccount: finish)
+            WelcomeView(onStart: start, onExistingAccount: isLive ? start : finish)
                 .navigationDestination(for: OnboardingStep.self, destination: screen)
         }
         .tint(Theme.textPrimary)
@@ -28,8 +32,10 @@ struct OnboardingView: View {
     @ViewBuilder
     private func screen(_ step: OnboardingStep) -> some View {
         switch step {
+        case .signIn:
+            SignInView(flow: signIn, onSignedIn: signedIn)
         case .claimName:
-            ClaimNameView(flow: flow, onContinue: { path.append(.profile) }, onSkip: { path.append(.ownAccount) })
+            ClaimNameView(flow: flow, onContinue: claim, onSkip: { path.append(.ownAccount) })
         case .profile:
             ProfileSetupView(flow: flow, onContinue: { path.append(.ownAccount) })
         case .ownAccount:
@@ -37,8 +43,26 @@ struct OnboardingView: View {
         }
     }
 
+    private func start() {
+        path.append(isLive ? .signIn : .claimName)
+    }
+
+    /// A returning user already has a name and goes straight to Home.
+    private func signedIn(_ user: User) {
+        guard let account = user.nearAccount else { return path.append(.claimName) }
+        profile.completeOnboarding(account: account, displayName: user.displayName)
+    }
+
+    private func claim() {
+        Task { if await flow.claim() { path.append(.profile) } }
+    }
+
     private func finish() {
         if let own = flow.ownAccount.verified { accounts.setOwn(own) }
-        profile.completeOnboarding(name: flow.canClaim ? flow.name : nil, displayName: flow.displayName)
+        Task {
+            await flow.saveProfile()
+            let name = flow.claimed ?? (flow.canClaim ? flow.name?.account : nil)
+            profile.completeOnboarding(account: name, displayName: flow.displayName)
+        }
     }
 }

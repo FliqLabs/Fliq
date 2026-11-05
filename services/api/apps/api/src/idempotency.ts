@@ -6,9 +6,10 @@ import { ApiError } from "./errors.js";
 export interface Reply {
   status: number;
   body: unknown;
+  headers?: Record<string, string>;
 }
 
-const hashOf = (value: unknown) => createHash("sha256").update(JSON.stringify(value ?? null)).digest("hex");
+export const hashOf = (value: unknown) => createHash("sha256").update(JSON.stringify(value ?? null)).digest("hex");
 
 // The lock makes concurrent calls with one key run one after another, so the second sees the stored response.
 export async function withIdempotency(

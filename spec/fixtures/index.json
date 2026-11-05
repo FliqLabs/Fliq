@@ -18,5 +18,12 @@
   "onboarding.first-login.json": "Onboarding",
   "payouts.empty.json": "PayoutList",
   "payouts.list.json": "PayoutList",
-  "payouts.stats.json": "PayoutStats"
+  "payouts.stats.json": "PayoutStats",
+  "recipient.dara.json": "Recipient",
+  "recipients.list.json": "RecipientList",
+  "institutions.ng.json": "InstitutionList",
+  "vault.balance.json": "VaultBalance",
+  "person.tobi.json": "Person",
+  "people.recent.json": "RecentPeopleList",
+  "status.report.json": "StatusReport"
 }
