@@ -185,7 +185,12 @@ pub fn payout(contract: &mut Contract, order_id: String) -> Promise {
     ) {
         env::panic_str(&reason);
     }
-    integration::reserve_for_order(&order.order_id, &order.payer, order.amount);
+    integration::reserve_for_order(
+        &mut contract.vault,
+        &order.order_id,
+        &order.payer,
+        order.amount,
+    );
     if let Err(error) = transition(&mut order, TransferState::Executing) {
         env::panic_str(&error);
     }
@@ -238,11 +243,11 @@ pub fn on_payout_complete(contract: &mut Contract, order_id: String) {
     }
     let successful = env::promise_result_checked(0, 1024 * 1024).is_ok();
     if successful {
-        integration::commit_outflow(&order_id);
+        integration::commit_outflow(&mut contract.vault, &order_id);
         integration::settle_pending(&order_id);
         order.transfer_state = TransferState::Dispatched;
     } else {
-        integration::release_reservation(&order_id);
+        integration::release_reservation(&mut contract.vault, &order_id);
         integration::release_pending(&order_id);
         order.transfer_state = TransferState::TransferFailed;
     }

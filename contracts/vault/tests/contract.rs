@@ -4,7 +4,9 @@ use fliq_vault::orders::{
     validate_deposit_address, validate_order,
 };
 use fliq_vault::types::{PayoutOrder, TransferState};
+use near_contract_standards::storage_management::StorageManagement;
 use near_sdk::env;
+use near_sdk::json_types::U128;
 use near_sdk::test_utils::{VMContextBuilder, accounts};
 use near_sdk::{AccountId, testing_env};
 #[cfg(feature = "testing")]
@@ -35,7 +37,19 @@ fn set_promise_result(context: near_sdk::VMContext, result: PromiseResult) {
 
 fn contract() -> Contract {
     set_caller(accounts(0), NOW);
-    Contract::new(accounts(0), accounts(1), accounts(2))
+    let mut contract = Contract::new(accounts(0), accounts(1), accounts(2));
+    let minimum = contract.storage_balance_bounds().min;
+    testing_env!(
+        VMContextBuilder::new()
+            .current_account_id(accounts(0))
+            .predecessor_account_id(accounts(3))
+            .attached_deposit(minimum)
+            .block_timestamp(NOW)
+            .build()
+    );
+    contract.storage_deposit(None, Some(true));
+    assert_eq!(minimum, contract.storage_balance_bounds().min);
+    contract
 }
 
 #[test]
@@ -539,8 +553,8 @@ fn two_orders_cannot_reserve_more_than_the_balance() {
         .is_err()
     );
     let balance = contract.get_balance(accounts(3));
-    assert_eq!(balance.available, "4");
-    assert_eq!(balance.reserved, "6");
+    assert_eq!(balance.available, U128(4));
+    assert_eq!(balance.reserved, U128(6));
     set_promise_result(
         VMContextBuilder::new()
             .current_account_id(accounts(0))
@@ -550,8 +564,8 @@ fn two_orders_cannot_reserve_more_than_the_balance() {
         near_sdk::PromiseResult::Failed,
     );
     contract.on_payout_complete("order-1".to_string());
-    assert_eq!(contract.get_balance(accounts(3)).available, "10");
-    assert_eq!(contract.get_balance(accounts(3)).reserved, "0");
+    assert_eq!(contract.get_balance(accounts(3)).available, U128(10));
+    assert_eq!(contract.get_balance(accounts(3)).reserved, U128(0));
 }
 
 #[cfg(feature = "testing")]
@@ -571,7 +585,7 @@ fn amount_edges_and_overflow_are_safe() {
         near_sdk::PromiseResult::Successful(vec![]),
     );
     one_contract.on_payout_complete("one-unit".to_string());
-    assert_eq!(one_contract.get_balance(accounts(3)).total, "0");
+    assert_eq!(one_contract.get_balance(accounts(3)).total, U128(0));
 
     let mut max_contract = contract();
     max_contract.credit_for_testing(accounts(3), u128::MAX);
@@ -586,7 +600,7 @@ fn amount_edges_and_overflow_are_safe() {
     let _promise = max_contract.payout("max-unit".to_string());
     assert_eq!(
         max_contract.get_balance(accounts(3)).reserved,
-        u128::MAX.to_string()
+        U128(u128::MAX)
     );
 }
 
@@ -640,11 +654,7 @@ fn random_sequence_preserves_balance_and_single_send_invariants() {
                 let receipt = contract.get_receipt(order_id.clone());
                 if order_transfer_state(&contract, &order_id) == Some(TransferState::Registered) {
                     let amount = receipt.order.amount;
-                    let available = contract
-                        .get_balance(payer.clone())
-                        .available
-                        .parse::<u128>()
-                        .unwrap_or(0);
+                    let available = contract.get_balance(payer.clone()).available.0;
                     set_caller(payer.clone(), NOW);
                     let payout_result =
                         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -695,9 +705,9 @@ fn random_sequence_preserves_balance_and_single_send_invariants() {
         }
 
         let balance = contract.get_balance(payer.clone());
-        let available = balance.available.parse::<u128>().unwrap_or(0);
-        let reserved = balance.reserved.parse::<u128>().unwrap_or(0);
-        let total = balance.total.parse::<u128>().unwrap_or(0);
+        let available = balance.available.0;
+        let reserved = balance.reserved.0;
+        let total = balance.total.0;
         assert_eq!(available.checked_add(reserved), Some(total));
         assert_eq!(total, credited);
     }
@@ -746,8 +756,8 @@ fn happy_path_reserves_and_commits_once() {
     set_caller(accounts(3), NOW);
     let _promise = contract.payout("order-1".to_string());
     let pending = contract.get_balance(accounts(3));
-    assert_eq!(pending.available, "90");
-    assert_eq!(pending.reserved, "10");
+    assert_eq!(pending.available, U128(90));
+    assert_eq!(pending.reserved, U128(10));
 
     set_promise_result(
         VMContextBuilder::new()
@@ -759,8 +769,8 @@ fn happy_path_reserves_and_commits_once() {
     );
     contract.on_payout_complete("order-1".to_string());
     let settled = contract.get_balance(accounts(3));
-    assert_eq!(settled.available, "90");
-    assert_eq!(settled.reserved, "0");
+    assert_eq!(settled.available, U128(90));
+    assert_eq!(settled.reserved, U128(0));
     assert_eq!(
         contract.get_receipt("order-1".to_string()).transfer_state,
         TransferState::Dispatched
@@ -809,7 +819,7 @@ fn expired_order_and_wrong_caller_leave_balance_unchanged() {
         }))
         .is_err()
     );
-    assert_eq!(contract.get_balance(accounts(3)).available, "100");
+    assert_eq!(contract.get_balance(accounts(3)).available, U128(100));
     set_caller(accounts(3), NOW + 1);
     assert!(
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -817,7 +827,7 @@ fn expired_order_and_wrong_caller_leave_balance_unchanged() {
         }))
         .is_err()
     );
-    assert_eq!(contract.get_balance(accounts(3)).available, "100");
+    assert_eq!(contract.get_balance(accounts(3)).available, U128(100));
 }
 
 #[cfg(feature = "testing")]
@@ -834,8 +844,8 @@ fn insufficient_balance_leaves_available_funds_unchanged() {
         .is_err()
     );
     let balance = contract.get_balance(accounts(3));
-    assert_eq!(balance.available, "9");
-    assert_eq!(balance.reserved, "0");
+    assert_eq!(balance.available, U128(9));
+    assert_eq!(balance.reserved, U128(0));
 }
 
 #[cfg(feature = "testing")]
@@ -856,8 +866,8 @@ fn failed_transfer_restores_balance_and_marks_failed() {
     );
     contract.on_payout_complete("order-1".to_string());
     let balance = contract.get_balance(accounts(3));
-    assert_eq!(balance.available, "100");
-    assert_eq!(balance.reserved, "0");
+    assert_eq!(balance.available, U128(100));
+    assert_eq!(balance.reserved, U128(0));
     assert_eq!(
         contract.get_receipt("order-1".to_string()).transfer_state,
         TransferState::TransferFailed
@@ -884,7 +894,7 @@ fn outsider_callback_and_stale_callback_change_nothing() {
         }))
         .is_err()
     );
-    assert_eq!(contract.get_balance(accounts(3)).available, "100");
+    assert_eq!(contract.get_balance(accounts(3)).available, U128(100));
     set_caller(accounts(3), NOW);
     let _promise = contract.payout("order-1".to_string());
     set_promise_result(
@@ -901,5 +911,5 @@ fn outsider_callback_and_stale_callback_change_nothing() {
         contract.get_receipt("order-1".to_string()).transfer_state,
         TransferState::Dispatched
     );
-    assert_eq!(contract.get_balance(accounts(3)).reserved, "0");
+    assert_eq!(contract.get_balance(accounts(3)).reserved, U128(0));
 }
