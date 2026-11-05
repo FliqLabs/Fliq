@@ -90,6 +90,9 @@ impl Vault {
         let Some(available) = balance.available.checked_add(amount.0) else {
             return amount;
         };
+        if available.checked_add(balance.reserved).is_none() {
+            return amount;
+        }
 
         let updated = Balance {
             available,
@@ -456,6 +459,28 @@ mod tests {
             vault.balance_of(&payer),
             Balance {
                 available: 125_000_000,
+                reserved: 0,
+            }
+        );
+    }
+
+    #[test]
+    fn deposit_cannot_overflow_total_while_funds_are_reserved() {
+        let mut vault = vault();
+        let payer = account("ada.testnet");
+        register(&mut vault, &payer);
+        deposit(&mut vault, &payer, u128::MAX);
+        assert_eq!(vault.reserve_for_order("po_pending", &payer, 1), Ok(()));
+        let balance_before = vault.balance_of(&payer);
+
+        assert_eq!(vault.deposit(&payer, U128(1)), U128(1));
+        assert_eq!(vault.balance_of(&payer), balance_before);
+
+        assert_eq!(vault.release_reservation("po_pending"), Ok(()));
+        assert_eq!(
+            vault.balance_of(&payer),
+            Balance {
+                available: u128::MAX,
                 reserved: 0,
             }
         );
