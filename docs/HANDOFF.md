@@ -19,11 +19,11 @@ Branch: `sQuiDbOb-Orders-and-Payouts`
 | Recredit read helpers | `orders.rs` | `order_exists`, `order_payer`, `order_amount`, and `order_transfer_state`. | Read-helper test. |
 | Integration boundary | `integration.rs` | Expects seven small functions so Dapper and Aria can replace only this layer. | Temporary-ledger and payout tests. |
 
-Current vault result: 37 tests passed, 0 failed with `--features testing`; the default `make test-contract` run passes 26 tests. The near-workspaces smoke test is present but ignored by default. The standalone mock USDC crate builds and its test target has 0 tests and 0 failures.
+Current vault result: 40 tests passed, 0 failed with `--features testing`; the default `make test-contract` run passes 29 tests. The near-workspaces smoke test is present but ignored by default. The standalone mock USDC crate builds and its test target has 0 tests and 0 failures.
 
 The deploy workflow intentionally uses `without-init-call`. After deployment, initialize by sending `new(owner, registration_account, approved_usdc_token_contract)` from the vault account itself. The initializer is private and rejects calls from any other predecessor; initialization cannot be repeated.
 
-The latest `origin/Contract` branch was fetched and was already an ancestor; the merge was up to date and had no conflicts. There are currently no real `vault.rs` or `policies.rs` files in this checkout.
+The latest `origin/Contract` branch was merged into this branch. Its real `vault.rs` is present but intentionally remains unwired; no incoming `policies.rs` exists. Integration changes required to wire the vault and future policy implementation are listed below.
 
 ## What is still a placeholder
 
