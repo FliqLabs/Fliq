@@ -20,6 +20,7 @@ import { requireHttpsUrl, settle } from "./errors.js";
 import { withIdempotency } from "./idempotency.js";
 import type { VaultClient } from "../../../packages/chains/vault/index.js";
 import { lookupPerson, recentPeople } from "./people.js";
+import { DEFAULT_STATUS_CONFIG, statusReport, type Probe, type StatusConfig } from "./status.js";
 import { vaultBalance } from "./vault.js";
 import { deleteRecipient, listInstitutions, listRecipients, saveRecipient, verifyAccount, type AccountLookup } from "./recipients.js";
 import { createPayout, getPayout, type PayoutDeps, type PayoutInput } from "./payouts.js";
@@ -34,13 +35,14 @@ export interface HandlerDeps {
   quotes: QuoteDeps;
   payouts: Omit<PayoutDeps, "quotes">;
   vault: VaultClient;
+  status?: { probes: readonly Probe[]; config?: StatusConfig };
   now?: () => Date;
 }
 
 const body = <T>(request: FastifyRequest) => request.body as T;
 const auth = (request: FastifyRequest) => request.auth as NonNullable<FastifyRequest["auth"]>;
 
-export function createHandlers({ config, unit, email, provisioner, quotes, payouts, vault, now = () => new Date() }: HandlerDeps): Record<string, Handler> {
+export function createHandlers({ config, unit, email, provisioner, quotes, payouts, vault, status = { probes: [] }, now = () => new Date() }: HandlerDeps): Record<string, Handler> {
   return {
     getHealth: async () => ({ status: 200, body: { status: "ok", version: "0.1.0" } }),
 
@@ -144,6 +146,13 @@ export function createHandlers({ config, unit, email, provisioner, quotes, payou
       await unit((tx) => deleteRecipient(tx, auth(request).userId, (request.params as { recipientId: string }).recipientId));
       return { status: 204, body: undefined };
     },
+
+    // Public and cacheable: the status page and its bars read this, so a burst of visitors makes one query per 10 seconds.
+    getStatus: async () => ({
+      status: 200,
+      headers: { "cache-control": "public, max-age=10" },
+      body: await unit((tx) => statusReport(tx, status.probes, status.config ?? DEFAULT_STATUS_CONFIG, now())),
+    }),
 
     getVaultBalance: async (request) => ({ status: 200, body: await vaultBalance(unit, vault, auth(request).userId) }),
     lookupPerson: async (request) => ({

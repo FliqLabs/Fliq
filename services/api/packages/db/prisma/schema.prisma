@@ -6,7 +6,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  schemas  = ["core", "ledger", "messaging", "auth", "developer", "integration"]
+  schemas  = ["core", "ledger", "messaging", "auth", "developer", "integration", "status"]
 }
 
 // Ids are prefixed ULIDs generated in application code (see src/ids.ts).
@@ -460,6 +460,60 @@ model Transfer {
   @@index([toUserId, createdAt])
   @@map("transfers")
   @@schema("core")
+}
+
+enum CheckResult {
+  ok
+  degraded
+  down
+
+  @@schema("status")
+}
+
+enum IncidentImpact {
+  degraded
+  outage
+
+  @@schema("status")
+}
+
+enum IncidentState {
+  open
+  resolved
+
+  @@schema("status")
+}
+
+// One row per probe per run, kept for the 60-day status bars. component is a service or provider id.
+model HealthCheck {
+  id         String      @id @db.Text
+  component  String      @db.Text
+  checkedAt  DateTime    @default(now()) @map("checked_at") @db.Timestamptz(6)
+  result     CheckResult
+  latencyMs  Int?        @map("latency_ms")
+  // A kind such as timeout or error, never a message: messages can carry account details.
+  errorKind  String?     @map("error_kind") @db.Text
+
+  @@index([component, checkedAt])
+  @@index([checkedAt])
+  @@map("health_checks")
+  @@schema("status")
+}
+
+model Incident {
+  id         String         @id @db.Text
+  component  String         @db.Text
+  title      String         @db.Text
+  impact     IncidentImpact
+  state      IncidentState  @default(open)
+  summary    String         @db.Text
+  startedAt  DateTime       @map("started_at") @db.Timestamptz(6)
+  resolvedAt DateTime?      @map("resolved_at") @db.Timestamptz(6)
+
+  @@index([component, startedAt])
+  @@index([startedAt])
+  @@map("incidents")
+  @@schema("status")
 }
 
 enum WebhookEndpointStatus {

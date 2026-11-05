@@ -14,6 +14,8 @@ export type IdPrefix =
   | "qr"
   | "po"
   | "tr"
+  | "hc"
+  | "inc"
   | "pev"
   | "rcp"
   | "acc"

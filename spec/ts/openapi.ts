@@ -147,6 +147,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Service and provider health for the status page
+         * @description Each component has one entry per UTC calendar day for the last 60 days, oldest first, and a current state.
+         *     A day is an outage when 5% or more of its checks failed, degraded when any check was not clean, operational otherwise,
+         *     and no_data when nothing ran. Incidents open after three failed checks in a row and close after three clean ones.
+         *     Cached for 10 seconds.
+         *
+         */
+        get: operations["getStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/vault": {
         parameters: {
             query?: never;
@@ -923,6 +947,50 @@ export interface components {
         RecentPeopleList: {
             items: components["schemas"]["RecentPerson"][];
         };
+        StatusDay: {
+            /**
+             * Format: date
+             * @description UTC calendar day
+             */
+            date: string;
+            /** @enum {string} */
+            status: "operational" | "degraded" | "outage" | "no_data";
+            checks: number;
+            /** @description Share of checks that answered, slow or not. Null when nothing ran. */
+            uptime_percent: number | null;
+        };
+        StatusComponent: {
+            id: string;
+            name: string;
+            /** @enum {string} */
+            kind: "service" | "provider";
+            /**
+             * @description unknown when the last check is more than five minutes old
+             * @enum {string}
+             */
+            state: "healthy" | "degraded" | "down" | "unknown";
+            days: components["schemas"]["StatusDay"][];
+        };
+        StatusIncident: {
+            incident_id: string;
+            component: string;
+            title: string;
+            /** @enum {string} */
+            impact: "degraded" | "outage";
+            /** @enum {string} */
+            state: "open" | "resolved";
+            summary: string;
+            /** Format: date-time */
+            started_at: string;
+            /** Format: date-time */
+            resolved_at: string | null;
+        };
+        StatusReport: {
+            /** Format: date-time */
+            updated_at: string;
+            components: components["schemas"]["StatusComponent"][];
+            incidents: components["schemas"]["StatusIncident"][];
+        };
     };
     responses: {
         /** @description Error */
@@ -1172,6 +1240,26 @@ export interface operations {
                 content?: never;
             };
             404: components["responses"]["Error"];
+        };
+    };
+    getStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Components with their daily bars, and recent incidents, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusReport"];
+                };
+            };
         };
     };
     getVaultBalance: {

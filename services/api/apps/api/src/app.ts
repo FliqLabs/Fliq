@@ -87,7 +87,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
       preHandler: operation.isPublic ? [] : [requireSession],
       handler: async (request, reply) => {
         const result = await handler(request);
-        return reply.status(result.status).send(result.body);
+        return reply.status(result.status).headers(result.headers ?? {}).send(result.body);
       },
     });
   }
@@ -101,7 +101,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
         const { provider } = request.params as { provider: string };
         const headers = Object.fromEntries(Object.entries(request.headers).map(([name, value]) => [name, Array.isArray(value) ? value[0] : value]));
         const result = await receiveWebhook(provider, { headers, rawBody: request.body as string });
-        return reply.status(result.status).send(result.body);
+        return reply.status(result.status).headers(result.headers ?? {}).send(result.body);
       });
     });
   }
