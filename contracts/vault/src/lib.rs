@@ -84,7 +84,8 @@ impl FungibleTokenReceiver for Contract {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use near_sdk::test_utils::VMContextBuilder;
+    use near_sdk::mock::MockAction;
+    use near_sdk::test_utils::{VMContextBuilder, get_created_receipts};
     use near_sdk::{VMContext, testing_env};
 
     fn account(value: &str) -> AccountId {
@@ -120,6 +121,20 @@ mod tests {
             PromiseOrValue::Value(amount) => amount,
             PromiseOrValue::Promise(_) => panic!("deposit unexpectedly returned a promise"),
         }
+    }
+
+    fn transferred_to(account_id: &AccountId) -> NearToken {
+        for receipt in get_created_receipts() {
+            if &receipt.receiver_id != account_id {
+                continue;
+            }
+            for action in receipt.actions {
+                if let MockAction::Transfer { deposit, .. } = action {
+                    return deposit;
+                }
+            }
+        }
+        panic!("no transfer receipt created for {account_id}")
     }
 
     #[test]
@@ -227,6 +242,102 @@ mod tests {
     }
 
     #[test]
+    fn third_party_registration_refunds_excess_to_payer() {
+        let mut contract = contract();
+        let payer = account("sponsor.testnet");
+        let user = account("ada.testnet");
+        let minimum = contract.storage_balance_bounds().min;
+        let excess = NearToken::from_yoctonear(17);
+        let attached = NearToken::from_yoctonear(minimum.as_yoctonear() + excess.as_yoctonear());
+        testing_env!(context(&payer, attached));
+
+        contract.storage_deposit(Some(user.clone()), Some(true));
+
+        assert!(contract.storage_balance_of(user).is_some());
+        assert_eq!(transferred_to(&payer), excess);
+    }
+
+    #[test]
+    fn repeated_registration_refunds_the_full_deposit() {
+        let mut contract = contract();
+        let user = account("ada.testnet");
+        register(&mut contract, &user);
+        let repeated_deposit = NearToken::from_yoctonear(23);
+        testing_env!(context(&user, repeated_deposit));
+
+        contract.storage_deposit(None, Some(true));
+
+        assert_eq!(transferred_to(&user), repeated_deposit);
+    }
+
+    #[test]
+    #[should_panic(expected = "requires storage deposit of at least")]
+    fn storage_registration_rejects_underpayment() {
+        let mut contract = contract();
+        let user = account("ada.testnet");
+        let minimum = contract.storage_balance_bounds().min.as_yoctonear();
+        testing_env!(context(
+            &user,
+            NearToken::from_yoctonear(minimum.saturating_sub(1)),
+        ));
+
+        contract.storage_deposit(None, Some(true));
+    }
+
+    #[test]
+    fn empty_account_can_unregister_and_register_again() {
+        let mut contract = contract();
+        let user = account("ada.testnet");
+        register(&mut contract, &user);
+        let minimum = contract.storage_balance_bounds().min;
+        testing_env!(context(&user, NearToken::from_yoctonear(1)));
+
+        assert!(contract.storage_unregister(None));
+        assert!(contract.storage_balance_of(user.clone()).is_none());
+        assert_eq!(transferred_to(&user), minimum);
+
+        testing_env!(context(&user, minimum));
+        contract.storage_deposit(None, Some(true));
+        assert!(contract.storage_balance_of(user).is_some());
+    }
+
+    #[test]
+    fn unregistering_an_unknown_account_returns_false() {
+        let mut contract = contract();
+        let user = account("ada.testnet");
+        testing_env!(context(&user, NearToken::from_yoctonear(1)));
+
+        assert!(!contract.storage_unregister(None));
+        assert!(get_created_receipts().is_empty());
+    }
+
+    #[test]
+    fn zero_storage_withdraw_reports_the_unchanged_balance() {
+        let mut contract = contract();
+        let user = account("ada.testnet");
+        register(&mut contract, &user);
+        let minimum = contract.storage_balance_bounds().min;
+        testing_env!(context(&user, NearToken::from_yoctonear(1)));
+
+        let balance = contract.storage_withdraw(Some(NearToken::from_yoctonear(0)));
+
+        assert_eq!(balance.total, minimum);
+        assert!(balance.available.is_zero());
+        assert!(get_created_receipts().is_empty());
+    }
+
+    #[test]
+    #[should_panic(expected = "registered storage has no withdrawable balance")]
+    fn positive_storage_withdraw_is_rejected() {
+        let mut contract = contract();
+        let user = account("ada.testnet");
+        register(&mut contract, &user);
+        testing_env!(context(&user, NearToken::from_yoctonear(1)));
+
+        contract.storage_withdraw(Some(NearToken::from_yoctonear(1)));
+    }
+
+    #[test]
     #[should_panic(expected = "cannot unregister an account with a vault balance")]
     fn funded_account_cannot_unregister_storage() {
         let mut contract = contract();
@@ -240,6 +351,22 @@ mod tests {
         testing_env!(context(&user, NearToken::from_yoctonear(1)));
 
         contract.storage_unregister(None);
+    }
+
+    #[test]
+    #[should_panic(expected = "cannot unregister an account with a vault balance")]
+    fn force_cannot_burn_a_funded_vault_account() {
+        let mut contract = contract();
+        let user = account("ada.testnet");
+        register(&mut contract, &user);
+        testing_env!(context(
+            &account("usdc.testnet"),
+            NearToken::from_yoctonear(0)
+        ));
+        returned_amount(contract.ft_on_transfer(user.clone(), U128(1), String::new()));
+        testing_env!(context(&user, NearToken::from_yoctonear(1)));
+
+        contract.storage_unregister(Some(true));
     }
 
     #[test]

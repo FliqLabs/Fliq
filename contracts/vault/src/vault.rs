@@ -410,6 +410,58 @@ mod tests {
     }
 
     #[test]
+    fn rejected_reservation_does_not_mutate_balance_or_storage() {
+        let mut vault = vault();
+        let payer = account("ada.testnet");
+        register(&mut vault, &payer);
+        deposit(&mut vault, &payer, 25_000_000);
+        let balance_before = vault.balance_of(&payer);
+        let storage_before = env::storage_usage();
+
+        assert_eq!(
+            vault.reserve_for_order("po_too_large", &payer, 25_000_001),
+            Err(ReservationError::InsufficientBalance)
+        );
+
+        assert_eq!(vault.balance_of(&payer), balance_before);
+        assert_eq!(env::storage_usage(), storage_before);
+        assert_eq!(
+            vault.commit_outflow("po_too_large"),
+            Err(ReservationError::NotFound)
+        );
+    }
+
+    #[test]
+    fn deposit_during_reservation_only_increases_available_balance() {
+        let mut vault = vault();
+        let payer = account("ada.testnet");
+        register(&mut vault, &payer);
+        deposit(&mut vault, &payer, 100_000_000);
+        assert_eq!(
+            vault.reserve_for_order("po_pending", &payer, 60_000_000),
+            Ok(())
+        );
+
+        deposit(&mut vault, &payer, 25_000_000);
+
+        assert_eq!(
+            vault.balance_of(&payer),
+            Balance {
+                available: 65_000_000,
+                reserved: 60_000_000,
+            }
+        );
+        assert_eq!(vault.release_reservation("po_pending"), Ok(()));
+        assert_eq!(
+            vault.balance_of(&payer),
+            Balance {
+                available: 125_000_000,
+                reserved: 0,
+            }
+        );
+    }
+
+    #[test]
     fn failed_transfer_releases_funds_exactly_once() {
         let mut vault = vault();
         let payer = account("ada.testnet");
