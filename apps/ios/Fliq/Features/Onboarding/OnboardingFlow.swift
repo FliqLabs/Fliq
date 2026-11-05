@@ -22,16 +22,42 @@ final class OnboardingFlow {
 
     let ownAccount: AccountEntry
 
+    /// The name the API recorded for this user. Fixtures never record one.
+    private(set) var claimed: String?
+
+    private let api: any FliqAPI
+    private let isLive: Bool
     private let names: any NameDirectory
     private var check: Task<Void, Never>?
 
-    init(api: any FliqAPI, names: any NameDirectory) {
+    init(api: any FliqAPI, names: any NameDirectory, isLive: Bool = false) {
+        self.api = api
+        self.isLive = isLive
         self.names = names
         ownAccount = AccountEntry(api: api)
     }
 
     var name: FliqName? { FliqName(nameText) }
     var canClaim: Bool { status == .available && name != nil }
+
+    /// Claims the name on the server before moving on, so a name taken in the meantime shows here.
+    func claim() async -> Bool {
+        guard canClaim, let name else { return false }
+        guard isLive else { return true }
+        do {
+            claimed = try await api.claimName(name).nearAccount
+            return true
+        } catch {
+            status = .taken
+            suggestions = await freeAlternatives(to: name)
+            return false
+        }
+    }
+
+    func saveProfile() async {
+        guard isLive, !displayName.isEmpty else { return }
+        _ = try? await api.updateProfile(displayName: displayName)
+    }
 
     func pick(_ suggestion: String) {
         nameText = suggestion

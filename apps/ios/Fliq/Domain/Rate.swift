@@ -16,9 +16,11 @@ enum Currency: String, Codable, Sendable {
 }
 
 enum ProviderID: String, Codable, Sendable {
-    case paycrest, busha, fonbnk, bitnob
+    case paycrest, busha, fonbnk, bitnob, transfi
+    /// The API's sandbox provider, which pays nobody. Local and sandbox servers quote with it.
+    case mock
 
-    var displayName: String { rawValue.capitalized }
+    var displayName: String { self == .mock ? "Sandbox" : rawValue.capitalized }
 }
 
 struct ReferenceRate: Codable, Sendable, Equatable {

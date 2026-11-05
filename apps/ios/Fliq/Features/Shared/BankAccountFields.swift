@@ -12,6 +12,7 @@ struct BankAccountFields: View {
             confirmation
         }
         .onAppear { numberFocused = true }
+        .task { await entry.loadInstitutions() }
         .onChange(of: entry.number) {
             entry.number = String(entry.number.filter(\.isNumber).prefix(AccountEntry.numberLength))
             if entry.isComplete {
@@ -24,7 +25,7 @@ struct BankAccountFields: View {
     private var bankPicker: some View {
         Menu {
             Picker("Bank", selection: $entry.institution) {
-                ForEach(Institution.supported, id: \.self) { Text($0.name).tag($0) }
+                ForEach(entry.institutions, id: \.self) { Text($0.name).tag($0) }
             }
         } label: {
             HStack {
