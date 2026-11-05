@@ -3,6 +3,9 @@ import SwiftUI
 struct WelcomeView: View {
     let onStart: () -> Void
     let onExistingAccount: () -> Void
+    var isWorking = false
+    var message: String?
+    var onEmail: (() -> Void)?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -27,11 +30,16 @@ struct WelcomeView: View {
             VStack(spacing: 18) {
                 Button(action: onStart) {
                     HStack(spacing: 10) {
-                        icon("IconPasskey")
+                        if isWorking {
+                            ProgressView().tint(.black)
+                        } else {
+                            icon("IconPasskey")
+                        }
                         Text("Continue with passkey")
                     }
                 }
                 .buttonStyle(PrimaryButtonStyle())
+                .disabled(isWorking)
                 Button(action: onExistingAccount) {
                     HStack(spacing: 8) {
                         icon("IconDownload")
@@ -40,6 +48,18 @@ struct WelcomeView: View {
                     .font(.system(size: 15, weight: .medium))
                 }
                 .foregroundStyle(Theme.textPrimary)
+                .disabled(isWorking)
+                if let message {
+                    Text(message)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Theme.danger)
+                        .multilineTextAlignment(.center)
+                }
+                if let onEmail {
+                    Button("Use email instead", action: onEmail)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color(hex: 0x8E8E8E))
+                }
             }
             .padding(.bottom, 10)
         }
