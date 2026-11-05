@@ -1,5 +1,5 @@
 import { ASSET_DECIMALS, FIAT_DECIMALS, convertAtRate } from "../providers/money";
-import type { Corridor, Fee, ProviderAdapter, ProviderId, ProviderQuote, QuoteAmount, SourceAsset } from "../providers/types";
+import type { Asset, Chain, Corridor, Fee, ProviderAdapter, ProviderId, ProviderQuote, QuoteAmount, SourceAsset } from "../providers/types";
 
 export type Preference = "best_rate" | "most_reliable" | "fastest";
 export type BreakerState = "closed" | "half_open" | "open";
@@ -55,6 +55,20 @@ export interface RoutingSignals {
 
 export const NO_SIGNALS: RoutingSignals = { breaker: () => "closed", outcomes: async () => null };
 
+// Prices a NEAR Intents hop: the same stablecoin moved from the sender's chain to one the provider accepts.
+export interface HopPricer {
+  reachable(asset: Asset, from: Chain, to: Chain): Promise<boolean>;
+  exactInput(asset: Asset, from: Chain, to: Chain, amountIn: bigint): Promise<{ amountOut: bigint; seconds: number }>;
+  exactOutput(asset: Asset, from: Chain, to: Chain, amountOut: bigint): Promise<{ amountIn: bigint; seconds: number }>;
+}
+
+export interface HopLeg {
+  chain: Chain;
+  amountIn: bigint;
+  amountOut: bigint;
+  seconds: number;
+}
+
 export interface RouteRequest {
   corridor: Corridor;
   source: SourceAsset;
@@ -73,6 +87,8 @@ export interface Breakdown {
 
 export interface Route {
   rank: number;
+  kind: "direct" | "intents";
+  hop: HopLeg | null;
   provider: ProviderId;
   providerQuote: ProviderQuote;
   amountIn: bigint;
@@ -141,8 +157,11 @@ function toFiat(fee: Fee, request: RouteRequest, rate: string): bigint {
   return convertAtRate(fee.amount, ASSET_DECIMALS[request.source.asset], rate, FIAT_DECIMALS[request.corridor.currency]);
 }
 
-function normalize(quote: ProviderQuote, request: RouteRequest, config: RoutingConfig, plan: ReturnType<typeof splitOurFee>) {
-  const { gross, ours } = plan.ourFee(quote.sendUnits);
+function normalize(quote: ProviderQuote, request: RouteRequest, config: RoutingConfig, plan: ReturnType<typeof splitOurFee>, hop: HopLeg | null) {
+  const decimals = ASSET_DECIMALS[request.source.asset];
+  const fiatDecimals = FIAT_DECIMALS[request.corridor.currency];
+  // What the sender's side must cover before our fee: the provider's amount, or the hop's input when there is a hop.
+  const { gross, ours } = plan.ourFee(hop ? hop.amountIn : quote.sendUnits);
   const sum = (kind: Fee["kind"]) =>
     quote.fees.filter((fee) => fee.kind === kind).reduce((total, fee) => total + toFiat(fee, request, quote.rate), 0n);
   return {
@@ -151,10 +170,10 @@ function normalize(quote: ProviderQuote, request: RouteRequest, config: RoutingC
     fees: {
       provider: sum("provider"),
       network: sum("network"),
-      intents: 0n,
-      ours: convertAtRate(ours, ASSET_DECIMALS[request.source.asset], quote.rate, FIAT_DECIMALS[request.corridor.currency]),
+      intents: hop ? convertAtRate(hop.amountIn - hop.amountOut, decimals, quote.rate, fiatDecimals) : 0n,
+      ours: convertAtRate(ours, decimals, quote.rate, fiatDecimals),
     },
-    etaSeconds: quote.estimatedSettleSeconds ?? config.unknownSettleSeconds,
+    etaSeconds: (quote.estimatedSettleSeconds ?? config.unknownSettleSeconds) + (hop?.seconds ?? 0),
   };
 }
 
@@ -165,32 +184,66 @@ function smoothed(outcomes: Outcomes | null, config: RoutingConfig): number {
   return (successes + config.priorOrders * prior) / (orders + config.priorOrders);
 }
 
+// The first chain this provider accepts for the asset that the hop can reach from the sender's chain.
+async function hopChain(adapter: ProviderAdapter, request: RouteRequest, hop: HopPricer): Promise<Chain | null> {
+  for (const source of adapter.capabilities().sources) {
+    if (source.asset === request.source.asset && (await hop.reachable(source.asset, request.source.chain, source.chain))) return source.chain;
+  }
+  return null;
+}
+
+async function priceRoute(
+  adapter: ProviderAdapter,
+  request: RouteRequest,
+  plan: ReturnType<typeof splitOurFee>,
+  via: Chain | null,
+  hop: HopPricer | undefined,
+): Promise<{ quote: ProviderQuote; leg: HopLeg | null }> {
+  const base = { quoteId: "pending", corridor: request.corridor };
+  if (!via || !hop) {
+    return { quote: await adapter.quote({ ...base, source: request.source, amount: plan.providerAmount }), leg: null };
+  }
+  const { asset, chain: from } = request.source;
+  const source = { asset, chain: via };
+  if (plan.providerAmount.side === "send") {
+    const priced = await hop.exactInput(asset, from, via, plan.providerAmount.units);
+    const quote = await adapter.quote({ ...base, source, amount: { side: "send", units: priced.amountOut } });
+    return { quote, leg: { chain: via, amountIn: plan.providerAmount.units, amountOut: priced.amountOut, seconds: priced.seconds } };
+  }
+  const quote = await adapter.quote({ ...base, source, amount: plan.providerAmount });
+  const priced = await hop.exactOutput(asset, from, via, quote.sendUnits);
+  return { quote, leg: { chain: via, amountIn: priced.amountIn, amountOut: quote.sendUnits, seconds: priced.seconds } };
+}
+
 export async function quoteRoutes(
   adapters: readonly ProviderAdapter[],
   request: RouteRequest,
   config: RoutingConfig = DEFAULT_ROUTING_CONFIG,
   signals: RoutingSignals = NO_SIGNALS,
   now: Date = new Date(),
+  hop?: HopPricer,
 ): Promise<RouteSet> {
   const dropped: Dropped[] = [];
-  const candidates: { adapter: ProviderAdapter; state: BreakerState }[] = [];
+  const candidates: { adapter: ProviderAdapter; state: BreakerState; via: Chain | null }[] = [];
   for (const adapter of adapters) {
-    const refusal = accepts(adapter, request);
+    let refusal = accepts(adapter, request);
+    let via: Chain | null = null;
+    if (refusal === "source" && hop) {
+      via = await hopChain(adapter, request, hop);
+      if (via) refusal = withinLimits(adapter, request) ? null : "limits";
+    }
     const state = signals.breaker(adapter.id, request.corridor);
     if (refusal) dropped.push({ provider: adapter.id, reason: refusal });
     else if (state === "open") dropped.push({ provider: adapter.id, reason: "breaker_open" });
-    else candidates.push({ adapter, state });
+    else candidates.push({ adapter, state, via });
   }
 
   const plan = splitOurFee(request, config.routingFeeBps);
   const quoted = await Promise.all(
-    candidates.map(async ({ adapter, state }) => {
+    candidates.map(async ({ adapter, state, via }) => {
       try {
-        const quote = await Promise.race([
-          adapter.quote({ quoteId: "pending", corridor: request.corridor, source: request.source, amount: plan.providerAmount }),
-          timeout(config.fanOutMs),
-        ]);
-        return { adapter, state, quote };
+        const priced = await Promise.race([priceRoute(adapter, request, plan, via, hop), timeout(config.fanOutMs)]);
+        return { adapter, state, ...priced };
       } catch (error) {
         dropped.push({ provider: adapter.id, reason: (error as Error).message === "timeout" ? "timeout" : "error" });
         return null;
@@ -201,7 +254,7 @@ export async function quoteRoutes(
   const offered = [];
   for (const entry of quoted) {
     if (!entry) continue;
-    const normalized = normalize(entry.quote, request, config, plan);
+    const normalized = normalize(entry.quote, request, config, plan, entry.leg);
     if (entry.state === "half_open" && normalized.amountIn >= config.halfOpenMaxSendUnits) {
       dropped.push({ provider: entry.adapter.id, reason: "half_open_over_limit" });
       continue;
@@ -230,6 +283,8 @@ export async function quoteRoutes(
   return {
     routes: scored.map(({ o, breakdown }, index) => ({
       rank: index + 1,
+      kind: o.leg ? ("intents" as const) : ("direct" as const),
+      hop: o.leg,
       provider: o.adapter.id,
       providerQuote: o.quote,
       amountIn: o.amountIn,

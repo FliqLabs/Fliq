@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createMockProvider } from "../providers/mock/mock";
 import type { Capabilities, ProviderAdapter, ProviderId, ProviderQuote } from "../providers/types";
-import { DEFAULT_ROUTING_CONFIG, quoteRoutes, type RouteRequest, type RoutingSignals } from "./routing";
+import { DEFAULT_ROUTING_CONFIG, quoteRoutes, type HopPricer, type RouteRequest, type RoutingSignals } from "./routing";
 
 const now = new Date("2026-11-05T10:00:00Z");
 const deps = { alert: () => undefined, now: () => now };
@@ -161,5 +161,51 @@ describe("our routing fee", () => {
     const route = routes[0];
     expect(route?.amountIn).toBeGreaterThan(route?.providerQuote.sendUnits ?? 0n);
     expect(route?.amountOutMinor).toBeGreaterThanOrEqual(6_881_600n);
+  });
+});
+
+describe("a route through a NEAR Intents hop", () => {
+  const nearRequest: RouteRequest = { ...request, source: { asset: "USDC", chain: "near" } };
+  // Accepts USDC on Base only, as Paycrest does, so a sender on NEAR needs the hop.
+  const baseOnly = provider("paycrest", { capabilities: { sources: [{ asset: "USDC", chain: "base" }] } });
+  const hop: HopPricer = {
+    reachable: async (_asset, from, to) => from === "near" && to === "base",
+    exactInput: async (_asset, _from, _to, amountIn) => ({ amountOut: (amountIn * 999n) / 1000n, seconds: 30 }),
+    exactOutput: async (_asset, _from, _to, amountOut) => ({ amountIn: (amountOut * 1000n + 998n) / 999n, seconds: 30 }),
+  };
+
+  it("prices the hop first and the provider on what arrives", async () => {
+    const { routes } = await quoteRoutes([baseOnly], nearRequest, DEFAULT_ROUTING_CONFIG, undefined, now, hop);
+    const route = routes[0];
+    expect(route).toMatchObject({ kind: "intents", provider: "paycrest", amountIn: 50_000_000n, etaSeconds: 51 });
+    expect(route?.hop).toEqual({ chain: "base", amountIn: 50_000_000n, amountOut: 49_950_000n, seconds: 30 });
+    expect(route?.providerQuote.sendUnits).toBe(49_950_000n);
+    expect(route?.fees.intents).toBeGreaterThan(0n);
+    expect(route?.amountOutMinor).toBeLessThan(6_881_600n);
+  });
+
+  it("solves for the sender's side in receive-exactly mode", async () => {
+    const { routes } = await quoteRoutes([baseOnly], { ...nearRequest, amount: { side: "receive", minorUnits: 6_881_600n } }, DEFAULT_ROUTING_CONFIG, undefined, now, hop);
+    const route = routes[0];
+    expect(route?.amountOutMinor).toBeGreaterThanOrEqual(6_881_600n);
+    expect(route?.amountIn).toBeGreaterThan(route?.hop?.amountOut ?? 0n);
+    expect(route?.hop?.amountIn).toBe(route?.amountIn);
+  });
+
+  it("drops the provider when there is no hop pricer, no path, or the hop fails", async () => {
+    expect((await quoteRoutes([baseOnly], nearRequest, DEFAULT_ROUTING_CONFIG, undefined, now)).dropped).toContainEqual({ provider: "paycrest", reason: "source" });
+    const noPath: HopPricer = { ...hop, reachable: async () => false };
+    expect((await quoteRoutes([baseOnly], nearRequest, DEFAULT_ROUTING_CONFIG, undefined, now, noPath)).dropped).toContainEqual({ provider: "paycrest", reason: "source" });
+    const broken: HopPricer = { ...hop, exactInput: async () => Promise.reject(new Error("1click down")) };
+    expect((await quoteRoutes([baseOnly], nearRequest, DEFAULT_ROUTING_CONFIG, undefined, now, broken)).dropped).toContainEqual({ provider: "paycrest", reason: "error" });
+  });
+
+  it("ranks a direct route above a hopped one that pays less", async () => {
+    const direct = provider("busha", { capabilities: { sources: [{ asset: "USDC", chain: "near" }] } });
+    const { routes } = await quoteRoutes([baseOnly, direct], nearRequest, DEFAULT_ROUTING_CONFIG, undefined, now, hop);
+    expect(routes.map((r) => [r.provider, r.kind])).toEqual([
+      ["busha", "direct"],
+      ["paycrest", "intents"],
+    ]);
   });
 });

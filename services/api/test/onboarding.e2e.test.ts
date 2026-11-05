@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { encrypt, keyedHash } from "../packages/db/src/crypto.js";
 import { newId } from "../packages/db/src/ids.js";
+import { MockVault } from "../packages/chains/vault/index.js";
 import { MockProvisioner } from "../apps/api/src/accounts.js";
 import { buildApp } from "../apps/api/src/app.js";
 import type { EmailSender } from "../apps/api/src/auth/email-links.js";
@@ -9,6 +10,7 @@ import { loadConfig } from "../apps/api/src/config.js";
 import { createDatabase, unitOf } from "../apps/api/src/db.js";
 import { DEFAULT_ROUTING_CONFIG, NO_SIGNALS } from "../packages/domain/routing.js";
 import { sandboxAdapters } from "../apps/api/src/sandbox.js";
+import { DEFAULT_VELOCITY } from "../apps/api/src/payouts.js";
 import { createHandlers } from "../apps/api/src/handlers.js";
 
 const enabled = Boolean(process.env.DATABASE_URL && process.env.FLIQ_ACCESS_SECRET);
@@ -26,6 +28,7 @@ describe.skipIf(!enabled)("onboarding against a real database", () => {
   const database = createDatabase();
   const sender = new CapturingSender();
   const config = loadConfig();
+  const adapters = sandboxAdapters(() => NOW);
   const app = buildApp({
     config,
     unit: unitOf(database),
@@ -35,7 +38,9 @@ describe.skipIf(!enabled)("onboarding against a real database", () => {
       unit: unitOf(database),
       email: sender,
       provisioner: new MockProvisioner(config.vaultAccount),
-      quotes: { adapters: sandboxAdapters(() => NOW), routing: DEFAULT_ROUTING_CONFIG, signals: NO_SIGNALS, now: () => NOW },
+      vault: new MockVault({ registrar: "registrar.test.near", usdc: "usdc.test.near", now: () => 0n }),
+      quotes: { adapters, routing: DEFAULT_ROUTING_CONFIG, signals: NO_SIGNALS, now: () => NOW },
+      payouts: { config, adapters, velocity: DEFAULT_VELOCITY, now: () => NOW },
       now: () => NOW,
     }),
   });

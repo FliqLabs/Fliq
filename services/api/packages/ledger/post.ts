@@ -98,3 +98,10 @@ export async function findProjectionDrift(tx: Db): Promise<Drift[]> {
     WHERE coalesce(b.amount, 0) <> coalesce(j.total, 0)
     ORDER BY a.code`;
 }
+
+// What the ledger believes a holder has free and reserved, for comparing with the chain (spec 6.4).
+export async function vaultMirror(tx: Db, holder: string, asset: Asset): Promise<{ available: bigint; reserved: bigint }> {
+  const read = async (name: "vault_available" | "vault_reserved") =>
+    -((await tx.balance.findFirst({ where: { account: { code: account(name, asset, holder).code } } }))?.amount ?? 0n);
+  return { available: await read("vault_available"), reserved: await read("vault_reserved") };
+}

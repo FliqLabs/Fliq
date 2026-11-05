@@ -93,6 +93,8 @@ model QuoteRoute {
   etaSeconds     Int      @map("eta_seconds")
   expiresAt      DateTime @map("expires_at") @db.Timestamptz(6)
   scoreBreakdown Json     @map("score_breakdown")
+  // The provider's own quote, kept so createOrder can be sent exactly what was priced.
+  providerQuote  Json?    @map("provider_quote")
   quote          Quote    @relation("QuoteRoutes", fields: [quoteId], references: [id])
 
   @@unique([quoteId, rank])
@@ -112,6 +114,8 @@ model Recipient {
   // Keyed hash (HMAC-SHA-256) of institution + account for duplicate lookup.
   lookupHash      Bytes    @map("lookup_hash")
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  // Set when the user chose to save this account; recipients made by paying are not saved ones.
+  savedAt         DateTime? @map("saved_at") @db.Timestamptz(6)
   deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(6)
   payouts         Payout[]
 
@@ -139,6 +143,12 @@ model Payout {
   retryOfId       String?     @map("retry_of_id") @db.Text
   // Why a payout ended in failed. Reasons starting with vault_ are refusals by the vault caps.
   failureReason   String?     @map("failure_reason") @db.Text
+  // Where the sender pays, from the provider's createOrder answer. Empty while the order is not confirmed.
+  depositChain      String?   @map("deposit_chain") @db.Text
+  depositAddress    String?   @map("deposit_address") @db.Text
+  depositUnits      BigInt?   @map("deposit_units")
+  depositValidUntil DateTime? @map("deposit_valid_until") @db.Timestamptz(6)
+  depositMemo       String?   @map("deposit_memo") @db.Text
   createdAt       DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime    @default(now()) @map("updated_at") @db.Timestamptz(6)
   quote           Quote       @relation(fields: [quoteId], references: [id])
@@ -431,4 +441,22 @@ model IdempotencyRecord {
   @@index([createdAt])
   @@map("idempotency_records")
   @@schema("developer")
+}
+
+// A vault-to-vault transfer, written when the chain confirms it. The backend never moves vault funds.
+model Transfer {
+  id          String   @id @db.Text
+  txHash      String   @unique @map("tx_hash") @db.Text
+  fromUserId  String   @map("from_user_id") @db.Text
+  toUserId    String   @map("to_user_id") @db.Text
+  fromAccount String   @map("from_account") @db.Text
+  toAccount   String   @map("to_account") @db.Text
+  asset       String   @db.Text
+  amount      BigInt
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([fromUserId, createdAt])
+  @@index([toUserId, createdAt])
+  @@map("transfers")
+  @@schema("core")
 }

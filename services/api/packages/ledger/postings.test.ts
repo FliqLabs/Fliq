@@ -8,6 +8,7 @@ import {
   refundInitiated,
   settled,
   vaultReleased,
+  vaultTransfer,
   vaultReserved,
   type Posting,
   type PayoutAmounts,
@@ -109,6 +110,17 @@ describe("vault reservation", () => {
       "vault_reserved:frank.fliq.near:USDC": 50_000_000n,
       "vault_available:frank.fliq.near:USDC": -50_000_000n,
     });
+  });
+});
+
+describe("vault transfer", () => {
+  it("moves free balance from one holder to another", () => {
+    const posting = vaultTransfer("tr_1", "frank.fliq.near", "tobi.fliq.near", "USDC", USDC(25));
+    expect(byCode(posting)).toEqual({
+      "vault_available:frank.fliq.near:USDC": 25_000_000n,
+      "vault_available:tobi.fliq.near:USDC": -25_000_000n,
+    });
+    expect(sum(posting)).toBe(0n);
   });
 });
 

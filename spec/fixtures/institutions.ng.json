@@ -1,0 +1,25 @@
+{
+  "items": [
+    {
+      "code": "058",
+      "name": "GTBank",
+      "type": "bank",
+      "country": "ng",
+      "logo_key": "gtbank"
+    },
+    {
+      "code": "044",
+      "name": "Access Bank",
+      "type": "bank",
+      "country": "ng",
+      "logo_key": "access-bank"
+    },
+    {
+      "code": "999992",
+      "name": "OPay",
+      "type": "mobile_money",
+      "country": "ng",
+      "logo_key": "opay"
+    }
+  ]
+}
