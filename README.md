@@ -61,8 +61,11 @@ Architecture diagrams: [docs/architecture.md](docs/architecture.md).
 | @redocly/cli | spec | Lint the OpenAPI spec |
 | ajv, ajv-formats, yaml | spec | Validate fixtures against the spec |
 | tsx, vitest, typescript | services/api | Run and test the API |
+| near-contract-standards | contracts/vault | Expose standard NEP-141 receiver and NEP-145 storage interfaces |
+| near-sdk | contracts/vault | Build and test the NEAR USDC vault contract |
 | fastify | services/api | HTTP server; validates requests against schemas built from the OpenAPI spec |
 | prisma, @prisma/client | services/api | Database schema, migrations and typed queries on Postgres |
+| near-api-js, borsh | services/api | NEAR transaction and delegate-action encoding, signing and verification for the relayer and account creation |
 | @simplewebauthn/server | services/api | Verify passkey registration and sign-in (WebAuthn) |
 | ioredis | services/api | Redis client for the atomic token-bucket rate limiter |
 | yaml | services/api | Read spec/openapi.yaml at startup to register routes |

@@ -6,11 +6,11 @@ const navigation = [
   { label: "Rates", href: "/#rates", visibility: "sm:inline" },
   { label: "Docs", href: "/#developers", visibility: "sm:inline" },
   { label: "Agents", href: "/#agents", visibility: "sm:inline" },
-  { label: "Pricing", href: "/#sandbox", visibility: "lg:inline" },
+  { label: "Pricing", href: "/pricing", visibility: "inline" },
   { label: "Status", href: "/#trust", visibility: "lg:inline" },
 ];
 
-export function SiteHeader() {
+export function SiteHeader({ activeHref, brandClassName }: { activeHref?: string; brandClassName?: string }) {
   return (
     <header className="fixed inset-x-0 top-0 z-50 bg-[#161616]">
       <div className={`${siteContainer} flex min-h-[68px] items-center justify-between gap-6 py-4`}>
@@ -20,11 +20,16 @@ export function SiteHeader() {
           className="inline-flex items-center gap-2.5 text-2xl font-bold tracking-tight text-white"
         >
           <Image src="/logo.png" width={60} height={30} alt="" />
-          <span>Fliq</span>
+          <span className={brandClassName}>Fliq</span>
         </Link>
         <nav aria-label="Main navigation" className="flex items-center gap-4 text-sm text-zinc-400 lg:gap-6">
           {navigation.map(({ label, href, visibility }) => (
-            <Link key={label} href={href} className={`hidden hover:text-white ${visibility}`}>
+            <Link
+              key={label}
+              href={href}
+              aria-current={activeHref === href ? "page" : undefined}
+              className={`${visibility === "inline" ? "inline" : `hidden ${visibility}`} hover:text-white ${activeHref === href ? "text-white" : ""}`}
+            >
               {label}
             </Link>
           ))}

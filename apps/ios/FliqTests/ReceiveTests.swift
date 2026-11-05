@@ -9,36 +9,32 @@ final class ReceiveTests: XCTestCase {
         return flow
     }
 
-    func testTopUpLandsOnceAndCreditsTheVault() async throws {
+    func testAnAddressComesWithoutAskingForAnAmount() async throws {
         let vault = VaultStore()
         let flow = await makeFlow(vault: vault)
         flow.source = flow.sources.first { $0.chain == "Solana" }
-        "200".forEach { flow.tapKey(String($0)) }
 
-        XCTAssertEqual(flow.estimatedLanding?.decimalString, "199.98")
         let reserved = await flow.reserve()
         XCTAssertTrue(reserved)
         let deposit = try XCTUnwrap(flow.deposit)
         XCTAssertTrue(deposit.isDemo, "Fixture addresses must say they are demo")
+        XCTAssertEqual(Money.dollars(deposit.minimum), "1")
+        XCTAssertNil(flow.landing, "Nothing is promised before the deposit is seen")
 
         await flow.track()
         XCTAssertEqual(flow.status?.stage, .landed)
+        XCTAssertEqual(flow.landing?.decimalString, "199.98", "200 USDC seen, less the $0.02 fee")
         XCTAssertEqual(vault.balance.decimalString, "199.98")
 
         await flow.track()
         XCTAssertEqual(vault.balance.decimalString, "199.98", "A landed deposit is credited once")
     }
 
-    func testTronMinimum() async {
+    func testTronKeepsItsMinimum() async throws {
         let flow = await makeFlow()
         flow.source = flow.sources.first { $0.chain == "Tron" }
-        "50".forEach { flow.tapKey(String($0)) }
-        XCTAssertTrue(flow.belowMinimum)
-        XCTAssertFalse(flow.canReserve)
-
-        flow.tapKey("0")
-        XCTAssertFalse(flow.belowMinimum)
-        XCTAssertTrue(flow.canReserve)
+        _ = await flow.reserve()
+        XCTAssertEqual(Money.dollars(try XCTUnwrap(flow.deposit).minimum), "100")
     }
 
     func testNearDepositsGoStraightToTheVaultWithNoFee() async throws {
@@ -49,6 +45,16 @@ final class ReceiveTests: XCTestCase {
 
         XCTAssertEqual(deposit.address, "frank.fliq.near")
         XCTAssertEqual(deposit.fee, .zero)
+    }
+
+    func testAnAddressExpiresAfterItsWindow() async throws {
+        let flow = await makeFlow()
+        flow.source = flow.sources.first { $0.chain == "Base" }
+        _ = await flow.reserve()
+        let deposit = try XCTUnwrap(flow.deposit)
+
+        XCTAssertGreaterThan(flow.secondsLeft(at: .now), 590)
+        XCTAssertEqual(flow.secondsLeft(at: deposit.reservedUntil.addingTimeInterval(1)), 0)
     }
 
     func testPayingDebitsAndARefundCreditsBack() async {

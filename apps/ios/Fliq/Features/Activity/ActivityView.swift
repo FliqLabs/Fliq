@@ -109,8 +109,8 @@ private struct ActivityRow: View {
             VStack(alignment: .trailing, spacing: 3) {
                 Text(amount)
                     .font(.system(size: 15, weight: .medium).monospacedDigit())
-                    .strikethrough(payout.state == .refused, color: Theme.textTertiary)
-                    .foregroundStyle(payout.state == .refused ? Theme.textTertiary : Theme.textPrimary)
+                    .strikethrough(payout.state.stage == .refused, color: Theme.textTertiary)
+                    .foregroundStyle(payout.state.stage == .refused ? Theme.textTertiary : Theme.textPrimary)
                 HStack(spacing: 0) {
                     if payout.state != .refunded {
                         Text("$\(payout.amount.decimalString) · ").foregroundStyle(Theme.textTertiary)
@@ -136,7 +136,7 @@ private struct ActivityRow: View {
 
     private var subtitle: String {
         var parts = [entry.startedAt.formatted(date: .omitted, time: .shortened)]
-        switch payout.state {
+        switch payout.state.stage {
         case .refunded: parts.append("\(payout.provider.displayName) failed")
         case .refused: parts.append("over your cap")
         default:
@@ -152,12 +152,12 @@ private struct ActivityRow: View {
 
     @ViewBuilder
     private var status: some View {
-        switch payout.state {
+        switch payout.state.stage {
         case .settled: Text("Paid").foregroundStyle(Theme.confirmed)
         case .refunded: Text("Refunded").foregroundStyle(Theme.textSecondary)
         case .refused: Text("Refused").foregroundStyle(Theme.warning)
         case .notReceived: Text("Checking").foregroundStyle(Theme.warning)
-        case .awaitingDeposit, .depositSeen, .payingOut: Text("Sending").foregroundStyle(Theme.textSecondary)
+        default: Text("Sending").foregroundStyle(Theme.textSecondary)
         }
     }
 }

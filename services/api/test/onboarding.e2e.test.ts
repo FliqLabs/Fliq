@@ -2,11 +2,15 @@ import { randomBytes } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { encrypt, keyedHash } from "../packages/db/src/crypto.js";
 import { newId } from "../packages/db/src/ids.js";
+import { MockVault } from "../packages/chains/vault/index.js";
 import { MockProvisioner } from "../apps/api/src/accounts.js";
 import { buildApp } from "../apps/api/src/app.js";
 import type { EmailSender } from "../apps/api/src/auth/email-links.js";
 import { loadConfig } from "../apps/api/src/config.js";
 import { createDatabase, unitOf } from "../apps/api/src/db.js";
+import { DEFAULT_ROUTING_CONFIG, NO_SIGNALS } from "../packages/domain/routing.js";
+import { sandboxAdapters } from "../apps/api/src/sandbox.js";
+import { DEFAULT_VELOCITY } from "../apps/api/src/payouts.js";
 import { createHandlers } from "../apps/api/src/handlers.js";
 
 const enabled = Boolean(process.env.DATABASE_URL && process.env.FLIQ_ACCESS_SECRET);
@@ -24,6 +28,7 @@ describe.skipIf(!enabled)("onboarding against a real database", () => {
   const database = createDatabase();
   const sender = new CapturingSender();
   const config = loadConfig();
+  const adapters = sandboxAdapters(() => NOW);
   const app = buildApp({
     config,
     unit: unitOf(database),
@@ -33,6 +38,9 @@ describe.skipIf(!enabled)("onboarding against a real database", () => {
       unit: unitOf(database),
       email: sender,
       provisioner: new MockProvisioner(config.vaultAccount),
+      vault: new MockVault({ registrar: "registrar.test.near", usdc: "usdc.test.near", now: () => 0n }),
+      quotes: { adapters, routing: DEFAULT_ROUTING_CONFIG, signals: NO_SIGNALS, now: () => NOW },
+      payouts: { config, adapters, velocity: DEFAULT_VELOCITY, now: () => NOW },
       now: () => NOW,
     }),
   });
@@ -61,7 +69,8 @@ describe.skipIf(!enabled)("onboarding against a real database", () => {
       });
       await database.payout.deleteMany({ where: { developerId: { in: ids } } });
       await database.recipient.deleteMany({ where: { userId: user.id } });
-      await database.quote.deleteMany({ where: { developerId: { in: ids } } });
+      await database.quoteRoute.deleteMany({ where: { quote: { developerId: { in: [...ids, user.id] } } } });
+      await database.quote.deleteMany({ where: { developerId: { in: [...ids, user.id] } } });
       await database.apiKey.deleteMany({ where: { workspaceId: { in: workspaces.map((w) => w.id) } } });
       await database.workspace.deleteMany({ where: { ownerId: user.id } });
       await database.idempotencyRecord.deleteMany({ where: { scope: user.id } });
@@ -348,6 +357,49 @@ describe.skipIf(!enabled)("onboarding against a real database", () => {
     expect((await call("GET", "/payouts/stats?tz=Mars/Base", undefined, authed())).statusCode).toBe(400);
     expect((await call("GET", "/payouts/stats", undefined, {})).statusCode).toBe(401);
   }, 120_000);
+
+  it("quotes the canonical fixture numbers and stores every route with its score", async () => {
+    const reply = await call("POST", "/quotes", { token: "usdc", currency: "ngn", amount: "50.00", source_chain: "base" }, authed());
+    expect(reply.statusCode).toBe(200);
+    const quote = reply.json();
+    expect(quote).toMatchObject({
+      token: "usdc",
+      currency: "ngn",
+      amount: "50.00",
+      rate_before_fees: 1383.2,
+      rate: 1376.32,
+      receive: 68816,
+      fees: { provider: 25000, network: 9400, total: 34400 },
+      provider: "mock",
+      best_of: 1,
+      eta_seconds: 21,
+      saving_vs_next: 0,
+      expires_in: 80,
+    });
+    expect(quote.quote_id).toMatch(/^q_/);
+    expect(quote.routes[0]).toMatchObject({ routed: true, status: "live", receive: 68816, fee: 34400, less_than_best: 0, not_offered_reason: null });
+
+    const stored = await database.quote.findUniqueOrThrow({ where: { id: quote.quote_id }, include: { routes: true } });
+    expect(stored).toMatchObject({ amountIn: 50_000_000n, amountOutMinor: 6_881_600n, mode: "send_exactly" });
+    expect(stored.chosenRouteId).toBe(stored.routes[0]?.id);
+    expect(stored.routes[0]?.scoreBreakdown).toMatchObject({ weights: { amount: 0.7 }, halfOpen: false });
+
+    const exact = (await call("POST", "/quotes", { token: "usdc", currency: "ngn", amount: "68816", mode: "receive", source_chain: "base" }, authed())).json();
+    expect(exact.amount).toBe("50.00");
+    expect(exact.receive).toBe(68816);
+  }, 60_000);
+
+  it("refuses bad quote requests and unreachable corridors", async () => {
+    const send = (body: object) => call("POST", "/quotes", body, authed());
+    expect((await send({ token: "usdc", currency: "ngn", amount: "abc" })).statusCode).toBe(400);
+    expect((await send({ token: "usdc", currency: "ngn", amount: "0" })).statusCode).toBe(400);
+    expect((await send({ token: "usdc", currency: "usd", amount: "5" })).statusCode).toBe(400);
+    expect((await send({ token: "usdc", currency: "ngn", amount: "5", extra: 1 })).statusCode).toBe(400);
+    const unreachable = await send({ token: "usdc", currency: "ngn", amount: "50", source_chain: "dogechain" });
+    expect(unreachable.statusCode).toBe(422);
+    expect(unreachable.json().error.code).toBe("no_route");
+    expect((await call("POST", "/quotes", { token: "usdc", currency: "ngn", amount: "50" })).statusCode).toBe(401);
+  }, 60_000);
 
   it("rotates refresh tokens and revokes the family when an old one is reused", async () => {
     const rotated = await call("POST", "/auth/refresh", { refresh_token: refresh });

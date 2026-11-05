@@ -6,7 +6,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  schemas  = ["core", "ledger", "messaging", "auth", "developer"]
+  schemas  = ["core", "ledger", "messaging", "auth", "developer", "integration"]
 }
 
 // Ids are prefixed ULIDs generated in application code (see src/ids.ts).
@@ -51,6 +51,7 @@ enum AccountType {
   liability
   revenue
   expense
+  contra
 
   @@schema("ledger")
 }
@@ -92,6 +93,8 @@ model QuoteRoute {
   etaSeconds     Int      @map("eta_seconds")
   expiresAt      DateTime @map("expires_at") @db.Timestamptz(6)
   scoreBreakdown Json     @map("score_breakdown")
+  // The provider's own quote, kept so createOrder can be sent exactly what was priced.
+  providerQuote  Json?    @map("provider_quote")
   quote          Quote    @relation("QuoteRoutes", fields: [quoteId], references: [id])
 
   @@unique([quoteId, rank])
@@ -111,6 +114,8 @@ model Recipient {
   // Keyed hash (HMAC-SHA-256) of institution + account for duplicate lookup.
   lookupHash      Bytes    @map("lookup_hash")
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  // Set when the user chose to save this account; recipients made by paying are not saved ones.
+  savedAt         DateTime? @map("saved_at") @db.Timestamptz(6)
   deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(6)
   payouts         Payout[]
 
@@ -138,6 +143,12 @@ model Payout {
   retryOfId       String?     @map("retry_of_id") @db.Text
   // Why a payout ended in failed. Reasons starting with vault_ are refusals by the vault caps.
   failureReason   String?     @map("failure_reason") @db.Text
+  // Where the sender pays, from the provider's createOrder answer. Empty while the order is not confirmed.
+  depositChain      String?   @map("deposit_chain") @db.Text
+  depositAddress    String?   @map("deposit_address") @db.Text
+  depositUnits      BigInt?   @map("deposit_units")
+  depositValidUntil DateTime? @map("deposit_valid_until") @db.Timestamptz(6)
+  depositMemo       String?   @map("deposit_memo") @db.Text
   createdAt       DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime    @default(now()) @map("updated_at") @db.Timestamptz(6)
   quote           Quote       @relation(fields: [quoteId], references: [id])
@@ -393,6 +404,7 @@ model Workspace {
   createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
   owner     User             @relation(fields: [ownerId], references: [id])
   apiKeys   ApiKey[]
+  webhookEndpoints WebhookEndpoint[]
 
   @@index([ownerId])
   @@map("workspaces")
@@ -430,4 +442,106 @@ model IdempotencyRecord {
   @@index([createdAt])
   @@map("idempotency_records")
   @@schema("developer")
+}
+
+// A vault-to-vault transfer, written when the chain confirms it. The backend never moves vault funds.
+model Transfer {
+  id          String   @id @db.Text
+  txHash      String   @unique @map("tx_hash") @db.Text
+  fromUserId  String   @map("from_user_id") @db.Text
+  toUserId    String   @map("to_user_id") @db.Text
+  fromAccount String   @map("from_account") @db.Text
+  toAccount   String   @map("to_account") @db.Text
+  asset       String   @db.Text
+  amount      BigInt
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([fromUserId, createdAt])
+  @@index([toUserId, createdAt])
+  @@map("transfers")
+  @@schema("core")
+}
+
+enum WebhookEndpointStatus {
+  active
+  // Every retry of a delivery ran out (ARCH §12.4); deliveries continue once the developer fixes it.
+  failing
+  disabled
+
+  @@schema("developer")
+}
+
+enum WebhookDeliveryStatus {
+  pending
+  delivered
+  failed
+
+  @@schema("developer")
+}
+
+model WebhookEndpoint {
+  id           String                @id @db.Text
+  workspaceId  String                @map("workspace_id") @db.Text
+  environment  KeyEnvironment
+  url          String                @db.Text
+  // AES-256-GCM ciphertext of the signing secret. Encrypted, not hashed: every delivery is signed with it.
+  secretCipher Bytes                 @map("secret_cipher")
+  status       WebhookEndpointStatus @default(active)
+  createdAt    DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  failingSince DateTime?             @map("failing_since") @db.Timestamptz(6)
+  workspace    Workspace             @relation(fields: [workspaceId], references: [id])
+  deliveries   WebhookDelivery[]
+
+  @@index([workspaceId])
+  @@map("webhook_endpoints")
+  @@schema("developer")
+}
+
+// One row per event per endpoint. A replay is a new row with the same event id (ARCH §12.4).
+model WebhookDelivery {
+  id                 String                @id @db.Text
+  endpointId         String                @map("endpoint_id") @db.Text
+  eventId            String                @map("event_id") @db.Text
+  eventType          String                @map("event_type") @db.Text
+  payoutId           String                @map("payout_id") @db.Text
+  payload            Json
+  status             WebhookDeliveryStatus @default(pending)
+  attempts           Int                   @default(0)
+  nextAttemptAt      DateTime?             @map("next_attempt_at") @db.Timestamptz(6)
+  lastAttemptAt      DateTime?             @map("last_attempt_at") @db.Timestamptz(6)
+  lastResponseStatus Int?                  @map("last_response_status")
+  lastError          String?               @map("last_error") @db.Text
+  deliveredAt        DateTime?             @map("delivered_at") @db.Timestamptz(6)
+  replayOfId         String?               @map("replay_of_id") @db.Text
+  createdAt          DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  endpoint           WebhookEndpoint       @relation(fields: [endpointId], references: [id])
+  replayOf           WebhookDelivery?      @relation("DeliveryReplay", fields: [replayOfId], references: [id])
+  replays            WebhookDelivery[]     @relation("DeliveryReplay")
+
+  @@index([endpointId, createdAt])
+  @@index([status, nextAttemptAt])
+  @@index([eventId])
+  @@map("webhook_deliveries")
+  @@schema("developer")
+}
+
+// ARCH §9.4: every provider webhook is stored before anything acts on it. A bad signature is kept and
+// flagged but never changes state. The body is encrypted because providers include recipient details.
+model InboundEvent {
+  id              String    @id @db.Text
+  provider        String    @db.Text
+  // Null when the signature failed, so nothing in the body was trusted.
+  providerEventId String?   @map("provider_event_id") @db.Text
+  signatureValid  Boolean   @map("signature_valid")
+  bodyCipher      Bytes     @map("body_cipher")
+  providerOrderId String?   @map("provider_order_id") @db.Text
+  payoutId        String?   @map("payout_id") @db.Text
+  receivedAt      DateTime  @default(now()) @map("received_at") @db.Timestamptz(6)
+  processedAt     DateTime? @map("processed_at") @db.Timestamptz(6)
+
+  @@unique([provider, providerEventId])
+  @@index([payoutId])
+  @@index([receivedAt])
+  @@map("inbound_events")
+  @@schema("integration")
 }

@@ -14,6 +14,12 @@ struct ReceiveSourceView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.bottom, 8)
             header
+            if let error = flow.errorMessage {
+                Label(error, systemImage: "wifi.exclamationmark")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Theme.warning)
+                    .padding(.top, 4)
+            }
             ScrollView {
                 VStack(alignment: .leading, spacing: 8) {
                     ForEach(Array(groups.enumerated()), id: \.element) { index, group in
@@ -23,8 +29,11 @@ struct ReceiveSourceView: View {
                             .padding(.horizontal, 2)
                             .padding(.top, index == 0 ? 8 : 10)
                         ForEach(flow.sources.filter { $0.group == group }) { source in
-                            Button { pick(source) } label: { SourceRow(source: source) }
-                                .buttonStyle(.pressable)
+                            Button { pick(source) } label: {
+                                SourceRow(source: source, isLoading: flow.isReserving && flow.source == source)
+                            }
+                            .buttonStyle(.pressable)
+                            .disabled(flow.isReserving)
                         }
                     }
                 }
@@ -38,23 +47,18 @@ struct ReceiveSourceView: View {
     }
 
     private var header: some View {
-        HStack {
-            Button { dismiss() } label: {
-                Image(systemName: "chevron.left").font(.system(size: 18, weight: .medium))
-                    .frame(width: 32, height: 32, alignment: .leading)
+        Text("Receive from")
+            .font(.system(size: 17, weight: .semibold))
+            .frame(maxWidth: .infinity)
+            .overlay(alignment: .trailing) {
+                Button { dismiss() } label: {
+                    Image(systemName: "xmark").font(.system(size: 17, weight: .medium))
+                        .frame(width: 44, height: 44, alignment: .trailing)
+                }
+                .accessibilityLabel("Close")
             }
-            .accessibilityLabel("Back")
-            Spacer()
-            Text("Receive from").font(.system(size: 17, weight: .semibold))
-            Spacer()
-            Button { dismiss() } label: {
-                Image(systemName: "xmark").font(.system(size: 17, weight: .medium))
-                    .frame(width: 32, height: 32, alignment: .trailing)
-            }
-            .accessibilityLabel("Close")
-        }
-        .foregroundStyle(Theme.textPrimary)
-        .frame(height: 32)
+            .foregroundStyle(Theme.textPrimary)
+            .frame(height: 32)
     }
 
     private var groups: [DepositSource.Group] {
@@ -63,7 +67,6 @@ struct ReceiveSourceView: View {
 
     private func pick(_ source: DepositSource) {
         flow.source = source
-        guard source.isDirect else { return onPicked(.receiveAmount) }
         Task { if await flow.reserve() { onPicked(.receiveAddress) } }
     }
 }
@@ -101,6 +104,7 @@ struct SourceBadge: View {
 
 private struct SourceRow: View {
     let source: DepositSource
+    let isLoading: Bool
 
     var body: some View {
         HStack(spacing: 14) {
@@ -110,9 +114,13 @@ private struct SourceRow: View {
                 Text(subtitle).font(.system(size: 13)).foregroundStyle(Theme.textSecondary)
             }
             Spacer()
-            Image(systemName: "chevron.right")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(Theme.textMuted)
+            if isLoading {
+                ProgressView().tint(Theme.textSecondary)
+            } else {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Theme.textMuted)
+            }
         }
         .padding(.horizontal, 16)
         .frame(height: 62)

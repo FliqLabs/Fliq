@@ -7,7 +7,6 @@ enum AppRoute: Hashable {
     case paySending
     case payPaid
     case payRefunded
-    case receiveAmount
     case receiveAddress
     case receiveArriving
     case activity
