@@ -45,4 +45,4 @@ Search all temporary and unresolved design markers with:
 rg -n 'TEMPORARY|OPEN:' contracts docs
 ```
 
-The current OPEN list is maintained in [docs/DECISIONS.md](../../docs/DECISIONS.md): order/`po_` ID mapping, expiry units, corridor encoding, registration key rotation, refs/status format, event approval, provider allowlists, relayed-agent identity, daily limits, and refund/recredit proof and reconciliation rules.
+The current OPEN list is maintained in [docs/DECISIONS.md](docs/DECISIONS.md): order/`po_` ID mapping, expiry units, corridor encoding, registration key rotation, refs/status format, event approval, provider allowlists, relayed-agent identity, daily limits, and refund/recredit proof and reconciliation rules.

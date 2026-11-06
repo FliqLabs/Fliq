@@ -167,20 +167,11 @@ impl Contract {
         apply_status(self, order_id, status, refs);
     }
 
-    pub fn recredit(&mut self, _order_id: String, _amount: Amount) {
-        env::panic_str("recredit is disabled until the refund design is approved");
-    }
-
     pub fn get_receipt(&self, order_id: String) -> Receipt {
         match self.receipts.get(&order_id) {
             Some(receipt) => receipt,
             None => env::panic_str("receipt not found for order_id"),
         }
-    }
-
-    pub fn get_policy(&self, public_key: String) -> String {
-        let _ = public_key;
-        String::new()
     }
 
     #[cfg(all(feature = "testing", debug_assertions))]

@@ -42,19 +42,19 @@ Every marker below is intentional. Replace the temporary policy implementation o
 - `contracts/vault/src/receipts.rs:29`: event payload fields and version need backend approval.
 - `contracts/vault/src/types.rs:10`: expiry currently follows NEAR block timestamp nanoseconds; the final unit is open.
 - `contracts/vault/src/types.rs:42`: relayed-agent identity is open.
-- `docs/CONTEXT.md:7` and `docs/DECISIONS.md`: the remaining open questions are order ID versus `po_` ID, corridor encoding, registration-account rotation, refs/status format, refund proof and recredit, daily limits, and event approval.
+- `contracts/vault/docs/CONTEXT.md:7` and `contracts/vault/docs/DECISIONS.md`: the remaining open questions are order ID versus `po_` ID, corridor encoding, registration-account rotation, refs/status format, refund proof and recredit, daily limits, and event approval.
 
 ## What I need from the backend team
 
 | Exact question | Why it matters | Default used now | File if different |
 | --- | --- | --- | --- |
-| Is `order_id` exactly the backend `po_` payout ID? | It determines idempotency and how receipts are joined to backend records. | Treats the supplied string as the canonical order key. | `docs/DECISIONS.md`, `orders.rs`, API integration tests. |
+| Is `order_id` exactly the backend `po_` payout ID? | It determines idempotency and how receipts are joined to backend records. | Treats the supplied string as the canonical order key. | `contracts/vault/docs/DECISIONS.md`, `orders.rs`, API integration tests. |
 | What exact `register_order` JSON does the backend send, and is amount an integer base-unit string? | Deserialization and amount safety must match the API contract. | Uses the confirmed argument order and integer base units represented as JSON strings. | `types.rs`, `lib.rs`, fixtures/API docs if needed. |
 | What expiry unit is final? | Expiry checks and the 24-hour maximum depend on it. | Uses NEAR block timestamp nanoseconds. | `types.rs`, `orders.rs`, tests. |
 | Which account registers orders and reports statuses, and how are its keys rotated? | A compromised or stale key could create orders or falsify backend progress. | One configured `registration_account`, owner-rotated. | `lib.rs`, `types.rs`, deployment docs. |
-| What exact `refs` format and stored backend statuses are approved? | Refs are persisted and emitted; malformed or personal data must be rejected. | Monotonic `BACKEND_STATUSES`; refs are at most 256 ASCII identifier characters. | `orders.rs`, `types.rs`, `receipts.rs`, `docs/DECISIONS.md`. |
-| Which fields and version must each event carry? | Indexers and reconciliation depend on stable event schemas. | `fliq`, version `1.0.0`, with the current minimal payloads. | `receipts.rs`, event tests, `docs/DECISIONS.md`. |
-| Does the backend want a provider allowlist? | A missing allowlist could permit an unintended destination if the API is compromised. | No provider allowlist, because the spec does not define one. | `lib.rs`, `orders.rs`, `docs/DECISIONS.md`. |
+| What exact `refs` format and stored backend statuses are approved? | Refs are persisted and emitted; malformed or personal data must be rejected. | Branching proposed status transitions; refs are at most 256 ASCII identifier characters. | `orders.rs`, `types.rs`, `receipts.rs`, `contracts/vault/docs/DECISIONS.md`. |
+| Which fields and version must each event carry? | Indexers and reconciliation depend on stable event schemas. | `fliq`, version `1.0.0`, with the current minimal payloads. | `receipts.rs`, event tests, `contracts/vault/docs/DECISIONS.md`. |
+| Does the backend want a provider allowlist? | A missing allowlist could permit an unintended destination if the API is compromised. | No provider allowlist, because the spec does not define one. | `lib.rs`, `orders.rs`, `contracts/vault/docs/DECISIONS.md`. |
 | Which testnet vault and mock USDC account IDs will be used? | Integration tests and deployment configuration need stable addresses. | The standalone mock crate is used locally; the configured token account is supplied at init. | `contracts/mock_usdc`, workspace tests, deployment docs. |
 | What gas should relayers attach for `payout`? | Too little gas prevents the transfer or callback; too much changes relayer economics. | Requires at least 50 Tgas: 30 Tgas transfer plus 20 Tgas callback. | `orders.rs`, tests, relayer docs. |
 

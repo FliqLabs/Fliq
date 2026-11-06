@@ -19,10 +19,47 @@ pub const MAX_REFS_LENGTH: usize = 256;
 pub const ERR_REFS_TOO_LONG: &str = "refs must be at most 256 characters";
 pub const ERR_REFS_FORMAT: &str = "refs may contain only identifier characters";
 
-pub fn backend_status_rank(status: &str) -> Option<usize> {
-    BACKEND_STATUSES
-        .iter()
-        .position(|candidate| *candidate == status)
+const BACKFILLABLE_STATUSES: &[&str] = &[
+    "awaiting_deposit",
+    "deposit_seen",
+    "routing",
+    "with_provider",
+    "paying_out",
+    "settled",
+    "refunding",
+    "refunded",
+];
+
+fn status_successors(status: &str) -> &'static [&'static str] {
+    match status {
+        "created" => &["awaiting_deposit", "provider_timeout", "failed", "refused"],
+        "provider_timeout" => &["awaiting_recon"],
+        "awaiting_recon" => &["awaiting_deposit", "failed"],
+        "awaiting_deposit" => &["deposit_seen", "expired", "not_received"],
+        "deposit_seen" => &["routing", "with_provider"],
+        "routing" => &["with_provider", "refunding"],
+        "with_provider" => &["paying_out", "refunding"],
+        "paying_out" => &["settled", "refunding"],
+        "refunding" => &["refunded", "failed"],
+        _ => &[],
+    }
+}
+
+fn status_distance(from: &str, to: &str) -> Option<usize> {
+    let mut queue = vec![(from.to_owned(), 0)];
+    let mut visited = std::collections::BTreeSet::from([from.to_owned()]);
+    while let Some((current, distance)) = queue.first().cloned() {
+        queue.remove(0);
+        if current == to {
+            return Some(distance);
+        }
+        for next in status_successors(&current) {
+            if visited.insert((*next).to_owned()) {
+                queue.push(((*next).to_owned(), distance + 1));
+            }
+        }
+    }
+    None
 }
 
 pub fn validate_refs(refs: &str) {
@@ -41,16 +78,21 @@ pub fn validate_status_transition(
     refs: &str,
     transfer_state: &TransferState,
 ) -> Result<bool, String> {
-    let current_rank = backend_status_rank(&receipt.backend_status)
-        .ok_or_else(|| "stored backend status is invalid".to_string())?;
-    let next_rank =
-        backend_status_rank(status).ok_or_else(|| "unknown backend status".to_string())?;
+    require!(BACKEND_STATUSES.contains(&status), "unknown backend status");
     validate_refs(refs);
     if receipt.backend_status == status && receipt.refs == refs {
         return Ok(false);
     }
-    if next_rank < current_rank {
-        return Err("backend status cannot move backwards".to_string());
+    if matches!(
+        receipt.backend_status.as_str(),
+        "settled" | "refunded" | "expired" | "failed" | "refused" | "not_received"
+    ) {
+        return Err("backend status is terminal".to_string());
+    }
+    let distance = status_distance(&receipt.backend_status, status)
+        .ok_or_else(|| "backend status transition is not allowed".to_string())?;
+    if distance > 1 && !BACKFILLABLE_STATUSES.contains(&status) {
+        return Err("backend status transition requires intermediate updates".to_string());
     }
     if matches!(status, "paying_out" | "settled") && *transfer_state != TransferState::Dispatched {
         return Err("paying_out and settled require Dispatched transfer_state".to_string());

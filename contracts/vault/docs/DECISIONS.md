@@ -7,10 +7,11 @@ These rules are PROPOSED and require backend approval:
 - `set_status` is callable only by `registration_account`.
 - The order must exist and the status must be in `BACKEND_STATUSES`.
 - Replaying the same status with the same refs is accepted as a no-op.
-- Statuses are monotonic according to the order in `BACKEND_STATUSES`; earlier statuses are rejected.
+- Statuses follow the branching transitions from the backend payout-state model; illegal edges and signals after terminal states are rejected.
 - `paying_out` and `settled` are accepted only after the verified NEAR `transfer_state` is `Dispatched`.
 - Status updates never change the verified transfer state, balances, or policy counts.
 - Refs are limited to 256 ASCII identifier characters (`A-Z`, `a-z`, `0-9`, `:`, `/`, `.`, `_`, `-`) to keep personal data out of receipts and events. This format is PROPOSED.
+- The proposed status table includes the `refused` and `not_received` terminal branches from the API spec. The transition table remains PROPOSED pending backend approval.
 
 ## OPEN refund and recredit questions
 
@@ -30,6 +31,7 @@ These rules are PROPOSED and require backend approval:
 - How is corridor encoded?
 - Which account registers orders, and how does key rotation work?
 - What exact refs and status format does `set_status` accept?
+- `recredit` and `get_policy` return only when their real designs and implementations are approved.
 - Which event payload fields and version does the backend approve?
 - What agent identity is required for relayed calls?
 - What counts toward agent daily limits?

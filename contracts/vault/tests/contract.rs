@@ -409,6 +409,79 @@ fn status_rejects_unknown_order_and_status() {
 }
 
 #[test]
+fn status_follows_branching_edges_for_refused_and_not_received() {
+    let mut refused = contract();
+    register_status_order(&mut refused);
+    set_caller(accounts(1), NOW);
+    refused.set_status(
+        "order-1".to_string(),
+        "refused".to_string(),
+        "ref-1".to_string(),
+    );
+    assert_eq!(
+        refused.get_receipt("order-1".to_string()).backend_status,
+        "refused"
+    );
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            refused.set_status(
+                "order-1".to_string(),
+                "failed".to_string(),
+                "ref-2".to_string(),
+            );
+        }))
+        .is_err()
+    );
+
+    let mut not_received = contract();
+    register_named_order(&mut not_received, "order-2", accounts(3), 10);
+    set_caller(accounts(1), NOW);
+    not_received.set_status(
+        "order-2".to_string(),
+        "awaiting_deposit".to_string(),
+        "ref-1".to_string(),
+    );
+    not_received.set_status(
+        "order-2".to_string(),
+        "not_received".to_string(),
+        "ref-2".to_string(),
+    );
+    assert_eq!(
+        not_received
+            .get_receipt("order-2".to_string())
+            .backend_status,
+        "not_received"
+    );
+}
+
+#[test]
+fn status_rejects_illegal_branch_transition() {
+    let mut contract = contract();
+    register_status_order(&mut contract);
+    set_caller(accounts(1), NOW);
+    contract.set_status(
+        "order-1".to_string(),
+        "awaiting_deposit".to_string(),
+        "ref-1".to_string(),
+    );
+    contract.set_status(
+        "order-1".to_string(),
+        "expired".to_string(),
+        "ref-2".to_string(),
+    );
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            contract.set_status(
+                "order-1".to_string(),
+                "routing".to_string(),
+                "ref-3".to_string(),
+            );
+        }))
+        .is_err()
+    );
+}
+
+#[test]
 fn status_replay_is_a_no_op() {
     let mut contract = contract();
     register_status_order(&mut contract);

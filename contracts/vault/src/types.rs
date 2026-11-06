@@ -83,6 +83,7 @@ pub struct Receipt {
 
 pub const BACKEND_STATUSES: &[&str] = &[
     "created",
+    "refused",
     "awaiting_deposit",
     "deposit_seen",
     "routing",
@@ -94,5 +95,6 @@ pub const BACKEND_STATUSES: &[&str] = &[
     "provider_timeout",
     "awaiting_recon",
     "expired",
+    "not_received",
     "failed",
 ];
