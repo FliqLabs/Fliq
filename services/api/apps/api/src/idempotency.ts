@@ -6,6 +6,7 @@ import { ApiError } from "./errors.js";
 export interface Reply {
   status: number;
   body: unknown;
+  headers?: Record<string, string>;
 }
 
 export const hashOf = (value: unknown) => createHash("sha256").update(JSON.stringify(value ?? null)).digest("hex");
