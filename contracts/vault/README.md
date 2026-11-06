@@ -27,6 +27,8 @@ Rules:
 
 Initialization is deliberately self-authorized. The `new` call must be signed and sent by the deployed vault account, with the vault account as the transaction predecessor; an external deployer or any other account cannot initialize it. The initialization arguments are the immutable owner, registration account, and approved USDC token contract.
 
+Upgrading an initialized pre-policy vault requires deploying the new Wasm and calling the private `migrate()` method from the vault account in the same controlled upgrade procedure. Migration preserves the token configuration, vault ledger, orders, receipts, refund evidence and payout keys, then initializes empty agent-policy maps. Do not call `new` on an existing vault. A fresh deployment uses `new` and does not call `migrate`.
+
 ```
 make test-contract
 ```

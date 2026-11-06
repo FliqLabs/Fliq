@@ -7,6 +7,7 @@ Branch: `Ariya-Agent-Permissions`
 | Method or area | Owner module | Behavior |
 | --- | --- | --- |
 | `new`, `get_config` | `lib.rs` | Stores immutable owner, registration account and approved USDC token plus expiry and stuck-payout limits. Initialization is vault-account-only and one-time. |
+| `migrate` | `lib.rs` | Vault-account-only upgrade from the pre-policy state layout; preserves all existing vault and payout state and initializes empty policy maps. |
 | `register_order` | `orders.rs`, `vault.rs` | Registration-account-only immutable order creation with immediate balance reservation. |
 | `payout` | `orders.rs`, `policies.rs`, `vault.rs` | Requires exact registered amount and destination, authorizes the payer or a policy-bound agent account, counts pending policy spend, changes state before sending USDC, and resolves through a private callback. |
 | `set_agent` | `policies.rs` | With exactly 1 yoctoNEAR, binds a public key to one distinct agent account and creates or updates its per-action cap, daily cap, optional exact corridors, cooldown and expiry without resetting same-day spend. |
@@ -38,7 +39,7 @@ Hosted-agent key removal should accompany `remove_agent`, but the on-chain revok
 
 ## Verification
 
-The current local result is 39 vault unit tests and 66 contract/integration tests passing with `--features testing`. Strict clippy and rustfmt checks pass. The near-workspaces smoke harness remains ignored by default and requires a supported local NEAR sandbox platform.
+The current local result is 41 vault unit tests and 66 contract/integration tests passing with `--features testing`. Strict clippy and rustfmt checks pass. The near-workspaces smoke harness remains ignored by default and requires a supported local NEAR sandbox platform.
 
 Policy coverage includes:
 
@@ -52,6 +53,10 @@ Policy coverage includes:
 - daily rollover and same-day update preservation;
 - duplicate payout and callback replay protection.
 - exactly-1-yocto agent administration and policy-limited vault transfers.
+
+## Deployment migration
+
+An already-initialized vault running the pre-policy layout must deploy this Wasm and invoke private `migrate()` as the vault account before any ordinary method call. The migration preserves the existing ledger, configuration, orders, receipts, refund evidence and payout-key collections and creates the three policy collections. It rejects calls from any predecessor other than the vault account and rejects unsupported stored layouts. A new testnet vault should call `new` instead and needs no migration.
 
 ## Backend alignment
 

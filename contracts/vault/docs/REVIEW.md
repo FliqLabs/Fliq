@@ -7,6 +7,7 @@ Scope: `lib.rs`, `orders.rs`, `types.rs`, `receipts.rs`, `integration.rs`, `poli
 | Method | Who can call | State changed | Failure and balance effect |
 | --- | --- | --- | --- |
 | `new` | Vault account only during initialization | Writes owner, registration account, token contract, empty order/receipt maps | Calls from another predecessor and repeated initialization fail before state is changed. |
+| `migrate` | Vault account only during an upgrade | Converts the supported pre-policy state layout without changing existing ledger, order, receipt or configuration data; initializes empty policy maps | Wrong predecessor and unsupported or already-migrated state fail. |
 | `get_config` | Anyone | None | Read-only. |
 | `set_agent` | Policy owner with exactly 1 yoctoNEAR | Binds a public key to one distinct agent account and creates or updates its caps, corridors, cooldown and expiry while preserving same-day spend | Invalid fields, self-authorization, key rebinding and a different existing owner fail without changing the policy. |
 | `remove_agent` | Policy owner with exactly 1 yoctoNEAR | Marks the public-key policy revoked | Missing policy and non-owner calls fail without state changes. |
@@ -33,6 +34,7 @@ Scope: `lib.rs`, `orders.rs`, `types.rs`, `receipts.rs`, `integration.rs`, `poli
 - Restored Dapper's real vault entrypoints and routed balance, deposit, reservation, commit, and release operations through `vault.rs`.
 - Added payout amount/destination validation, timeout-based stuck-payout recovery, U64-safe public timestamps, and proposed branching backend status transitions.
 - Replaced the temporary policy stand-in with public-key-indexed, owner-managed agent accounts, caps, corridors, cooldown, expiry, revocation and pending-spend lifecycle accounting; policy administration requires exactly 1 yoctoNEAR and agent limits also cover vault transfers.
+- Added a one-time vault-account-only migration from the initialized pre-policy state layout so an upgrade preserves existing balances and payout data.
 - Added the terminal `Released` state and `release_order`; completed orders retain their order IDs and receipts, and `get_storage_usage` supports measurement without mutation.
 - Standardized contract-owned panic strings as `fliq_vault: CODE`; Dapper enum failures are mapped at `integration.rs` and documented for conversion.
 

@@ -33,6 +33,7 @@ The NEAR HACKATHON rules require listing AI-generated code. Add a row whenever a
 | 2026-11-06 | `contracts/vault/src/{policies.rs,types.rs,errors.rs,lib.rs}`, `contracts/vault/tests/contract.rs` | Codex | Owner-managed agent policy storage, policy validation, create/update/revoke entrypoints and policy views |
 | 2026-11-06 | `contracts/vault/src/{policies.rs,integration.rs,orders.rs,errors.rs,types.rs,lib.rs}`, `contracts/vault/tests/contract.rs`, `contracts/vault/docs`, `contracts/vault/README.md` | Codex | Agent-account payout authorization, cap/corridor/cooldown/expiry/revocation enforcement, pending and daily spend lifecycle, adversarial tests and handoff documentation |
 | 2026-11-06 | `contracts/vault/src/{policies.rs,integration.rs,errors.rs,types.rs,lib.rs}`, `contracts/vault/tests/contract.rs`, `contracts/vault/docs`, `contracts/vault/README.md` | Codex | Backend-aligned set/remove/get policy interface, exact-1-yocto administration, public-key lookup binding, canonical errors and agent-limited vault transfers |
+| 2026-11-06 | `contracts/vault/src/{lib.rs,errors.rs}`, `contracts/vault/docs`, `contracts/vault/README.md` | Codex | Vault-account-only migration from the initialized pre-policy contract layout with state-preservation regression coverage and deployment guidance |
 
 The iOS app (`apps/ios`) is built with Claude Code, directed and reviewed by Frank. Each iOS PR adds its rows to this table.
 

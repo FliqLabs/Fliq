@@ -11,6 +11,7 @@ use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
 use near_contract_standards::storage_management::{
     StorageBalance, StorageBalanceBounds, StorageManagement,
 };
+use near_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LookupMap, LookupSet};
 use near_sdk::json_types::U128;
 use near_sdk::serde::Deserialize;
@@ -71,6 +72,17 @@ pub struct Contract {
     pub(crate) pending_policy_spends: LookupMap<String, PendingPolicySpend>,
 }
 
+#[derive(BorshDeserialize, BorshSerialize)]
+struct LegacyContract {
+    approved_usdc: AccountId,
+    vault: Vault,
+    config: Config,
+    orders: LookupMap<String, PayoutOrder>,
+    receipts: LookupMap<String, Receipt>,
+    used_refund_transactions: LookupSet<String>,
+    payout_keys: LookupMap<String, String>,
+}
+
 #[near]
 impl Contract {
     #[init]
@@ -102,6 +114,30 @@ impl Contract {
             receipts: LookupMap::new(StorageKey::Receipts),
             used_refund_transactions: LookupSet::new(StorageKey::UsedRefundTransactions),
             payout_keys: LookupMap::new(StorageKey::PayoutKeys),
+            agent_policies: LookupMap::new(StorageKey::AgentPolicies),
+            agent_policy_keys: LookupMap::new(StorageKey::AgentPolicyKeys),
+            pending_policy_spends: LookupMap::new(StorageKey::PendingPolicySpends),
+        }
+    }
+
+    #[init(ignore_state)]
+    #[private]
+    pub fn migrate() -> Self {
+        require!(
+            env::predecessor_account_id() == env::current_account_id(),
+            errors::MIGRATION_ONLY
+        );
+        let Some(legacy) = env::state_read::<LegacyContract>() else {
+            env::panic_str(errors::MIGRATION_STATE_INVALID);
+        };
+        Self {
+            approved_usdc: legacy.approved_usdc,
+            vault: legacy.vault,
+            config: legacy.config,
+            orders: legacy.orders,
+            receipts: legacy.receipts,
+            used_refund_transactions: legacy.used_refund_transactions,
+            payout_keys: legacy.payout_keys,
             agent_policies: LookupMap::new(StorageKey::AgentPolicies),
             agent_policy_keys: LookupMap::new(StorageKey::AgentPolicyKeys),
             pending_policy_spends: LookupMap::new(StorageKey::PendingPolicySpends),
@@ -467,6 +503,12 @@ mod tests {
             .unwrap_or_else(|_| panic!("invalid test account {value}"))
     }
 
+    fn agent_key() -> PublicKey {
+        "ed25519:11111111111111111111111111111111"
+            .parse()
+            .unwrap_or_else(|_| panic!("invalid test public key"))
+    }
+
     fn context(predecessor: &AccountId, attached_deposit: NearToken) -> VMContext {
         VMContextBuilder::new()
             .current_account_id(account("vault.testnet"))
@@ -523,6 +565,57 @@ mod tests {
             account("registration.testnet"),
             account("fake-token.testnet"),
         );
+    }
+
+    #[test]
+    fn migration_preserves_legacy_state_and_initializes_policy_storage() {
+        let mut current = contract();
+        let user = account("ada.testnet");
+        register(&mut current, &user);
+        testing_env!(context(
+            &account("usdc.testnet"),
+            NearToken::from_yoctonear(0)
+        ));
+        assert_eq!(
+            returned_amount(current.ft_on_transfer(user.clone(), U128(50_000_000), String::new())),
+            U128(0)
+        );
+
+        let Contract {
+            approved_usdc,
+            vault,
+            config,
+            orders,
+            receipts,
+            used_refund_transactions,
+            payout_keys,
+            ..
+        } = current;
+        env::state_write(&LegacyContract {
+            approved_usdc,
+            vault,
+            config,
+            orders,
+            receipts,
+            used_refund_transactions,
+            payout_keys,
+        });
+
+        let vault_account = account("vault.testnet");
+        testing_env!(context(&vault_account, NearToken::from_yoctonear(0)));
+        let migrated = Contract::migrate();
+
+        assert_eq!(migrated.get_config().owner, account("owner.testnet"));
+        assert_eq!(migrated.get_balance(user).available, U128(50_000_000));
+        assert!(migrated.get_policy(agent_key()).is_none());
+    }
+
+    #[test]
+    #[should_panic(expected = "fliq_vault: MIGRATION_ONLY")]
+    fn outsider_cannot_migrate_legacy_state() {
+        let attacker = account("attacker.testnet");
+        testing_env!(context(&attacker, NearToken::from_yoctonear(0)));
+        Contract::migrate();
     }
 
     #[test]

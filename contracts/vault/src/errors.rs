@@ -1,5 +1,7 @@
 pub const INITIALIZER_ONLY: &str = "fliq_vault: INITIALIZER_ONLY";
 pub const ALREADY_INITIALIZED: &str = "fliq_vault: ALREADY_INITIALIZED";
+pub const MIGRATION_ONLY: &str = "fliq_vault: MIGRATION_ONLY";
+pub const MIGRATION_STATE_INVALID: &str = "fliq_vault: MIGRATION_STATE_INVALID";
 pub const OWNER_ONLY: &str = "fliq_vault: OWNER_ONLY";
 pub const REGISTRATION_ONLY: &str = "fliq_vault: REGISTRATION_ONLY";
 pub const UNAUTHORIZED: &str = "fliq_vault: UNAUTHORIZED";
