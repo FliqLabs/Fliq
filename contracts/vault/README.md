@@ -8,9 +8,11 @@ The plan, method names and responsibilities are in the contract team guide (FLIQ
 
 Accounts must call `storage_deposit` before depositing USDC. The vault accepts `ft_transfer_call` only from its configured USDC contract. An empty message credits the NEP-141 `sender_id`; the strict `{"top_up":{"account_id":"<account>"}}` message credits that registered account. Malformed messages, unknown fields and unregistered beneficiaries return the full token amount. Accepted deposits emit the provisional `fliq_vault` `deposited` event consumed by the backend adapter.
 
-The crate-private reservation helpers move funds between `available` and `reserved`, consume a successful outflow once, and release a failed outflow once. Committed outflows retain one refund record, and the internal recredit operation atomically checks the original outflow, the token balance observed by its callback and prior recredit before restoring a liability. It is intentionally not a public contract method until the contract lead wires the approved order-status, caller-authorization and token-balance callback flow.
+`register_order` reserves the payer's funds immediately. `payout` is payer-authorized and commits the reservation only after the approved USDC contract confirms its transfer; a failed callback leaves the order registered and retryable. `release_order` restores a reservation, and the registration account can advance the public receipt through the agreed backend status graph.
 
-This milestone does not expose a withdrawal or payout path. Deposited USDC remains in the vault until the contract lead integrates the order execution flow. Reservation records are removed after commit or release; a committed order ID cannot be reserved again because its refund record acts as a tombstone.
+`recredit` is registration-account-only and queries the vault's real USDC balance before restoring a refunded payout. The amount cannot exceed the original outflow or the vault's unattributed token balance, and each order can be recredited once. `transfer` moves available balances between two registered vault users without changing aggregate liabilities.
+
+The current payout authorization is payer-only. Aria's signing-key policy implementation will replace that temporary rule; `get_policy` therefore returns `null` until that work is integrated. Order storage is currently funded by the vault account and must be included in the contract team's deployment funding decision.
 
 Rules:
 

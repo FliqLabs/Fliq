@@ -75,6 +75,16 @@ pub(crate) enum RefundError {
     Underbacked,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum TransferError {
+    AmountMustBePositive,
+    SameAccount,
+    SenderNotRegistered,
+    RecipientNotRegistered,
+    InsufficientBalance,
+    ArithmeticOverflow,
+}
+
 #[near(serializers = [borsh])]
 pub(crate) struct Vault {
     balances: LookupMap<AccountId, Balance>,
@@ -130,6 +140,54 @@ impl Vault {
         self.balances.insert(account_id, &updated);
         self.total_liabilities = total_liabilities;
         U128(0)
+    }
+
+    pub(crate) fn transfer_available(
+        &mut self,
+        sender: &AccountId,
+        recipient: &AccountId,
+        amount: u128,
+    ) -> Result<(), TransferError> {
+        if amount == 0 {
+            return Err(TransferError::AmountMustBePositive);
+        }
+        if sender == recipient {
+            return Err(TransferError::SameAccount);
+        }
+        let Some(sender_balance) = self.balances.get(sender) else {
+            return Err(TransferError::SenderNotRegistered);
+        };
+        let Some(recipient_balance) = self.balances.get(recipient) else {
+            return Err(TransferError::RecipientNotRegistered);
+        };
+        let Some(sender_available) = sender_balance.available.checked_sub(amount) else {
+            return Err(TransferError::InsufficientBalance);
+        };
+        let Some(recipient_available) = recipient_balance.available.checked_add(amount) else {
+            return Err(TransferError::ArithmeticOverflow);
+        };
+        if recipient_available
+            .checked_add(recipient_balance.reserved)
+            .is_none()
+        {
+            return Err(TransferError::ArithmeticOverflow);
+        }
+
+        self.balances.insert(
+            sender,
+            &Balance {
+                available: sender_available,
+                reserved: sender_balance.reserved,
+            },
+        );
+        self.balances.insert(
+            recipient,
+            &Balance {
+                available: recipient_available,
+                reserved: recipient_balance.reserved,
+            },
+        );
+        Ok(())
     }
 
     #[allow(dead_code)]
