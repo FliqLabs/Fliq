@@ -5,11 +5,6 @@ The NEAR HACKATHON rules require listing AI-generated code. Add a row whenever a
 | Date | Path | Tool | What was generated |
 | --- | --- | --- | --- |
 | 2026-10-31 | Repository skeleton: root config, `.github/`, `docs/`, `spec/`, `services/api/src/mock.ts`, area READMEs | Claude | Initial monorepo structure, CI, contribution rules, OpenAPI spec draft, fixtures and mock server |
-| 2026-11-03 | `contracts/vault` crate, ledger and tests | Codex | Approved-USDC deposits, storage registration, balance and reservation accounting, and regression tests |
-| 2026-11-04 | `contracts/vault/src/vault.rs`, `contracts/vault/README.md` | Codex | Transient reservation cleanup and accounting/storage regression tests |
-| 2026-11-05 | `contracts/vault`, `README.md` | Codex | Standard NEP-141 receiver and NEP-145 storage interfaces using the official NEAR contract standards crate |
-| 2026-11-05 | `contracts/vault/src` | Codex | Storage lifecycle, refund-recipient, forced-unregister and adversarial reservation regression tests |
-| 2026-11-05 | `contracts/vault/src/vault.rs` | Codex | Combined available-and-reserved balance overflow protection and regression coverage |
 | 2026-11-03 | `apps/ios`: `project.yml`, `Config/`, `Fliq/App`, `Fliq/DesignSystem`, `Fliq/Domain`, `Fliq/Data`, `Fliq/Features/Home`, `FliqTests` | Claude Code | iOS app shell at Frank's direction: project spec, design tokens from App v5, Codable types for every spec schema, fixture and HTTP clients, empty Home, fixture decoding tests |
 | 2026-11-03 | `apps/ios`: `Fliq/Features/Pay`, `Fliq/App/AppRouter.swift`, `Fliq/App/RootView.swift`, `Fliq/Security/Biometrics.swift`, `Fliq/DesignSystem/Components.swift`, `FliqTests/PayFlowTests.swift`, `FliqUITests` | Claude Code | Pay flow at Frank's direction: new account with bank verification, amount keypad, quote with countdown, Face ID confirm, sending timeline, paid receipt, plus unit and UI tests |
 | 2026-11-03 | `apps/ios`: `Fliq/Features/Onboarding`, `Fliq/Features/Shared`, `Fliq/Domain/FliqName.swift`, `Fliq/App/ProfileStore.swift`, `Fliq/DesignSystem/Aurora.swift`, `FliqTests/OnboardingTests.swift`, `FliqUITests/OnboardingUITests.swift` | Claude Code | Onboarding at Frank's direction: welcome, claim a fliq name with live availability and suggestions, profile photo, own bank account, saved profile, plus unit and UI tests |
