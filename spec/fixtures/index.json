@@ -25,5 +25,7 @@
   "vault.balance.json": "VaultBalance",
   "person.tobi.json": "Person",
   "people.recent.json": "RecentPeopleList",
-  "status.report.json": "StatusReport"
+  "status.report.json": "StatusReport",
+  "key.created.json": "KeyCreated",
+  "live-access.sandbox.json": "LiveAccess"
 }

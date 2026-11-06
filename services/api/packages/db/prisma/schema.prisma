@@ -420,12 +420,33 @@ model ApiKey {
   // First characters, safe to show: the dashboard masks a key as prefix...last4.
   prefix      String         @db.Text
   last4       String         @db.Text
+  name        String         @default("Sandbox key") @db.Text
   createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  // Written at most once a minute per key, so authenticating does not write on every request.
+  lastUsedAt  DateTime?      @map("last_used_at") @db.Timestamptz(6)
   revokedAt   DateTime?      @map("revoked_at") @db.Timestamptz(6)
   workspace   Workspace      @relation(fields: [workspaceId], references: [id])
 
   @@index([workspaceId])
   @@map("api_keys")
+  @@schema("developer")
+}
+
+// ARCH §16.4: append-only (trigger). before and after never hold a secret, only ids, names and states.
+model AuditEvent {
+  id          String   @id @db.Text
+  workspaceId String   @map("workspace_id") @db.Text
+  actorUserId String   @map("actor_user_id") @db.Text
+  action      String   @db.Text
+  targetType  String   @map("target_type") @db.Text
+  targetId    String   @map("target_id") @db.Text
+  before      Json?
+  after       Json?
+  traceId     String?  @map("trace_id") @db.Text
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, createdAt])
+  @@map("audit_events")
   @@schema("developer")
 }
 
