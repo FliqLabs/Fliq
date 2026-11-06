@@ -34,6 +34,29 @@ export type PayoutSummary = {
 };
 
 export type PayoutList = { items: PayoutSummary[]; next_cursor: string | null };
+export type Quote = {
+  quote_id: string;
+  amount: string;
+  currency: string;
+  receive: number;
+  rate: number;
+  provider: string;
+  fees: { provider: number; network: number; total: number };
+  expires_in: number;
+};
+export type Institution = {
+  code: string;
+  name: string;
+  type: "bank" | "mobile_money";
+  country: string;
+};
+export type VerifiedAccount = {
+  bank: string;
+  number: string;
+  account_name: string;
+  institution: string;
+  name_verified: boolean;
+};
 export type Onboarding = {
   steps: { id: "create_test_payout" | "add_webhook" | "go_live"; done: boolean }[];
 };
