@@ -182,6 +182,10 @@ impl Contract {
         apply_status(self, order_id, status, refs);
     }
 
+    pub fn recredit(&mut self, order_id: String, amount: U128, actual_token_balance: U128) {
+        orders::recredit(self, order_id, amount, actual_token_balance);
+    }
+
     pub fn get_receipt(&self, order_id: String) -> Receipt {
         match self.receipts.get(&order_id) {
             Some(receipt) => receipt,

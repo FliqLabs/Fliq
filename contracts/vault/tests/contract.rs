@@ -765,6 +765,137 @@ fn matching_payout_arguments_pass() {
 }
 
 #[cfg(feature = "testing")]
+fn complete_successful_payout(contract: &mut Contract) {
+    contract.credit_for_testing(accounts(3), 100);
+    register_payout_order(contract, 10, NOW + 3_600_000_000_000);
+    set_caller(accounts(3), NOW);
+    let _promise = payout(contract, "order-1");
+    set_promise_result(
+        VMContextBuilder::new()
+            .current_account_id(accounts(0))
+            .predecessor_account_id(accounts(0))
+            .block_timestamp(NOW)
+            .build(),
+        PromiseResult::Successful(vec![]),
+    );
+    contract.on_payout_complete("order-1".to_string());
+}
+
+#[cfg(feature = "testing")]
+#[test]
+fn real_payout_then_refund_recredits_once_and_marks_refunded() {
+    let mut contract = contract();
+    complete_successful_payout(&mut contract);
+    set_caller(accounts(1), NOW);
+    contract.set_status(
+        "order-1".to_string(),
+        "refunding".to_string(),
+        "refund-tx".to_string(),
+    );
+    contract.recredit("order-1".to_string(), U128(10), U128(100));
+
+    assert_eq!(contract.get_balance(accounts(3)).available, U128(100));
+    assert_eq!(contract.get_balance(accounts(3)).total, U128(100));
+    assert_eq!(
+        contract.get_receipt("order-1".to_string()).backend_status,
+        "refunded"
+    );
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            contract.recredit("order-1".to_string(), U128(10), U128(100));
+        }))
+        .is_err()
+    );
+}
+
+#[cfg(feature = "testing")]
+#[test]
+fn refund_for_unknown_order_fails() {
+    let mut contract = contract();
+    set_caller(accounts(1), NOW);
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            contract.recredit("missing".to_string(), U128(1), U128(1));
+        }))
+        .is_err()
+    );
+}
+
+#[cfg(feature = "testing")]
+#[test]
+fn refund_larger_than_order_amount_fails_without_credit() {
+    let mut contract = contract();
+    complete_successful_payout(&mut contract);
+    set_caller(accounts(1), NOW);
+    contract.set_status(
+        "order-1".to_string(),
+        "refunding".to_string(),
+        "refund-tx".to_string(),
+    );
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            contract.recredit("order-1".to_string(), U128(11), U128(101));
+        }))
+        .is_err()
+    );
+    assert_eq!(contract.get_balance(accounts(3)).available, U128(90));
+}
+
+#[cfg(feature = "testing")]
+#[test]
+fn refund_for_non_dispatched_order_fails() {
+    let mut contract = contract();
+    contract.credit_for_testing(accounts(3), 100);
+    register_payout_order(&mut contract, 10, NOW + 3_600_000_000_000);
+    set_caller(accounts(1), NOW);
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            contract.recredit("order-1".to_string(), U128(10), U128(100));
+        }))
+        .is_err()
+    );
+    assert_eq!(contract.get_balance(accounts(3)).available, U128(100));
+}
+
+#[cfg(feature = "testing")]
+#[test]
+fn unrelated_balance_cannot_be_credited_to_an_order() {
+    let mut contract = contract();
+    contract.credit_for_testing(accounts(3), 100);
+    set_caller(accounts(1), NOW);
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            contract.recredit("unknown".to_string(), U128(10), U128(100));
+        }))
+        .is_err()
+    );
+    assert_eq!(contract.get_balance(accounts(3)).available, U128(100));
+}
+
+#[cfg(feature = "testing")]
+#[test]
+fn failed_transfer_and_stuck_resolution_restore_once_without_refund() {
+    let mut contract = contract();
+    set_caller(accounts(0), NOW);
+    contract.set_payout_timeout(U64(10));
+    contract.credit_for_testing(accounts(3), 100);
+    register_payout_order(&mut contract, 10, NOW + 3_600_000_000_000);
+    set_caller(accounts(3), NOW);
+    let _promise = payout(&mut contract, "order-1");
+    set_caller(accounts(0), NOW + 10);
+    contract.resolve_stuck_payout("order-1".to_string(), false);
+    assert_eq!(contract.get_balance(accounts(3)).available, U128(100));
+    set_caller(accounts(1), NOW + 10);
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            contract.recredit("order-1".to_string(), U128(10), U128(100));
+        }))
+        .is_err()
+    );
+    assert_eq!(contract.get_balance(accounts(3)).available, U128(100));
+}
+
+#[cfg(feature = "testing")]
 #[test]
 fn payout_timeout_is_owner_configurable() {
     let mut contract = contract();

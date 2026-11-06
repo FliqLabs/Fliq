@@ -14,6 +14,7 @@ Branch: `sQuiDbOb-Orders-and-Payouts`
 | `resolve_stuck_payout` | `lib.rs`, `orders.rs` | Owner-only recovery after the configured timeout; commits or releases the real vault reservation after an on-chain transfer check and emits `payout_executed`. | Owner, timeout, success, failure, late callback, and single-use tests. |
 | `on_payout_complete` | `lib.rs`, `orders.rs` | Accepts only the contract's callback with exactly one result; commits on success or releases on failure; stale callbacks do nothing. | Success, failure, outsider, stale, and invariant tests. |
 | `set_status` | `lib.rs`, `orders.rs` | Lets only the registration account report proposed branching backend progress, including `refused` and `not_received`. Replays are no-ops; it cannot change transfer state or balances. | Authorization, branching edges, terminal-state, replay, gating, receipt, balance, and event tests. |
+| `recredit` | `lib.rs`, `orders.rs`, `integration.rs`, `vault.rs` | Registration-account boundary for Dapper's guarded one-time refund recredit. It requires an existing `Dispatched` order in `refunding` or `refunded`, an observed token balance, and delegates liability and double-credit checks to `Vault`. A successful `refunding` call sets backend status to `refunded`; verified transfer state stays `Dispatched`. | Real payout/refund, duplicate, unknown, oversized, non-Dispatched, and unrelated-balance tests. |
 | `set_payout_timeout` | `lib.rs` | Lets only the owner change the U64-encoded stuck-payout timeout. | Owner and non-owner configuration tests. |
 | `get_receipt` | `lib.rs`, `types.rs` | Shows the stored order, verified NEAR transfer state, backend status, refs, and update time as separate tracks. | Receipt separation and unknown-order tests. |
 | `get_balance` | `lib.rs`, `integration.rs`, `vault.rs` | Read-only `vault::BalanceView` backed by Dapper's real ledger. | Dapper deposit/isolation/overflow tests and payout invariants. |
@@ -61,7 +62,7 @@ Every marker below is intentional. Replace the temporary policy implementation o
 
 ## Dapper integration status
 
-`integration.rs` now calls Dapper's real `Vault` methods for `reserve_for_order`, `commit_outflow`, `release_reservation`, and `get_balance`. All required methods are `pub(crate)` and no additional exposure is needed. The integration layer also owns `release_pending` and `settle_pending`, which remain coordinated with the temporary policy implementation. Recredit stays disabled until refund proof and reconciliation are approved.
+`integration.rs` now calls Dapper's real `Vault` methods for `reserve_for_order`, `commit_outflow`, `release_reservation`, `recredit_refund`, and `get_balance`. Order identity and verified state come from `orders.rs` read helpers before delegation. Refund proof and observed token-balance authority remain PROPOSED.
 
 ## What I need from Aria
 
@@ -76,7 +77,7 @@ The open question is what identity is authoritative for a relayed agent call. Th
 ## Risks and gaps
 
 - The temporary policy module is not a production authorization system.
-- No refund or recredit path exists; the public stub was removed, and adding the capability without proof could create value.
+- Recredit now exists behind Dapper's guarded liability checks, but incorrect refund proof or token-balance input could create value; backend approval and reconciliation controls remain required.
 - Backend status is deliberately not proof of bank settlement.
 - The refs character filter cannot prove that a value is not personal data.
 - The near-workspaces test is a smoke harness and is ignored by default; the detailed checks use unit-test promise results.
@@ -95,7 +96,7 @@ The open question is what identity is authoritative for a relayed agent call. Th
 | Separate verified transfer state from backend status | Done | Receipt and status-gating tests pass. |
 | Backend status branching and replay | Done, proposed | Tests pass; rules remain marked PROPOSED pending backend approval. |
 | No value movement from `set_status` | Done | Transfer-state and balance-invariance tests pass. |
-| Refund proof and `recredit` | Not yet | The public stub was removed; the capability returns only with an approved real design. |
+| Refund proof and `recredit` | PROPOSED | Dapper's real one-time recredit is wired behind order/state checks; refund proof and observed token-balance authority still need approval. |
 | Dapper/Aria production integration | Dapper done, Aria pending | Real `vault.rs` is wired; policy calls still use `temp_policies.rs`. |
 | Test-only credit absent from release build | Done | Release WASM check passes with `testing` enabled and debug assertions disabled. |
 | Formatting and lint | Done | `cargo fmt --check` and strict clippy pass. |

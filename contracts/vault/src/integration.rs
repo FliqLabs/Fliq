@@ -1,6 +1,7 @@
 use crate::temp_policies;
 use crate::types::{Amount, PayoutCaller};
 use crate::vault::{BalanceView, Vault};
+use near_sdk::json_types::U128;
 use near_sdk::{AccountId, env};
 
 pub fn reserve_for_order(vault: &mut Vault, order_id: &str, payer: &AccountId, amount: Amount) {
@@ -38,6 +39,17 @@ pub fn release_pending(order_id: &str) {
 
 pub fn settle_pending(order_id: &str) {
     temp_policies::settle_pending(order_id);
+}
+
+pub fn recredit_refund(
+    vault: &mut Vault,
+    order_id: &str,
+    amount: U128,
+    actual_token_balance: U128,
+) {
+    if let Err(error) = vault.recredit_refund(order_id, amount.0, actual_token_balance.0) {
+        env::panic_str(&format!("vault refund recredit failed: {error:?}"));
+    }
 }
 
 pub fn get_balance(vault: &Vault, account: &AccountId) -> BalanceView {

@@ -29,7 +29,7 @@ make test-contract
 
 This side owns order registration, payout state transitions, backend status reporting, receipts, and the integration boundary for balances and policy decisions. It verifies on-chain transfer state separately from backend-reported progress, reserves before creating a USDC transfer, and restores temporary reservations when a transfer fails.
 
-It does not implement refund proof, recredit, provider allowlists, rate comparison, money conversion, bank transfers, or Aria production policy behavior. The `temp_policies` module is a temporary stand-in; Dapper's real vault ledger is active.
+It does not implement refund proof, provider allowlists, rate comparison, money conversion, bank transfers, or Aria production policy behavior. Dapper's guarded recredit is wired through the order boundary, but refund proof and observed token-balance authority remain proposed. The `temp_policies` module is a temporary stand-in; Dapper's real vault ledger is active.
 
 From a fresh clone, run the vault tests and mock-token tests with one shell command:
 

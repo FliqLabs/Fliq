@@ -12,6 +12,7 @@ Scope: `lib.rs`, `orders.rs`, `types.rs`, `receipts.rs`, `integration.rs`, and `
 | `register_order` | Registration account only | Adds one immutable order and its initial receipt; emits `order_registered` | Validation, authorization, duplicate, or storage failure aborts the transaction; no reservation or balance movement occurs. |
 | `payout` | Any predecessor accepted by the temporary payer policy; the policy currently allows only the payer | Validates caller-supplied amount and destination against the immutable order, reserves funds, records pending policy spend, changes `Registered` to `Executing`, creates the USDC transfer and callback | Mismatches fail before reservation. Any later pre-promise panic rolls back reservation and pending spend. The transfer itself is resolved only by the private callback or owner recovery after timeout. |
 | `set_status` | Registration account only | Changes proposed branching backend status, refs, and `last_updated`; emits `status_set` | Unknown/illegal edge, invalid refs, terminal-state signal, or transfer-state contradiction aborts with no balance, transfer-state, or policy-count change. Exact replay is a no-op. |
+| `recredit` | Registration account; proposed refund flow | Validates the stored order and `Dispatched` transfer state, then delegates to Dapper's guarded one-time liability recredit using the observed token balance; `refunding` becomes `refunded` | Unknown, non-Dispatched, non-refund-status, oversized, under-backed, and repeated calls fail without credit. |
 | `set_payout_timeout` | Owner only | Changes the U64-encoded stuck-payout timeout | Non-owner and zero timeout fail without state changes. |
 | `resolve_stuck_payout` | Owner only after timeout | Commits or releases the real vault reservation, settles/releases pending policy spend, changes `Executing` to `Dispatched` or `TransferFailed`, and emits `payout_executed` | The owner must verify the USDC transfer on chain first; releasing after a real transfer could double pay. Non-owner, early, non-Executing, and repeated calls fail. |
 | `get_receipt` | Anyone | None | Unknown order fails clearly; otherwise read-only and exposes the order plus separate verified/reported tracks. |
@@ -28,11 +29,11 @@ Scope: `lib.rs`, `orders.rs`, `types.rs`, `receipts.rs`, `integration.rs`, and `
 - Fixed initializer takeover risk by marking `Contract::new` private; deployment now requires a one-time `new` call made by the vault account itself.
 - Restored Dapper's real vault entrypoints and routed balance, deposit, reservation, commit, and release operations through `vault.rs`, leaving only policy lifecycle calls on the temporary policy stand-in.
 - Added payout amount/destination validation, timeout-based stuck-payout recovery, U64-safe public timestamps, and proposed branching backend status transitions.
-- Removed the temporary vault ledger and the stub `recredit`/`get_policy` ABI methods.
+- Removed the temporary vault ledger and the `get_policy` stub; retained Dapper's real guarded recredit and wired it through the order boundary.
 
 ## Residual risks
 
 - The temporary policy module is not a production authorization implementation and must be replaced through `integration.rs` before relying on agent limits.
 - The refs character policy reduces accidental personal-data storage but cannot prove that an identifier is not personal data; backend approval and operational controls remain required.
-- Refund/recredit behavior remains intentionally disabled and OPEN.
+- Refund proof, observed token-balance authority, and the exact backend trigger for recredit remain PROPOSED; unrelated deposits never identify an order.
 - The status transition table remains PROPOSED pending backend approval; the payout signature and relayer allowlist also need backend approval.

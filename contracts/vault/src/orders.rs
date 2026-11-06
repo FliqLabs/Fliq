@@ -290,6 +290,43 @@ pub fn payout(
         )
 }
 
+pub fn recredit(
+    contract: &mut Contract,
+    order_id: String,
+    amount: U128,
+    actual_token_balance: U128,
+) {
+    require!(
+        env::predecessor_account_id() == contract.config.registration_account,
+        "only registration_account may recredit refunds"
+    );
+    require!(
+        order_exists(contract, &order_id),
+        "order_id is not registered"
+    );
+    require!(
+        order_transfer_state(contract, &order_id) == Some(TransferState::Dispatched),
+        "only Dispatched orders may be recredited"
+    );
+    let status = contract
+        .receipts
+        .get(&order_id)
+        .map(|receipt| receipt.backend_status)
+        .unwrap_or_else(|| env::panic_str("receipt not found for order_id"));
+    require!(
+        matches!(status.as_str(), "refunding" | "refunded"),
+        "order is not in a refundable backend status"
+    );
+    require!(
+        order_payer(contract, &order_id).is_some() && order_amount(contract, &order_id).is_some(),
+        "order details are unavailable"
+    );
+    integration::recredit_refund(&mut contract.vault, &order_id, amount, actual_token_balance);
+    if status == "refunding" {
+        set_status(contract, order_id, "refunded".to_owned(), String::new());
+    }
+}
+
 fn finalize_payout(contract: &mut Contract, order_id: String, successful: bool) -> bool {
     let Some(mut order) = contract.orders.get(&order_id) else {
         return false;
