@@ -1,5 +1,12 @@
 # Contract decisions
 
+## Confirmed release_order rules
+
+- `release_order(order_id)` is callable by the registration account or owner only.
+- It works only from `Registered`, restores the order's reservation to the payer's available balance, and moves the order to terminal `Released`.
+- A `Released` order cannot be paid, released again, registered again, or moved by `set_status`; an `Executing` order must use `resolve_stuck_payout`.
+- The event is `order_released` under the `fliq_vault` NEP-297 envelope, version `1.0.0`.
+
 ## PROPOSED backend status rules
 
 These rules are PROPOSED and require backend approval:
@@ -13,25 +20,13 @@ These rules are PROPOSED and require backend approval:
 - Refs are limited to 256 ASCII identifier characters (`A-Z`, `a-z`, `0-9`, `:`, `/`, `.`, `_`, `-`) to keep personal data out of receipts and events. This format is PROPOSED.
 - The proposed status table includes the `refused` and `not_received` terminal branches from the API spec. The transition table remains PROPOSED pending backend approval.
 
-## OPEN refund and recredit questions
+## Confirmed refund behavior
 
-## PROPOSED refund behavior
-
-- A refund can be recredited only for an order found through the order helpers, whose verified transfer state is `Dispatched` and whose backend status is `refunding` or `refunded`.
-- The registration account calls `recredit(order_id, amount, actual_token_balance)`. The observed token balance is passed to Dapper's unchanged liability and under-backing checks.
-- Dapper's vault creates the refund record on successful outflow, caps the recredit at that committed outflow, checks available unallocated USDC, and records a one-time tombstone. A successful call from `refunding` changes only the backend receipt status to `refunded`; verified transfer state remains `Dispatched`.
-- Failed transfers and `resolve_stuck_payout(..., false)` end in `TransferFailed` and do not create a refund record, so they cannot be combined with recredit. Plain USDC sent without an order-specific recredit call remains unallocated.
-
-These rules are PROPOSED pending backend approval.
-
-- Who proves that a refund belongs to an order?
-- What is the refund transaction hash and how is it verified?
-- What happens if two orders refund the same amount?
-- What happens if anyone sends USDC to the vault without an order?
-- What happens if only part of an order amount returns?
-- What happens if a late paid event arrives after a recredit?
-- How does the backend prove the refund transaction and observed token balance before calling recredit?
-- Should `actual_token_balance` be supplied by the registration relayer, an owner, or a trusted reconciliation process?
+- A refund can be recredited only for an existing `Dispatched` order whose backend status is `refunding` and whose receipt has a write-once `refund_tx`.
+- The backend verifies the refund transaction before the registration account calls `recredit(order_id, amount)`.
+- The contract queries `ft_balance_of` on the approved USDC contract, caps the credit at the committed outflow and unattributed token balance, and records both the order credit and refund transaction as single-use.
+- A partial refund is allowed, but each order has at most one recredit. Only a successful callback changes the receipt status to `refunded`.
+- Failed transfers and `resolve_stuck_payout(..., false)` return to `Registered`, keep their reservation for retry, and create no refund record.
 
 ## Other OPEN contract questions
 
@@ -41,9 +36,7 @@ These rules are PROPOSED pending backend approval.
 - Is the order ID the same as the backend `po_` payout ID?
 - What expiry time unit is final?
 - How is corridor encoded?
-- Which account registers orders, and how does key rotation work?
-- What exact refs and status format does `set_status` accept?
-- `get_policy` returns only when Aria's real policy design and implementation is approved. Dapper's guarded recredit is now wired, but the public flow remains PROPOSED pending refund proof.
-- Which event payload fields and version does the backend approve?
+- The registration account is stored once at initialization; key rotation happens on that account.
+- `get_policy` remains unavailable until Aria's real policy design and implementation is approved.
 - What agent identity is required for relayed calls?
 - What counts toward agent daily limits?

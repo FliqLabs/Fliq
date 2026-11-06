@@ -14,7 +14,7 @@ Accounts must call `storage_deposit` before depositing USDC. The vault accepts `
 
 The registration account is fixed at initialization and rotates keys on that account rather than through a contract setter. Receipt reference fields are write-once. A recredit requires a recorded `refund_tx`, and each refund transaction can back at most one order across the contract; only a successful recredit can mark the receipt `refunded`. The complete event wire fixture is `tests/fixtures/events.jsonl`, shared with the backend parser tests.
 
-The current payout authorization is payer-only. Aria's signing-key policy implementation will replace that temporary rule; `get_policy` therefore returns `null` until that work is integrated. Order storage is currently funded by the vault account and must be included in the contract team's deployment funding decision.
+The current payout authorization is payer-only. Aria's signing-key policy implementation will replace that temporary rule; `get_policy` is not exposed until that work is integrated. Order storage is currently funded by the vault account and must be included in the contract team's deployment funding decision.
 
 Rules:
 
@@ -31,9 +31,9 @@ make test-contract
 
 ## sQuiDbOb side
 
-This side owns order registration, payout state transitions, backend status reporting, receipts, and the integration boundary for balances and policy decisions. It verifies on-chain transfer state separately from backend-reported progress, reserves before creating a USDC transfer, and restores temporary reservations when a transfer fails.
+This side owns order registration, payout state transitions, backend status reporting, receipts, and the integration boundary for balances and policy decisions. It verifies on-chain transfer state separately from backend-reported progress. Registration reserves funds; a failed USDC transfer keeps that reservation and returns the order to its retryable registered state.
 
-It does not implement refund proof, provider allowlists, rate comparison, money conversion, bank transfers, or Aria production policy behavior. Dapper's guarded recredit is wired through the order boundary, but refund proof and observed token-balance authority remain proposed. The `temp_policies` module is a temporary stand-in; Dapper's real vault ledger is active.
+It does not implement provider allowlists, rate comparison, money conversion, bank transfers, or Aria production policy behavior. The backend verifies refund transactions before calling `recredit`; the contract records the refund transaction once and independently queries its real USDC balance before crediting. The `temp_policies` module is a temporary stand-in; Dapper's real vault ledger is active.
 
 From a fresh clone, run the vault tests and mock-token tests with one shell command:
 
@@ -49,4 +49,4 @@ Search all temporary and unresolved design markers with:
 rg -n 'TEMPORARY|OPEN:' contracts docs
 ```
 
-The current OPEN list is maintained in [docs/DECISIONS.md](docs/DECISIONS.md): order/`po_` ID mapping, expiry units, corridor encoding, registration key rotation, refs/status format, event approval, provider allowlists, relayed-agent identity, daily limits, and refund/recredit proof and reconciliation rules.
+The current OPEN list is maintained in [docs/DECISIONS.md](docs/DECISIONS.md): order/`po_` ID mapping, corridor encoding, provider allowlists, relayed-agent identity, daily limits, storage cleanup, and testnet deployment details.
