@@ -18,6 +18,23 @@ pub fn now() -> Timestamp {
 pub enum StorageKey {
     Orders,
     Receipts,
+    UsedRefundTransactions,
+    PayoutKeys,
+}
+
+#[derive(
+    BorshDeserialize, BorshSerialize, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize,
+)]
+#[serde(crate = "near_sdk::serde", deny_unknown_fields)]
+pub struct ReceiptRefs {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_order: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bank_reference: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refund_tx: Option<String>,
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -78,7 +95,7 @@ pub struct Receipt {
     pub order: PayoutOrder,
     pub transfer_state: TransferState,
     pub backend_status: String,
-    pub refs: String,
+    pub refs: ReceiptRefs,
     pub last_updated: U64,
 }
 
@@ -91,7 +108,7 @@ pub struct ReceiptView {
     pub expired: bool,
     pub executing_since: Option<U64>,
     pub backend_status: String,
-    pub refs: String,
+    pub refs: ReceiptRefs,
     pub last_updated: U64,
 }
 

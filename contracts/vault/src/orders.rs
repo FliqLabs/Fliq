@@ -3,7 +3,8 @@ use crate::errors;
 use crate::integration;
 use crate::receipts::FliqEvent;
 use crate::types::{
-    Amount, BACKEND_STATUSES, PayoutCaller, PayoutOrder, Receipt, Timestamp, TransferState, now,
+    Amount, BACKEND_STATUSES, PayoutCaller, PayoutOrder, Receipt, ReceiptRefs, Timestamp,
+    TransferState, now,
 };
 use near_sdk::json_types::U128;
 use near_sdk::{AccountId, Gas, NearToken, Promise, env, require};
@@ -63,25 +64,37 @@ fn status_distance(from: &str, to: &str) -> Option<usize> {
     None
 }
 
-pub fn validate_refs(refs: &str) {
-    require!(refs.chars().count() <= MAX_REFS_LENGTH, ERR_REFS_TOO_LONG);
-    require!(
-        refs.chars().all(|character| {
-            character.is_ascii_alphanumeric() || matches!(character, ':' | '/' | '.' | '_' | '-')
-        }),
-        ERR_REFS_FORMAT
-    );
+pub fn validate_refs(refs: &ReceiptRefs) {
+    for value in [
+        &refs.provider,
+        &refs.provider_order,
+        &refs.bank_reference,
+        &refs.refund_tx,
+    ]
+    .into_iter()
+    .flatten()
+    {
+        require!(
+            !value.is_empty() && value.chars().count() <= MAX_REFS_LENGTH,
+            ERR_REFS_TOO_LONG
+        );
+        require!(
+            value.chars().all(|character| {
+                character.is_ascii_alphanumeric()
+                    || matches!(character, ':' | '/' | '.' | '_' | '-')
+            }),
+            ERR_REFS_FORMAT
+        );
+    }
 }
 
 pub fn validate_status_transition(
     receipt: &Receipt,
     status: &str,
-    refs: &str,
     transfer_state: &TransferState,
 ) -> Result<bool, String> {
     require!(BACKEND_STATUSES.contains(&status), errors::INVALID_STATUS);
-    validate_refs(refs);
-    if receipt.backend_status == status && receipt.refs == refs {
+    if receipt.backend_status == status {
         return Ok(false);
     }
     if matches!(
@@ -99,6 +112,30 @@ pub fn validate_status_transition(
         return Err(errors::INVALID_STATE.to_string());
     }
     Ok(true)
+}
+
+fn merge_ref(current: &mut Option<String>, incoming: &Option<String>) -> Result<bool, String> {
+    let Some(incoming) = incoming else {
+        return Ok(false);
+    };
+    match current {
+        Some(current) if current == incoming => Ok(false),
+        Some(_) => Err(errors::INVALID_TRANSITION.to_string()),
+        None => {
+            *current = Some(incoming.clone());
+            Ok(true)
+        }
+    }
+}
+
+fn merge_refs(current: &mut ReceiptRefs, incoming: &ReceiptRefs) -> Result<bool, String> {
+    validate_refs(incoming);
+    let mut changed = false;
+    changed |= merge_ref(&mut current.provider, &incoming.provider)?;
+    changed |= merge_ref(&mut current.provider_order, &incoming.provider_order)?;
+    changed |= merge_ref(&mut current.bank_reference, &incoming.bank_reference)?;
+    changed |= merge_ref(&mut current.refund_tx, &incoming.refund_tx)?;
+    Ok(changed)
 }
 
 pub fn validate_order(order_id: &str, amount: Amount, corridor: &str) {
@@ -127,7 +164,7 @@ pub fn transition(order: &mut PayoutOrder, next: TransferState) -> Result<(), St
         (&order.transfer_state, &next),
         (TransferState::Registered, TransferState::Executing)
             | (TransferState::Executing, TransferState::Dispatched)
-            | (TransferState::Executing, TransferState::TransferFailed)
+            | (TransferState::Executing, TransferState::Registered)
     );
     if allowed {
         order.transfer_state = next;
@@ -141,7 +178,7 @@ pub fn is_expired(expiry: near_sdk::json_types::U64, current: Timestamp) -> bool
     current >= expiry.0
 }
 
-pub fn set_status(contract: &mut Contract, order_id: String, status: String, refs: String) {
+pub fn set_status(contract: &mut Contract, order_id: String, status: String, refs: ReceiptRefs) {
     require!(
         env::predecessor_account_id() == contract.config.registration_account,
         errors::REGISTRATION_ONLY
@@ -154,27 +191,29 @@ pub fn set_status(contract: &mut Contract, order_id: String, status: String, ref
         order.transfer_state != TransferState::Released,
         errors::RELEASED_ORDER
     );
+    require!(status != "refunded", errors::INVALID_TRANSITION);
     let Some(mut receipt) = contract.receipts.get(&order_id) else {
         env::panic_str(errors::RECEIPT_NOT_FOUND);
     };
-    let changed = match validate_status_transition(&receipt, &status, &refs, &order.transfer_state)
+    let status_changed = match validate_status_transition(&receipt, &status, &order.transfer_state)
     {
         Ok(changed) => changed,
         Err(error) => env::panic_str(&error),
     };
-    if !changed {
+    let refs_changed = match merge_refs(&mut receipt.refs, &refs) {
+        Ok(changed) => changed,
+        Err(error) => env::panic_str(&error),
+    };
+    if !status_changed && !refs_changed {
         return;
     }
     receipt.backend_status = status.clone();
-    receipt.refs = refs.clone();
     receipt.last_updated = now().into();
-    let last_updated = receipt.last_updated.0.to_string();
     contract.receipts.insert(&order_id, &receipt);
     FliqEvent::StatusSet {
         order_id,
         status,
-        refs,
-        last_updated,
+        refs: receipt.refs,
     }
     .emit();
 }
@@ -239,12 +278,10 @@ pub fn payout(
     ) {
         env::panic_str(&reason);
     }
-    integration::reserve_for_order(
-        &mut contract.vault,
-        &order.order_id,
-        &order.payer,
-        order.amount.0,
-    );
+    integration::track_pending(&order.order_id, &order.payer, order.amount.0);
+    contract
+        .payout_keys
+        .insert(&order_id, &env::signer_account_pk().to_string());
     if let Err(error) = transition(&mut order, TransferState::Executing) {
         env::panic_str(&error);
     }
@@ -288,38 +325,73 @@ pub fn payout(
         )
 }
 
-pub fn recredit(
-    contract: &mut Contract,
-    order_id: String,
-    amount: U128,
-    actual_token_balance: U128,
-) {
+pub fn validate_recredit(contract: &Contract, order_id: &str, amount: U128) {
     require!(
         env::predecessor_account_id() == contract.config.registration_account,
         errors::REGISTRATION_ONLY
     );
-    require!(order_exists(contract, &order_id), errors::ORDER_NOT_FOUND);
+    validate_recredit_state(contract, order_id, amount);
+}
+
+fn validate_recredit_state(contract: &Contract, order_id: &str, amount: U128) {
+    require!(order_exists(contract, order_id), errors::ORDER_NOT_FOUND);
     require!(
-        order_transfer_state(contract, &order_id) == Some(TransferState::Dispatched),
+        order_transfer_state(contract, order_id) == Some(TransferState::Dispatched),
         errors::REFUND_NOT_ALLOWED
     );
-    let status = contract
+    require!(amount.0 > 0, errors::INVALID_AMOUNT);
+    let receipt = contract
         .receipts
-        .get(&order_id)
-        .map(|receipt| receipt.backend_status)
+        .get(&order_id.to_owned())
         .unwrap_or_else(|| env::panic_str(errors::RECEIPT_NOT_FOUND));
+    let refund_tx = receipt
+        .refs
+        .refund_tx
+        .as_ref()
+        .unwrap_or_else(|| env::panic_str(errors::REFUND_NOT_ALLOWED));
     require!(
-        matches!(status.as_str(), "refunding" | "refunded"),
+        !contract.used_refund_transactions.contains(refund_tx),
+        errors::ALREADY_RECREDITED
+    );
+    require!(
+        receipt.backend_status == "refunding",
         errors::INVALID_REFUND_STATUS
     );
     require!(
-        order_payer(contract, &order_id).is_some() && order_amount(contract, &order_id).is_some(),
+        order_payer(contract, order_id).is_some() && order_amount(contract, order_id).is_some(),
         errors::ORDER_DETAILS_MISSING
     );
+    require!(
+        amount.0 <= order_amount(contract, order_id).unwrap_or_default(),
+        errors::RECREDIT_EXCEEDS_ORDER
+    );
+}
+
+pub fn on_recredit_balance(
+    contract: &mut Contract,
+    order_id: String,
+    amount: U128,
+    actual_token_balance: U128,
+) -> bool {
+    validate_recredit_state(contract, &order_id, amount);
+    let Some(mut receipt) = contract.receipts.get(&order_id) else {
+        return false;
+    };
+    let Some(refund_tx) = receipt.refs.refund_tx.clone() else {
+        return false;
+    };
     integration::recredit_refund(&mut contract.vault, &order_id, amount, actual_token_balance);
-    if status == "refunding" {
-        set_status(contract, order_id, "refunded".to_owned(), String::new());
+    contract.used_refund_transactions.insert(&refund_tx);
+    receipt.backend_status = "refunded".to_owned();
+    receipt.last_updated = now().into();
+    contract.receipts.insert(&order_id, &receipt);
+    FliqEvent::StatusSet {
+        order_id,
+        status: "refunded".to_owned(),
+        refs: receipt.refs,
     }
+    .emit();
+    true
 }
 
 fn finalize_payout(contract: &mut Contract, order_id: String, successful: bool) -> bool {
@@ -334,9 +406,8 @@ fn finalize_payout(contract: &mut Contract, order_id: String, successful: bool) 
         integration::settle_pending(&order_id);
         order.transfer_state = TransferState::Dispatched;
     } else {
-        integration::release_reservation(&mut contract.vault, &order_id);
         integration::release_pending(&order_id);
-        order.transfer_state = TransferState::TransferFailed;
+        order.transfer_state = TransferState::Registered;
     }
     order.executing_since = None;
     contract.orders.insert(&order_id, &order);
@@ -346,11 +417,20 @@ fn finalize_payout(contract: &mut Contract, order_id: String, successful: bool) 
         receipt.last_updated = crate::types::now().into();
         contract.receipts.insert(&order_id, &receipt);
     }
-    FliqEvent::PayoutExecuted {
-        order_id,
-        transfer_state: order.transfer_state,
+    let public_key = contract.payout_keys.remove(&order_id);
+    if successful {
+        let Some(public_key) = public_key else {
+            env::panic_str(errors::STUCK_PAYOUT_UNRESOLVED);
+        };
+        FliqEvent::PayoutExecuted {
+            order_id,
+            payer: order.payer,
+            deposit_address: order.deposit_address,
+            amount: order.amount,
+            public_key,
+        }
+        .emit();
     }
-    .emit();
     true
 }
 

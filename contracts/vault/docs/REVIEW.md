@@ -7,18 +7,18 @@ Scope: `lib.rs`, `orders.rs`, `types.rs`, `receipts.rs`, `integration.rs`, and `
 | Method | Who can call | State changed | Failure and balance effect |
 | --- | --- | --- | --- |
 | `new` | Vault account only during initialization | Writes owner, registration account, token contract, empty order/receipt maps | Calls from another predecessor and repeated initialization fail before state is changed. |
-| `set_registration_account` | Owner only | Changes the registration account | Authorization failure changes nothing; no balance effect. |
 | `get_config` | Anyone | None | Read-only. |
-| `register_order` | Registration account only | Adds one immutable order and its initial receipt; emits `order_registered` | Validation, authorization, duplicate, or storage failure aborts the transaction; no reservation or balance movement occurs. |
-| `payout` | Any predecessor accepted by the temporary payer policy; the policy currently allows only the payer | Validates caller-supplied amount and destination against the immutable order, reserves funds, records pending policy spend, changes `Registered` to `Executing`, creates the USDC transfer and callback | Mismatches fail before reservation. Any later pre-promise panic rolls back reservation and pending spend. The transfer itself is resolved only by the private callback or owner recovery after timeout. |
+| `register_order` | Registration account only | Reserves funds, adds one immutable order and receipt, and emits `order_registered` | Validation, authorization, duplicate, insufficient balance, or storage failure aborts the whole transaction. |
+| `payout` | Any predecessor accepted by the temporary payer policy; the policy currently allows only the payer | Validates caller-supplied amount and destination, records pending policy spend and signing key, changes `Registered` to `Executing`, and creates the USDC transfer and callback | Mismatches leave the existing reservation unchanged. The transfer is resolved only by the private callback or owner recovery after timeout. |
 | `set_status` | Registration account only | Changes proposed branching backend status, refs, and `last_updated`; emits `status_set` | Unknown/illegal edge, invalid refs, terminal-state signal, or transfer-state contradiction aborts with no balance, transfer-state, or policy-count change. Exact replay is a no-op. |
-| `recredit` | Registration account; proposed refund flow | Validates the stored order and `Dispatched` transfer state, then delegates to Dapper's guarded one-time liability recredit using the observed token balance; `refunding` becomes `refunded` | Unknown, non-Dispatched, non-refund-status, oversized, under-backed, and repeated calls fail without credit. |
+| `recredit` | Registration account | Validates `Dispatched`, `refunding`, and write-once `refund_tx`, then queries `ft_balance_of` on the approved USDC contract before guarded liability recredit; success changes status to `refunded` | Unknown, non-Dispatched, missing/reused evidence, oversized, under-backed, failed balance query, and repeated calls do not credit. |
 | `set_payout_timeout` | Owner only | Changes the U64-encoded stuck-payout timeout | Non-owner and zero timeout fail without state changes. |
-| `resolve_stuck_payout` | Owner only after timeout | Commits or releases the real vault reservation, settles/releases pending policy spend, changes `Executing` to `Dispatched` or `TransferFailed`, and emits `payout_executed` | The owner must verify the USDC transfer on chain first; releasing after a real transfer could double pay. Non-owner, early, non-Executing, and repeated calls fail. |
+| `resolve_stuck_payout` | Owner only after timeout | Commits a confirmed transfer or returns the order to retryable `Registered` while preserving its reservation | The owner must verify the USDC transfer on chain first; reporting false after a real transfer could permit a retry. Non-owner, early, non-Executing, and repeated calls fail. |
 | `get_receipt` | Anyone | None | Unknown order fails clearly; otherwise read-only and exposes the order plus separate verified/reported tracks. |
 | `get_balance` | Anyone | None | Delegates to the real `Vault` ledger through the integration layer; read-only. |
 | `credit_for_testing` | Only compiled with `testing` and debug assertions | Adds test funds through the real `Vault` ledger | Test-only funding; absent from release builds and not a production deposit path. |
-| `on_payout_complete` | Contract account only, with exactly one promise result | Commits or releases reservation, settles or releases pending policy spend, updates transfer state/receipt, emits `payout_executed` | Outsider, malformed, or stale callbacks change nothing. A transfer failure restores the reservation. Any callback panic rolls back its whole state change. |
+| `on_payout_complete` | Contract account only, with exactly one promise result | Commits on success; on failure returns the order to `Registered` and keeps its reservation for retry | Outsider, malformed, or stale callbacks change nothing. Any callback panic rolls back its whole state change. |
+| `transfer` | Registered payer with exactly 1 yoctoNEAR | Moves available balance to another registered vault user and emits `transferred` | A function-call key unable to attach 1 yocto cannot invoke it; zero, same-account, unregistered, insufficient, and overflow cases change nothing. |
 
 ## Findings and fixes
 
@@ -37,5 +37,5 @@ Scope: `lib.rs`, `orders.rs`, `types.rs`, `receipts.rs`, `integration.rs`, and `
 
 - The temporary policy module is not a production authorization implementation and must be replaced through `integration.rs` before relying on agent limits.
 - The refs character policy reduces accidental personal-data storage but cannot prove that an identifier is not personal data; backend approval and operational controls remain required.
-- Refund proof, observed token-balance authority, and the exact backend trigger for recredit remain PROPOSED; unrelated deposits never identify an order.
+- Refund transaction verification remains an operational backend responsibility; the contract independently checks approved-USDC backing and rejects evidence reuse.
 - The status transition table remains PROPOSED pending backend approval; the payout signature and relayer allowlist also need backend approval.

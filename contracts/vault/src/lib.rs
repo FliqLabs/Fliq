@@ -11,20 +11,38 @@ use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
 use near_contract_standards::storage_management::{
     StorageBalance, StorageBalanceBounds, StorageManagement,
 };
-use near_sdk::collections::LookupMap;
+use near_sdk::collections::{LookupMap, LookupSet};
 use near_sdk::json_types::U128;
 use near_sdk::serde::Deserialize;
-use near_sdk::{AccountId, NearToken, PanicOnDefault, Promise, PromiseOrValue, env, near, require};
+use near_sdk::{
+    AccountId, Gas, NearToken, PanicOnDefault, Promise, PromiseError, PromiseOrValue, env,
+    ext_contract, near, require,
+};
 
 use crate::orders::{set_status as apply_status, validate_deposit_address, validate_order};
 use crate::receipts::FliqEvent;
 #[cfg(all(feature = "testing", debug_assertions))]
 use crate::types::Amount;
 use crate::types::{
-    Config, DEFAULT_MAX_EXPIRY, DEFAULT_PAYOUT_TIMEOUT, PayoutOrder, Receipt, ReceiptView,
-    StorageKey, TransferState, now,
+    Config, DEFAULT_MAX_EXPIRY, DEFAULT_PAYOUT_TIMEOUT, PayoutOrder, Receipt, ReceiptRefs,
+    ReceiptView, StorageKey, TransferState, now,
 };
-use crate::vault::{BalanceView, Vault};
+use crate::vault::{BalanceView, TransferError, Vault};
+
+const FT_BALANCE_GAS: Gas = Gas::from_tgas(10);
+const RECREDIT_CALLBACK_GAS: Gas = Gas::from_tgas(20);
+
+#[ext_contract(ext_ft)]
+#[allow(dead_code)]
+trait ExtFungibleToken {
+    fn ft_balance_of(&self, account_id: AccountId) -> U128;
+}
+
+#[ext_contract(ext_self)]
+#[allow(dead_code)]
+trait ExtContract {
+    fn on_recredit_balance(&mut self, order_id: String, amount: U128) -> bool;
+}
 
 #[derive(Deserialize)]
 #[serde(crate = "near_sdk::serde", deny_unknown_fields)]
@@ -46,6 +64,8 @@ pub struct Contract {
     pub(crate) config: Config,
     pub(crate) orders: LookupMap<String, PayoutOrder>,
     pub(crate) receipts: LookupMap<String, Receipt>,
+    pub(crate) used_refund_transactions: LookupSet<String>,
+    pub(crate) payout_keys: LookupMap<String, String>,
 }
 
 #[near]
@@ -77,6 +97,8 @@ impl Contract {
             },
             orders: LookupMap::new(StorageKey::Orders),
             receipts: LookupMap::new(StorageKey::Receipts),
+            used_refund_transactions: LookupSet::new(StorageKey::UsedRefundTransactions),
+            payout_keys: LookupMap::new(StorageKey::PayoutKeys),
         }
     }
 
@@ -86,14 +108,6 @@ impl Contract {
 
     pub fn get_storage_usage(&self) -> u64 {
         env::storage_usage()
-    }
-
-    pub fn set_registration_account(&mut self, registration_account: AccountId) {
-        require!(
-            env::predecessor_account_id() == self.config.owner,
-            errors::OWNER_ONLY
-        );
-        self.config.registration_account = registration_account;
     }
 
     pub fn get_config(&self) -> Config {
@@ -131,10 +145,11 @@ impl Contract {
             expiry.0 - current_time <= self.config.max_expiry.0,
             errors::INVALID_EXPIRY
         );
+        integration::reserve_for_order(&mut self.vault, &order_id, &payer, amount.0);
         let order = PayoutOrder {
             order_id: order_id.clone(),
-            payer,
-            deposit_address,
+            payer: payer.clone(),
+            deposit_address: deposit_address.clone(),
             amount,
             expiry,
             corridor: corridor.clone(),
@@ -150,14 +165,16 @@ impl Contract {
                 order: order.clone(),
                 transfer_state: TransferState::Registered,
                 backend_status: "created".to_string(),
-                refs: String::new(),
+                refs: ReceiptRefs::default(),
                 last_updated: now().into(),
             },
         );
         FliqEvent::OrderRegistered {
             order_id,
+            payer,
+            deposit_address,
             amount,
-            expiry: expiry.0.to_string(),
+            expires_at_ns: expiry.0.to_string(),
             corridor,
         }
         .emit();
@@ -177,7 +194,7 @@ impl Contract {
         orders::payout(self, order_id, amount, deposit_address)
     }
 
-    pub fn set_status(&mut self, order_id: String, status: String, refs: String) {
+    pub fn set_status(&mut self, order_id: String, status: String, refs: ReceiptRefs) {
         apply_status(self, order_id, status, refs);
     }
 
@@ -197,20 +214,61 @@ impl Contract {
             order.transfer_state == TransferState::Registered,
             errors::INVALID_STATE
         );
+        integration::release_reservation(&mut self.vault, &order_id);
         order.transfer_state = TransferState::Released;
         self.orders.insert(&order_id, &order);
         let Some(mut receipt) = self.receipts.get(&order_id) else {
             env::panic_str(errors::RECEIPT_NOT_FOUND);
         };
-        receipt.order = order;
+        receipt.order = order.clone();
         receipt.transfer_state = TransferState::Released;
         receipt.last_updated = now().into();
         self.receipts.insert(&order_id, &receipt);
-        FliqEvent::OrderReleased { order_id }.emit();
+        FliqEvent::OrderReleased {
+            order_id,
+            payer: order.payer,
+            amount: order.amount,
+        }
+        .emit();
     }
 
-    pub fn recredit(&mut self, order_id: String, amount: U128, actual_token_balance: U128) {
-        orders::recredit(self, order_id, amount, actual_token_balance);
+    pub fn recredit(&mut self, order_id: String, amount: U128) -> Promise {
+        orders::validate_recredit(self, &order_id, amount);
+        ext_ft::ext(self.config.approved_usdc_token_contract.clone())
+            .with_static_gas(FT_BALANCE_GAS)
+            .ft_balance_of(env::current_account_id())
+            .then(
+                ext_self::ext(env::current_account_id())
+                    .with_static_gas(RECREDIT_CALLBACK_GAS)
+                    .on_recredit_balance(order_id, amount),
+            )
+    }
+
+    #[payable]
+    pub fn transfer(&mut self, to_account: AccountId, amount: U128) {
+        require!(
+            env::attached_deposit() == NearToken::from_yoctonear(1),
+            errors::ONE_YOCTO_REQUIRED
+        );
+        let from = env::predecessor_account_id();
+        match self.vault.transfer_available(&from, &to_account, amount.0) {
+            Ok(()) => {}
+            Err(TransferError::AmountMustBePositive | TransferError::ArithmeticOverflow) => {
+                env::panic_str(errors::INVALID_AMOUNT)
+            }
+            Err(TransferError::InsufficientBalance) => env::panic_str(errors::INSUFFICIENT_BALANCE),
+            Err(
+                TransferError::SameAccount
+                | TransferError::SenderNotRegistered
+                | TransferError::RecipientNotRegistered,
+            ) => env::panic_str(errors::UNAUTHORIZED),
+        }
+        FliqEvent::Transferred {
+            from,
+            to: to_account,
+            amount,
+        }
+        .emit();
     }
 
     pub fn get_receipt(&self, order_id: String) -> ReceiptView {
@@ -249,6 +307,19 @@ impl Contract {
             errors::CALLBACK_PROMISE_COUNT
         );
         orders::on_payout_complete(self, order_id);
+    }
+
+    #[private]
+    pub fn on_recredit_balance(
+        &mut self,
+        order_id: String,
+        amount: U128,
+        #[callback_result] result: Result<U128, PromiseError>,
+    ) -> bool {
+        let Ok(actual_token_balance) = result else {
+            return false;
+        };
+        orders::on_recredit_balance(self, order_id, amount, actual_token_balance)
     }
 
     /// Resolve an execution only after checking on chain whether the USDC transfer happened.

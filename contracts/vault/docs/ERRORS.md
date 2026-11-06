@@ -8,10 +8,12 @@ Every contract-owned panic uses the exact `fliq_vault: CODE` form.
 | ALREADY_INITIALIZED | State already exists. |
 | OWNER_ONLY | Only the owner may call this method. |
 | REGISTRATION_ONLY | Only the registration account may call this method. |
+| UNAUTHORIZED | The caller or transfer participants are not authorized. |
 | ORDER_NOT_FOUND | The order ID is not registered. |
 | ORDER_EXISTS | The order ID is already permanently used. |
 | INVALID_ORDER_ID | The order ID is empty or too long. |
 | INVALID_AMOUNT | Amount must be positive. |
+| INSUFFICIENT_BALANCE | The payer has insufficient available funds. |
 | INVALID_CORRIDOR | Corridor is empty or too long. |
 | INVALID_ADDRESS | Deposit address is not a valid NEAR account. |
 | INVALID_EXPIRY | Expiry or timeout is invalid. |
@@ -21,6 +23,7 @@ Every contract-owned panic uses the exact `fliq_vault: CODE` form.
 | DESTINATION_MISMATCH | Payout destination differs from the registered destination. |
 | INSUFFICIENT_GAS | The payout lacks gas for transfer and callback. |
 | INVALID_STATUS | Backend status is unknown. |
+| INVALID_TRANSITION | A status or write-once reference transition is not allowed. |
 | INVALID_REFS | Backend refs are invalid. |
 | STATUS_BACKWARD | Backend status transition is not allowed. |
 | STATUS_TERMINAL | Backend status is already terminal. |
@@ -35,6 +38,9 @@ Every contract-owned panic uses the exact `fliq_vault: CODE` form.
 | PAYOUT_NOT_EXECUTING | Stuck resolution requires Executing. |
 | REFUND_NOT_ALLOWED | Recredit requires a Dispatched order. |
 | INVALID_REFUND_STATUS | Backend status is not refundable. |
+| ALREADY_RECREDITED | The order or refund transaction was already used for recredit. |
+| RECREDIT_EXCEEDS_ORDER | Recredit exceeds the committed order outflow. |
+| RECREDIT_EXCEEDS_UNATTRIBUTED | Recredit exceeds USDC not already backing liabilities. |
 | ORDER_DETAILS_MISSING | Required order details are missing. |
 | STUCK_PAYOUT_UNRESOLVED | Stuck payout could not be finalized. |
 | RELEASED_ORDER | Released orders cannot be changed. |
@@ -47,7 +53,3 @@ Every contract-owned panic uses the exact `fliq_vault: CODE` form.
 | TEMP_PENDING_EXISTS | Temporary policy already has a pending spend. |
 | TEMP_PENDING_MISSING | Temporary policy spend record is missing. |
 | TEMP_PENDING_CORRUPT | Temporary policy spend record is corrupt. |
-
-## Dapper to convert
-
-The narrow Stage 6 vault integration converts Dapper's current messages to `fliq_vault: CODE`; the underlying enum cases are `AlreadyExists`, `AmountMustBePositive`, `ArithmeticOverflow`, `InsufficientBalance`, `NotFound`, `ExceedsOutflow`, `ExceedsUnallocatedBalance`, `PayerNotRegistered`, and `Underbacked`.
