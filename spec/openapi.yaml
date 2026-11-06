@@ -36,6 +36,8 @@ tags:
     description: The signed-in user, their fliq name and profile
   - name: workspaces
     description: Developer workspaces and sandbox keys
+  - name: webhooks
+    description: Outbound webhook endpoints, deliveries, replay and test events
 paths:
   /health:
     get:
@@ -782,6 +784,228 @@ paths:
                 $ref: "#/components/schemas/Onboarding"
         "404":
           $ref: "#/components/responses/Error"
+  /webhook-endpoints:
+    get:
+      operationId: listWebhookEndpoints
+      summary: The workspace's webhook endpoints, the event types and how deliveries are signed
+      description: Needs a signed-in session. Secrets are never listed; they are shown once at creation and rotation.
+      tags: [webhooks]
+      responses:
+        "200":
+          description: Endpoints, newest first
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookEndpointList"
+        "404":
+          $ref: "#/components/responses/Error"
+    post:
+      operationId: createWebhookEndpoint
+      summary: Register a webhook endpoint. The signing secret is in this response only.
+      description: >-
+        Needs a signed-in session. The URL must be https, carry no credentials and resolve only to public
+        addresses; private, loopback, link-local and metadata addresses are refused. Deliveries do not follow
+        redirects. An empty or missing events list subscribes to every event type. At most 10 endpoints.
+      tags: [webhooks]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookEndpointRequest"
+      responses:
+        "201":
+          description: The endpoint and its signing secret
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookEndpointCreated"
+        "400":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+  /webhook-endpoints/{endpointId}:
+    patch:
+      operationId: updateWebhookEndpoint
+      summary: Change the URL, description or events, or turn the endpoint off and on
+      description: Needs a signed-in session. enabled true also clears a failing endpoint.
+      tags: [webhooks]
+      parameters:
+        - $ref: "#/components/parameters/EndpointId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookEndpointUpdate"
+      responses:
+        "200":
+          description: The endpoint after the change
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookEndpoint"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+    delete:
+      operationId: deleteWebhookEndpoint
+      summary: Delete a webhook endpoint. Its pending deliveries stop.
+      tags: [webhooks]
+      parameters:
+        - $ref: "#/components/parameters/EndpointId"
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          $ref: "#/components/responses/Error"
+  /webhook-endpoints/{endpointId}/rotate-secret:
+    post:
+      operationId: rotateWebhookSecret
+      summary: Issue a new signing secret. The old one also signs for 24 hours.
+      description: Send no request body. During the overlap each delivery carries one v1 signature per secret.
+      tags: [webhooks]
+      parameters:
+        - $ref: "#/components/parameters/EndpointId"
+      responses:
+        "200":
+          description: The new secret, shown once
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookSecretRotated"
+        "404":
+          $ref: "#/components/responses/Error"
+  /webhook-endpoints/{endpointId}/test:
+    post:
+      operationId: sendWebhookTest
+      summary: Send a test.webhook event to this endpoint
+      description: >-
+        Send no request body. The event is marked test and names no payout. It goes through the normal
+        signing, delivery and retry path; read its result with getWebhookDelivery. Replays and test events
+        share a limit of 30 per workspace per minute.
+      tags: [webhooks]
+      parameters:
+        - $ref: "#/components/parameters/EndpointId"
+      responses:
+        "202":
+          description: Queued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookSend"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/Error"
+  /webhook-deliveries:
+    get:
+      operationId: listWebhookDeliveries
+      summary: Deliveries to the workspace's endpoints, newest first
+      tags: [webhooks]
+      parameters:
+        - name: endpoint_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: event_type
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [pending, delivered, failed]
+        - name: payout_id
+          in: query
+          required: false
+          description: The deliveries of one payout, for the payout detail screen
+          schema:
+            type: string
+        - name: from
+          in: query
+          required: false
+          description: Created at or after this time
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          required: false
+          description: Created before this time
+          schema:
+            type: string
+            format: date-time
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 25
+        - name: cursor
+          in: query
+          required: false
+          description: next_cursor from the previous page
+          schema:
+            type: string
+      responses:
+        "200":
+          description: One page of deliveries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookDeliveryList"
+        "400":
+          $ref: "#/components/responses/Error"
+  /webhook-deliveries/{deliveryId}:
+    get:
+      operationId: getWebhookDelivery
+      summary: One delivery with the event it sent and every attempt
+      tags: [webhooks]
+      parameters:
+        - $ref: "#/components/parameters/DeliveryId"
+      responses:
+        "200":
+          description: The delivery
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookDeliveryDetail"
+        "404":
+          $ref: "#/components/responses/Error"
+  /webhook-deliveries/{deliveryId}/replay:
+    post:
+      operationId: replayWebhookDelivery
+      summary: Send the same event again as a new delivery
+      description: >-
+        Send no request body. The new delivery keeps the original event id and payload, so receivers
+        that deduplicate by event id see a repeat. Only the webhook is sent again; the payout is never re-run.
+        Each replay is audited. Replays and test events share a limit of 30 per workspace per minute.
+      tags: [webhooks]
+      parameters:
+        - $ref: "#/components/parameters/DeliveryId"
+      responses:
+        "202":
+          description: Queued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookSend"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/Error"
 components:
   securitySchemes:
     bearerAuth:
@@ -792,6 +1016,18 @@ components:
         Keys are accepted on rates, quotes, institutions, account verification and payouts; every other endpoint
         answers 403 to a key and needs a signed-in session.
   parameters:
+    EndpointId:
+      name: endpointId
+      in: path
+      required: true
+      schema:
+        type: string
+    DeliveryId:
+      name: deliveryId
+      in: path
+      required: true
+      schema:
+        type: string
     IdempotencyKey:
       name: Idempotency-Key
       in: header
@@ -1717,3 +1953,276 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/StatusIncident"
+    WebhookEventType:
+      type: string
+      enum:
+        - payout.created
+        - payout.provider_timeout
+        - payout.awaiting_recon
+        - payout.awaiting_deposit
+        - payout.deposit_seen
+        - payout.routing
+        - payout.with_provider
+        - payout.paying_out
+        - payout.settled
+        - payout.refunding
+        - payout.refunded
+        - payout.expired
+        - payout.failed
+    WebhookEndpointRequest:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+          maxLength: 2048
+          description: https only, public hosts only
+        description:
+          type: string
+          maxLength: 200
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/WebhookEventType"
+    WebhookEndpointUpdate:
+      type: object
+      properties:
+        url:
+          type: string
+          maxLength: 2048
+        description:
+          type: [string, "null"]
+          maxLength: 200
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/WebhookEventType"
+        enabled:
+          type: boolean
+    WebhookEndpoint:
+      type: object
+      required: [endpoint_id, url, description, events, status, environment, created_at, updated_at, failing_since]
+      properties:
+        endpoint_id:
+          type: string
+        url:
+          type: string
+        description:
+          type: [string, "null"]
+        events:
+          type: array
+          description: Empty means every event type
+          items:
+            $ref: "#/components/schemas/WebhookEventType"
+        status:
+          type: string
+          enum: [active, failing, disabled]
+          description: failing once a delivery used up all its retries; the next successful delivery makes it active again
+        environment:
+          type: string
+          enum: [test, live]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        failing_since:
+          type: [string, "null"]
+          format: date-time
+    WebhookEndpointCreated:
+      allOf:
+        - $ref: "#/components/schemas/WebhookEndpoint"
+        - type: object
+          required: [secret]
+          properties:
+            secret:
+              type: string
+              description: Starts with whsec_. Returned once and never again.
+    WebhookSecretRotated:
+      allOf:
+        - $ref: "#/components/schemas/WebhookEndpoint"
+        - type: object
+          required: [secret, previous_secret_expires_at]
+          properties:
+            secret:
+              type: string
+            previous_secret_expires_at:
+              type: string
+              format: date-time
+    WebhookSigning:
+      type: object
+      required: [header, algorithm, signed_payload, format, tolerance_seconds, event_id_header, event_type_header, delivery_id_header]
+      description: >-
+        How to verify a delivery. Compute HMAC-SHA256 of "<t>.<raw body>" with the endpoint secret, hex encoded,
+        compare in constant time with any v1 value, and reject t more than tolerance_seconds from your clock.
+        Deduplicate by event id and keep the highest data.version per payout, since order is not guaranteed.
+      properties:
+        header:
+          type: string
+        algorithm:
+          type: string
+        signed_payload:
+          type: string
+        format:
+          type: string
+        tolerance_seconds:
+          type: integer
+        event_id_header:
+          type: string
+        event_type_header:
+          type: string
+        delivery_id_header:
+          type: string
+    WebhookEndpointList:
+      type: object
+      required: [items, event_types, signing]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WebhookEndpoint"
+        event_types:
+          type: array
+          items:
+            $ref: "#/components/schemas/WebhookEventType"
+        signing:
+          $ref: "#/components/schemas/WebhookSigning"
+    WebhookSend:
+      type: object
+      required: [event_id, delivery_id, status]
+      properties:
+        event_id:
+          type: string
+        delivery_id:
+          type: string
+        status:
+          type: string
+          enum: [pending, delivered, failed]
+        replay_of:
+          type: string
+          description: Only on a replay, the delivery it repeats
+    WebhookDelivery:
+      type: object
+      required:
+        - delivery_id
+        - event_id
+        - event_type
+        - payout_id
+        - endpoint_id
+        - endpoint_url
+        - status
+        - attempts
+        - response_status
+        - error
+        - replay_of
+        - created_at
+        - last_attempt_at
+        - next_attempt_at
+        - delivered_at
+      properties:
+        delivery_id:
+          type: string
+        event_id:
+          type: string
+          description: The same on a replay as on the original
+        event_type:
+          type: string
+          description: A WebhookEventType, or test.webhook
+        payout_id:
+          type: [string, "null"]
+          description: Null for test events
+        endpoint_id:
+          type: string
+        endpoint_url:
+          type: string
+        status:
+          type: string
+          enum: [pending, delivered, failed]
+        attempts:
+          type: integer
+        response_status:
+          type: [integer, "null"]
+          description: HTTP status of the latest attempt
+        error:
+          type: [string, "null"]
+          description: Category of the latest failure, for example timeout, connection, tls, blocked_destination or http_500
+        replay_of:
+          type: [string, "null"]
+        created_at:
+          type: string
+          format: date-time
+        last_attempt_at:
+          type: [string, "null"]
+          format: date-time
+        next_attempt_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the next retry runs, while pending
+        delivered_at:
+          type: [string, "null"]
+          format: date-time
+    WebhookDeliveryList:
+      type: object
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WebhookDelivery"
+        next_cursor:
+          type: [string, "null"]
+    WebhookAttempt:
+      type: object
+      required: [attempt, at, duration_ms, response_status, error]
+      properties:
+        attempt:
+          type: integer
+        at:
+          type: string
+          format: date-time
+        duration_ms:
+          type: integer
+        response_status:
+          type: [integer, "null"]
+        error:
+          type: [string, "null"]
+    WebhookDeliveryDetail:
+      allOf:
+        - $ref: "#/components/schemas/WebhookDelivery"
+        - type: object
+          required: [payload, history]
+          properties:
+            payload:
+              $ref: "#/components/schemas/WebhookEvent"
+            history:
+              type: array
+              items:
+                $ref: "#/components/schemas/WebhookAttempt"
+    WebhookEvent:
+      type: object
+      description: >-
+        The body of every delivery, signed as sent. Payout events carry the masked payout summary at the
+        state of the event and its version.
+      required: [id, type, created_at, livemode, data]
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        livemode:
+          type: boolean
+        data:
+          type: object
+          properties:
+            payout:
+              $ref: "#/components/schemas/PayoutSummary"
+            version:
+              type: integer
+            test:
+              type: boolean
+            message:
+              type: string

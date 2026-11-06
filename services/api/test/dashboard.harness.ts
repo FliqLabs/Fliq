@@ -11,6 +11,7 @@ import { createDatabase, unitOf, type Database } from "../apps/api/src/db.js";
 import { createHandlers } from "../apps/api/src/handlers.js";
 import { DEFAULT_VELOCITY } from "../apps/api/src/payouts.js";
 import { sandboxAdapters } from "../apps/api/src/sandbox.js";
+import type { Resolve } from "../packages/webhooks/destination.js";
 
 // Throwaway local database only; Prisma loads .env, which may point at a shared one.
 export const databaseEnabled =
@@ -42,7 +43,9 @@ export interface Harness {
   cleanUp(): Promise<void>;
 }
 
-export function createHarness(overrides: { config?: Partial<Config>; now?: () => Date } = {}): Harness {
+export function createHarness(
+  overrides: { config?: Partial<Config>; now?: () => Date; webhookResolve?: Resolve } = {},
+): Harness {
   const database = createDatabase();
   const config = { ...loadConfig(), ...overrides.config };
   const now = overrides.now ?? (() => NOW);
@@ -62,6 +65,7 @@ export function createHarness(overrides: { config?: Partial<Config>; now?: () =>
       quotes: { adapters, routing: DEFAULT_ROUTING_CONFIG, signals: NO_SIGNALS, now },
       payouts: { config, adapters, velocity: DEFAULT_VELOCITY, now },
       now,
+      ...(overrides.webhookResolve ? { webhookResolve: overrides.webhookResolve } : {}),
     }),
   });
   const emails: string[] = [];
@@ -104,6 +108,10 @@ export function createHarness(overrides: { config?: Partial<Config>; now?: () =>
     const developers = [...workspaceIds, ...userIds];
     await database.$transaction(async (tx) => {
       await tx.$executeRaw`SET LOCAL session_replication_role = replica`;
+      await tx.$executeRaw`DELETE FROM developer.webhook_attempts WHERE delivery_id IN (SELECT d.id FROM developer.webhook_deliveries d JOIN developer.webhook_endpoints e ON e.id = d.endpoint_id WHERE e.workspace_id = ANY(${workspaceIds}::text[]))`;
+      await tx.$executeRaw`DELETE FROM developer.webhook_deliveries WHERE endpoint_id IN (SELECT id FROM developer.webhook_endpoints WHERE workspace_id = ANY(${workspaceIds}::text[]))`;
+      await tx.$executeRaw`DELETE FROM developer.webhook_endpoints WHERE workspace_id = ANY(${workspaceIds}::text[])`;
+      await tx.$executeRaw`DELETE FROM messaging.inbox WHERE consumer = 'webhook_fanout' AND message_id IN (SELECT pe.id FROM core.payout_events pe JOIN core.payouts p ON p.id = pe.payout_id WHERE p.developer_id = ANY(${developers}::text[]))`;
       await tx.$executeRaw`DELETE FROM developer.audit_events WHERE workspace_id = ANY(${workspaceIds}::text[])`;
       await tx.$executeRaw`DELETE FROM ledger.journal_lines WHERE entry_id IN (SELECT e.id FROM ledger.journal_entries e JOIN core.payouts p ON p.id = e.payout_id WHERE p.developer_id = ANY(${developers}::text[]))`;
       await tx.$executeRaw`DELETE FROM ledger.journal_entries WHERE payout_id IN (SELECT id FROM core.payouts WHERE developer_id = ANY(${developers}::text[]))`;
