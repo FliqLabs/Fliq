@@ -1,5 +1,5 @@
 use near_sdk::borsh::{BorshDeserialize, BorshSerialize};
-use near_sdk::json_types::U64;
+use near_sdk::json_types::{U64, U128};
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{AccountId, BorshStorageKey};
 
@@ -33,9 +33,9 @@ pub struct Config {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
 pub struct BalanceView {
-    pub total: String,
-    pub available: String,
-    pub reserved: String,
+    pub total: U128,
+    pub available: U128,
+    pub reserved: U128,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -60,7 +60,7 @@ pub struct PayoutOrder {
     pub order_id: String,
     pub payer: AccountId,
     pub deposit_address: AccountId,
-    pub amount: Amount,
+    pub amount: U128,
     pub expiry: U64,
     pub corridor: String,
     pub transfer_state: TransferState,

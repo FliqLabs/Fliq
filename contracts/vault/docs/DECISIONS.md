@@ -25,6 +25,7 @@ These rules are PROPOSED and require backend approval:
 ## Other OPEN contract questions
 
 - The confirmed payout signature is now `payout(order_id, amount, deposit_address)` instead of `payout(order_id)`. This needs backend approval, and the relayer allowlist must permit both additional arguments.
+- Public order and payout amounts use near-sdk `U128` JSON values, serialized as decimal strings; the contract keeps `u128` for internal arithmetic. Backend callers must send amounts as JSON strings.
 
 - Is the order ID the same as the backend `po_` payout ID?
 - What expiry time unit is final?

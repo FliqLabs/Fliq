@@ -6,9 +6,7 @@ use fliq_vault::orders::{
 use fliq_vault::types::{PayoutOrder, TransferState};
 use near_contract_standards::storage_management::StorageManagement;
 use near_sdk::env;
-use near_sdk::json_types::U64;
-#[cfg(feature = "testing")]
-use near_sdk::json_types::U128;
+use near_sdk::json_types::{U64, U128};
 use near_sdk::test_utils::{VMContextBuilder, accounts};
 use near_sdk::{AccountId, testing_env};
 #[cfg(feature = "testing")]
@@ -102,7 +100,7 @@ fn register_named_order(contract: &mut Contract, order_id: &str, payer: AccountI
         order_id.to_string(),
         payer,
         accounts(4),
-        amount,
+        U128(amount),
         U64(NOW + 3_600_000_000_000),
         "USDC-NGN".to_string(),
     );
@@ -115,7 +113,7 @@ fn register_payout_order(contract: &mut Contract, amount: u128, expiry: u64) {
         "order-1".to_string(),
         accounts(3),
         accounts(4),
-        amount,
+        U128(amount),
         U64(expiry),
         "USDC-NGN".to_string(),
     );
@@ -126,7 +124,7 @@ fn order(state: TransferState) -> PayoutOrder {
         order_id: "order".to_string(),
         payer: accounts(0),
         deposit_address: accounts(1),
-        amount: 1,
+        amount: U128(1),
         expiry: U64(1),
         corridor: "USDC-NGN".to_string(),
         transfer_state: state,
@@ -206,7 +204,7 @@ fn registration_account_can_register() {
         "order-1".to_string(),
         accounts(3),
         accounts(4),
-        10,
+        U128(10),
         U64(NOW + 3_600_000_000_000),
         "USDC-NGN".to_string(),
     );
@@ -242,7 +240,7 @@ fn another_account_cannot_register() {
             "order-1".to_string(),
             accounts(3),
             accounts(4),
-            10,
+            U128(10),
             U64(NOW + 3_600_000_000_000),
             "USDC-NGN".to_string(),
         );
@@ -260,7 +258,7 @@ fn duplicate_order_id_fails() {
             "order-1".to_string(),
             accounts(3),
             accounts(4),
-            10,
+            U128(10),
             U64(expiry),
             "USDC-NGN".to_string(),
         );
@@ -268,7 +266,7 @@ fn duplicate_order_id_fails() {
             "order-1".to_string(),
             accounts(3),
             accounts(4),
-            10,
+            U128(10),
             U64(expiry),
             "USDC-NGN".to_string(),
         );
@@ -293,7 +291,7 @@ fn invalid_registration_fields_fail() {
                 order_id.to_string(),
                 accounts(3),
                 accounts(4),
-                amount,
+                U128(amount),
                 U64(expiry),
                 corridor.to_string(),
             );
@@ -313,7 +311,7 @@ fn registered_order_fields_cannot_be_changed() {
         "order-1".to_string(),
         accounts(3),
         accounts(4),
-        10,
+        U128(10),
         U64(NOW + 3_600_000_000_000),
         "USDC-NGN".to_string(),
     );
@@ -325,7 +323,7 @@ fn registered_order_fields_cannot_be_changed() {
                 "order-1".to_string(),
                 accounts(5),
                 accounts(6),
-                20,
+                U128(20),
                 U64(NOW + 7_200_000_000_000),
                 "USDC-KES".to_string(),
             );
@@ -351,19 +349,24 @@ fn unknown_receipt_fails_clearly() {
 fn registration_event_contains_order_fields() {
     let mut contract = contract();
     set_caller(accounts(1), NOW);
+    let json_amount: U128 = near_sdk::serde_json::from_str("\"10\"").unwrap();
     contract.register_order(
         "order-1".to_string(),
         accounts(3),
         accounts(4),
-        10,
+        json_amount,
         U64(NOW + 3_600_000_000_000),
         "USDC-NGN".to_string(),
     );
-    let logs = near_sdk::test_utils::get_logs();
-    assert!(
-        logs.iter()
-            .any(|log| log.contains("order-1") && log.contains("USDC-NGN") && log.contains("10"))
+    let receipt = contract.get_receipt("order-1".to_string());
+    assert_eq!(
+        near_sdk::serde_json::to_string(&receipt.order.amount).unwrap(),
+        "\"10\""
     );
+    let logs = near_sdk::test_utils::get_logs();
+    assert!(logs.iter().any(|log| log.contains("order-1")
+        && log.contains("USDC-NGN")
+        && log.contains("\"amount\":\"10\"")));
 }
 
 #[test]
@@ -554,7 +557,7 @@ fn receipt_shows_order_and_both_status_tracks() {
         "ref-1".to_string(),
     );
     let receipt = contract.get_receipt("order-1".to_string());
-    assert_eq!(receipt.order.amount, 10);
+    assert_eq!(receipt.order.amount, U128(10));
     assert_eq!(receipt.order.deposit_address, accounts(4));
     assert_eq!(receipt.transfer_state, TransferState::Registered);
     assert_eq!(receipt.order.transfer_state, TransferState::Registered);
@@ -710,7 +713,7 @@ fn payout_rejects_wrong_amount_without_reserving() {
     set_caller(accounts(3), NOW);
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let _ = contract.payout("order-1".to_string(), 11, accounts(4));
+        let _ = contract.payout("order-1".to_string(), U128(11), accounts(4));
     }));
 
     assert!(result.is_err());
@@ -731,7 +734,7 @@ fn payout_rejects_wrong_address_without_reserving() {
     set_caller(accounts(3), NOW);
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let _ = contract.payout("order-1".to_string(), 10, accounts(5));
+        let _ = contract.payout("order-1".to_string(), U128(10), accounts(5));
     }));
 
     assert!(result.is_err());
@@ -751,7 +754,8 @@ fn matching_payout_arguments_pass() {
     register_payout_order(&mut contract, 10, NOW + 3_600_000_000_000);
     set_caller(accounts(3), NOW);
 
-    let _promise = contract.payout("order-1".to_string(), 10, accounts(4));
+    let json_amount: U128 = near_sdk::serde_json::from_str("\"10\"").unwrap();
+    let _promise = contract.payout("order-1".to_string(), json_amount, accounts(4));
 
     assert_eq!(contract.get_balance(accounts(3)).reserved, U128(10));
     assert_eq!(
@@ -887,7 +891,7 @@ fn random_sequence_preserves_balance_and_single_send_invariants() {
                 let order_id = order_ids[index].clone();
                 let receipt = contract.get_receipt(order_id.clone());
                 if order_transfer_state(&contract, &order_id) == Some(TransferState::Registered) {
-                    let amount = receipt.order.amount;
+                    let amount = receipt.order.amount.0;
                     let available = contract.get_balance(payer.clone()).available.0;
                     set_caller(payer.clone(), NOW);
                     let payout_result =

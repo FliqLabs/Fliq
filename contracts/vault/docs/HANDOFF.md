@@ -9,8 +9,8 @@ Branch: `sQuiDbOb-Orders-and-Payouts`
 | `new` | `contracts/vault/src/lib.rs` | Stores owner, registration account, approved USDC token, 24-hour expiry limit, and 10-minute payout timeout; only the vault account itself may call it, and it can run only once. | Configuration and initialization authorization tests in `tests/contract.rs`. |
 | `set_registration_account` | `lib.rs` | Lets only the owner rotate the registration account. | Owner and non-owner tests. |
 | `get_config` | `lib.rs` | Read-only configuration view. | Used by configuration tests. |
-| `register_order` | `lib.rs`, `orders.rs` | Authorizes the registration account, validates fields and expiry, stores an immutable order, and emits `order_registered`. It does not reserve funds. | Registration, duplicate, field, expiry, authorization, and event tests. |
-| `payout` | `lib.rs`, `orders.rs` | Accepts `order_id`, `amount`, and `deposit_address`; validates both against the stored order, asks the integration layer for policy approval, reserves funds, changes state before creating the USDC transfer, and calls the private callback. | Matching/mismatch arguments, duplicate, same-block, wrong caller, expiry, oversubscription, edge amount, and stored destination/amount tests. |
+| `register_order` | `lib.rs`, `orders.rs` | Authorizes the registration account, accepts `amount` as a U128 JSON string, validates fields and expiry, stores an immutable order, and emits `order_registered`. It does not reserve funds. | Registration, duplicate, field, expiry, authorization, JSON amount, and event tests. |
+| `payout` | `lib.rs`, `orders.rs` | Accepts `order_id`, U128 JSON-string `amount`, and `deposit_address`; validates both against the stored order, asks the integration layer for policy approval, reserves funds, changes state before creating the USDC transfer, and calls the private callback. | Matching/mismatch arguments, duplicate, same-block, wrong caller, expiry, oversubscription, edge amount, JSON amount, and stored destination/amount tests. |
 | `resolve_stuck_payout` | `lib.rs`, `orders.rs` | Owner-only recovery after the configured timeout; commits or releases the real vault reservation after an on-chain transfer check and emits `payout_executed`. | Owner, timeout, success, failure, late callback, and single-use tests. |
 | `on_payout_complete` | `lib.rs`, `orders.rs` | Accepts only the contract's callback with exactly one result; commits on success or releases on failure; stale callbacks do nothing. | Success, failure, outsider, stale, and invariant tests. |
 | `set_status` | `lib.rs`, `orders.rs` | Lets only the registration account report proposed branching backend progress, including `refused` and `not_received`. Replays are no-ops; it cannot change transfer state or balances. | Authorization, branching edges, terminal-state, replay, gating, receipt, balance, and event tests. |
@@ -24,7 +24,7 @@ Current vault result: 29 unit tests and 48 order/integration tests passed with `
 
 The deploy workflow intentionally uses `without-init-call`. After deployment, initialize by sending `new(owner, registration_account, approved_usdc_token_contract)` from the vault account itself. The initializer is private and rejects calls from any other predecessor; initialization cannot be repeated.
 
-The latest `origin/Contract` branch is included. Its real `vault.rs` is wired through `integration.rs`; no incoming `policies.rs` exists, so policy calls remain on the temporary policy module.
+The latest `origin/Contract` branch is included. Dapper change #79 was not yet present in `origin/Contract` during this sync, so no merge was performed. Its real `vault.rs` is wired through `integration.rs`; no incoming `policies.rs` exists, so policy calls remain on the temporary policy module.
 
 ## What is still a placeholder
 

@@ -17,7 +17,7 @@ use near_sdk::{AccountId, NearToken, PanicOnDefault, Promise, PromiseOrValue, en
 use crate::orders::{set_status as apply_status, validate_deposit_address, validate_order};
 use crate::receipts::FliqEvent;
 use crate::types::{
-    Amount, Config, DEFAULT_MAX_EXPIRY, DEFAULT_PAYOUT_TIMEOUT, PayoutOrder, Receipt, StorageKey,
+    Config, DEFAULT_MAX_EXPIRY, DEFAULT_PAYOUT_TIMEOUT, PayoutOrder, Receipt, StorageKey,
     TransferState, now,
 };
 use crate::vault::{BalanceView, Vault};
@@ -97,7 +97,7 @@ impl Contract {
         order_id: String,
         payer: AccountId,
         deposit_address: AccountId,
-        amount: Amount,
+        amount: U128,
         expiry: near_sdk::json_types::U64,
         corridor: String,
     ) {
@@ -105,7 +105,7 @@ impl Contract {
             env::predecessor_account_id() == self.config.registration_account,
             "only registration_account may register orders"
         );
-        validate_order(&order_id, amount, &corridor);
+        validate_order(&order_id, amount.0, &corridor);
         require!(
             !self.orders.contains_key(&order_id),
             "order_id is already registered"
@@ -142,7 +142,7 @@ impl Contract {
         );
         FliqEvent::OrderRegistered {
             order_id,
-            amount: amount.to_string(),
+            amount,
             expiry: expiry.0.to_string(),
             corridor,
         }
@@ -153,7 +153,7 @@ impl Contract {
     pub fn payout(
         &mut self,
         order_id: String,
-        amount: Amount,
+        amount: U128,
         deposit_address: AccountId,
     ) -> Promise {
         require!(

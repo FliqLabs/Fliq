@@ -1,4 +1,5 @@
 use crate::types::TransferState;
+use near_sdk::json_types::U128;
 
 #[allow(dead_code)]
 #[near_sdk::near(event_json(standard = "fliq"))]
@@ -6,7 +7,7 @@ pub enum FliqEvent {
     #[event_version("1.0.0")]
     OrderRegistered {
         order_id: String,
-        amount: String,
+        amount: U128,
         expiry: String,
         corridor: String,
     },
@@ -23,7 +24,7 @@ pub enum FliqEvent {
         last_updated: String,
     },
     #[event_version("1.0.0")]
-    Recredited { order_id: String, amount: String },
+    Recredited { order_id: String, amount: U128 },
 }
 
 // OPEN: event payload fields need backend approval; these payloads contain no personal data.

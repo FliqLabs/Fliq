@@ -192,7 +192,7 @@ pub fn order_amount(contract: &Contract, order_id: &str) -> Option<Amount> {
     contract
         .orders
         .get(&order_id.to_string())
-        .map(|order| order.amount)
+        .map(|order| order.amount.0)
 }
 
 pub fn order_transfer_state(contract: &Contract, order_id: &str) -> Option<TransferState> {
@@ -205,7 +205,7 @@ pub fn order_transfer_state(contract: &Contract, order_id: &str) -> Option<Trans
 pub fn payout(
     contract: &mut Contract,
     order_id: String,
-    amount: Amount,
+    amount: U128,
     deposit_address: AccountId,
 ) -> Promise {
     let Some(mut order) = contract.orders.get(&order_id) else {
@@ -235,7 +235,7 @@ pub fn payout(
         &caller,
         &order.payer,
         &order.order_id,
-        order.amount,
+        order.amount.0,
         &order.corridor,
     ) {
         env::panic_str(&reason);
@@ -244,7 +244,7 @@ pub fn payout(
         &mut contract.vault,
         &order.order_id,
         &order.payer,
-        order.amount,
+        order.amount.0,
     );
     if let Err(error) = transition(&mut order, TransferState::Executing) {
         env::panic_str(&error);
@@ -266,7 +266,7 @@ pub fn payout(
     );
     let transfer_args = near_sdk::serde_json::json!({
         "receiver_id": order.deposit_address,
-        "amount": U128(order.amount),
+        "amount": order.amount,
         "memo": order.order_id,
     });
     let callback_args = near_sdk::serde_json::json!({ "order_id": order_id });
