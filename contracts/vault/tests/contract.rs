@@ -53,6 +53,11 @@ fn contract() -> Contract {
     contract
 }
 
+fn payout(contract: &mut Contract, order_id: &str) -> near_sdk::Promise {
+    let order = contract.get_receipt(order_id.to_owned()).order;
+    contract.payout(order_id.to_owned(), order.amount, order.deposit_address)
+}
+
 #[test]
 fn contract_account_can_initialize_contract() {
     set_caller(accounts(0), NOW);
@@ -546,10 +551,10 @@ fn two_orders_cannot_reserve_more_than_the_balance() {
     register_named_order(&mut contract, "order-1", accounts(3), 6);
     register_named_order(&mut contract, "order-2", accounts(3), 6);
     set_caller(accounts(3), NOW);
-    let _first = contract.payout("order-1".to_string());
+    let _first = payout(&mut contract, "order-1");
     assert!(
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let _ = contract.payout("order-2".to_string());
+            let _ = payout(&mut contract, "order-2");
         }))
         .is_err()
     );
@@ -576,7 +581,7 @@ fn amount_edges_and_overflow_are_safe() {
     one_contract.credit_for_testing(accounts(3), 1);
     register_named_order(&mut one_contract, "one-unit", accounts(3), 1);
     set_caller(accounts(3), NOW);
-    let _promise = one_contract.payout("one-unit".to_string());
+    let _promise = payout(&mut one_contract, "one-unit");
     set_promise_result(
         VMContextBuilder::new()
             .current_account_id(accounts(0))
@@ -598,7 +603,7 @@ fn amount_edges_and_overflow_are_safe() {
     );
     register_named_order(&mut max_contract, "max-unit", accounts(3), u128::MAX);
     set_caller(accounts(3), NOW);
-    let _promise = max_contract.payout("max-unit".to_string());
+    let _promise = payout(&mut max_contract, "max-unit");
     assert_eq!(
         max_contract.get_balance(accounts(3)).reserved,
         U128(u128::MAX)
@@ -613,11 +618,70 @@ fn payout_keeps_stored_destination_and_amount() {
     register_named_order(&mut contract, "order-1", accounts(3), 10);
     let before = contract.get_receipt("order-1".to_string()).order;
     set_caller(accounts(3), NOW);
-    let _promise = contract.payout("order-1".to_string());
+    let _promise = payout(&mut contract, "order-1");
     let during = contract.get_receipt("order-1".to_string()).order;
     assert_eq!(during.amount, before.amount);
     assert_eq!(during.deposit_address, before.deposit_address);
     assert_eq!(during.order_id, before.order_id);
+}
+
+#[cfg(feature = "testing")]
+#[test]
+fn payout_rejects_wrong_amount_without_reserving() {
+    let mut contract = contract();
+    contract.credit_for_testing(accounts(3), 100);
+    register_payout_order(&mut contract, 10, NOW + 3_600_000_000_000);
+    set_caller(accounts(3), NOW);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = contract.payout("order-1".to_string(), 11, accounts(4));
+    }));
+
+    assert!(result.is_err());
+    assert_eq!(contract.get_balance(accounts(3)).available, U128(100));
+    assert_eq!(contract.get_balance(accounts(3)).reserved, U128(0));
+    assert_eq!(
+        order_transfer_state(&contract, "order-1"),
+        Some(TransferState::Registered)
+    );
+}
+
+#[cfg(feature = "testing")]
+#[test]
+fn payout_rejects_wrong_address_without_reserving() {
+    let mut contract = contract();
+    contract.credit_for_testing(accounts(3), 100);
+    register_payout_order(&mut contract, 10, NOW + 3_600_000_000_000);
+    set_caller(accounts(3), NOW);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = contract.payout("order-1".to_string(), 10, accounts(5));
+    }));
+
+    assert!(result.is_err());
+    assert_eq!(contract.get_balance(accounts(3)).available, U128(100));
+    assert_eq!(contract.get_balance(accounts(3)).reserved, U128(0));
+    assert_eq!(
+        order_transfer_state(&contract, "order-1"),
+        Some(TransferState::Registered)
+    );
+}
+
+#[cfg(feature = "testing")]
+#[test]
+fn matching_payout_arguments_pass() {
+    let mut contract = contract();
+    contract.credit_for_testing(accounts(3), 100);
+    register_payout_order(&mut contract, 10, NOW + 3_600_000_000_000);
+    set_caller(accounts(3), NOW);
+
+    let _promise = contract.payout("order-1".to_string(), 10, accounts(4));
+
+    assert_eq!(contract.get_balance(accounts(3)).reserved, U128(10));
+    assert_eq!(
+        order_transfer_state(&contract, "order-1"),
+        Some(TransferState::Executing)
+    );
 }
 
 #[cfg(feature = "testing")]
@@ -659,7 +723,7 @@ fn random_sequence_preserves_balance_and_single_send_invariants() {
                     set_caller(payer.clone(), NOW);
                     let payout_result =
                         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                            contract.payout(order_id.clone())
+                            payout(&mut contract, &order_id)
                         }));
                     if available >= amount {
                         assert!(payout_result.is_ok());
@@ -699,7 +763,7 @@ fn random_sequence_preserves_balance_and_single_send_invariants() {
                 let order_id = order_ids[index].clone();
                 set_caller(payer.clone(), NOW);
                 let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    let _ = contract.payout(order_id);
+                    let _ = payout(&mut contract, &order_id);
                 }));
             }
             _ => {}
@@ -722,7 +786,7 @@ fn paying_out_and_settled_are_accepted_after_dispatched() {
     contract.credit_for_testing(accounts(3), 100);
     register_status_order(&mut contract);
     set_caller(accounts(3), NOW);
-    let _promise = contract.payout("order-1".to_string());
+    let _promise = payout(&mut contract, "order-1");
     set_promise_result(
         VMContextBuilder::new()
             .current_account_id(accounts(0))
@@ -755,7 +819,7 @@ fn happy_path_reserves_and_commits_once() {
     contract.credit_for_testing(accounts(3), 100);
     register_payout_order(&mut contract, 10, NOW + 3_600_000_000_000);
     set_caller(accounts(3), NOW);
-    let _promise = contract.payout("order-1".to_string());
+    let _promise = payout(&mut contract, "order-1");
     let pending = contract.get_balance(accounts(3));
     assert_eq!(pending.available, U128(90));
     assert_eq!(pending.reserved, U128(10));
@@ -785,10 +849,10 @@ fn second_payout_and_same_block_duplicate_fail() {
     contract.credit_for_testing(accounts(3), 100);
     register_payout_order(&mut contract, 10, NOW + 3_600_000_000_000);
     set_caller(accounts(3), NOW);
-    let _promise = contract.payout("order-1".to_string());
+    let _promise = payout(&mut contract, "order-1");
     assert!(
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let _ = contract.payout("order-1".to_string());
+            let _ = payout(&mut contract, "order-1");
         }))
         .is_err()
     );
@@ -816,7 +880,7 @@ fn expired_order_and_wrong_caller_leave_balance_unchanged() {
     set_caller(accounts(5), NOW);
     assert!(
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let _ = contract.payout("order-1".to_string());
+            let _ = payout(&mut contract, "order-1");
         }))
         .is_err()
     );
@@ -824,7 +888,7 @@ fn expired_order_and_wrong_caller_leave_balance_unchanged() {
     set_caller(accounts(3), NOW + 1);
     assert!(
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let _ = contract.payout("order-1".to_string());
+            let _ = payout(&mut contract, "order-1");
         }))
         .is_err()
     );
@@ -840,7 +904,7 @@ fn insufficient_balance_leaves_available_funds_unchanged() {
     set_caller(accounts(3), NOW);
     assert!(
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let _ = contract.payout("order-1".to_string());
+            let _ = payout(&mut contract, "order-1");
         }))
         .is_err()
     );
@@ -856,7 +920,7 @@ fn failed_transfer_restores_balance_and_marks_failed() {
     contract.credit_for_testing(accounts(3), 100);
     register_payout_order(&mut contract, 10, NOW + 3_600_000_000_000);
     set_caller(accounts(3), NOW);
-    let _promise = contract.payout("order-1".to_string());
+    let _promise = payout(&mut contract, "order-1");
     set_promise_result(
         VMContextBuilder::new()
             .current_account_id(accounts(0))
@@ -897,7 +961,7 @@ fn outsider_callback_and_stale_callback_change_nothing() {
     );
     assert_eq!(contract.get_balance(accounts(3)).available, U128(100));
     set_caller(accounts(3), NOW);
-    let _promise = contract.payout("order-1".to_string());
+    let _promise = payout(&mut contract, "order-1");
     set_promise_result(
         VMContextBuilder::new()
             .current_account_id(accounts(0))

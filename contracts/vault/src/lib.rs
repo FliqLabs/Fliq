@@ -137,12 +137,17 @@ impl Contract {
     }
 
     #[payable]
-    pub fn payout(&mut self, order_id: String) -> Promise {
+    pub fn payout(
+        &mut self,
+        order_id: String,
+        amount: Amount,
+        deposit_address: AccountId,
+    ) -> Promise {
         require!(
             env::attached_deposit().is_zero(),
             "payout must not carry NEAR deposit"
         );
-        orders::payout(self, order_id)
+        orders::payout(self, order_id, amount, deposit_address)
     }
 
     pub fn set_status(&mut self, order_id: String, status: String, refs: String) {

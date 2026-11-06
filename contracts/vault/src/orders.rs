@@ -160,13 +160,26 @@ pub fn order_transfer_state(contract: &Contract, order_id: &str) -> Option<Trans
         .map(|order| order.transfer_state.clone())
 }
 
-pub fn payout(contract: &mut Contract, order_id: String) -> Promise {
+pub fn payout(
+    contract: &mut Contract,
+    order_id: String,
+    amount: Amount,
+    deposit_address: AccountId,
+) -> Promise {
     let Some(mut order) = contract.orders.get(&order_id) else {
         env::panic_str("order_id is not registered");
     };
     require!(
         order.transfer_state == TransferState::Registered,
         "order is not in Registered state"
+    );
+    require!(
+        amount == order.amount,
+        "payout amount does not match the registered order"
+    );
+    require!(
+        deposit_address == order.deposit_address,
+        "payout deposit_address does not match the registered order"
     );
     require!(
         !is_expired(order.expiry, crate::types::now()),
