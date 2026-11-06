@@ -23,7 +23,7 @@ struct OnboardingView: View {
 
     var body: some View {
         NavigationStack(path: $path) {
-            WelcomeView(onStart: start, onExistingAccount: isLive ? start : finish)
+            WelcomeView(onStart: start, onExistingAccount: isLive ? start : finish, onSkip: isLive ? nil : finish)
                 .navigationDestination(for: OnboardingStep.self, destination: screen)
         }
         .tint(Theme.textPrimary)

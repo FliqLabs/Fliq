@@ -23,11 +23,22 @@ type Rule = {
 // a meta transaction, so storage registration is never relayed: the account creator sponsors it instead.
 function rules(policy: RelayPolicy): Map<string, Map<string, Rule>> {
   const orderOnly: Rule = { deposit: 0n, checkArgs: (args) => exactKeys(args, ["order_id"], ["order_id"]) };
+  // The vault refuses a payout whose amount or destination differs from the registered order, so the user signs both.
+  const payout: Rule = {
+    deposit: 0n,
+    checkArgs: (args) => {
+      const keys = ["order_id", "amount", "deposit_address"];
+      exactKeys({ ...args, amount: String(args.amount) }, keys, keys);
+      if (!isPositiveAmount(args.amount)) throw new PolicyError("amount must be a positive integer");
+      if (!/^[a-z0-9._-]{2,64}$/.test(String(args.deposit_address)))
+        throw new PolicyError("deposit_address must be a NEAR account id");
+    },
+  };
   return new Map([
     [
       policy.vaultContractId,
       new Map([
-        ["payout", orderOnly],
+        ["payout", payout],
         ["release_order", orderOnly],
       ]),
     ],
@@ -82,6 +93,12 @@ function jsonArgs(bytes: Uint8Array): Record<string, unknown> {
     throw new PolicyError("arguments must be a JSON object");
   }
   return parsed as Record<string, unknown>;
+}
+
+// The contract takes amount as U128 (a string) or u128 (a JSON number); either must be an exact positive integer.
+function isPositiveAmount(value: unknown): boolean {
+  if (typeof value === "number") return Number.isSafeInteger(value) && value > 0;
+  return typeof value === "string" && /^[1-9]\d*$/.test(value);
 }
 
 function exactKeys(args: Record<string, unknown>, allowed: string[], required: string[]): void {

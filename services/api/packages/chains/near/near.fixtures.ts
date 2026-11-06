@@ -164,6 +164,8 @@ export function newUser(accountId: string): User {
   return { accountId, key, publicKey: key.getPublicKey().toString() };
 }
 
+export const PAYOUT_ARGS = { order_id: "po_1", amount: "50000000", deposit_address: "pay.paycrest.testnet" };
+
 export async function signDelegate(
   user: User,
   spec: DelegateSpec = {},
@@ -174,7 +176,7 @@ export async function signDelegate(
     actions: [
       actions.functionCall(
         spec.methodName ?? "payout",
-        spec.args ?? { order_id: "po_1" },
+        spec.args ?? PAYOUT_ARGS,
         spec.gas ?? 30n * TGAS,
         spec.deposit ?? 0n,
       ),
