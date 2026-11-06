@@ -1,6 +1,6 @@
 # Security review: sQuiDbOb contract surface
 
-Scope: `lib.rs`, `orders.rs`, `types.rs`, `receipts.rs`, `integration.rs`, and `vault.rs`. `vault.rs` changes are limited to standardized error strings; no `policies.rs` exists, so policy calls remain on `temp_policies.rs`.
+Scope: `lib.rs`, `orders.rs`, `types.rs`, `receipts.rs`, `integration.rs`, `policies.rs`, and `vault.rs`.
 
 ## Public methods and callbacks
 
@@ -8,8 +8,11 @@ Scope: `lib.rs`, `orders.rs`, `types.rs`, `receipts.rs`, `integration.rs`, and `
 | --- | --- | --- | --- |
 | `new` | Vault account only during initialization | Writes owner, registration account, token contract, empty order/receipt maps | Calls from another predecessor and repeated initialization fail before state is changed. |
 | `get_config` | Anyone | None | Read-only. |
+| `set_agent_policy` | Policy owner | Creates or updates one distinct agent account's caps, corridors, cooldown and expiry while preserving same-day spend | Invalid fields, self-authorization and a different existing owner fail without changing the policy. |
+| `revoke_agent` | Policy owner | Marks the agent policy revoked | Missing policy and non-owner calls fail without state changes. |
+| `get_policy` | Anyone | None | Returns current policy fields; stale daily spend is shown as zero after rollover. |
 | `register_order` | Registration account only | Reserves funds, adds one immutable order and receipt, and emits `order_registered` | Validation, authorization, duplicate, insufficient balance, or storage failure aborts the whole transaction. |
-| `payout` | Any predecessor accepted by the temporary payer policy; the policy currently allows only the payer | Validates caller-supplied amount and destination, records pending policy spend and signing key, changes `Registered` to `Executing`, and creates the USDC transfer and callback | Mismatches leave the existing reservation unchanged. The transfer is resolved only by the private callback or owner recovery after timeout. |
+| `payout` | Registered payer directly, or a distinct agent account with a matching active policy | Validates caller-supplied amount and destination, atomically counts pending spend, records the signing key, changes `Registered` to `Executing`, and creates the USDC transfer and callback | Identity, cap, daily limit, corridor, cooldown, expiry and revocation failures leave the existing reservation unchanged. The transfer is resolved only by the private callback or owner recovery after timeout. |
 | `set_status` | Registration account only | Changes proposed branching backend status, refs, and `last_updated`; emits `status_set` | Unknown/illegal edge, invalid refs, terminal-state signal, or transfer-state contradiction aborts with no balance, transfer-state, or policy-count change. Exact replay is a no-op. |
 | `recredit` | Registration account | Validates `Dispatched`, `refunding`, and write-once `refund_tx`, then queries `ft_balance_of` on the approved USDC contract before guarded liability recredit; success changes status to `refunded` | Unknown, non-Dispatched, missing/reused evidence, oversized, under-backed, failed balance query, and repeated calls do not credit. |
 | `set_payout_timeout` | Owner only | Changes the U64-encoded stuck-payout timeout | Non-owner and zero timeout fail without state changes. |
@@ -27,15 +30,15 @@ Scope: `lib.rs`, `orders.rs`, `types.rs`, `receipts.rs`, `integration.rs`, and `
 - Confirmed that backend status updates cannot move funds or alter the verified transfer state.
 - Confirmed that the testing credit method is gated by both the `testing` feature and debug assertions.
 - Fixed initializer takeover risk by marking `Contract::new` private; deployment now requires a one-time `new` call made by the vault account itself.
-- Restored Dapper's real vault entrypoints and routed balance, deposit, reservation, commit, and release operations through `vault.rs`, leaving only policy lifecycle calls on the temporary policy stand-in.
+- Restored Dapper's real vault entrypoints and routed balance, deposit, reservation, commit, and release operations through `vault.rs`.
 - Added payout amount/destination validation, timeout-based stuck-payout recovery, U64-safe public timestamps, and proposed branching backend status transitions.
-- Removed the temporary vault ledger and the `get_policy` stub; retained Dapper's real guarded recredit and wired it through the order boundary.
+- Replaced the temporary policy stand-in with owner-managed agent accounts, caps, corridors, cooldown, expiry, revocation and pending-spend lifecycle accounting.
 - Added the terminal `Released` state and `release_order`; completed orders retain their order IDs and receipts, and `get_storage_usage` supports measurement without mutation.
 - Standardized contract-owned panic strings as `fliq_vault: CODE`; Dapper enum failures are mapped at `integration.rs` and documented for conversion.
 
 ## Residual risks
 
-- The temporary policy module is not a production authorization implementation and must be replaced through `integration.rs` before relying on agent limits.
+- Agent access-key deletion remains an operational companion to on-chain revocation; the vault enforces the agent account policy even if a key remains active.
 - The refs character policy reduces accidental personal-data storage but cannot prove that an identifier is not personal data; backend approval and operational controls remain required.
 - Refund transaction verification remains an operational backend responsibility; the contract independently checks approved-USDC backing and rejects evidence reuse.
 - The status transition table remains PROPOSED pending backend approval; the payout signature and relayer allowlist also need backend approval.

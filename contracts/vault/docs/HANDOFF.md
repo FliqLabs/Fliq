@@ -1,103 +1,71 @@
-# sQuiDbOb contract handoff
+# FLIQ vault contract handoff
 
-Branch: `sQuiDbOb-Orders-and-Payouts`
+Branch: `Ariya-Agent-Permissions`
 
-## What was built
+## Implemented contract surface
 
-| Method or area | File | What it does | Test evidence |
-| --- | --- | --- | --- |
-| `new` | `contracts/vault/src/lib.rs` | Stores owner, registration account, approved USDC token, 24-hour expiry limit, and 10-minute payout timeout; only the vault account itself may call it, and it can run only once. | Configuration and initialization authorization tests in `tests/contract.rs`. |
-| `get_config` | `lib.rs` | Read-only configuration view. | Used by configuration tests. |
-| `register_order` | `lib.rs`, `orders.rs` | Authorizes the fixed registration account, validates and stores an immutable order, reserves the payer's funds immediately, and emits the complete `order_registered` event. | Registration, reservation, duplicate, field, expiry, authorization, JSON amount, and event tests. |
-| `payout` | `lib.rs`, `orders.rs` | Validates caller-supplied amount and destination against the stored order, asks the policy boundary for approval, records the signing key, changes state before creating the USDC transfer, and calls the private callback. | Matching/mismatch arguments, duplicate, same-block, wrong caller, expiry, edge amount, JSON amount, and stored destination/amount tests. |
-| `resolve_stuck_payout` | `lib.rs`, `orders.rs` | Owner-only recovery after the configured timeout; commits a confirmed transfer or returns the order to retryable `Registered` while keeping its reservation. | Owner, timeout, success, retry, late callback, and single-use tests. |
-| `on_payout_complete` | `lib.rs`, `orders.rs` | Accepts only the contract's callback with exactly one result; commits on success or keeps the reservation and returns the order to `Registered` on failure; stale callbacks do nothing. | Success, retryable failure, outsider, stale, and invariant tests. |
-| `set_status` | `lib.rs`, `orders.rs` | Lets only the registration account report proposed branching backend progress, including `refused` and `not_received`. Replays are no-ops; it cannot change transfer state or balances. | Authorization, branching edges, terminal-state, replay, gating, receipt, balance, and event tests. |
-| `recredit` | `lib.rs`, `orders.rs`, `integration.rs`, `vault.rs` | Registration-account boundary for guarded refund recredit. It requires a `Dispatched` order in `refunding` with write-once `refund_tx`, queries real USDC balance using `ft_balance_of`, and prevents reuse of both the order and refund transaction. | Real payout/refund, duplicate order, duplicate transaction, unknown, oversized, non-Dispatched, and unrelated-balance tests. |
-| `set_payout_timeout` | `lib.rs` | Lets only the owner change the U64-encoded stuck-payout timeout. | Owner and non-owner configuration tests. |
-| `get_receipt` | `lib.rs`, `types.rs` | Shows the stored order, verified NEAR transfer state, backend status, refs, and update time as separate tracks. | Receipt separation and unknown-order tests. |
-| `get_balance` | `lib.rs`, `integration.rs`, `vault.rs` | Read-only `vault::BalanceView` backed by Dapper's real ledger. | Dapper deposit/isolation/overflow tests and payout invariants. |
-| `release_order` | `lib.rs`, `orders.rs` | Registration account or owner restores the reservation and moves only a `Registered` order to terminal `Released`. | Authorization, balance restoration, event, replay, payout, and order-ID reuse tests. |
-| `transfer` | `lib.rs`, `vault.rs` | Moves available balance between registered vault users, requires exactly 1 yoctoNEAR, and emits `transferred`. | Deposit requirement, balance isolation, liability, and event tests. |
-| `get_storage_usage` | `lib.rs` | Read-only current storage usage in bytes for storage measurement. | Order-plus-receipt delta test. |
-| Recredit read helpers | `orders.rs` | `order_exists`, `order_payer`, `order_amount`, and `order_transfer_state`. | Read-helper test. |
-| Integration boundary | `integration.rs` | Routes balance, reservation, commit, and release operations to `Vault`; keeps policy lifecycle calls on the temporary policy module. | Dapper vault tests and payout tests. |
-
-Current vault result: 39 unit tests and 57 order/integration tests pass with `--features testing`; the near-workspaces smoke test is present but ignored by default.
-
-The deploy workflow intentionally uses `without-init-call`. After deployment, initialize by sending `new(owner, registration_account, approved_usdc_token_contract)` from the vault account itself. The initializer is private and rejects calls from any other predecessor; initialization cannot be repeated.
-
-The latest `origin/Contract` branch is included. Dapper change #79 was not yet present in `origin/Contract` during this sync, so no merge was performed. Its real `vault.rs` is wired through `integration.rs`; no incoming `policies.rs` exists, so policy calls remain on the temporary policy module.
-
-## What is still a placeholder
-
-Every marker below is intentional. Replace the temporary policy implementation only through `integration.rs`; do not make the stand-ins production custody or policy code.
-
-### `contracts/vault/src/temp_policies.rs`
-
-- Line 11: temporary pending-spend storage key. Aria replaces it with policy storage.
-- Line 16: temporary payer-only policy check. Aria replaces it with the approved agent policy.
-- Line 34: temporary pending-spend recording. Aria replaces it with authoritative pending-count/limit accounting.
-- Lines 45, 50: temporary release and settle operations. Aria replaces them with its policy lifecycle operations.
-
-### `OPEN` comments and decisions
-
-- `contracts/vault/src/lib.rs`: provider allowlist is not implemented; backend must decide whether one is needed.
-- `contracts/vault/src/types.rs`: expiry and timeout currently follow NEAR block timestamp nanoseconds; the final unit is open.
-- `contracts/vault/src/types.rs:42`: relayed-agent identity is open.
-- `contracts/vault/docs/CONTEXT.md` and `contracts/vault/docs/DECISIONS.md`: the remaining open questions are order ID mapping, corridor encoding, provider allowlists, agent policy identity and limits, storage cleanup, and deployment accounts.
-
-## What I need from the backend team
-
-| Exact question | Why it matters | Default used now | File if different |
-| --- | --- | --- | --- |
-| Is `order_id` exactly the backend `po_` payout ID? | It determines idempotency and how receipts are joined to backend records. | Treats the supplied string as the canonical order key. | `contracts/vault/docs/DECISIONS.md`, `orders.rs`, API integration tests. |
-| What exact `register_order` JSON does the backend send, and is amount an integer base-unit string? | Deserialization and amount safety must match the API contract. | Uses the confirmed argument order and integer base units represented as JSON strings. | `types.rs`, `lib.rs`, fixtures/API docs if needed. |
-| What expiry unit is final? | Expiry checks and the 24-hour maximum depend on it. | Uses NEAR block timestamp nanoseconds. | `types.rs`, `orders.rs`, tests. |
-| Which account registers orders and reports statuses, and how are its keys rotated? | A compromised or stale key could create orders or falsify backend progress. | One immutable `registration_account`; rotate keys on that account. | Deployment docs. |
-| What exact `refs` format and stored backend statuses are approved? | Refs are persisted and emitted; malformed or personal data must be rejected. | Branching proposed status transitions; refs are at most 256 ASCII identifier characters. | `orders.rs`, `types.rs`, `receipts.rs`, `contracts/vault/docs/DECISIONS.md`. |
-| Which fields and version must each event carry? | Indexers and reconciliation depend on stable event schemas. | `fliq`, version `1.0.0`, with the current minimal payloads. | `receipts.rs`, event tests, `contracts/vault/docs/DECISIONS.md`. |
-| Does the backend want a provider allowlist? | A missing allowlist could permit an unintended destination if the API is compromised. | No provider allowlist, because the spec does not define one. | `lib.rs`, `orders.rs`, `contracts/vault/docs/DECISIONS.md`. |
-| Which testnet vault and mock USDC account IDs will be used? | Integration tests and deployment configuration need stable addresses. | The standalone mock crate is used locally; the configured token account is supplied at init. | `contracts/mock_usdc`, workspace tests, deployment docs. |
-| What gas should relayers attach for `payout`? | Too little gas prevents the transfer or callback; too much changes relayer economics. | Requires at least 50 Tgas: 30 Tgas transfer plus 20 Tgas callback. | `orders.rs`, tests, relayer docs. |
-
-## Dapper integration status
-
-`integration.rs` calls Dapper's real `Vault` methods for `reserve_for_order`, `commit_outflow`, `release_reservation`, `recredit_refund`, and `get_balance`. The backend verifies the refund transaction, while the contract enforces write-once evidence, transaction replay protection, and its own approved-USDC balance query.
-
-## What I need from Aria
-
-Replace the temporary policy calls behind these `integration.rs` functions:
-
-- `evaluate_payout(caller, payer, order_id, amount, corridor)`: return an explicit reason on rejection; approve only when the caller identity and daily/agent policy allow the payer's order.
-- `release_pending(order_id)`: remove the pending policy spend after a failed transfer.
-- `settle_pending(order_id)`: consume the pending policy spend after a successful transfer.
-
-The open question is what identity is authoritative for a relayed agent call. The current small `PayoutCaller` struct carries only the predecessor account and has an `OPEN` marker for the eventual relayer/agent identity.
-
-## Risks and gaps
-
-- The temporary policy module is not a production authorization system.
-- Recredit uses backend-verified refund evidence and an on-chain approved-USDC balance query; provider-chain proof remains an operational backend responsibility.
-- Backend status is deliberately not proof of bank settlement.
-- The refs character filter cannot prove that a value is not personal data.
-- The near-workspaces test is a smoke harness and is ignored by default; the detailed checks use unit-test promise results.
-- Cargo resolves the semver range to the current lockfile version; the manifest still expresses the repository's required near-sdk `5.17.2` compatibility range.
-- Dapper's real `vault.rs` is active and its required `pub(crate)` methods are wired; Aria's production policy module is not present, so policy calls remain on `temp_policies.rs`.
-
-## Readiness for checks belonging to this side
-
-| Check | Status | Evidence |
+| Method or area | Owner module | Behavior |
 | --- | --- | --- |
-| Register only through the configured account | Done | Authorization and forged-caller tests pass. |
-| Validate order ID, amount, corridor, destination, and expiry | Done | Validation and edge-value tests pass. |
-| Never send an order twice | Done | Duplicate, same-block, terminal-state, and invariant tests pass. |
-| Reserve at registration and keep funds reserved for retry after transfer failure | Done, real vault | Vault and order integration tests pass. |
-| Callback is private and stale-safe | Done | Outsider, exact-result, failure, and stale callback tests pass. |
-| Separate verified transfer state from backend status | Done | Receipt and status-gating tests pass. |
-| Backend status branching and replay | Done, proposed | Tests pass; rules remain marked PROPOSED pending backend approval. |
-| No value movement from `set_status` | Done | Transfer-state and balance-invariance tests pass. |
-| Refund evidence and `recredit` | Done at contract boundary | Backend-verified `refund_tx` is write-once and globally single-use; the contract queries approved-USDC balance before credit. |
-| Dapper/Aria production integration | Dapper done, Aria pending | Real `vault.rs` is wired; policy calls still use `temp_policies.rs`. |
-| Test-only credit absent from release build | Done | Release WASM check passes with `testing` enabled and debug assertions disabled. |
-| Formatting and lint | Done | `cargo fmt --check` and strict clippy pass. |
+| `new`, `get_config` | `lib.rs` | Stores immutable owner, registration account and approved USDC token plus expiry and stuck-payout limits. Initialization is vault-account-only and one-time. |
+| `register_order` | `orders.rs`, `vault.rs` | Registration-account-only immutable order creation with immediate balance reservation. |
+| `payout` | `orders.rs`, `policies.rs`, `vault.rs` | Requires exact registered amount and destination, authorizes the payer or a policy-bound agent account, counts pending policy spend, changes state before sending USDC, and resolves through a private callback. |
+| `set_agent_policy` | `policies.rs` | Lets a payer create or update one distinct agent account's per-payout cap, daily cap, exact corridors, cooldown and expiry without resetting same-day spend. |
+| `revoke_agent` | `policies.rs` | Lets only the stored policy owner block future calls from the agent account. |
+| `get_policy` | `policies.rs` | Returns owner, agent, action, limits, current-day spend, corridors, cooldown, expiry, revocation and last-payout time. |
+| Policy lifecycle | `policies.rs`, `integration.rs` | Counts pending plus successful spend, releases same-day spend after failed transfers, retains successful spend, rolls daily buckets, and makes parallel-limit bypass fail. |
+| `on_payout_complete`, `resolve_stuck_payout` | `orders.rs` | Commits a confirmed transfer or returns the order to retryable `Registered`; policy pending state follows the same outcome. |
+| `release_order` | `lib.rs`, `vault.rs` | Registration account or contract owner restores a reservation and moves a never-executed order to terminal `Released`. |
+| `set_status`, `get_receipt` | `orders.rs`, `receipts.rs` | Keeps authenticated backend status separate from verified NEAR transfer state. |
+| `recredit` | `orders.rs`, `vault.rs` | Requires write-once refund evidence and real unattributed USDC backing before exactly-once recredit. |
+| `ft_on_transfer`, `get_balance`, `transfer` | `vault.rs`, `lib.rs` | Handles approved-USDC deposits, isolated available/reserved balances and registered internal transfers. |
+
+## Agent identity decision
+
+A distinct NEAR account identifies each agent. The payer owns the policy for that account. Direct and NEP-366-relayed calls expose the delegated sender account as the vault predecessor, which the contract can verify. The contract does not claim to identify the particular access key because NEAR does not expose that key identity to this method.
+
+Hosted-agent key removal should accompany `revoke_agent`, but the on-chain revoked flag is independently enforced. An agent cannot create or change its own policy because policy ownership is always the predecessor that configured a different `agent_id`.
+
+## Spending semantics
+
+- Amounts are integer USDC base units represented as JSON strings at the public boundary.
+- Pending and successful agent payouts count toward the current 24-hour bucket.
+- A failed token transfer or `resolve_stuck_payout(order_id, false)` releases its amount when the policy is still in that bucket.
+- Successful spend remains counted if the provider later refunds it, preventing spend-limit recycling.
+- Cooldown begins when authorization succeeds and remains after a transfer failure.
+- Corridors use exact string matching. Policy corridor values are non-empty ASCII identifiers containing letters, digits, `-`, or `_`.
+- Policy updates preserve current-day spend and last-payout time. Revoked policies can be deliberately reconfigured by their owner through `set_agent_policy`.
+
+## Verification
+
+The current local result is 39 vault unit tests and 64 contract/integration tests passing with `--features testing`. Strict clippy and rustfmt checks pass. The near-workspaces smoke harness remains ignored by default and requires a supported local NEAR sandbox platform.
+
+Policy coverage includes:
+
+- valid agent payout and direct payer payout;
+- cross-user and unknown-agent calls;
+- per-payout and daily caps;
+- exact corridor allowlists;
+- expiry, cooldown and revocation;
+- simultaneous pending orders;
+- failed-transfer release and successful-transfer retention;
+- daily rollover and same-day update preservation;
+- duplicate payout and callback replay protection.
+
+## Backend alignment
+
+The backend already verifies NEP-366 delegate signatures, sender accounts, access-key membership, nonces, receiver, method, arguments and gas sponsorship. The vault adds independent on-chain amount, destination, payer and agent-policy enforcement. The backend must send the existing confirmed payout arguments: `order_id`, `amount`, and `deposit_address`.
+
+The backend's older `get_policy(public_key)` proposal must use `get_policy(agent_id)` instead. A public-key view would imply an identity guarantee the contract cannot make. No backend source file was changed on this branch.
+
+## Remaining open decisions
+
+- Whether `order_id` is exactly the backend `po_` payout ID.
+- Final canonical corridor encoding across backend and contract.
+- Whether a provider allowlist is required in addition to immutable registered destinations.
+- Order and receipt storage cleanup/funding.
+- Testnet vault, token and deployment account IDs.
+- Final approval of proposed backend status transitions and event payloads.
+
+## Review requirements
+
+This branch changes permissions and outgoing-transfer authorization and therefore needs contract review. Two contract owners must approve it before merge. Do not merge until the backend confirms the agent-account identity handoff and `get_policy(agent_id)` interface.

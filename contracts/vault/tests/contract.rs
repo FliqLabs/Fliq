@@ -97,6 +97,47 @@ fn payout(contract: &mut Contract, order_id: &str) -> near_sdk::Promise {
     contract.payout(order_id.to_owned(), order.amount, order.deposit_address)
 }
 
+#[cfg(feature = "testing")]
+fn set_agent_policy(
+    contract: &mut Contract,
+    owner: AccountId,
+    max_per_payout: u128,
+    daily_limit: u128,
+    corridors: &[&str],
+    cooldown_ns: u64,
+    expiry_ns: u64,
+) {
+    set_caller(owner, NOW);
+    contract.set_agent_policy(
+        accounts(5),
+        U128(max_per_payout),
+        U128(daily_limit),
+        corridors.iter().map(|value| (*value).to_string()).collect(),
+        U64(cooldown_ns),
+        U64(expiry_ns),
+    );
+}
+
+#[cfg(feature = "testing")]
+fn register_agent_order(
+    contract: &mut Contract,
+    order_id: &str,
+    payer: AccountId,
+    amount: u128,
+    corridor: &str,
+    timestamp: u64,
+) {
+    set_caller(accounts(1), timestamp);
+    contract.register_order(
+        order_id.to_string(),
+        payer,
+        accounts(4),
+        U128(amount),
+        U64(timestamp + 3_600_000_000_000),
+        corridor.to_string(),
+    );
+}
+
 #[test]
 fn contract_account_can_initialize_contract() {
     set_caller(accounts(0), NOW);
@@ -199,6 +240,272 @@ fn invalid_agent_policy_is_rejected() {
             .is_err()
         );
     }
+}
+
+#[cfg(feature = "testing")]
+#[test]
+fn authorized_agent_payout_counts_pending_and_completed_spend() {
+    let mut contract = contract();
+    contract.credit_for_testing(accounts(3), 100);
+    register_agent_order(
+        &mut contract,
+        "agent-order",
+        accounts(3),
+        30,
+        "USDC-NGN",
+        NOW,
+    );
+    set_agent_policy(
+        &mut contract,
+        accounts(3),
+        50,
+        80,
+        &["USDC-NGN"],
+        0,
+        NOW + 2 * 24 * 60 * 60 * 1_000_000_000,
+    );
+
+    set_caller(accounts(5), NOW);
+    let _promise = payout(&mut contract, "agent-order");
+    assert_eq!(
+        contract
+            .get_policy(accounts(5))
+            .unwrap_or_else(|| panic!("agent policy was not stored"))
+            .spent_today,
+        U128(30)
+    );
+
+    set_promise_result(
+        VMContextBuilder::new()
+            .current_account_id(accounts(0))
+            .predecessor_account_id(accounts(0))
+            .block_timestamp(NOW)
+            .build(),
+        PromiseResult::Successful(vec![]),
+    );
+    contract.on_payout_complete("agent-order".to_string());
+    assert_eq!(
+        contract
+            .get_policy(accounts(5))
+            .unwrap_or_else(|| panic!("agent policy was not stored"))
+            .spent_today,
+        U128(30)
+    );
+}
+
+#[cfg(feature = "testing")]
+#[test]
+fn pending_agent_spend_blocks_parallel_daily_limit_bypass() {
+    let mut contract = contract();
+    contract.credit_for_testing(accounts(3), 100);
+    register_agent_order(&mut contract, "order-1", accounts(3), 30, "USDC-NGN", NOW);
+    register_agent_order(&mut contract, "order-2", accounts(3), 30, "USDC-NGN", NOW);
+    set_agent_policy(
+        &mut contract,
+        accounts(3),
+        40,
+        50,
+        &["USDC-NGN"],
+        0,
+        NOW + 3_600_000_000_000,
+    );
+
+    set_caller(accounts(5), NOW);
+    let _first = payout(&mut contract, "order-1");
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = payout(&mut contract, "order-2");
+        }))
+        .is_err()
+    );
+
+    set_promise_result(
+        VMContextBuilder::new()
+            .current_account_id(accounts(0))
+            .predecessor_account_id(accounts(0))
+            .block_timestamp(NOW)
+            .build(),
+        PromiseResult::Failed,
+    );
+    contract.on_payout_complete("order-1".to_string());
+    assert_eq!(
+        contract
+            .get_policy(accounts(5))
+            .unwrap_or_else(|| panic!("agent policy was not stored"))
+            .spent_today,
+        U128(0)
+    );
+    set_caller(accounts(5), NOW);
+    let _second = payout(&mut contract, "order-2");
+    assert_eq!(
+        contract
+            .get_policy(accounts(5))
+            .unwrap_or_else(|| panic!("agent policy was not stored"))
+            .spent_today,
+        U128(30)
+    );
+}
+
+#[cfg(feature = "testing")]
+#[test]
+fn agent_policy_enforces_payer_amount_corridor_expiry_and_revocation() {
+    let mut contract = contract();
+    contract.credit_for_testing(accounts(3), 100);
+    register_agent_order(&mut contract, "order-1", accounts(3), 30, "USDC-NGN", NOW);
+    set_agent_policy(
+        &mut contract,
+        accounts(3),
+        20,
+        100,
+        &["USDC-NGN"],
+        0,
+        NOW + 3_600_000_000_000,
+    );
+    set_caller(accounts(5), NOW);
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = payout(&mut contract, "order-1");
+        }))
+        .is_err()
+    );
+
+    set_agent_policy(
+        &mut contract,
+        accounts(3),
+        50,
+        100,
+        &["USDC-KES"],
+        0,
+        NOW + 3_600_000_000_000,
+    );
+    set_caller(accounts(5), NOW);
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = payout(&mut contract, "order-1");
+        }))
+        .is_err()
+    );
+
+    set_agent_policy(
+        &mut contract,
+        accounts(3),
+        50,
+        100,
+        &["USDC-NGN"],
+        0,
+        NOW + 1,
+    );
+    set_caller(accounts(5), NOW + 1);
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = payout(&mut contract, "order-1");
+        }))
+        .is_err()
+    );
+
+    set_agent_policy(
+        &mut contract,
+        accounts(3),
+        50,
+        100,
+        &["USDC-NGN"],
+        0,
+        NOW + 3_600_000_000_000,
+    );
+    set_caller(accounts(3), NOW);
+    contract.revoke_agent(accounts(5));
+    set_caller(accounts(5), NOW);
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = payout(&mut contract, "order-1");
+        }))
+        .is_err()
+    );
+
+    let mut other_payer_contract = crate::contract();
+    register_storage(&mut other_payer_contract, accounts(4));
+    other_payer_contract.credit_for_testing(accounts(4), 50);
+    register_agent_order(
+        &mut other_payer_contract,
+        "other-payer",
+        accounts(4),
+        10,
+        "USDC-NGN",
+        NOW,
+    );
+    set_agent_policy(
+        &mut other_payer_contract,
+        accounts(3),
+        50,
+        100,
+        &["USDC-NGN"],
+        0,
+        NOW + 3_600_000_000_000,
+    );
+    set_caller(accounts(5), NOW);
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = payout(&mut other_payer_contract, "other-payer");
+        }))
+        .is_err()
+    );
+}
+
+#[cfg(feature = "testing")]
+#[test]
+fn cooldown_survives_failed_transfer_and_daily_spend_resets() {
+    let mut contract = contract();
+    contract.credit_for_testing(accounts(3), 100);
+    register_agent_order(&mut contract, "order-1", accounts(3), 20, "USDC-NGN", NOW);
+    register_agent_order(&mut contract, "order-2", accounts(3), 20, "USDC-NGN", NOW);
+    let cooldown = 100;
+    let next_day = NOW + 24 * 60 * 60 * 1_000_000_000;
+    set_agent_policy(
+        &mut contract,
+        accounts(3),
+        30,
+        30,
+        &["USDC-NGN"],
+        cooldown,
+        next_day + 3_600_000_000_000,
+    );
+    set_caller(accounts(5), NOW);
+    let _first = payout(&mut contract, "order-1");
+    set_promise_result(
+        VMContextBuilder::new()
+            .current_account_id(accounts(0))
+            .predecessor_account_id(accounts(0))
+            .block_timestamp(NOW)
+            .build(),
+        PromiseResult::Failed,
+    );
+    contract.on_payout_complete("order-1".to_string());
+
+    set_caller(accounts(5), NOW + cooldown - 1);
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = payout(&mut contract, "order-2");
+        }))
+        .is_err()
+    );
+    set_caller(accounts(5), NOW + cooldown);
+    let _second = payout(&mut contract, "order-2");
+    assert_eq!(
+        contract
+            .get_policy(accounts(5))
+            .unwrap_or_else(|| panic!("agent policy was not stored"))
+            .spent_today,
+        U128(20)
+    );
+
+    set_caller(accounts(4), next_day);
+    assert_eq!(
+        contract
+            .get_policy(accounts(5))
+            .unwrap_or_else(|| panic!("agent policy was not stored"))
+            .spent_today,
+        U128(0)
+    );
 }
 
 #[test]

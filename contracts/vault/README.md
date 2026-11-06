@@ -4,17 +4,19 @@ The fliq USDC vault on NEAR: per-user balances, approved payout orders executed 
 
 The plan, method names and responsibilities are in the contract team guide (FLIQ Smart Contract Team Guide, 30 Oct 2026). The crate pins its Rust toolchain in `rust-toolchain.toml`.
 
-## Dapper vault milestone
+## Vault and policy integration
 
 Accounts must call `storage_deposit` before depositing USDC. The vault accepts `ft_transfer_call` only from its configured USDC contract. An empty message credits the NEP-141 `sender_id`; the strict `{"top_up":{"account_id":"<account>"}}` message credits that registered account. Malformed messages, unknown fields and unregistered beneficiaries return the full token amount. Accepted deposits emit the provisional `fliq_vault` `deposited` event consumed by the backend adapter.
 
-`register_order` reserves the payer's funds immediately. `payout` is payer-authorized and commits the reservation only after the approved USDC contract confirms its transfer; a failed callback leaves the order registered and retryable. `release_order` restores a reservation, and the registration account can advance the public receipt through the agreed backend status graph.
+`register_order` reserves the payer's funds immediately. `payout` accepts the payer directly or a distinct NEAR agent account with an active owner-created policy, and commits the reservation only after the approved USDC contract confirms its transfer. A failed callback leaves the order registered and retryable. `release_order` restores a reservation, and the registration account can advance the public receipt through the agreed backend status graph.
+
+Agent policies enforce a per-payout cap, a daily cap that includes pending transfers, exact corridor allowlists, cooldown, expiry and revocation. Failed transfers release same-day policy spend; successful payouts remain counted even if later refunded. `set_agent_policy`, `revoke_agent`, and `get_policy` use the agent account ID because the contract cannot observe which access key signed a relayed call.
 
 `recredit` is registration-account-only and queries the vault's real USDC balance before restoring a refunded payout. The amount cannot exceed the original outflow or the vault's unattributed token balance, and each order can be recredited once. `transfer` moves available balances between two registered vault users without changing aggregate liabilities.
 
 The registration account is fixed at initialization and rotates keys on that account rather than through a contract setter. Receipt reference fields are write-once. A recredit requires a recorded `refund_tx`, and each refund transaction can back at most one order across the contract; only a successful recredit can mark the receipt `refunded`. The complete event wire fixture is `tests/fixtures/events.jsonl`, shared with the backend parser tests.
 
-The current payout authorization is payer-only. Aria's signing-key policy implementation will replace that temporary rule; `get_policy` is not exposed until that work is integrated. Order storage is currently funded by the vault account and must be included in the contract team's deployment funding decision.
+Order storage is currently funded by the vault account and must be included in the contract team's deployment funding decision.
 
 Rules:
 
@@ -33,7 +35,7 @@ make test-contract
 
 This side owns order registration, payout state transitions, backend status reporting, receipts, and the integration boundary for balances and policy decisions. It verifies on-chain transfer state separately from backend-reported progress. Registration reserves funds; a failed USDC transfer keeps that reservation and returns the order to its retryable registered state.
 
-It does not implement provider allowlists, rate comparison, money conversion, bank transfers, or Aria production policy behavior. The backend verifies refund transactions before calling `recredit`; the contract records the refund transaction once and independently queries its real USDC balance before crediting. The `temp_policies` module is a temporary stand-in; Dapper's real vault ledger is active.
+It does not implement provider allowlists, rate comparison, money conversion, or bank transfers. The backend verifies refund transactions before calling `recredit`; the contract records the refund transaction once and independently queries its real USDC balance before crediting. Dapper's real vault ledger and Aria's production policy module are active.
 
 From a fresh clone, run the vault tests and mock-token tests with one shell command:
 
@@ -41,7 +43,7 @@ From a fresh clone, run the vault tests and mock-token tests with one shell comm
 (cd contracts/vault && cargo test --features testing) && cargo test --manifest-path contracts/mock_usdc/Cargo.toml
 ```
 
-## TEMPORARY and OPEN items
+## OPEN items
 
 Search all temporary and unresolved design markers with:
 
@@ -49,4 +51,4 @@ Search all temporary and unresolved design markers with:
 rg -n 'TEMPORARY|OPEN:' contracts docs
 ```
 
-The current OPEN list is maintained in [docs/DECISIONS.md](docs/DECISIONS.md): order/`po_` ID mapping, corridor encoding, provider allowlists, relayed-agent identity, daily limits, storage cleanup, and testnet deployment details.
+The current OPEN list is maintained in [docs/DECISIONS.md](docs/DECISIONS.md): order/`po_` ID mapping, corridor encoding, provider allowlists, storage cleanup, and testnet deployment details.

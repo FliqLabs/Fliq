@@ -1,6 +1,7 @@
+use crate::Contract;
 use crate::errors;
-use crate::temp_policies;
-use crate::types::{Amount, PayoutCaller};
+use crate::policies;
+use crate::types::Amount;
 use crate::vault::{BalanceView, RefundError, ReservationError, Vault};
 use near_sdk::json_types::U128;
 use near_sdk::{AccountId, env};
@@ -18,10 +19,6 @@ pub fn reserve_for_order(vault: &mut Vault, order_id: &str, payer: &AccountId, a
     }
 }
 
-pub fn track_pending(order_id: &str, payer: &AccountId, amount: Amount) {
-    temp_policies::track_pending(order_id, payer, amount);
-}
-
 pub fn commit_outflow(vault: &mut Vault, order_id: &str) {
     if let Err(error) = vault.commit_outflow(order_id) {
         let _ = error;
@@ -36,22 +33,23 @@ pub fn release_reservation(vault: &mut Vault, order_id: &str) {
     }
 }
 
-pub fn evaluate_payout(
-    caller: &PayoutCaller,
+pub fn authorize_payout(
+    contract: &mut Contract,
+    caller: &AccountId,
     payer: &AccountId,
     order_id: &str,
     amount: Amount,
     corridor: &str,
-) -> Result<(), String> {
-    temp_policies::evaluate_payout(caller, payer, order_id, amount, corridor)
+) {
+    policies::authorize_payout(contract, caller, payer, order_id, amount, corridor);
 }
 
-pub fn release_pending(order_id: &str) {
-    temp_policies::release_pending(order_id);
+pub fn release_pending(contract: &mut Contract, order_id: &str) {
+    policies::release_pending(contract, order_id);
 }
 
-pub fn settle_pending(order_id: &str) {
-    temp_policies::settle_pending(order_id);
+pub fn settle_pending(contract: &mut Contract, order_id: &str) {
+    policies::settle_pending(contract, order_id);
 }
 
 pub fn recredit_refund(

@@ -5,7 +5,6 @@ mod errors;
 mod integration;
 mod policies;
 mod receipts;
-mod temp_policies;
 mod vault;
 
 use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;

@@ -31,6 +31,7 @@ The NEAR HACKATHON rules require listing AI-generated code. Add a row whenever a
 | 2026-11-06 | `contracts/vault/src`, `contracts/vault/README.md` | Codex | Backend-compatible order, payout, release, receipt, refund-recredit and vault-transfer interfaces with events and regression tests |
 | 2026-11-06 | `contracts/vault/src`, `contracts/vault/tests/fixtures/events.jsonl`, `contracts/vault/README.md` | Codex | Immutable registrar configuration, write-once receipt evidence, refund-transaction replay protection and shared event fixtures |
 | 2026-11-06 | `contracts/vault/src/{policies.rs,types.rs,errors.rs,lib.rs}`, `contracts/vault/tests/contract.rs` | Codex | Owner-managed agent policy storage, policy validation, create/update/revoke entrypoints and policy views |
+| 2026-11-06 | `contracts/vault/src/{policies.rs,integration.rs,orders.rs,errors.rs,types.rs,lib.rs}`, `contracts/vault/tests/contract.rs`, `contracts/vault/docs`, `contracts/vault/README.md` | Codex | Agent-account payout authorization, cap/corridor/cooldown/expiry/revocation enforcement, pending and daily spend lifecycle, adversarial tests and handoff documentation |
 
 The iOS app (`apps/ios`) is built with Claude Code, directed and reviewed by Frank. Each iOS PR adds its rows to this table.
 

@@ -3,8 +3,7 @@ use crate::errors;
 use crate::integration;
 use crate::receipts::FliqEvent;
 use crate::types::{
-    Amount, BACKEND_STATUSES, PayoutCaller, PayoutOrder, Receipt, ReceiptRefs, Timestamp,
-    TransferState, now,
+    Amount, BACKEND_STATUSES, PayoutOrder, Receipt, ReceiptRefs, Timestamp, TransferState, now,
 };
 use near_sdk::json_types::U128;
 use near_sdk::{AccountId, Gas, NearToken, Promise, env, require};
@@ -266,19 +265,15 @@ pub fn payout(
         errors::ORDER_EXPIRED
     );
 
-    let caller = PayoutCaller {
-        account_id: env::predecessor_account_id(),
-    };
-    if let Err(reason) = integration::evaluate_payout(
+    let caller = env::predecessor_account_id();
+    integration::authorize_payout(
+        contract,
         &caller,
         &order.payer,
         &order.order_id,
         order.amount.0,
         &order.corridor,
-    ) {
-        env::panic_str(&reason);
-    }
-    integration::track_pending(&order.order_id, &order.payer, order.amount.0);
+    );
     contract
         .payout_keys
         .insert(&order_id, &env::signer_account_pk().to_string());
@@ -403,10 +398,10 @@ fn finalize_payout(contract: &mut Contract, order_id: String, successful: bool) 
     }
     if successful {
         integration::commit_outflow(&mut contract.vault, &order_id);
-        integration::settle_pending(&order_id);
+        integration::settle_pending(contract, &order_id);
         order.transfer_state = TransferState::Dispatched;
     } else {
-        integration::release_pending(&order_id);
+        integration::release_pending(contract, &order_id);
         order.transfer_state = TransferState::Registered;
     }
     order.executing_since = None;

@@ -1,7 +1,7 @@
 use crate::Contract;
 use crate::errors;
 use crate::orders::MAX_CORRIDOR_LENGTH;
-use crate::types::{AgentPolicy, AgentPolicyView, PolicyAction, now};
+use crate::types::{AgentPolicy, AgentPolicyView, Amount, PendingPolicySpend, PolicyAction, now};
 use near_sdk::json_types::{U64, U128};
 use near_sdk::{AccountId, env, require};
 
@@ -91,6 +91,112 @@ pub fn get_policy(contract: &Contract, agent_id: &AccountId) -> Option<AgentPoli
             last_payout_at: policy.last_payout_at.map(U64),
         }
     })
+}
+
+pub fn authorize_payout(
+    contract: &mut Contract,
+    caller: &AccountId,
+    payer: &AccountId,
+    order_id: &str,
+    amount: Amount,
+    corridor: &str,
+) {
+    require!(
+        !contract
+            .pending_policy_spends
+            .contains_key(&order_id.to_owned()),
+        errors::POLICY_PENDING_EXISTS
+    );
+    let current_time = now();
+    let current_day = day_index(current_time);
+    if caller == payer {
+        contract.pending_policy_spends.insert(
+            &order_id.to_owned(),
+            &PendingPolicySpend {
+                agent_id: None,
+                amount,
+                day_index: current_day,
+            },
+        );
+        return;
+    }
+
+    let Some(mut policy) = contract.agent_policies.get(caller) else {
+        env::panic_str(errors::POLICY_NOT_FOUND);
+    };
+    require!(policy.owner == *payer, errors::POLICY_PAYER_MISMATCH);
+    require!(!policy.revoked, errors::POLICY_REVOKED);
+    require!(policy.expiry_ns > current_time, errors::POLICY_EXPIRED);
+    require!(
+        policy.allowed_action == PolicyAction::Payout,
+        errors::POLICY_ACTION_DENIED
+    );
+    require!(
+        amount <= policy.max_per_payout,
+        errors::POLICY_PER_PAYOUT_LIMIT
+    );
+    require!(
+        policy
+            .allowed_corridors
+            .iter()
+            .any(|allowed| allowed == corridor),
+        errors::POLICY_CORRIDOR_DENIED
+    );
+    if let Some(last_payout_at) = policy.last_payout_at {
+        require!(
+            current_time >= last_payout_at.saturating_add(policy.cooldown_ns),
+            errors::POLICY_COOLDOWN
+        );
+    }
+    if policy.day_index != current_day {
+        policy.day_index = current_day;
+        policy.spent_today = 0;
+    }
+    let Some(next_spent) = policy.spent_today.checked_add(amount) else {
+        env::panic_str(errors::POLICY_ARITHMETIC);
+    };
+    require!(next_spent <= policy.daily_limit, errors::POLICY_DAILY_LIMIT);
+
+    policy.spent_today = next_spent;
+    policy.last_payout_at = Some(current_time);
+    contract.agent_policies.insert(caller, &policy);
+    contract.pending_policy_spends.insert(
+        &order_id.to_owned(),
+        &PendingPolicySpend {
+            agent_id: Some(caller.clone()),
+            amount,
+            day_index: current_day,
+        },
+    );
+}
+
+pub fn release_pending(contract: &mut Contract, order_id: &str) {
+    let Some(pending) = contract.pending_policy_spends.remove(&order_id.to_owned()) else {
+        env::panic_str(errors::POLICY_PENDING_MISSING);
+    };
+    let Some(agent_id) = pending.agent_id else {
+        return;
+    };
+    let Some(mut policy) = contract.agent_policies.get(&agent_id) else {
+        env::panic_str(errors::POLICY_NOT_FOUND);
+    };
+    if policy.day_index == pending.day_index {
+        let Some(spent_today) = policy.spent_today.checked_sub(pending.amount) else {
+            env::panic_str(errors::POLICY_ARITHMETIC);
+        };
+        policy.spent_today = spent_today;
+        contract.agent_policies.insert(&agent_id, &policy);
+    }
+}
+
+pub fn settle_pending(contract: &mut Contract, order_id: &str) {
+    require!(
+        contract
+            .pending_policy_spends
+            .remove(&order_id.to_owned())
+            .is_some(),
+        errors::POLICY_PENDING_MISSING
+    );
 }
 
 pub(crate) fn day_index(timestamp: u64) -> u64 {

@@ -28,6 +28,14 @@ These rules are PROPOSED and require backend approval:
 - A partial refund is allowed, but each order has at most one recredit. Only a successful callback changes the receipt status to `refunded`.
 - Failed transfers and `resolve_stuck_payout(..., false)` return to `Registered`, keep their reservation for retry, and create no refund record.
 
+## Agent policy behavior
+
+- Policies are keyed by a distinct NEAR agent account. The policy owner is the payer account that created the policy; an agent account cannot own or increase its own policy.
+- `set_agent_policy` creates or updates caps, exact-match corridors, cooldown and expiry without resetting same-day spend. `revoke_agent` blocks every future payout by that agent.
+- Daily spend includes pending and successful payouts. Parallel attempts therefore cannot race past the limit. A failed transfer releases its same-day amount; a successful payout remains counted even if it is later refunded.
+- Cooldown starts when a payout is authorized and remains in force after a failed transfer. Daily buckets use NEAR block timestamp nanoseconds and UTC-sized 24-hour intervals.
+- Direct payer calls do not require an agent policy. Agent calls require the policy owner to equal the registered order payer.
+
 ## Other OPEN contract questions
 
 - The confirmed payout signature is now `payout(order_id, amount, deposit_address)` instead of `payout(order_id)`. This needs backend approval, and the relayer allowlist must permit both additional arguments.
@@ -37,6 +45,4 @@ These rules are PROPOSED and require backend approval:
 - What expiry time unit is final?
 - How is corridor encoded?
 - The registration account is stored once at initialization; key rotation happens on that account.
-- `get_policy` remains unavailable until Aria's real policy design and implementation is approved.
-- What agent identity is required for relayed calls?
-- What counts toward agent daily limits?
+- Agent policy identity and daily-limit accounting are implemented as described above.
