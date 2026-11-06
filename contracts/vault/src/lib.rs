@@ -12,6 +12,7 @@ use near_contract_standards::storage_management::{
 };
 use near_sdk::collections::LookupMap;
 use near_sdk::json_types::U128;
+use near_sdk::serde::Deserialize;
 use near_sdk::{AccountId, NearToken, PanicOnDefault, Promise, PromiseOrValue, env, near, require};
 
 use crate::orders::{set_status as apply_status, validate_deposit_address, validate_order};
@@ -23,6 +24,18 @@ use crate::types::{
     TransferState, now,
 };
 use crate::vault::{BalanceView, Vault};
+
+#[derive(Deserialize)]
+#[serde(crate = "near_sdk::serde", deny_unknown_fields)]
+struct TransferMessage {
+    top_up: TopUpMessage,
+}
+
+#[derive(Deserialize)]
+#[serde(crate = "near_sdk::serde", deny_unknown_fields)]
+struct TopUpMessage {
+    account_id: AccountId,
+}
 
 #[near(contract_state)]
 #[derive(PanicOnDefault)]
@@ -246,10 +259,46 @@ impl FungibleTokenReceiver for Contract {
         amount: U128,
         msg: String,
     ) -> PromiseOrValue<U128> {
-        if env::predecessor_account_id() != self.approved_usdc || !msg.is_empty() {
+        if env::predecessor_account_id() != self.approved_usdc || amount.0 == 0 {
             return PromiseOrValue::Value(amount);
         }
-        PromiseOrValue::Value(self.vault.deposit(&sender_id, amount))
+
+        let Some(beneficiary) = Self::deposit_beneficiary(&sender_id, &msg) else {
+            return PromiseOrValue::Value(amount);
+        };
+
+        let unused = self.vault.deposit(&beneficiary, amount);
+        if unused.0 == 0 {
+            Self::log_deposit(&beneficiary, &sender_id, amount);
+        }
+
+        PromiseOrValue::Value(unused)
+    }
+}
+
+impl Contract {
+    fn deposit_beneficiary(sender_id: &AccountId, msg: &str) -> Option<AccountId> {
+        if msg.is_empty() {
+            return Some(sender_id.clone());
+        }
+
+        near_sdk::serde_json::from_str::<TransferMessage>(msg)
+            .ok()
+            .map(|message| message.top_up.account_id)
+    }
+
+    fn log_deposit(account_id: &AccountId, sender_id: &AccountId, amount: U128) {
+        let event = near_sdk::serde_json::json!({
+            "standard": "fliq_vault",
+            "version": "1.0.0",
+            "event": "deposited",
+            "data": [{
+                "account_id": account_id,
+                "sender_id": sender_id,
+                "amount": amount,
+            }],
+        });
+        env::log_str(&format!("EVENT_JSON:{event}"));
     }
 }
 
@@ -257,7 +306,7 @@ impl FungibleTokenReceiver for Contract {
 mod tests {
     use super::*;
     use near_sdk::mock::MockAction;
-    use near_sdk::test_utils::{VMContextBuilder, get_created_receipts};
+    use near_sdk::test_utils::{VMContextBuilder, get_created_receipts, get_logs};
     use near_sdk::{VMContext, testing_env};
 
     fn account(value: &str) -> AccountId {
@@ -360,18 +409,104 @@ mod tests {
     }
 
     #[test]
-    fn attributed_message_is_rejected_until_protocol_is_approved() {
+    fn wrong_token_cannot_attribute_a_top_up() {
         let mut contract = contract();
-        let user = account("ada.testnet");
-        register(&mut contract, &user);
+        let beneficiary = account("ada.testnet");
+        register(&mut contract, &beneficiary);
+        testing_env!(context(
+            &account("fake-token.testnet"),
+            NearToken::from_yoctonear(0)
+        ));
+        let unused = contract.ft_on_transfer(
+            account("intents.testnet"),
+            U128(50_000_000),
+            r#"{"top_up":{"account_id":"ada.testnet"}}"#.to_owned(),
+        );
+        assert_eq!(returned_amount(unused), U128(50_000_000));
+        assert_eq!(contract.get_balance(beneficiary), BalanceView::default());
+        assert!(get_logs().is_empty());
+    }
+
+    #[test]
+    fn strict_top_up_message_credits_beneficiary_not_sender() {
+        let mut contract = contract();
+        let sender = account("intents.testnet");
+        let beneficiary = account("ada.testnet");
+        register(&mut contract, &beneficiary);
         testing_env!(context(
             &account("usdc.testnet"),
             NearToken::from_yoctonear(0)
         ));
-        let unused =
-            contract.ft_on_transfer(user.clone(), U128(50_000_000), "attributed".to_owned());
+        let unused = contract.ft_on_transfer(
+            sender.clone(),
+            U128(50_000_000),
+            r#"{"top_up":{"account_id":"ada.testnet"}}"#.to_owned(),
+        );
+        assert_eq!(returned_amount(unused), U128(0));
+        assert_eq!(contract.get_balance(sender), BalanceView::default());
+        assert_eq!(contract.get_balance(beneficiary).available, U128(50_000_000));
+    }
+
+    #[test]
+    fn repeated_top_up_requires_and_credits_each_real_transfer() {
+        let mut contract = contract();
+        let sender = account("intents.testnet");
+        let beneficiary = account("ada.testnet");
+        register(&mut contract, &beneficiary);
+        testing_env!(context(
+            &account("usdc.testnet"),
+            NearToken::from_yoctonear(0)
+        ));
+        let msg = r#"{"top_up":{"account_id":"ada.testnet"}}"#.to_owned();
+        assert_eq!(returned_amount(contract.ft_on_transfer(sender.clone(), U128(25_000_000), msg.clone())), U128(0));
+        assert_eq!(returned_amount(contract.ft_on_transfer(sender, U128(25_000_000), msg)), U128(0));
+        assert_eq!(contract.get_balance(beneficiary).available, U128(50_000_000));
+        assert_eq!(get_logs().len(), 2);
+    }
+
+    #[test]
+    fn malformed_or_extended_top_up_messages_are_returned() {
+        for msg in [
+            r#"{"account_id":"ada.testnet"}"#,
+            r#"{"top_up":{"account_id":"not valid"}}"#,
+            r#"{"top_up":{"account_id":"ada.testnet","extra":1}}"#,
+            r#"{"top_up":{"account_id":"ada.testnet"},"extra":1}"#,
+            "not-json",
+        ] {
+            let mut contract = contract();
+            let beneficiary = account("ada.testnet");
+            register(&mut contract, &beneficiary);
+            testing_env!(context(&account("usdc.testnet"), NearToken::from_yoctonear(0)));
+            let unused = contract.ft_on_transfer(account("intents.testnet"), U128(50_000_000), msg.to_owned());
+            assert_eq!(returned_amount(unused), U128(50_000_000));
+            assert_eq!(contract.get_balance(beneficiary), BalanceView::default());
+        }
+    }
+
+    #[test]
+    fn unregistered_top_up_beneficiary_receives_full_refund() {
+        let mut contract = contract();
+        testing_env!(context(
+            &account("usdc.testnet"),
+            NearToken::from_yoctonear(0)
+        ));
+        let unused = contract.ft_on_transfer(
+            account("intents.testnet"),
+            U128(50_000_000),
+            r#"{"top_up":{"account_id":"ada.testnet"}}"#.to_owned(),
+        );
         assert_eq!(returned_amount(unused), U128(50_000_000));
-        assert_eq!(contract.get_balance(user), BalanceView::default());
+        assert_eq!(contract.get_balance(account("ada.testnet")), BalanceView::default());
+    }
+
+    #[test]
+    fn accepted_deposit_emits_backend_compatible_event() {
+        let mut contract = contract();
+        let user = account("ada.testnet");
+        register(&mut contract, &user);
+        testing_env!(context(&account("usdc.testnet"), NearToken::from_yoctonear(0)));
+        returned_amount(contract.ft_on_transfer(user, U128(50_000_000), String::new()));
+        assert!(get_logs().iter().any(|log| log.contains("\"event\":\"deposited\"") && log.contains("\"amount\":\"50000000\"")));
     }
 
     #[test]
