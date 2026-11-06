@@ -1,0 +1,22 @@
+{
+  "items": [
+    {
+      "delivery_id": "whd_7a3e19b2",
+      "event_id": "evt_01jbx7k3m2q8d4n6p0r5s9t1vw",
+      "event_type": "payout.settled",
+      "payout_id": "po_9c2f71aa",
+      "endpoint_id": "whe_4f1c8e20",
+      "endpoint_url": "https://api.entrypoint.example/fliq/webhooks",
+      "status": "delivered",
+      "attempts": 2,
+      "response_status": 200,
+      "error": null,
+      "replay_of": null,
+      "created_at": "2026-10-29T13:03:02Z",
+      "last_attempt_at": "2026-10-29T13:03:33Z",
+      "next_attempt_at": null,
+      "delivered_at": "2026-10-29T13:03:33Z"
+    }
+  ],
+  "next_cursor": null
+}

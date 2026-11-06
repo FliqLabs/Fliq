@@ -25,5 +25,13 @@
   "vault.balance.json": "VaultBalance",
   "person.tobi.json": "Person",
   "people.recent.json": "RecentPeopleList",
-  "status.report.json": "StatusReport"
+  "status.report.json": "StatusReport",
+  "key.created.json": "KeyCreated",
+  "live-access.sandbox.json": "LiveAccess",
+  "webhook-endpoints.list.json": "WebhookEndpointList",
+  "webhook-endpoint.created.json": "WebhookEndpointCreated",
+  "webhook-event.payout-settled.json": "WebhookEvent",
+  "webhook-deliveries.list.json": "WebhookDeliveryList",
+  "webhook-delivery.detail.json": "WebhookDeliveryDetail",
+  "webhook-send.replayed.json": "WebhookSend"
 }

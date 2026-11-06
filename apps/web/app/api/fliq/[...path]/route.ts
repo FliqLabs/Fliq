@@ -13,6 +13,7 @@ const publicRoutes = new Set([
   "POST auth/passkeys/login/verify",
   "POST auth/email-links",
   "POST auth/email-links/verify",
+  "GET institutions",
 ]);
 
 const protectedRoutes = new Set([
@@ -24,6 +25,9 @@ const protectedRoutes = new Set([
   "GET keys",
   "GET onboarding",
   "GET payouts",
+  "POST quotes",
+  "POST accounts/verify",
+  "POST payouts",
   "POST auth/logout",
 ]);
 
@@ -40,6 +44,7 @@ function isAllowed(method: string, path: string) {
   return (
     publicRoutes.has(route) ||
     protectedRoutes.has(route) ||
+    (method === "GET" && /^payouts\/[^/]+$/.test(path)) ||
     (method === "GET" && /^names\/[a-z0-9-]+$/.test(path))
   );
 }
@@ -82,7 +87,7 @@ async function upstream(
       headers: {
         ...(body ? { "Content-Type": "application/json" } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(method === "POST" && ["me/name", "workspaces"].includes(path)
+        ...(method === "POST" && ["me/name", "workspaces", "payouts"].includes(path)
           ? { "Idempotency-Key": idempotencyKey ?? crypto.randomUUID() }
           : {}),
       },
@@ -138,7 +143,7 @@ async function handle(request: NextRequest, context: RouteContext) {
     return response;
   }
 
-  const query = path === "payouts" ? request.nextUrl.search : "";
+  const query = ["payouts", "institutions"].includes(path) ? request.nextUrl.search : "";
   const idempotencyKey = request.headers.get("idempotency-key") ?? undefined;
   let result = await upstream(method, path, body, accessToken, query, idempotencyKey);
   if (result?.status === 401 && !isPublic(method, path) && path !== "auth/logout" && !session) {

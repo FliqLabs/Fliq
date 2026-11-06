@@ -529,6 +529,70 @@ export interface paths {
         /** API keys of the workspace, masked */
         get: operations["listKeys"];
         put?: never;
+        /**
+         * Create an API key. The full key is in this response only.
+         * @description Needs a signed-in session; API keys cannot create keys. Each deployment issues one environment (sandbox issues test, production issues live), and live keys also need an approved KYB review. There is no Idempotency-Key, so a stored replay never holds the plaintext key; a double submit makes two keys.
+         */
+        post: operations["createKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/keys/{keyId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke an API key. It stops authenticating at once.
+         * @description Needs a signed-in session. Revoking a revoked key succeeds and changes nothing.
+         */
+        delete: operations["revokeKey"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/keys/{keyId}/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replace an API key with a new one of the same name and environment
+         * @description Needs a signed-in session. The old key stops working in the same moment the new one is created.
+         */
+        post: operations["rotateKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workspaces/current/live-access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Whether the workspace can use live keys, for the Go live screen
+         * @description Read only. Live access needs an approved KYB review, and no review process exists yet, so live_enabled is false for every workspace and kyb_status is not_started.
+         */
+        get: operations["getLiveAccess"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -547,6 +611,145 @@ export interface paths {
         get: operations["getOnboarding"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/webhook-endpoints": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The workspace's webhook endpoints, the event types and how deliveries are signed
+         * @description Needs a signed-in session. Secrets are never listed; they are shown once at creation and rotation.
+         */
+        get: operations["listWebhookEndpoints"];
+        put?: never;
+        /**
+         * Register a webhook endpoint. The signing secret is in this response only.
+         * @description Needs a signed-in session. The URL must be https, carry no credentials and resolve only to public addresses; private, loopback, link-local and metadata addresses are refused. Deliveries do not follow redirects. An empty or missing events list subscribes to every event type. At most 10 endpoints.
+         */
+        post: operations["createWebhookEndpoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/webhook-endpoints/{endpointId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete a webhook endpoint. Its pending deliveries stop. */
+        delete: operations["deleteWebhookEndpoint"];
+        options?: never;
+        head?: never;
+        /**
+         * Change the URL, description or events, or turn the endpoint off and on
+         * @description Needs a signed-in session. enabled true also clears a failing endpoint.
+         */
+        patch: operations["updateWebhookEndpoint"];
+        trace?: never;
+    };
+    "/webhook-endpoints/{endpointId}/rotate-secret": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Issue a new signing secret. The old one also signs for 24 hours.
+         * @description Send no request body. During the overlap each delivery carries one v1 signature per secret.
+         */
+        post: operations["rotateWebhookSecret"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/webhook-endpoints/{endpointId}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a test.webhook event to this endpoint
+         * @description Send no request body. The event is marked test and names no payout. It goes through the normal signing, delivery and retry path; read its result with getWebhookDelivery. Replays and test events share a limit of 30 per workspace per minute.
+         */
+        post: operations["sendWebhookTest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/webhook-deliveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Deliveries to the workspace's endpoints, newest first */
+        get: operations["listWebhookDeliveries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/webhook-deliveries/{deliveryId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One delivery with the event it sent and every attempt */
+        get: operations["getWebhookDelivery"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/webhook-deliveries/{deliveryId}/replay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send the same event again as a new delivery
+         * @description Send no request body. The new delivery keeps the original event id and payload, so receivers that deduplicate by event id see a repeat. Only the webhook is sent again; the payout is never re-run. Each replay is audited. Replays and test events share a limit of 30 per workspace per minute.
+         */
+        post: operations["replayWebhookDelivery"];
         delete?: never;
         options?: never;
         head?: never;
@@ -825,6 +1028,47 @@ export interface components {
             masked: string;
             /** Format: date-time */
             created_at: string;
+            /** @description Keys made with the workspace are called Sandbox key */
+            name?: string;
+            /** @enum {string} */
+            status?: "active" | "revoked";
+            /**
+             * Format: date-time
+             * @description Updated at most once a minute
+             */
+            last_used_at?: string | null;
+        };
+        KeyRequest: {
+            name: string;
+            /** @enum {string} */
+            environment: "test" | "live";
+        };
+        KeyCreated: {
+            key_id: string;
+            name: string;
+            /** @enum {string} */
+            environment: "test" | "live";
+            masked: string;
+            /** @enum {string} */
+            status: "active" | "revoked";
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            last_used_at: string | null;
+            /** @description The full key. Returned once and never again. */
+            key: string;
+        };
+        LiveAccess: {
+            live_enabled: boolean;
+            /** @enum {string} */
+            kyb_status: "not_started" | "submitted" | "in_review" | "approved" | "rejected";
+            /**
+             * @description Sandbox and production are separate deployments; each issues and accepts one key environment
+             * @enum {string}
+             */
+            deployment_environment: "test" | "live";
+            test_keys_allowed: boolean;
+            live_keys_allowed: boolean;
         };
         KeyList: {
             items: components["schemas"]["ApiKeyView"][];
@@ -991,6 +1235,133 @@ export interface components {
             components: components["schemas"]["StatusComponent"][];
             incidents: components["schemas"]["StatusIncident"][];
         };
+        /** @enum {string} */
+        WebhookEventType: "payout.created" | "payout.provider_timeout" | "payout.awaiting_recon" | "payout.awaiting_deposit" | "payout.deposit_seen" | "payout.routing" | "payout.with_provider" | "payout.paying_out" | "payout.settled" | "payout.refunding" | "payout.refunded" | "payout.expired" | "payout.failed";
+        WebhookEndpointRequest: {
+            /** @description https only, public hosts only */
+            url: string;
+            description?: string;
+            events?: components["schemas"]["WebhookEventType"][];
+        };
+        WebhookEndpointUpdate: {
+            url?: string;
+            description?: string | null;
+            events?: components["schemas"]["WebhookEventType"][];
+            enabled?: boolean;
+        };
+        WebhookEndpoint: {
+            endpoint_id: string;
+            url: string;
+            description: string | null;
+            /** @description Empty means every event type */
+            events: components["schemas"]["WebhookEventType"][];
+            /**
+             * @description failing once a delivery used up all its retries; the next successful delivery makes it active again
+             * @enum {string}
+             */
+            status: "active" | "failing" | "disabled";
+            /** @enum {string} */
+            environment: "test" | "live";
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            /** Format: date-time */
+            failing_since: string | null;
+        };
+        WebhookEndpointCreated: components["schemas"]["WebhookEndpoint"] & {
+            /** @description Starts with whsec_. Returned once and never again. */
+            secret: string;
+        };
+        WebhookSecretRotated: components["schemas"]["WebhookEndpoint"] & {
+            secret: string;
+            /** Format: date-time */
+            previous_secret_expires_at: string;
+        };
+        /** @description How to verify a delivery. Compute HMAC-SHA256 of "<t>.<raw body>" with the endpoint secret, hex encoded, compare in constant time with any v1 value, and reject t more than tolerance_seconds from your clock. Deduplicate by event id and keep the highest data.version per payout, since order is not guaranteed. */
+        WebhookSigning: {
+            header: string;
+            algorithm: string;
+            signed_payload: string;
+            format: string;
+            tolerance_seconds: number;
+            event_id_header: string;
+            event_type_header: string;
+            delivery_id_header: string;
+        };
+        WebhookEndpointList: {
+            items: components["schemas"]["WebhookEndpoint"][];
+            event_types: components["schemas"]["WebhookEventType"][];
+            signing: components["schemas"]["WebhookSigning"];
+        };
+        WebhookSend: {
+            event_id: string;
+            delivery_id: string;
+            /** @enum {string} */
+            status: "pending" | "delivered" | "failed";
+            /** @description Only on a replay, the delivery it repeats */
+            replay_of?: string;
+        };
+        WebhookDelivery: {
+            delivery_id: string;
+            /** @description The same on a replay as on the original */
+            event_id: string;
+            /** @description A WebhookEventType, or test.webhook */
+            event_type: string;
+            /** @description Null for test events */
+            payout_id: string | null;
+            endpoint_id: string;
+            endpoint_url: string;
+            /** @enum {string} */
+            status: "pending" | "delivered" | "failed";
+            attempts: number;
+            /** @description HTTP status of the latest attempt */
+            response_status: number | null;
+            /** @description Category of the latest failure, for example timeout, connection, tls, blocked_destination or http_500 */
+            error: string | null;
+            replay_of: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            last_attempt_at: string | null;
+            /**
+             * Format: date-time
+             * @description When the next retry runs, while pending
+             */
+            next_attempt_at: string | null;
+            /** Format: date-time */
+            delivered_at: string | null;
+        };
+        WebhookDeliveryList: {
+            items: components["schemas"]["WebhookDelivery"][];
+            next_cursor: string | null;
+        };
+        WebhookAttempt: {
+            attempt: number;
+            /** Format: date-time */
+            at: string;
+            duration_ms: number;
+            response_status: number | null;
+            error: string | null;
+        };
+        WebhookDeliveryDetail: components["schemas"]["WebhookDelivery"] & {
+            payload: components["schemas"]["WebhookEvent"];
+            history: components["schemas"]["WebhookAttempt"][];
+        };
+        /** @description The body of every delivery, signed as sent. Payout events carry the masked payout summary at the state of the event and its version. */
+        WebhookEvent: {
+            id: string;
+            type: string;
+            /** Format: date-time */
+            created_at: string;
+            livemode: boolean;
+            data: {
+                payout?: components["schemas"]["PayoutSummary"];
+                version?: number;
+                test?: boolean;
+                message?: string;
+            };
+        };
     };
     responses: {
         /** @description Error */
@@ -1004,6 +1375,8 @@ export interface components {
         };
     };
     parameters: {
+        EndpointId: string;
+        DeliveryId: string;
         IdempotencyKey: string;
         Token: "usdc" | "usdt";
         Currency: "ngn" | "kes" | "ghs" | "idr" | "php";
@@ -1809,6 +2182,125 @@ export interface operations {
             404: components["responses"]["Error"];
         };
     };
+    createKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KeyRequest"];
+            };
+        };
+        responses: {
+            /** @description The key. Store it now; it is never shown again. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeyCreated"];
+                };
+            };
+            400: components["responses"]["Error"];
+            /** @description live_not_enabled, the workspace has not passed KYB */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            404: components["responses"]["Error"];
+            /** @description limit_reached, the workspace already holds 20 active keys */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description environment_unavailable, this deployment does not issue that environment */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    revokeKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                keyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["Error"];
+        };
+    };
+    rotateKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                keyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The replacement key, shown once */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeyCreated"];
+                };
+            };
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    getLiveAccess: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Live access and KYB state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiveAccess"];
+                };
+            };
+            404: components["responses"]["Error"];
+        };
+    };
     getOnboarding: {
         parameters: {
             query?: never;
@@ -1828,6 +2320,232 @@ export interface operations {
                 };
             };
             404: components["responses"]["Error"];
+        };
+    };
+    listWebhookEndpoints: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Endpoints, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookEndpointList"];
+                };
+            };
+            404: components["responses"]["Error"];
+        };
+    };
+    createWebhookEndpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WebhookEndpointRequest"];
+            };
+        };
+        responses: {
+            /** @description The endpoint and its signing secret */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookEndpointCreated"];
+                };
+            };
+            400: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    deleteWebhookEndpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                endpointId: components["parameters"]["EndpointId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["Error"];
+        };
+    };
+    updateWebhookEndpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                endpointId: components["parameters"]["EndpointId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WebhookEndpointUpdate"];
+            };
+        };
+        responses: {
+            /** @description The endpoint after the change */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookEndpoint"];
+                };
+            };
+            400: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
+    rotateWebhookSecret: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                endpointId: components["parameters"]["EndpointId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The new secret, shown once */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookSecretRotated"];
+                };
+            };
+            404: components["responses"]["Error"];
+        };
+    };
+    sendWebhookTest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                endpointId: components["parameters"]["EndpointId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Queued */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookSend"];
+                };
+            };
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+        };
+    };
+    listWebhookDeliveries: {
+        parameters: {
+            query?: {
+                endpoint_id?: string;
+                event_type?: string;
+                status?: "pending" | "delivered" | "failed";
+                /** @description The deliveries of one payout, for the payout detail screen */
+                payout_id?: string;
+                /** @description Created at or after this time */
+                from?: string;
+                /** @description Created before this time */
+                to?: string;
+                limit?: number;
+                /** @description next_cursor from the previous page */
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of deliveries */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookDeliveryList"];
+                };
+            };
+            400: components["responses"]["Error"];
+        };
+    };
+    getWebhookDelivery: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deliveryId: components["parameters"]["DeliveryId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The delivery */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookDeliveryDetail"];
+                };
+            };
+            404: components["responses"]["Error"];
+        };
+    };
+    replayWebhookDelivery: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deliveryId: components["parameters"]["DeliveryId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Queued */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookSend"];
+                };
+            };
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            429: components["responses"]["Error"];
         };
     };
 }

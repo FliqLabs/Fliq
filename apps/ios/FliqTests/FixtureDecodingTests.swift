@@ -1,8 +1,8 @@
 import XCTest
 @testable import Fliq
 
-/// Decodes every file in spec/fixtures into the type spec/fixtures/index.json names for it,
-/// so a spec change that breaks the app fails here first.
+/// Decodes every fixture whose type the app reads, into the type spec/fixtures/index.json names for it,
+/// so a spec change that breaks the app fails here first. Schemas only the web or dashboard read are skipped.
 final class FixtureDecodingTests: XCTestCase {
     private let fixtures = FixtureClient()
 
@@ -43,9 +43,14 @@ final class FixtureDecodingTests: XCTestCase {
         XCTAssertFalse(index.isEmpty)
 
         for (file, typeName) in index {
-            let decode = try XCTUnwrap(decoders[typeName], "No Swift type mapped for \(typeName)")
+            guard let decode = decoders[typeName] else { continue }
             let name = String(file.dropLast(".json".count))
             XCTAssertNoThrow(try decode(fixtures.data(name)), "\(file) does not decode as \(typeName)")
+        }
+
+        let covered = Set(index.values)
+        for typeName in decoders.keys {
+            XCTAssertTrue(covered.contains(typeName), "No fixture in spec/fixtures for \(typeName)")
         }
     }
 

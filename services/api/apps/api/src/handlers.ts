@@ -5,7 +5,7 @@ import { createEmailLink, verifyEmailLink, type EmailSender } from "./auth/email
 import { finishLogin, finishRegistration, startLogin, startRegistration } from "./auth/passkeys.js";
 import { revokeFamily, rotateSession, toUserView } from "./auth/sessions.js";
 import type { Config } from "./config.js";
-import type { Unit } from "./db.js";
+import type { Db, Unit } from "./db.js";
 import {
   currentWorkspace,
   listKeys,
@@ -18,6 +18,7 @@ import {
 } from "./dashboard.js";
 import { requireHttpsUrl, settle } from "./errors.js";
 import { withIdempotency } from "./idempotency.js";
+import { createKey, liveAccess, revokeKey, rotateKey, type Caller, type KeyRequest } from "./keys.js";
 import type { VaultClient } from "../../../packages/chains/vault/index.js";
 import { lookupPerson, recentPeople } from "./people.js";
 import { DEFAULT_STATUS_CONFIG, statusReport, type Probe, type StatusConfig } from "./status.js";
@@ -26,6 +27,23 @@ import { deleteRecipient, listInstitutions, listRecipients, saveRecipient, verif
 import { createPayout, getPayout, type PayoutDeps, type PayoutInput } from "./payouts.js";
 import { requestQuote, type QuoteDeps, type QuoteInput } from "./quotes.js";
 import { createWorkspace } from "./workspaces.js";
+import type { Resolve } from "../../../packages/webhooks/destination.js";
+import {
+  createEndpoint,
+  deleteEndpoint,
+  getDelivery,
+  listDeliveries,
+  listEndpoints,
+  prepareEndpoint,
+  prepareUpdate,
+  replayDelivery,
+  rotateEndpointSecret,
+  sendTestEvent,
+  updateEndpoint,
+  type DeliveryFilter,
+  type EndpointRequest,
+  type EndpointUpdate,
+} from "./webhook-endpoints.js";
 
 export interface HandlerDeps {
   config: Config;
@@ -37,12 +55,25 @@ export interface HandlerDeps {
   vault: VaultClient;
   status?: { probes: readonly Probe[]; config?: StatusConfig };
   now?: () => Date;
+  // Resolves webhook hostnames when an endpoint is saved. Tests replace it; production uses the system resolver.
+  webhookResolve?: Resolve;
 }
 
 const body = <T>(request: FastifyRequest) => request.body as T;
 const auth = (request: FastifyRequest) => request.auth as NonNullable<FastifyRequest["auth"]>;
 
-export function createHandlers({ config, unit, email, provisioner, quotes, payouts, vault, status = { probes: [] }, now = () => new Date() }: HandlerDeps): Record<string, Handler> {
+export function createHandlers({ config, unit, email, provisioner, quotes, payouts, vault, status = { probes: [] }, now = () => new Date(), webhookResolve }: HandlerDeps): Record<string, Handler> {
+  const callerIn = async (tx: Db, request: FastifyRequest): Promise<Caller> => ({
+    userId: auth(request).userId,
+    workspaceId: (await currentWorkspace(tx, auth(request).userId)).id,
+    traceId: request.id,
+    keyEnvironment: config.keyEnvironment,
+    now: now(),
+  });
+  const keyId = (request: FastifyRequest) => (request.params as { keyId: string }).keyId;
+  const endpointId = (request: FastifyRequest) => (request.params as { endpointId: string }).endpointId;
+  const deliveryId = (request: FastifyRequest) => (request.params as { deliveryId: string }).deliveryId;
+
   return {
     getHealth: async () => ({ status: 200, body: { status: "ok", version: "0.1.0" } }),
 
@@ -109,6 +140,59 @@ export function createHandlers({ config, unit, email, provisioner, quotes, payou
     listKeys: async (request) => ({
       status: 200,
       body: await unit(async (tx) => listKeys(tx, (await currentWorkspace(tx, auth(request).userId)).id)),
+    }),
+    // Not behind Idempotency-Key: a stored replay would keep the plaintext key in the database for a day.
+    createKey: async (request) => ({
+      status: 201,
+      body: await unit(async (tx) => createKey(tx, await callerIn(tx, request), body<KeyRequest>(request))),
+    }),
+    revokeKey: async (request) => {
+      await unit(async (tx) => revokeKey(tx, await callerIn(tx, request), keyId(request)));
+      return { status: 204, body: undefined };
+    },
+    rotateKey: async (request) => ({
+      status: 201,
+      body: await unit(async (tx) => rotateKey(tx, await callerIn(tx, request), keyId(request))),
+    }),
+    getLiveAccess: async (request) => ({
+      status: 200,
+      body: await unit(async (tx) => liveAccess(tx, (await currentWorkspace(tx, auth(request).userId)).id, config.keyEnvironment)),
+    }),
+    listWebhookEndpoints: async (request) => ({
+      status: 200,
+      body: await unit(async (tx) => listEndpoints(tx, await callerIn(tx, request))),
+    }),
+    createWebhookEndpoint: async (request) => {
+      const prepared = await prepareEndpoint(body<EndpointRequest>(request), webhookResolve);
+      return { status: 201, body: await unit(async (tx) => createEndpoint(tx, config, await callerIn(tx, request), prepared)) };
+    },
+    updateWebhookEndpoint: async (request) => {
+      const update = await prepareUpdate(body<EndpointUpdate>(request), webhookResolve);
+      return { status: 200, body: await unit(async (tx) => updateEndpoint(tx, await callerIn(tx, request), endpointId(request), update)) };
+    },
+    deleteWebhookEndpoint: async (request) => {
+      await unit(async (tx) => deleteEndpoint(tx, await callerIn(tx, request), endpointId(request)));
+      return { status: 204, body: undefined };
+    },
+    rotateWebhookSecret: async (request) => ({
+      status: 200,
+      body: await unit(async (tx) => rotateEndpointSecret(tx, config, await callerIn(tx, request), endpointId(request))),
+    }),
+    sendWebhookTest: async (request) => ({
+      status: 202,
+      body: await unit(async (tx) => sendTestEvent(tx, config, await callerIn(tx, request), endpointId(request))),
+    }),
+    listWebhookDeliveries: async (request) => ({
+      status: 200,
+      body: await unit(async (tx) => listDeliveries(tx, await callerIn(tx, request), request.query as DeliveryFilter)),
+    }),
+    getWebhookDelivery: async (request) => ({
+      status: 200,
+      body: await unit(async (tx) => getDelivery(tx, await callerIn(tx, request), deliveryId(request))),
+    }),
+    replayWebhookDelivery: async (request) => ({
+      status: 202,
+      body: await unit(async (tx) => replayDelivery(tx, await callerIn(tx, request), deliveryId(request))),
     }),
     getOnboarding: async (request) => ({
       status: 200,

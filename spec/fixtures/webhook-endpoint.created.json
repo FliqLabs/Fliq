@@ -1,0 +1,12 @@
+{
+  "endpoint_id": "whe_4f1c8e20",
+  "url": "https://api.entrypoint.example/fliq/webhooks",
+  "description": "Production receiver",
+  "events": [],
+  "status": "active",
+  "environment": "test",
+  "created_at": "2026-10-29T13:05:00Z",
+  "updated_at": "2026-10-29T13:05:00Z",
+  "failing_since": null,
+  "secret": "whsec_demo0000000000000000000000000000000000000"
+}
