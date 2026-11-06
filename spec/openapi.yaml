@@ -22,6 +22,20 @@ tags:
     description: Banks and account verification
   - name: payouts
     description: Create and track payouts
+  - name: status
+    description: Public health of services and providers
+  - name: vault
+    description: The user's vault balance
+  - name: people
+    description: Other fliq users, for paying by name
+  - name: recipients
+    description: Saved accounts the user pays often
+  - name: auth
+    description: Passkey and email-link sign-in, sessions
+  - name: accounts
+    description: The signed-in user, their fliq name and profile
+  - name: workspaces
+    description: Developer workspaces and sandbox keys
 paths:
   /health:
     get:
@@ -73,6 +87,200 @@ paths:
           $ref: "#/components/responses/Error"
         "401":
           $ref: "#/components/responses/Error"
+  /quotes:
+    post:
+      operationId: requestQuote
+      summary: Quote every provider and rank the routes
+      description: Runs every eligible provider in parallel under a 1.5 second budget. The best route is returned as the quote and every route is stored with its score breakdown.
+      tags: [quotes]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QuoteRequest"
+      responses:
+        "200":
+          description: The ranked quote. It holds until expires_in runs out.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Quote"
+        "400":
+          $ref: "#/components/responses/Error"
+        "422":
+          description: No provider can pay this out right now
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /institutions:
+    get:
+      operationId: listInstitutions
+      summary: Banks and mobile-money providers for a country
+      tags: [institutions]
+      security: []
+      parameters:
+        - name: country
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [ng, ke, gh, id, ph]
+            default: ng
+      responses:
+        "200":
+          description: Institutions the app can offer, with the logo key to show
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InstitutionList"
+        "400":
+          $ref: "#/components/responses/Error"
+  /accounts/verify:
+    post:
+      operationId: verifyAccountName
+      summary: Ask the bank for the name on an account
+      tags: [institutions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccountLookup"
+      responses:
+        "200":
+          description: The name as returned by the bank
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerifiedAccount"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+  /recipients:
+    get:
+      operationId: listRecipients
+      summary: The user's saved recipients, newest first
+      tags: [recipients]
+      responses:
+        "200":
+          description: Saved recipients. Account numbers are never returned in full.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecipientList"
+    post:
+      operationId: saveRecipient
+      summary: Verify an account with the bank and save it
+      description: Saving an account that is already saved returns the existing recipient.
+      tags: [recipients]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccountLookup"
+      responses:
+        "201":
+          description: Saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Recipient"
+        "200":
+          description: Already saved, the existing recipient
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Recipient"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+  /recipients/{recipientId}:
+    delete:
+      operationId: deleteRecipient
+      summary: Remove a saved recipient
+      tags: [recipients]
+      parameters:
+        - name: recipientId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Removed
+        "404":
+          $ref: "#/components/responses/Error"
+  /status:
+    get:
+      operationId: getStatus
+      summary: Service and provider health for the status page
+      description: |
+        Each component has one entry per UTC calendar day for the last 60 days, oldest first, and a current state.
+        A day is an outage when 5% or more of its checks failed, degraded when any check was not clean, operational otherwise,
+        and no_data when nothing ran. Incidents open after three failed checks in a row and close after three clean ones.
+        Cached for 10 seconds.
+      tags: [status]
+      security: []
+      responses:
+        "200":
+          description: Components with their daily bars, and recent incidents, newest first
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusReport"
+  /vault:
+    get:
+      operationId: getVaultBalance
+      summary: The user's vault balance, free and reserved
+      description: The chain is authoritative. in_sync says whether the ledger mirror agrees with it.
+      tags: [vault]
+      responses:
+        "200":
+          description: Balance in USDC as decimal strings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VaultBalance"
+        "404":
+          $ref: "#/components/responses/Error"
+  /people/recent:
+    get:
+      operationId: listRecentPeople
+      summary: People on fliq the user has paid, most recent first
+      tags: [people]
+      responses:
+        "200":
+          description: Up to 10 people
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecentPeopleList"
+  /people/{name}:
+    get:
+      operationId: lookupPerson
+      summary: Find a person on fliq by name before paying them
+      tags: [people]
+      parameters:
+        - name: name
+          in: path
+          required: true
+          description: A fliq name such as tobi, or the full account tobi.fliq.near
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Who the name belongs to
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Person"
+        "404":
+          $ref: "#/components/responses/Error"
   /institutions/verify:
     post:
       operationId: verifyAccount
@@ -94,6 +302,34 @@ paths:
         "404":
           $ref: "#/components/responses/Error"
   /payouts:
+    get:
+      operationId: listPayouts
+      summary: List the workspace's payouts, newest first
+      tags: [payouts]
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 25
+        - name: cursor
+          in: query
+          required: false
+          description: next_cursor from the previous page
+          schema:
+            type: string
+      responses:
+        "200":
+          description: One page of payouts. Empty for a new workspace.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PayoutList"
+        "400":
+          $ref: "#/components/responses/Error"
     post:
       operationId: createPayout
       summary: Create a payout
@@ -111,6 +347,8 @@ paths:
             schema:
               $ref: "#/components/schemas/PayoutRequest"
       responses:
+        "400":
+          $ref: "#/components/responses/Error"
         "201":
           description: Payout created, waiting for the deposit
           content:
@@ -125,6 +363,28 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Refusal"
+  /payouts/stats:
+    get:
+      operationId: getPayoutStats
+      summary: Today's payout numbers for the dashboard cards
+      description: Timestamps are stored in UTC. "Today" is the calendar day in the tz query parameter.
+      tags: [payouts]
+      parameters:
+        - name: tz
+          in: query
+          required: false
+          description: IANA time zone of the person looking, for example Africa/Lagos. Defaults to UTC.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Settled and refused payouts today, and the median time to the bank
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PayoutStats"
+        "400":
+          $ref: "#/components/responses/Error"
   /payouts/{payoutId}:
     get:
       operationId: getPayout
@@ -145,13 +405,296 @@ paths:
                 $ref: "#/components/schemas/Payout"
         "404":
           $ref: "#/components/responses/Error"
+  /auth/passkeys/register/options:
+    post:
+      operationId: startPasskeyRegistration
+      summary: Start creating a passkey for a new user
+      tags: [auth]
+      security: []
+      responses:
+        "200":
+          description: WebAuthn creation options and the challenge to sign
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PasskeyOptions"
+  /auth/passkeys/register/verify:
+    post:
+      operationId: finishPasskeyRegistration
+      summary: Finish passkey registration and open a session
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasskeyCredential"
+      responses:
+        "201":
+          description: User created and signed in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "400":
+          $ref: "#/components/responses/Error"
+  /auth/passkeys/login/options:
+    post:
+      operationId: startPasskeyLogin
+      summary: Start signing in with an existing passkey
+      tags: [auth]
+      security: []
+      responses:
+        "200":
+          description: WebAuthn request options and the challenge to sign
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PasskeyOptions"
+  /auth/passkeys/login/verify:
+    post:
+      operationId: finishPasskeyLogin
+      summary: Finish passkey sign-in and open a session
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasskeyCredential"
+      responses:
+        "200":
+          description: Signed in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "401":
+          $ref: "#/components/responses/Error"
+  /auth/email-links:
+    post:
+      operationId: sendEmailLink
+      summary: Email a one-time sign-in link
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmailLinkRequest"
+      responses:
+        "202":
+          description: Accepted. The response is identical whether or not the email has an account.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailLinkSent"
+        "429":
+          $ref: "#/components/responses/Error"
+  /auth/email-links/verify:
+    post:
+      operationId: verifyEmailLink
+      summary: Exchange a sign-in link token for a session
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmailLinkToken"
+      responses:
+        "200":
+          description: Signed in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "401":
+          $ref: "#/components/responses/Error"
+  /auth/refresh:
+    post:
+      operationId: refreshSession
+      summary: Rotate the refresh token and get a new access token
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshRequest"
+      responses:
+        "200":
+          description: New tokens. Reusing an old refresh token revokes the whole session family.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "401":
+          $ref: "#/components/responses/Error"
+  /auth/logout:
+    post:
+      operationId: logout
+      summary: Revoke the current session
+      tags: [auth]
+      responses:
+        "204":
+          description: Session revoked
+  /me:
+    get:
+      operationId: getMe
+      summary: The signed-in user
+      tags: [accounts]
+      responses:
+        "200":
+          description: The user, with their fliq name once claimed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Error"
+    patch:
+      operationId: updateMe
+      summary: Set the display name and what the user does
+      tags: [accounts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProfileUpdate"
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          $ref: "#/components/responses/Error"
+  /names/{name}:
+    get:
+      operationId: checkName
+      summary: Is a fliq name free to claim
+      tags: [accounts]
+      parameters:
+        - name: name
+          in: path
+          required: true
+          description: The label before .fliq.near
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Availability of the name
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NameAvailability"
+  /me/name:
+    post:
+      operationId: claimName
+      summary: Claim a fliq name and create the NEAR account and vault behind it
+      tags: [accounts]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClaimNameRequest"
+      responses:
+        "201":
+          description: Name claimed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "409":
+          $ref: "#/components/responses/Error"
+  /workspaces:
+    post:
+      operationId: createWorkspace
+      summary: Create a developer workspace and its first sandbox key
+      tags: [workspaces]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkspaceRequest"
+      responses:
+        "201":
+          description: Workspace created. The sandbox key is shown once.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceCreated"
+        "400":
+          $ref: "#/components/responses/Error"
+  /workspaces/current:
+    get:
+      operationId: getCurrentWorkspace
+      summary: The signed-in user's workspace
+      tags: [workspaces]
+      responses:
+        "200":
+          description: The workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workspace"
+        "404":
+          $ref: "#/components/responses/Error"
+  /keys:
+    get:
+      operationId: listKeys
+      summary: API keys of the workspace, masked
+      tags: [workspaces]
+      responses:
+        "200":
+          description: Active keys. The full key is only shown at creation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KeyList"
+        "404":
+          $ref: "#/components/responses/Error"
+  /onboarding:
+    get:
+      operationId: getOnboarding
+      summary: Progress through the dashboard's getting-started steps
+      tags: [workspaces]
+      responses:
+        "200":
+          description: Each step and whether it is done
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Onboarding"
+        "404":
+          $ref: "#/components/responses/Error"
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
-      description: rt_test_ keys for sandbox, rt_live_ keys after KYB
+      description: rt_test_ keys for sandbox, rt_live_ keys after KYB. Signed-in users send their access token the same way.
   parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
     Token:
       name: token
       in: path
@@ -165,7 +708,7 @@ components:
       required: true
       schema:
         type: string
-        enum: [ngn, kes]
+        enum: [ngn, kes, ghs, idr, php]
   responses:
     Error:
       description: Error
@@ -185,7 +728,7 @@ components:
           type: string
     ProviderId:
       type: string
-      enum: [paycrest, busha, fonbnk, bitnob]
+      enum: [paycrest, busha, fonbnk, bitnob, transfi, mock]
     ProviderStatus:
       type: string
       enum: [live, stale, paused]
@@ -247,10 +790,26 @@ components:
           enum: [usdc, usdt]
         currency:
           type: string
-          enum: [ngn, kes]
+          enum: [ngn, kes, ghs, idr, php]
         amount:
           type: string
-          description: Token amount as a decimal string, never a float
+          description: Token amount as a decimal string, never a float. With mode receive it is the local amount the recipient gets.
+        payout_type:
+          type: string
+          enum: [bank, mobile_money]
+          default: bank
+        source_chain:
+          type: string
+          description: Chain the funds start on. Defaults to near, the vault's chain.
+        mode:
+          type: string
+          enum: [send, receive]
+          default: send
+          description: send fixes what the sender pays, receive fixes what the recipient gets
+        preference:
+          type: string
+          enum: [best_rate, most_reliable, fastest]
+          default: best_rate
     Fees:
       type: object
       required: [provider, network, total]
@@ -276,6 +835,26 @@ components:
           type: integer
         routed:
           type: boolean
+        receive:
+          type: integer
+          description: Whole local currency units this route would pay
+        fee:
+          type: integer
+          description: Total fees of this route in minor units of the local currency
+        eta_seconds:
+          type: integer
+        on_time_percent:
+          type: integer
+          description: Smoothed 30-day success rate
+        less_than_best:
+          type: integer
+          description: Whole local currency units below the best route, 0 for the best
+        via_intents:
+          type: boolean
+          description: True when the money crosses chains through NEAR Intents before reaching the provider
+        not_offered_reason:
+          type: [string, "null"]
+          enum: [breaker_open, timeout, error, half_open_over_limit, null]
     Quote:
       type: object
       required:
@@ -321,6 +900,12 @@ components:
             $ref: "#/components/schemas/Route"
         expires_in:
           type: integer
+        eta_seconds:
+          type: integer
+          description: Estimated seconds until the money lands, from the chosen route
+        saving_vs_next:
+          type: integer
+          description: Whole local currency units the chosen route pays over the next best, 0 when there is only one
     Account:
       type: object
       required: [bank, number]
@@ -340,6 +925,9 @@ components:
               type: string
             institution:
               type: string
+            name_verified:
+              type: boolean
+              description: False when the sender supplied the name because the bank could not look it up
     PayoutRequest:
       type: object
       required: [quote_id, account]
@@ -348,9 +936,33 @@ components:
           type: string
         account:
           $ref: "#/components/schemas/Account"
+        client_reference:
+          type: string
+          description: Your own reference. Unique per account, so a second payout with the same one is refused.
+        refund_address:
+          type: string
+          description: Where a failed payout is refunded. Defaults to the signed-in user's fliq name.
+        account_name:
+          type: string
+          description: Only needed when the bank cannot return a name for the account.
     PayoutState:
       type: string
-      enum: [awaiting_deposit, deposit_seen, paying_out, settled, refused, refunded, not_received]
+      enum:
+        - created
+        - provider_timeout
+        - awaiting_recon
+        - awaiting_deposit
+        - deposit_seen
+        - routing
+        - with_provider
+        - paying_out
+        - settled
+        - refunding
+        - refunded
+        - expired
+        - failed
+        - refused
+        - not_received
     StateChange:
       type: object
       required: [state, at]
@@ -451,3 +1063,491 @@ components:
       properties:
         error:
           $ref: "#/components/schemas/ErrorBody"
+        quote:
+          $ref: "#/components/schemas/Quote"
+          description: Only with the quote_changed error. A fresh quote to confirm, since the rate moved and nothing was sent.
+    PasskeyOptions:
+      type: object
+      required: [challenge_id, options]
+      properties:
+        challenge_id:
+          type: string
+          description: Send back with the signed credential
+        options:
+          type: object
+          additionalProperties: true
+          description: WebAuthn PublicKeyCredentialCreationOptions or RequestOptions as JSON
+    PasskeyCredential:
+      type: object
+      required: [challenge_id, credential]
+      properties:
+        challenge_id:
+          type: string
+        credential:
+          type: object
+          additionalProperties: true
+          description: WebAuthn attestation or assertion as JSON
+    EmailLinkRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+    EmailLinkSent:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [sent]
+    EmailLinkToken:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+    RefreshRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token:
+          type: string
+    User:
+      type: object
+      required: [user_id, near_account, display_name, photo_url, occupation, vault]
+      properties:
+        photo_url:
+          type: [string, "null"]
+          description: https URL of the profile photo the client uploaded to storage
+        user_id:
+          type: string
+        near_account:
+          type: [string, "null"]
+          description: The claimed name, for example frank.fliq.near. Null until a name is claimed.
+        display_name:
+          type: [string, "null"]
+        occupation:
+          type: [string, "null"]
+        vault:
+          type: [string, "null"]
+          description: Vault contract account holding the user's balance. Null until a name is claimed.
+    Session:
+      type: object
+      required: [access_token, expires_in, refresh_token, user]
+      properties:
+        access_token:
+          type: string
+        expires_in:
+          type: integer
+          description: Seconds until the access token expires
+        refresh_token:
+          type: string
+        user:
+          $ref: "#/components/schemas/User"
+    NameAvailability:
+      type: object
+      required: [name, available, reason]
+      properties:
+        name:
+          type: string
+          description: Full name, for example frank.fliq.near
+        available:
+          type: boolean
+        reason:
+          type: [string, "null"]
+          enum: [taken, invalid, reserved, null]
+    ClaimNameRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          description: The label before .fliq.near
+    ProfileUpdate:
+      type: object
+      properties:
+        photo_url:
+          type: [string, "null"]
+          format: uri
+          maxLength: 2048
+          description: https URL of the uploaded photo, or null to remove it
+        display_name:
+          type: string
+        occupation:
+          type: [string, "null"]
+    WorkspaceUseCase:
+      type: string
+      enum: [wallet, payroll, marketplace, agent, other]
+    PayoutCountry:
+      type: string
+      enum: [ng, ke, gh, id, ph]
+    WorkspaceRequest:
+      type: object
+      required: [name, use_case, countries]
+      properties:
+        name:
+          type: string
+        use_case:
+          $ref: "#/components/schemas/WorkspaceUseCase"
+        countries:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/PayoutCountry"
+    Workspace:
+      type: object
+      required: [workspace_id, name, use_case, countries, live_enabled]
+      properties:
+        live_enabled:
+          type: boolean
+          description: False until the business passes KYB
+        workspace_id:
+          type: string
+        name:
+          type: string
+        use_case:
+          $ref: "#/components/schemas/WorkspaceUseCase"
+        countries:
+          type: array
+          items:
+            $ref: "#/components/schemas/PayoutCountry"
+    SandboxKey:
+      type: object
+      required: [key_id, key]
+      properties:
+        key_id:
+          type: string
+        key:
+          type: string
+          description: Starts with rt_test_. Returned once and never again.
+    WorkspaceCreated:
+      type: object
+      required: [workspace, sandbox_key]
+      properties:
+        workspace:
+          $ref: "#/components/schemas/Workspace"
+        sandbox_key:
+          $ref: "#/components/schemas/SandboxKey"
+    ApiKeyView:
+      type: object
+      required: [key_id, environment, masked, created_at]
+      properties:
+        key_id:
+          type: string
+        environment:
+          type: string
+          enum: [test, live]
+        masked:
+          type: string
+          description: First characters and last four, for example rt_test_7Kp2...c9Qe
+        created_at:
+          type: string
+          format: date-time
+    KeyList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ApiKeyView"
+    OnboardingStep:
+      type: object
+      required: [id, done]
+      properties:
+        id:
+          type: string
+          enum: [create_test_payout, add_webhook, go_live]
+        done:
+          type: boolean
+    Onboarding:
+      type: object
+      required: [steps]
+      properties:
+        steps:
+          type: array
+          items:
+            $ref: "#/components/schemas/OnboardingStep"
+    Bank:
+      type: object
+      required: [code, name]
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+    PayoutSummary:
+      type: object
+      required: [payout_id, state, account_name, bank, account_last4, amount, receive, currency, provider, created_at]
+      properties:
+        payout_id:
+          type: string
+        state:
+          $ref: "#/components/schemas/PayoutState"
+        account_name:
+          type: string
+        bank:
+          $ref: "#/components/schemas/Bank"
+        account_last4:
+          type: string
+        amount:
+          type: string
+          description: Token amount as a decimal string
+        receive:
+          type: integer
+          description: Whole local currency units
+        currency:
+          type: string
+        provider:
+          $ref: "#/components/schemas/ProviderId"
+        created_at:
+          type: string
+          format: date-time
+    PayoutList:
+      type: object
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PayoutSummary"
+        next_cursor:
+          type: [string, "null"]
+    CurrencyTotal:
+      type: object
+      required: [currency, amount]
+      properties:
+        currency:
+          type: string
+        amount:
+          type: integer
+          description: Whole local currency units
+    PayoutCount:
+      type: object
+      required: [count, totals]
+      properties:
+        count:
+          type: integer
+        totals:
+          type: array
+          items:
+            $ref: "#/components/schemas/CurrencyTotal"
+    PayoutStats:
+      type: object
+      required: [timezone, window, settled, median_seconds_to_bank, refused]
+      properties:
+        timezone:
+          type: string
+        window:
+          type: object
+          required: [start, end]
+          description: The day being counted, as UTC instants
+          properties:
+            start:
+              type: string
+              format: date-time
+            end:
+              type: string
+              format: date-time
+        settled:
+          $ref: "#/components/schemas/PayoutCount"
+        median_seconds_to_bank:
+          type: [number, "null"]
+          description: Median seconds from deposit seen to the bank credit, for payouts settled today
+        refused:
+          $ref: "#/components/schemas/PayoutCount"
+    AccountLookup:
+      type: object
+      required: [bank, number]
+      properties:
+        bank:
+          type: string
+          description: Institution code, for example 058 for GTBank
+        number:
+          type: string
+        country:
+          type: string
+          enum: [ng, ke, gh, id, ph]
+          default: ng
+        account_name:
+          type: string
+          description: Only needed when the bank cannot return a name for the account. Then name_verified is false.
+    Institution:
+      type: object
+      required: [code, name, type, country, logo_key]
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+          enum: [bank, mobile_money]
+        country:
+          type: string
+        logo_key:
+          type: [string, "null"]
+          description: Names the logo asset the apps ship
+    InstitutionList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Institution"
+    RecipientBank:
+      type: object
+      required: [code, name, logo_key]
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        logo_key:
+          type: [string, "null"]
+    Recipient:
+      type: object
+      required: [recipient_id, account_name, bank, account_last4, created_at]
+      properties:
+        recipient_id:
+          type: string
+        account_name:
+          type: string
+        bank:
+          $ref: "#/components/schemas/RecipientBank"
+        account_last4:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    RecipientList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Recipient"
+    VaultBalance:
+      type: object
+      required: [account, available, reserved, total, in_sync]
+      properties:
+        account:
+          type: string
+        available:
+          type: string
+          description: USDC free to spend, as a decimal string
+        reserved:
+          type: string
+          description: USDC held for registered, unexecuted orders
+        total:
+          type: string
+        in_sync:
+          type: boolean
+          description: False when the ledger mirror disagrees with the chain
+    Person:
+      type: object
+      required: [near_account, display_name, photo_url, member_since]
+      properties:
+        near_account:
+          type: string
+        display_name:
+          type: [string, "null"]
+        photo_url:
+          type: [string, "null"]
+        member_since:
+          type: string
+          format: date-time
+    RecentPerson:
+      allOf:
+        - $ref: "#/components/schemas/Person"
+        - type: object
+          required: [last_paid_at]
+          properties:
+            last_paid_at:
+              type: string
+              format: date-time
+    RecentPeopleList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecentPerson"
+    StatusDay:
+      type: object
+      required: [date, status, checks, uptime_percent]
+      properties:
+        date:
+          type: string
+          format: date
+          description: UTC calendar day
+        status:
+          type: string
+          enum: [operational, degraded, outage, no_data]
+        checks:
+          type: integer
+        uptime_percent:
+          type: [number, "null"]
+          description: Share of checks that answered, slow or not. Null when nothing ran.
+    StatusComponent:
+      type: object
+      required: [id, name, kind, state, days]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        kind:
+          type: string
+          enum: [service, provider]
+        state:
+          type: string
+          enum: [healthy, degraded, down, unknown]
+          description: unknown when the last check is more than five minutes old
+        days:
+          type: array
+          items:
+            $ref: "#/components/schemas/StatusDay"
+    StatusIncident:
+      type: object
+      required: [incident_id, component, title, impact, state, summary, started_at, resolved_at]
+      properties:
+        incident_id:
+          type: string
+        component:
+          type: string
+        title:
+          type: string
+        impact:
+          type: string
+          enum: [degraded, outage]
+        state:
+          type: string
+          enum: [open, resolved]
+        summary:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        resolved_at:
+          type: [string, "null"]
+          format: date-time
+    StatusReport:
+      type: object
+      required: [updated_at, components, incidents]
+      properties:
+        updated_at:
+          type: string
+          format: date-time
+        components:
+          type: array
+          items:
+            $ref: "#/components/schemas/StatusComponent"
+        incidents:
+          type: array
+          items:
+            $ref: "#/components/schemas/StatusIncident"
