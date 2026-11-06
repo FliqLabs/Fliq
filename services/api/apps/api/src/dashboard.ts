@@ -4,6 +4,7 @@ import type { Config } from "./config.js";
 import type { Db } from "./db.js";
 import { invalidRequest, notFound } from "./errors.js";
 import { institutionName } from "./institutions.js";
+import { keyView } from "./keys.js";
 
 type WorkspaceRow = Prisma.WorkspaceGetPayload<object>;
 
@@ -23,14 +24,7 @@ export async function currentWorkspace(db: Db, userId: string): Promise<Workspac
 
 export async function listKeys(db: Db, workspaceId: string) {
   const keys = await db.apiKey.findMany({ where: { workspaceId, revokedAt: null }, orderBy: { createdAt: "desc" } });
-  return {
-    items: keys.map((key) => ({
-      key_id: key.id,
-      environment: key.environment,
-      masked: `${key.prefix}...${key.last4}`,
-      created_at: key.createdAt.toISOString(),
-    })),
-  };
+  return { items: keys.map(keyView) };
 }
 
 export async function onboardingProgress(db: Db, workspaceId: string) {

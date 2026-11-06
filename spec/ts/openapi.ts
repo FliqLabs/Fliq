@@ -529,6 +529,70 @@ export interface paths {
         /** API keys of the workspace, masked */
         get: operations["listKeys"];
         put?: never;
+        /**
+         * Create an API key. The full key is in this response only.
+         * @description Needs a signed-in session; API keys cannot create keys. Each deployment issues one environment (sandbox issues test, production issues live), and live keys also need an approved KYB review. There is no Idempotency-Key, so a stored replay never holds the plaintext key; a double submit makes two keys.
+         */
+        post: operations["createKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/keys/{keyId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke an API key. It stops authenticating at once.
+         * @description Needs a signed-in session. Revoking a revoked key succeeds and changes nothing.
+         */
+        delete: operations["revokeKey"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/keys/{keyId}/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replace an API key with a new one of the same name and environment
+         * @description Needs a signed-in session. The old key stops working in the same moment the new one is created.
+         */
+        post: operations["rotateKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workspaces/current/live-access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Whether the workspace can use live keys, for the Go live screen
+         * @description Read only. Live access needs an approved KYB review, and no review process exists yet, so live_enabled is false for every workspace and kyb_status is not_started.
+         */
+        get: operations["getLiveAccess"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -825,6 +889,47 @@ export interface components {
             masked: string;
             /** Format: date-time */
             created_at: string;
+            /** @description Keys made with the workspace are called Sandbox key */
+            name?: string;
+            /** @enum {string} */
+            status?: "active" | "revoked";
+            /**
+             * Format: date-time
+             * @description Updated at most once a minute
+             */
+            last_used_at?: string | null;
+        };
+        KeyRequest: {
+            name: string;
+            /** @enum {string} */
+            environment: "test" | "live";
+        };
+        KeyCreated: {
+            key_id: string;
+            name: string;
+            /** @enum {string} */
+            environment: "test" | "live";
+            masked: string;
+            /** @enum {string} */
+            status: "active" | "revoked";
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            last_used_at: string | null;
+            /** @description The full key. Returned once and never again. */
+            key: string;
+        };
+        LiveAccess: {
+            live_enabled: boolean;
+            /** @enum {string} */
+            kyb_status: "not_started" | "submitted" | "in_review" | "approved" | "rejected";
+            /**
+             * @description Sandbox and production are separate deployments; each issues and accepts one key environment
+             * @enum {string}
+             */
+            deployment_environment: "test" | "live";
+            test_keys_allowed: boolean;
+            live_keys_allowed: boolean;
         };
         KeyList: {
             items: components["schemas"]["ApiKeyView"][];
@@ -1804,6 +1909,125 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["KeyList"];
+                };
+            };
+            404: components["responses"]["Error"];
+        };
+    };
+    createKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KeyRequest"];
+            };
+        };
+        responses: {
+            /** @description The key. Store it now; it is never shown again. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeyCreated"];
+                };
+            };
+            400: components["responses"]["Error"];
+            /** @description live_not_enabled, the workspace has not passed KYB */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            404: components["responses"]["Error"];
+            /** @description limit_reached, the workspace already holds 20 active keys */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description environment_unavailable, this deployment does not issue that environment */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    revokeKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                keyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["Error"];
+        };
+    };
+    rotateKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                keyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The replacement key, shown once */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeyCreated"];
+                };
+            };
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    getLiveAccess: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Live access and KYB state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiveAccess"];
                 };
             };
             404: components["responses"]["Error"];
