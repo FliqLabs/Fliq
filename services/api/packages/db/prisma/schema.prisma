@@ -178,6 +178,7 @@ model PayoutEvent {
   payout    Payout      @relation(fields: [payoutId], references: [id])
 
   @@unique([payoutId, version])
+  @@index([createdAt])
   @@map("payout_events")
   @@schema("core")
 }
@@ -562,8 +563,16 @@ model WebhookEndpoint {
   // AES-256-GCM ciphertext of the signing secret. Encrypted, not hashed: every delivery is signed with it.
   secretCipher Bytes                 @map("secret_cipher")
   status       WebhookEndpointStatus @default(active)
+  // Event types this endpoint receives; empty means all.
+  events       String[]              @default([])
+  description  String?               @db.Text
+  // After a secret rotation the old secret also signs, until it expires (ARCH §16.2 overlap).
+  previousSecretCipher    Bytes?     @map("previous_secret_cipher")
+  previousSecretExpiresAt DateTime?  @map("previous_secret_expires_at") @db.Timestamptz(6)
   createdAt    DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime              @default(now()) @map("updated_at") @db.Timestamptz(6)
   failingSince DateTime?             @map("failing_since") @db.Timestamptz(6)
+  deletedAt    DateTime?             @map("deleted_at") @db.Timestamptz(6)
   workspace    Workspace             @relation(fields: [workspaceId], references: [id])
   deliveries   WebhookDelivery[]
 
@@ -578,7 +587,7 @@ model WebhookDelivery {
   endpointId         String                @map("endpoint_id") @db.Text
   eventId            String                @map("event_id") @db.Text
   eventType          String                @map("event_type") @db.Text
-  payoutId           String                @map("payout_id") @db.Text
+  payoutId           String?               @map("payout_id") @db.Text
   payload            Json
   status             WebhookDeliveryStatus @default(pending)
   attempts           Int                   @default(0)
@@ -592,11 +601,29 @@ model WebhookDelivery {
   endpoint           WebhookEndpoint       @relation(fields: [endpointId], references: [id])
   replayOf           WebhookDelivery?      @relation("DeliveryReplay", fields: [replayOfId], references: [id])
   replays            WebhookDelivery[]     @relation("DeliveryReplay")
+  history            WebhookAttempt[]
 
   @@index([endpointId, createdAt])
   @@index([status, nextAttemptAt])
   @@index([eventId])
+  @@index([payoutId])
   @@map("webhook_deliveries")
+  @@schema("developer")
+}
+
+// One row per HTTP attempt of a delivery. error_kind is a category, never a response body.
+model WebhookAttempt {
+  id             String          @id @db.Text
+  deliveryId     String          @map("delivery_id") @db.Text
+  attempt        Int
+  startedAt      DateTime        @map("started_at") @db.Timestamptz(6)
+  durationMs     Int             @map("duration_ms")
+  responseStatus Int?            @map("response_status")
+  errorKind      String?         @map("error_kind") @db.Text
+  delivery       WebhookDelivery @relation(fields: [deliveryId], references: [id])
+
+  @@index([deliveryId])
+  @@map("webhook_attempts")
   @@schema("developer")
 }
 

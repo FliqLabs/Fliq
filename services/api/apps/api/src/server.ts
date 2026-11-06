@@ -16,6 +16,8 @@ import { createLimiter } from "./rate-limit.js";
 import { sandboxAdapters } from "./sandbox.js";
 import { startHealthChecks, type Probe } from "./status.js";
 import { createWebhookHandler } from "./webhooks.js";
+import { startWebhookDelivery } from "./webhook-delivery.js";
+import { httpsTransport } from "../../../packages/webhooks/transport.js";
 
 const config = loadConfig();
 const unit = unitOf(createDatabase());
@@ -83,3 +85,8 @@ const app = buildApp({ config, unit, handlers, logger: true, limiter: createLimi
   webhooks: createWebhookHandler({ unit, adapters, dataKey: config.dataKey }) });
 await app.listen({ port: config.port, host: "0.0.0.0" });
 startHealthChecks(unit, probes, Number(process.env.HEALTH_CHECK_INTERVAL_MS ?? 60_000));
+startWebhookDelivery(
+  { unit, config, transport: httpsTransport(), now: () => new Date() },
+  Number(process.env.WEBHOOK_POLL_INTERVAL_MS ?? 2_000),
+  (message) => app.log.error(message),
+);

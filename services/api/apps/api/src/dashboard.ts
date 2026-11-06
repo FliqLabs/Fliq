@@ -29,10 +29,11 @@ export async function listKeys(db: Db, workspaceId: string) {
 
 export async function onboardingProgress(db: Db, workspaceId: string) {
   const payouts = await db.payout.count({ where: { developerId: workspaceId } });
+  const endpoints = await db.webhookEndpoint.count({ where: { workspaceId, deletedAt: null } });
   return {
     steps: [
       { id: "create_test_payout", done: payouts > 0 },
-      { id: "add_webhook", done: false },
+      { id: "add_webhook", done: endpoints > 0 },
       { id: "go_live", done: false },
     ],
   };
@@ -55,6 +56,22 @@ function decodeCursor(cursor: string): { createdAt: Date; id: string } {
   return { createdAt, id };
 }
 
+type PayoutWithRecipient = Prisma.PayoutGetPayload<{ include: { recipient: true } }>;
+
+// The masked view: the list, the CSV export and outbound webhooks never carry a full account number.
+export const payoutSummary = (row: PayoutWithRecipient, config: Config) => ({
+  payout_id: row.id,
+  state: row.state,
+  account_name: decrypt(row.recipient.nameCipher, config.dataKey),
+  bank: { code: row.recipient.institutionCode, name: institutionName(row.recipient.institutionCode) },
+  account_last4: decrypt(row.recipient.accountCipher, config.dataKey).slice(-4),
+  amount: formatTokenAmount(row.amountIn),
+  receive: Number(row.amountOutMinor / 100n),
+  currency: row.currency,
+  provider: row.provider,
+  created_at: row.createdAt.toISOString(),
+});
+
 export async function listPayouts(db: Db, config: Config, workspaceId: string, limit: number, cursor: string | undefined) {
   const after = cursor ? decodeCursor(cursor) : undefined;
   const rows = await db.payout.findMany({
@@ -71,18 +88,7 @@ export async function listPayouts(db: Db, config: Config, workspaceId: string, l
   const page = rows.slice(0, limit);
   const last = page.at(-1);
   return {
-    items: page.map((row) => ({
-      payout_id: row.id,
-      state: row.state,
-      account_name: decrypt(row.recipient.nameCipher, config.dataKey),
-      bank: { code: row.recipient.institutionCode, name: institutionName(row.recipient.institutionCode) },
-      account_last4: decrypt(row.recipient.accountCipher, config.dataKey).slice(-4),
-      amount: formatTokenAmount(row.amountIn),
-      receive: Number(row.amountOutMinor / 100n),
-      currency: row.currency,
-      provider: row.provider,
-      created_at: row.createdAt.toISOString(),
-    })),
+    items: page.map((row) => payoutSummary(row, config)),
     next_cursor: rows.length > limit && last ? encodeCursor(last.createdAt, last.id) : null,
   };
 }
