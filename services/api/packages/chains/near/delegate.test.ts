@@ -1,7 +1,7 @@
 import { actions } from "near-api-js";
 import { describe, expect, it } from "vitest";
 import { checkPolicy, DelegateError, PolicyError, verifySignedDelegate, type RelayPolicy } from "./index";
-import { newUser, signDelegate, TGAS, USDC, VAULT } from "./near.fixtures";
+import { newUser, PAYOUT_ARGS, signDelegate, TGAS, USDC, VAULT } from "./near.fixtures";
 
 const policy: RelayPolicy = { vaultContractId: VAULT, usdcContractId: USDC };
 const ada = newUser("ada.fliq.testnet");
@@ -73,7 +73,11 @@ describe("verifySignedDelegate", () => {
 
 describe("checkPolicy", () => {
   it.each([
-    ["a vault payout", { methodName: "payout", args: { order_id: "po_1" } }],
+    ["a vault payout", { methodName: "payout", args: PAYOUT_ARGS }],
+    [
+      "a vault payout with a numeric amount",
+      { methodName: "payout", args: { ...PAYOUT_ARGS, amount: 50_000_000 } },
+    ],
     ["a vault order release", { methodName: "release_order", args: { order_id: "po_1" } }],
     [
       "a USDC top-up into the vault",
@@ -97,10 +101,18 @@ describe("checkPolicy", () => {
     ["a deposit on payout", { deposit: 1n }],
     ["more than 100 Tgas", { gas: 101n * TGAS }],
     ["zero gas", { gas: 0n }],
-    ["extra arguments", { args: { order_id: "po_1", amount: "1" } }],
-    ["a missing order id", { args: {} }],
-    ["a numeric order id", { args: { order_id: 7 } }],
-    ["an over-long order id", { args: { order_id: "x".repeat(65) } }],
+    ["extra arguments", { args: { ...PAYOUT_ARGS, memo: "x" } }],
+    ["a payout without amount or destination", { args: { order_id: "po_1" } }],
+    ["a missing order id", { args: { amount: "1", deposit_address: "pay.paycrest.testnet" } }],
+    ["a numeric order id", { args: { ...PAYOUT_ARGS, order_id: 7 } }],
+    ["an over-long order id", { args: { ...PAYOUT_ARGS, order_id: "x".repeat(65) } }],
+    ["a zero amount", { args: { ...PAYOUT_ARGS, amount: "0" } }],
+    ["a fractional amount", { args: { ...PAYOUT_ARGS, amount: 1.5 } }],
+    ["an unsafe numeric amount", { args: { ...PAYOUT_ARGS, amount: 2 ** 60 } }],
+    [
+      "a destination that is not an account id",
+      { args: { ...PAYOUT_ARGS, deposit_address: "Not An Account" } },
+    ],
     [
       "USDC sent anywhere but the vault",
       {
