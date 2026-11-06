@@ -1,3 +1,4 @@
+use crate::errors;
 use crate::types::PayoutCaller;
 use near_sdk::borsh::{BorshDeserialize, BorshSerialize, from_slice, to_vec};
 use near_sdk::{AccountId, env};
@@ -22,10 +23,10 @@ pub fn evaluate_payout(
     _corridor: &str,
 ) -> Result<(), String> {
     if caller.account_id != *payer {
-        return Err("temporary policy allows only the payer to spend".to_string());
+        return Err(errors::TEMP_POLICY_DENIED.to_string());
     }
     if env::storage_has_key(&pending_key(order_id)) {
-        return Err("temporary policy already has a pending spend for this order".to_string());
+        return Err(errors::TEMP_PENDING_EXISTS.to_string());
     }
     let _ = amount;
     Ok(())
@@ -37,8 +38,10 @@ pub fn track_pending(order_id: &str, payer: &AccountId, amount: u128) {
         payer: payer.clone(),
         amount,
     };
-    let value = to_vec(&pending)
-        .unwrap_or_else(|_| env::panic_str("temporary pending spend cannot be encoded"));
+    let value = match to_vec(&pending) {
+        Ok(value) => value,
+        Err(_) => env::panic_str(errors::TEMP_PENDING_CORRUPT),
+    };
     env::storage_write(&pending_key(order_id), &value);
 }
 
@@ -50,9 +53,11 @@ pub fn release_pending(order_id: &str) {
 /// TEMPORARY: removes a pending spend after a successful transfer.
 pub fn settle_pending(order_id: &str) {
     let key = pending_key(order_id);
-    let value = env::storage_read(&key)
-        .unwrap_or_else(|| env::panic_str("temporary pending spend does not exist"));
-    let _pending = from_slice::<PendingSpend>(&value)
-        .unwrap_or_else(|_| env::panic_str("temporary pending spend is corrupt"));
+    let value =
+        env::storage_read(&key).unwrap_or_else(|| env::panic_str(errors::TEMP_PENDING_MISSING));
+    let _pending = match from_slice::<PendingSpend>(&value) {
+        Ok(pending) => pending,
+        Err(_) => env::panic_str(errors::TEMP_PENDING_CORRUPT),
+    };
     env::storage_remove(&key);
 }

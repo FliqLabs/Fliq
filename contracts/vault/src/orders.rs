@@ -1,4 +1,5 @@
 use crate::Contract;
+use crate::errors;
 use crate::integration;
 use crate::receipts::FliqEvent;
 use crate::types::{
@@ -9,15 +10,15 @@ use near_sdk::{AccountId, Gas, NearToken, Promise, env, require};
 
 pub const MAX_ORDER_ID_LENGTH: usize = 64;
 pub const MAX_CORRIDOR_LENGTH: usize = 32;
-pub const ERR_EMPTY_ORDER_ID: &str = "order_id must not be empty";
-pub const ERR_LONG_ORDER_ID: &str = "order_id must be at most 64 characters";
-pub const ERR_ZERO_AMOUNT: &str = "amount must be greater than zero";
-pub const ERR_EMPTY_CORRIDOR: &str = "corridor must not be empty";
-pub const ERR_LONG_CORRIDOR: &str = "corridor must be at most 32 characters";
-pub const ERR_BAD_DEPOSIT_ADDRESS: &str = "deposit_address must be a well formed NEAR account ID";
+pub const ERR_EMPTY_ORDER_ID: &str = errors::INVALID_ORDER_ID;
+pub const ERR_LONG_ORDER_ID: &str = errors::INVALID_ORDER_ID;
+pub const ERR_ZERO_AMOUNT: &str = errors::INVALID_AMOUNT;
+pub const ERR_EMPTY_CORRIDOR: &str = errors::INVALID_CORRIDOR;
+pub const ERR_LONG_CORRIDOR: &str = errors::INVALID_CORRIDOR;
+pub const ERR_BAD_DEPOSIT_ADDRESS: &str = errors::INVALID_ADDRESS;
 pub const MAX_REFS_LENGTH: usize = 256;
-pub const ERR_REFS_TOO_LONG: &str = "refs must be at most 256 characters";
-pub const ERR_REFS_FORMAT: &str = "refs may contain only identifier characters";
+pub const ERR_REFS_TOO_LONG: &str = errors::INVALID_REFS;
+pub const ERR_REFS_FORMAT: &str = errors::INVALID_REFS;
 
 const BACKFILLABLE_STATUSES: &[&str] = &[
     "awaiting_deposit",
@@ -78,7 +79,7 @@ pub fn validate_status_transition(
     refs: &str,
     transfer_state: &TransferState,
 ) -> Result<bool, String> {
-    require!(BACKEND_STATUSES.contains(&status), "unknown backend status");
+    require!(BACKEND_STATUSES.contains(&status), errors::INVALID_STATUS);
     validate_refs(refs);
     if receipt.backend_status == status && receipt.refs == refs {
         return Ok(false);
@@ -87,15 +88,15 @@ pub fn validate_status_transition(
         receipt.backend_status.as_str(),
         "settled" | "refunded" | "expired" | "failed" | "refused" | "not_received"
     ) {
-        return Err("backend status is terminal".to_string());
+        return Err(errors::STATUS_TERMINAL.to_string());
     }
     let distance = status_distance(&receipt.backend_status, status)
-        .ok_or_else(|| "backend status transition is not allowed".to_string())?;
+        .ok_or_else(|| errors::STATUS_BACKWARD.to_string())?;
     if distance > 1 && !BACKFILLABLE_STATUSES.contains(&status) {
-        return Err("backend status transition requires intermediate updates".to_string());
+        return Err(errors::STATUS_BACKWARD.to_string());
     }
     if matches!(status, "paying_out" | "settled") && *transfer_state != TransferState::Dispatched {
-        return Err("paying_out and settled require Dispatched transfer_state".to_string());
+        return Err(errors::INVALID_STATE.to_string());
     }
     Ok(true)
 }
@@ -132,10 +133,7 @@ pub fn transition(order: &mut PayoutOrder, next: TransferState) -> Result<(), St
         order.transfer_state = next;
         Ok(())
     } else {
-        Err(format!(
-            "invalid transfer state transition from {:?} to {:?}",
-            order.transfer_state, next
-        ))
+        Err(errors::INVALID_STATE.to_string())
     }
 }
 
@@ -146,20 +144,24 @@ pub fn is_expired(expiry: near_sdk::json_types::U64, current: Timestamp) -> bool
 pub fn set_status(contract: &mut Contract, order_id: String, status: String, refs: String) {
     require!(
         env::predecessor_account_id() == contract.config.registration_account,
-        "only registration_account may set status"
+        errors::REGISTRATION_ONLY
     );
+    require!(order_exists(contract, &order_id), errors::ORDER_NOT_FOUND);
+    let Some(order) = contract.orders.get(&order_id) else {
+        env::panic_str(errors::ORDER_NOT_FOUND);
+    };
     require!(
-        order_exists(contract, &order_id),
-        "order_id is not registered"
+        order.transfer_state != TransferState::Released,
+        errors::RELEASED_ORDER
     );
     let Some(mut receipt) = contract.receipts.get(&order_id) else {
-        env::panic_str("receipt not found for order_id");
+        env::panic_str(errors::RECEIPT_NOT_FOUND);
     };
-    let changed =
-        match validate_status_transition(&receipt, &status, &refs, &receipt.transfer_state) {
-            Ok(changed) => changed,
-            Err(error) => env::panic_str(&error),
-        };
+    let changed = match validate_status_transition(&receipt, &status, &refs, &order.transfer_state)
+    {
+        Ok(changed) => changed,
+        Err(error) => env::panic_str(&error),
+    };
     if !changed {
         return;
     }
@@ -209,23 +211,20 @@ pub fn payout(
     deposit_address: AccountId,
 ) -> Promise {
     let Some(mut order) = contract.orders.get(&order_id) else {
-        env::panic_str("order_id is not registered");
+        env::panic_str(errors::ORDER_NOT_FOUND);
     };
     require!(
         order.transfer_state == TransferState::Registered,
-        "order is not in Registered state"
+        errors::INVALID_STATE
     );
-    require!(
-        amount == order.amount,
-        "payout amount does not match the registered order"
-    );
+    require!(amount == order.amount, errors::AMOUNT_MISMATCH);
     require!(
         deposit_address == order.deposit_address,
-        "payout deposit_address does not match the registered order"
+        errors::DESTINATION_MISMATCH
     );
     require!(
         !is_expired(order.expiry, crate::types::now()),
-        "order has expired"
+        errors::ORDER_EXPIRED
     );
 
     let caller = PayoutCaller {
@@ -262,7 +261,7 @@ pub fn payout(
     let callback_gas = Gas::from_tgas(20);
     require!(
         env::prepaid_gas() >= Gas::from_tgas(50),
-        "prepaid gas is too low for the USDC transfer and callback"
+        errors::INSUFFICIENT_GAS
     );
     let transfer_args = near_sdk::serde_json::json!({
         "receiver_id": order.deposit_address,
@@ -274,16 +273,15 @@ pub fn payout(
         .function_call(
             "ft_transfer".to_string(),
             near_sdk::serde_json::to_vec(&transfer_args)
-                .unwrap_or_else(|_| env::panic_str("could not encode USDC transfer arguments")),
+                .unwrap_or_else(|_| env::panic_str(errors::TRANSFER_ENCODING)),
             NearToken::from_yoctonear(1),
             transfer_gas,
         )
         .then(
             Promise::new(env::current_account_id()).function_call(
                 "on_payout_complete".to_string(),
-                near_sdk::serde_json::to_vec(&callback_args).unwrap_or_else(|_| {
-                    env::panic_str("could not encode payout callback arguments")
-                }),
+                near_sdk::serde_json::to_vec(&callback_args)
+                    .unwrap_or_else(|_| env::panic_str(errors::CALLBACK_ENCODING)),
                 NearToken::from_yoctonear(0),
                 callback_gas,
             ),
@@ -298,28 +296,25 @@ pub fn recredit(
 ) {
     require!(
         env::predecessor_account_id() == contract.config.registration_account,
-        "only registration_account may recredit refunds"
+        errors::REGISTRATION_ONLY
     );
-    require!(
-        order_exists(contract, &order_id),
-        "order_id is not registered"
-    );
+    require!(order_exists(contract, &order_id), errors::ORDER_NOT_FOUND);
     require!(
         order_transfer_state(contract, &order_id) == Some(TransferState::Dispatched),
-        "only Dispatched orders may be recredited"
+        errors::REFUND_NOT_ALLOWED
     );
     let status = contract
         .receipts
         .get(&order_id)
         .map(|receipt| receipt.backend_status)
-        .unwrap_or_else(|| env::panic_str("receipt not found for order_id"));
+        .unwrap_or_else(|| env::panic_str(errors::RECEIPT_NOT_FOUND));
     require!(
         matches!(status.as_str(), "refunding" | "refunded"),
-        "order is not in a refundable backend status"
+        errors::INVALID_REFUND_STATUS
     );
     require!(
         order_payer(contract, &order_id).is_some() && order_amount(contract, &order_id).is_some(),
-        "order details are unavailable"
+        errors::ORDER_DETAILS_MISSING
     );
     integration::recredit_refund(&mut contract.vault, &order_id, amount, actual_token_balance);
     if status == "refunding" {
@@ -343,6 +338,7 @@ fn finalize_payout(contract: &mut Contract, order_id: String, successful: bool) 
         integration::release_pending(&order_id);
         order.transfer_state = TransferState::TransferFailed;
     }
+    order.executing_since = None;
     contract.orders.insert(&order_id, &order);
     if let Some(mut receipt) = contract.receipts.get(&order_id) {
         receipt.order = order.clone();
@@ -365,24 +361,24 @@ pub fn on_payout_complete(contract: &mut Contract, order_id: String) {
 
 pub fn resolve_stuck_payout(contract: &mut Contract, order_id: String, transferred: bool) {
     let Some(order) = contract.orders.get(&order_id) else {
-        env::panic_str("order_id is not registered");
+        env::panic_str(errors::ORDER_NOT_FOUND);
     };
     require!(
         order.transfer_state == TransferState::Executing,
-        "order is not in Executing state"
+        errors::PAYOUT_NOT_EXECUTING
     );
     let Some(executing_since) = order.executing_since else {
-        env::panic_str("executing_since is missing");
+        env::panic_str(errors::EXECUTING_SINCE_MISSING);
     };
     require!(
         now()
             >= executing_since
                 .0
                 .saturating_add(contract.config.payout_timeout.0),
-        "payout timeout has not elapsed"
+        errors::TIMEOUT_NOT_REACHED
     );
     require!(
         finalize_payout(contract, order_id, transferred),
-        "stuck payout could not be resolved"
+        errors::STUCK_PAYOUT_UNRESOLVED
     );
 }

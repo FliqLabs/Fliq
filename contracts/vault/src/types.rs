@@ -52,6 +52,7 @@ pub enum TransferState {
     Executing,
     Dispatched,
     TransferFailed,
+    Released,
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -76,6 +77,19 @@ pub struct Receipt {
     pub order_id: String,
     pub order: PayoutOrder,
     pub transfer_state: TransferState,
+    pub backend_status: String,
+    pub refs: String,
+    pub last_updated: U64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(crate = "near_sdk::serde")]
+pub struct ReceiptView {
+    pub order_id: String,
+    pub order: PayoutOrder,
+    pub transfer_state: TransferState,
+    pub expired: bool,
+    pub executing_since: Option<U64>,
     pub backend_status: String,
     pub refs: String,
     pub last_updated: U64,

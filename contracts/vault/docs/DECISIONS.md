@@ -1,5 +1,12 @@
 # Contract decisions
 
+## PROPOSED release_order rules
+
+- `release_order(order_id)` is callable by the registration account or owner only.
+- It works only from `Registered`, moves the order to terminal `Released`, and touches no USDC balance because no reservation exists yet.
+- A `Released` order cannot be paid, released again, registered again, or moved by `set_status`; an `Executing` order must use `resolve_stuck_payout`.
+- The event is `order_released` under the `fliq_vault` NEP-297 envelope, version `1.0.0`.
+
 ## PROPOSED backend status rules
 
 These rules are PROPOSED and require backend approval:
