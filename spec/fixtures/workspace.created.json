@@ -1,0 +1,16 @@
+{
+  "workspace": {
+    "workspace_id": "ws_2b7e41c0",
+    "name": "EntryPoint Labs",
+    "use_case": "wallet",
+    "countries": [
+      "ng",
+      "ke"
+    ],
+    "live_enabled": false
+  },
+  "sandbox_key": {
+    "key_id": "key_9a40d7e2",
+    "key": "rt_test_7Kp2demo00c9Qe"
+  }
+}

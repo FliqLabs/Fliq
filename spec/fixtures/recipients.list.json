@@ -1,0 +1,15 @@
+{
+  "items": [
+    {
+      "recipient_id": "rcp_5d1c0a9e",
+      "account_name": "DARA OKONKWO",
+      "bank": {
+        "code": "058",
+        "name": "GTBank",
+        "logo_key": "gtbank"
+      },
+      "account_last4": "6789",
+      "created_at": "2026-10-29T13:00:00Z"
+    }
+  ]
+}

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { MarketingShell } from "../components/marketing-shell";
 import WaitlistForm from "./waitlist-form";
 
 export const metadata: Metadata = {
@@ -37,7 +38,9 @@ function HeroCopy() {
       >
         Get there
         {/* <br /> */}
-        <span className="ml-4 md:ml-0 mt-2.5 inline-block bg-[#f3f3f1] px-[0.13em] pb-[0.1em] text-zinc-950">early.</span>
+        <span className="ml-4 md:ml-0 mt-2.5 inline-block bg-[#f3f3f1] px-[0.13em] pb-[0.1em] text-zinc-950">
+          early.
+        </span>
       </h1>
       <p className="mb-3 text-lg font-semibold tracking-tight sm:text-xl">Global crypto. Local money.</p>
       <p className="max-w-[460px] text-[15px] leading-relaxed text-zinc-400 sm:text-[17px]">
@@ -120,11 +123,13 @@ function NextSteps() {
 
 export default function JoinWaitlistPage() {
   return (
-    <div className="bg-canvas font-sans">
-      <main id="main-content">
-        <Hero />
-        <NextSteps />
-      </main>
-    </div>
+    <MarketingShell>
+      <div className="bg-canvas font-sans">
+        <main id="main-content">
+          <Hero />
+          <NextSteps />
+        </main>
+      </div>
+    </MarketingShell>
   );
 }

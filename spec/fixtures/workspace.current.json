@@ -1,0 +1,10 @@
+{
+  "workspace_id": "ws_2b7e41c0",
+  "name": "EntryPoint Labs",
+  "use_case": "wallet",
+  "countries": [
+    "ng",
+    "ke"
+  ],
+  "live_enabled": false
+}

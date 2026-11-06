@@ -1,0 +1,601 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["core", "ledger", "messaging", "auth", "developer", "integration", "status"]
+}
+
+// Ids are prefixed ULIDs generated in application code (see src/ids.ts).
+// Money is BigInt only: token base units (6 decimals) and fiat minor units.
+// Rates are fixed-precision Decimal. No Float anywhere.
+
+enum PayoutState {
+  created
+  provider_timeout
+  awaiting_recon
+  awaiting_deposit
+  deposit_seen
+  routing
+  with_provider
+  paying_out
+  settled
+  refunding
+  refunded
+  expired
+  failed
+
+  @@schema("core")
+}
+
+enum RouteKind {
+  direct
+  intents
+  vault
+
+  @@schema("core")
+}
+
+enum QuoteMode {
+  send_exactly
+  receive_exactly
+
+  @@schema("core")
+}
+
+enum AccountType {
+  asset
+  liability
+  revenue
+  expense
+  contra
+
+  @@schema("ledger")
+}
+
+model Quote {
+  id             String      @id @db.Text
+  developerId    String      @map("developer_id") @db.Text
+  mode           QuoteMode
+  tokenSymbol    String      @map("token_symbol") @db.Text
+  sourceChain    String      @map("source_chain") @db.Text
+  currency       String      @db.Text
+  amountIn       BigInt      @map("amount_in")
+  amountOutMinor BigInt      @map("amount_out_minor")
+  rate           Decimal     @db.Decimal(24, 10)
+  chosenRouteId  String?     @unique @map("chosen_route_id") @db.Text
+  expiresAt      DateTime    @map("expires_at") @db.Timestamptz(6)
+  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  routes         QuoteRoute[] @relation("QuoteRoutes")
+  payouts        Payout[]
+
+  @@index([developerId, createdAt])
+  @@map("quotes")
+  @@schema("core")
+}
+
+model QuoteRoute {
+  id             String   @id @db.Text
+  quoteId        String   @map("quote_id") @db.Text
+  provider       String   @db.Text
+  kind           RouteKind
+  rank           Int
+  amountIn       BigInt   @map("amount_in")
+  amountOutMinor BigInt   @map("amount_out_minor")
+  rate           Decimal  @db.Decimal(24, 10)
+  feeProvider    BigInt   @map("fee_provider")
+  feeNetwork     BigInt   @map("fee_network")
+  feeIntents     BigInt   @default(0) @map("fee_intents")
+  feeOurs        BigInt   @default(0) @map("fee_ours")
+  etaSeconds     Int      @map("eta_seconds")
+  expiresAt      DateTime @map("expires_at") @db.Timestamptz(6)
+  scoreBreakdown Json     @map("score_breakdown")
+  // The provider's own quote, kept so createOrder can be sent exactly what was priced.
+  providerQuote  Json?    @map("provider_quote")
+  quote          Quote    @relation("QuoteRoutes", fields: [quoteId], references: [id])
+
+  @@unique([quoteId, rank])
+  @@index([quoteId])
+  @@map("quote_routes")
+  @@schema("core")
+}
+
+model Recipient {
+  id              String   @id @db.Text
+  userId          String   @map("user_id") @db.Text
+  institutionCode String   @map("institution_code") @db.Text
+  logoKey         String?  @map("logo_key") @db.Text
+  // AES-256-GCM ciphertext; never log or emit these fields.
+  accountCipher   Bytes    @map("account_cipher")
+  nameCipher      Bytes    @map("name_cipher")
+  // Keyed hash (HMAC-SHA-256) of institution + account for duplicate lookup.
+  lookupHash      Bytes    @map("lookup_hash")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  // Set when the user chose to save this account; recipients made by paying are not saved ones.
+  savedAt         DateTime? @map("saved_at") @db.Timestamptz(6)
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(6)
+  payouts         Payout[]
+
+  @@unique([userId, lookupHash])
+  @@map("recipients")
+  @@schema("core")
+}
+
+model Payout {
+  id              String      @id @db.Text
+  developerId     String      @map("developer_id") @db.Text
+  clientReference String      @map("client_reference") @db.Text
+  quoteId         String      @map("quote_id") @db.Text
+  recipientId     String      @map("recipient_id") @db.Text
+  routeKind       RouteKind   @map("route_kind")
+  provider        String      @db.Text
+  providerOrderId String?     @map("provider_order_id") @db.Text
+  state           PayoutState @default(created)
+  // Incremented on every transition; transitions are UPDATE ... WHERE version = $n.
+  version         Int         @default(1)
+  amountIn        BigInt      @map("amount_in")
+  amountOutMinor  BigInt      @map("amount_out_minor")
+  currency        String      @db.Text
+  rate            Decimal     @db.Decimal(24, 10)
+  retryOfId       String?     @map("retry_of_id") @db.Text
+  // Why a payout ended in failed. Reasons starting with vault_ are refusals by the vault caps.
+  failureReason   String?     @map("failure_reason") @db.Text
+  // Where the sender pays, from the provider's createOrder answer. Empty while the order is not confirmed.
+  depositChain      String?   @map("deposit_chain") @db.Text
+  depositAddress    String?   @map("deposit_address") @db.Text
+  depositUnits      BigInt?   @map("deposit_units")
+  depositValidUntil DateTime? @map("deposit_valid_until") @db.Timestamptz(6)
+  depositMemo       String?   @map("deposit_memo") @db.Text
+  createdAt       DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime    @default(now()) @map("updated_at") @db.Timestamptz(6)
+  quote           Quote       @relation(fields: [quoteId], references: [id])
+  recipient       Recipient   @relation(fields: [recipientId], references: [id])
+  retryOf         Payout?     @relation("PayoutRetry", fields: [retryOfId], references: [id])
+  retries         Payout[]    @relation("PayoutRetry")
+  events          PayoutEvent[]
+
+  @@unique([developerId, clientReference])
+  @@index([developerId, createdAt])
+  @@index([state, updatedAt])
+  @@map("payouts")
+  @@schema("core")
+}
+
+// Append-only: UPDATE and DELETE are rejected by trigger (see migrations).
+model PayoutEvent {
+  id        String      @id @db.Text
+  payoutId  String      @map("payout_id") @db.Text
+  fromState PayoutState? @map("from_state")
+  toState   PayoutState @map("to_state")
+  version   Int
+  cause     String      @db.Text
+  detail    Json        @default("{}")
+  traceId   String?     @map("trace_id") @db.Text
+  createdAt DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  payout    Payout      @relation(fields: [payoutId], references: [id])
+
+  @@unique([payoutId, version])
+  @@map("payout_events")
+  @@schema("core")
+}
+
+model Account {
+  id        String      @id @db.Text
+  code      String      @unique @db.Text
+  type      AccountType
+  asset     String      @db.Text
+  ownerId   String?     @map("owner_id") @db.Text
+  createdAt DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  lines     JournalLine[]
+  balance   Balance?
+
+  @@map("accounts")
+  @@schema("ledger")
+}
+
+// Append-only. One entry per posting; (payoutId, postingType) makes replays no-ops.
+model JournalEntry {
+  id          String   @id @db.Text
+  payoutId    String?  @map("payout_id") @db.Text
+  postingType String   @map("posting_type") @db.Text
+  idempotencyKey String @unique @map("idempotency_key") @db.Text
+  memo        String?  @db.Text
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  lines       JournalLine[]
+
+  @@unique([payoutId, postingType])
+  @@map("journal_entries")
+  @@schema("ledger")
+}
+
+// Signed amount in base units: debit positive, credit negative.
+// A deferred constraint trigger enforces that each entry sums to zero per asset.
+model JournalLine {
+  id        String       @id @db.Text
+  entryId   String       @map("entry_id") @db.Text
+  accountId String       @map("account_id") @db.Text
+  asset     String       @db.Text
+  amount    BigInt
+  entry     JournalEntry @relation(fields: [entryId], references: [id])
+  account   Account      @relation(fields: [accountId], references: [id])
+
+  @@index([entryId])
+  @@index([accountId])
+  @@map("journal_lines")
+  @@schema("ledger")
+}
+
+// Projection of journal_lines, updated in the same transaction as the posting.
+model Balance {
+  accountId String   @id @map("account_id") @db.Text
+  amount    BigInt   @default(0)
+  reserved  BigInt   @default(0)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  account   Account  @relation(fields: [accountId], references: [id])
+
+  @@map("balances")
+  @@schema("ledger")
+}
+
+model Outbox {
+  id          String    @id @db.Text
+  topic       String    @db.Text
+  routingKey  String    @map("routing_key") @db.Text
+  eventType   String    @map("event_type") @db.Text
+  schemaVersion Int     @default(1) @map("schema_version")
+  traceId     String?   @map("trace_id") @db.Text
+  payload     Json
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  publishedAt DateTime? @map("published_at") @db.Timestamptz(6)
+
+  @@index([createdAt], map: "outbox_unpublished_idx")
+  @@map("outbox")
+  @@schema("messaging")
+}
+
+model Inbox {
+  consumer   String   @db.Text
+  messageId  String   @map("message_id") @db.Text
+  receivedAt DateTime @default(now()) @map("received_at") @db.Timestamptz(6)
+
+  @@id([consumer, messageId])
+  @@map("inbox")
+  @@schema("messaging")
+}
+
+model Timer {
+  id        String    @id @db.Text
+  topic     String    @db.Text
+  routingKey String   @map("routing_key") @db.Text
+  payload   Json
+  dueAt     DateTime  @map("due_at") @db.Timestamptz(6)
+  firedAt   DateTime? @map("fired_at") @db.Timestamptz(6)
+  dedupeKey String?   @unique @map("dedupe_key") @db.Text
+
+  @@index([dueAt])
+  @@map("timers")
+  @@schema("messaging")
+}
+
+model DeadLetter {
+  id         String   @id @db.Text
+  queue      String   @db.Text
+  messageId  String?  @map("message_id") @db.Text
+  payload    Json
+  error      String   @db.Text
+  attempts   Int
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("dead_letters")
+  @@schema("messaging")
+}
+
+enum ChallengePurpose {
+  register
+  login
+
+  @@schema("auth")
+}
+
+enum WorkspaceUseCase {
+  wallet
+  payroll
+  marketplace
+  agent
+  other
+
+  @@schema("developer")
+}
+
+enum KeyEnvironment {
+  test
+  live
+
+  @@schema("developer")
+}
+
+model User {
+  id            String   @id @db.Text
+  email         String?  @unique @db.Text
+  // Claimed name, for example frank.fliq.near. Null until the user claims one.
+  nearAccount   String?  @unique @map("near_account") @db.Text
+  vaultAccount  String?  @map("vault_account") @db.Text
+  displayName   String?  @map("display_name") @db.Text
+  // Uploaded by the client straight to object storage; we only keep the https URL it sends back.
+  photoUrl      String?  @map("photo_url") @db.Text
+  occupation    String?  @db.Text
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  passkeys      PasskeyCredential[]
+  sessions      Session[]
+  workspaces    Workspace[]
+
+  @@map("users")
+  @@schema("auth")
+}
+
+model PasskeyCredential {
+  id           String    @id @db.Text
+  userId       String    @map("user_id") @db.Text
+  credentialId String    @unique @map("credential_id") @db.Text
+  publicKey    Bytes     @map("public_key")
+  counter      BigInt    @default(0)
+  transports   String[]
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  lastUsedAt   DateTime? @map("last_used_at") @db.Timestamptz(6)
+  user         User      @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@map("passkey_credentials")
+  @@schema("auth")
+}
+
+// A registration challenge carries the id of the user it will create, so the passkey is bound to it.
+model AuthChallenge {
+  id         String           @id @db.Text
+  purpose    ChallengePurpose
+  challenge  String           @db.Text
+  userHandle String?          @map("user_handle") @db.Text
+  expiresAt  DateTime         @map("expires_at") @db.Timestamptz(6)
+  consumedAt DateTime?        @map("consumed_at") @db.Timestamptz(6)
+
+  @@map("auth_challenges")
+  @@schema("auth")
+}
+
+// One row per refresh token. Rows of one sign-in share a family; reusing a spent token revokes the family.
+model Session {
+  id          String    @id @db.Text
+  userId      String    @map("user_id") @db.Text
+  familyId    String    @map("family_id") @db.Text
+  refreshHash String    @unique @map("refresh_hash") @db.Text
+  expiresAt   DateTime  @map("expires_at") @db.Timestamptz(6)
+  usedAt      DateTime? @map("used_at") @db.Timestamptz(6)
+  revokedAt   DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  user        User      @relation(fields: [userId], references: [id])
+
+  @@index([familyId])
+  @@index([userId])
+  @@map("sessions")
+  @@schema("auth")
+}
+
+model EmailLink {
+  id         String    @id @db.Text
+  email      String    @db.Text
+  tokenHash  String    @unique @map("token_hash") @db.Text
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz(6)
+  consumedAt DateTime? @map("consumed_at") @db.Timestamptz(6)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("email_links")
+  @@schema("auth")
+}
+
+model Workspace {
+  id        String           @id @db.Text
+  ownerId   String           @map("owner_id") @db.Text
+  name      String           @db.Text
+  useCase   WorkspaceUseCase @map("use_case")
+  countries String[]
+  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  owner     User             @relation(fields: [ownerId], references: [id])
+  apiKeys   ApiKey[]
+  webhookEndpoints WebhookEndpoint[]
+
+  @@index([ownerId])
+  @@map("workspaces")
+  @@schema("developer")
+}
+
+// The plaintext key is returned once at creation; only its SHA-256 and last four characters are stored.
+model ApiKey {
+  id          String         @id @db.Text
+  workspaceId String         @map("workspace_id") @db.Text
+  environment KeyEnvironment
+  keyHash     String         @unique @map("key_hash") @db.Text
+  // First characters, safe to show: the dashboard masks a key as prefix...last4.
+  prefix      String         @db.Text
+  last4       String         @db.Text
+  createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  revokedAt   DateTime?      @map("revoked_at") @db.Timestamptz(6)
+  workspace   Workspace      @relation(fields: [workspaceId], references: [id])
+
+  @@index([workspaceId])
+  @@map("api_keys")
+  @@schema("developer")
+}
+
+// Spec 7.1: key, request-body hash and final response kept 24 hours, written in the same transaction as the work.
+model IdempotencyRecord {
+  scope          String   @db.Text
+  key            String   @db.Text
+  requestHash    String   @map("request_hash") @db.Text
+  responseStatus Int      @map("response_status")
+  responseBody   Json     @map("response_body")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@id([scope, key])
+  @@index([createdAt])
+  @@map("idempotency_records")
+  @@schema("developer")
+}
+
+// A vault-to-vault transfer, written when the chain confirms it. The backend never moves vault funds.
+model Transfer {
+  id          String   @id @db.Text
+  txHash      String   @unique @map("tx_hash") @db.Text
+  fromUserId  String   @map("from_user_id") @db.Text
+  toUserId    String   @map("to_user_id") @db.Text
+  fromAccount String   @map("from_account") @db.Text
+  toAccount   String   @map("to_account") @db.Text
+  asset       String   @db.Text
+  amount      BigInt
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([fromUserId, createdAt])
+  @@index([toUserId, createdAt])
+  @@map("transfers")
+  @@schema("core")
+}
+
+enum CheckResult {
+  ok
+  degraded
+  down
+
+  @@schema("status")
+}
+
+enum IncidentImpact {
+  degraded
+  outage
+
+  @@schema("status")
+}
+
+enum IncidentState {
+  open
+  resolved
+
+  @@schema("status")
+}
+
+// One row per probe per run, kept for the 60-day status bars. component is a service or provider id.
+model HealthCheck {
+  id         String      @id @db.Text
+  component  String      @db.Text
+  checkedAt  DateTime    @default(now()) @map("checked_at") @db.Timestamptz(6)
+  result     CheckResult
+  latencyMs  Int?        @map("latency_ms")
+  // A kind such as timeout or error, never a message: messages can carry account details.
+  errorKind  String?     @map("error_kind") @db.Text
+
+  @@index([component, checkedAt])
+  @@index([checkedAt])
+  @@map("health_checks")
+  @@schema("status")
+}
+
+model Incident {
+  id         String         @id @db.Text
+  component  String         @db.Text
+  title      String         @db.Text
+  impact     IncidentImpact
+  state      IncidentState  @default(open)
+  summary    String         @db.Text
+  startedAt  DateTime       @map("started_at") @db.Timestamptz(6)
+  resolvedAt DateTime?      @map("resolved_at") @db.Timestamptz(6)
+
+  @@index([component, startedAt])
+  @@index([startedAt])
+  @@map("incidents")
+  @@schema("status")
+}
+
+enum WebhookEndpointStatus {
+  active
+  // Every retry of a delivery ran out (ARCH §12.4); deliveries continue once the developer fixes it.
+  failing
+  disabled
+
+  @@schema("developer")
+}
+
+enum WebhookDeliveryStatus {
+  pending
+  delivered
+  failed
+
+  @@schema("developer")
+}
+
+model WebhookEndpoint {
+  id           String                @id @db.Text
+  workspaceId  String                @map("workspace_id") @db.Text
+  environment  KeyEnvironment
+  url          String                @db.Text
+  // AES-256-GCM ciphertext of the signing secret. Encrypted, not hashed: every delivery is signed with it.
+  secretCipher Bytes                 @map("secret_cipher")
+  status       WebhookEndpointStatus @default(active)
+  createdAt    DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  failingSince DateTime?             @map("failing_since") @db.Timestamptz(6)
+  workspace    Workspace             @relation(fields: [workspaceId], references: [id])
+  deliveries   WebhookDelivery[]
+
+  @@index([workspaceId])
+  @@map("webhook_endpoints")
+  @@schema("developer")
+}
+
+// One row per event per endpoint. A replay is a new row with the same event id (ARCH §12.4).
+model WebhookDelivery {
+  id                 String                @id @db.Text
+  endpointId         String                @map("endpoint_id") @db.Text
+  eventId            String                @map("event_id") @db.Text
+  eventType          String                @map("event_type") @db.Text
+  payoutId           String                @map("payout_id") @db.Text
+  payload            Json
+  status             WebhookDeliveryStatus @default(pending)
+  attempts           Int                   @default(0)
+  nextAttemptAt      DateTime?             @map("next_attempt_at") @db.Timestamptz(6)
+  lastAttemptAt      DateTime?             @map("last_attempt_at") @db.Timestamptz(6)
+  lastResponseStatus Int?                  @map("last_response_status")
+  lastError          String?               @map("last_error") @db.Text
+  deliveredAt        DateTime?             @map("delivered_at") @db.Timestamptz(6)
+  replayOfId         String?               @map("replay_of_id") @db.Text
+  createdAt          DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  endpoint           WebhookEndpoint       @relation(fields: [endpointId], references: [id])
+  replayOf           WebhookDelivery?      @relation("DeliveryReplay", fields: [replayOfId], references: [id])
+  replays            WebhookDelivery[]     @relation("DeliveryReplay")
+
+  @@index([endpointId, createdAt])
+  @@index([status, nextAttemptAt])
+  @@index([eventId])
+  @@map("webhook_deliveries")
+  @@schema("developer")
+}
+
+// ARCH §9.4: every provider webhook is stored before anything acts on it. A bad signature is kept and
+// flagged but never changes state. The body is encrypted because providers include recipient details.
+model InboundEvent {
+  id              String    @id @db.Text
+  provider        String    @db.Text
+  // Null when the signature failed, so nothing in the body was trusted.
+  providerEventId String?   @map("provider_event_id") @db.Text
+  signatureValid  Boolean   @map("signature_valid")
+  bodyCipher      Bytes     @map("body_cipher")
+  providerOrderId String?   @map("provider_order_id") @db.Text
+  payoutId        String?   @map("payout_id") @db.Text
+  receivedAt      DateTime  @default(now()) @map("received_at") @db.Timestamptz(6)
+  processedAt     DateTime? @map("processed_at") @db.Timestamptz(6)
+
+  @@unique([provider, providerEventId])
+  @@index([payoutId])
+  @@index([receivedAt])
+  @@map("inbound_events")
+  @@schema("integration")
+}
