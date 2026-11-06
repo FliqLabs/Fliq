@@ -20,6 +20,53 @@ pub enum StorageKey {
     Receipts,
     UsedRefundTransactions,
     PayoutKeys,
+    AgentPolicies,
+    PendingPolicySpends,
+}
+
+#[derive(BorshDeserialize, BorshSerialize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(crate = "near_sdk::serde", rename_all = "snake_case")]
+pub enum PolicyAction {
+    Payout,
+}
+
+#[derive(BorshDeserialize, BorshSerialize, Clone, Debug, PartialEq, Eq)]
+pub struct AgentPolicy {
+    pub owner: AccountId,
+    pub agent_id: AccountId,
+    pub allowed_action: PolicyAction,
+    pub max_per_payout: Amount,
+    pub daily_limit: Amount,
+    pub allowed_corridors: Vec<String>,
+    pub cooldown_ns: Timestamp,
+    pub expiry_ns: Timestamp,
+    pub revoked: bool,
+    pub day_index: u64,
+    pub spent_today: Amount,
+    pub last_payout_at: Option<Timestamp>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(crate = "near_sdk::serde")]
+pub struct AgentPolicyView {
+    pub owner: AccountId,
+    pub agent_id: AccountId,
+    pub allowed_action: PolicyAction,
+    pub max_per_payout: U128,
+    pub daily_limit: U128,
+    pub spent_today: U128,
+    pub allowed_corridors: Vec<String>,
+    pub cooldown_ns: U64,
+    pub expiry_ns: U64,
+    pub revoked: bool,
+    pub last_payout_at: Option<U64>,
+}
+
+#[derive(BorshDeserialize, BorshSerialize, Clone, Debug, PartialEq, Eq)]
+pub struct PendingPolicySpend {
+    pub agent_id: Option<AccountId>,
+    pub amount: Amount,
+    pub day_index: u64,
 }
 
 #[derive(

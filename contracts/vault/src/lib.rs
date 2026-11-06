@@ -3,6 +3,7 @@ pub mod types;
 
 mod errors;
 mod integration;
+mod policies;
 mod receipts;
 mod temp_policies;
 mod vault;
@@ -24,8 +25,8 @@ use crate::receipts::FliqEvent;
 #[cfg(all(feature = "testing", debug_assertions))]
 use crate::types::Amount;
 use crate::types::{
-    Config, DEFAULT_MAX_EXPIRY, DEFAULT_PAYOUT_TIMEOUT, PayoutOrder, Receipt, ReceiptRefs,
-    ReceiptView, StorageKey, TransferState, now,
+    AgentPolicy, AgentPolicyView, Config, DEFAULT_MAX_EXPIRY, DEFAULT_PAYOUT_TIMEOUT, PayoutOrder,
+    PendingPolicySpend, Receipt, ReceiptRefs, ReceiptView, StorageKey, TransferState, now,
 };
 use crate::vault::{BalanceView, TransferError, Vault};
 
@@ -66,6 +67,8 @@ pub struct Contract {
     pub(crate) receipts: LookupMap<String, Receipt>,
     pub(crate) used_refund_transactions: LookupSet<String>,
     pub(crate) payout_keys: LookupMap<String, String>,
+    pub(crate) agent_policies: LookupMap<AccountId, AgentPolicy>,
+    pub(crate) pending_policy_spends: LookupMap<String, PendingPolicySpend>,
 }
 
 #[near]
@@ -99,6 +102,8 @@ impl Contract {
             receipts: LookupMap::new(StorageKey::Receipts),
             used_refund_transactions: LookupSet::new(StorageKey::UsedRefundTransactions),
             payout_keys: LookupMap::new(StorageKey::PayoutKeys),
+            agent_policies: LookupMap::new(StorageKey::AgentPolicies),
+            pending_policy_spends: LookupMap::new(StorageKey::PendingPolicySpends),
         }
     }
 
@@ -112,6 +117,34 @@ impl Contract {
 
     pub fn get_config(&self) -> Config {
         self.config.clone()
+    }
+
+    pub fn set_agent_policy(
+        &mut self,
+        agent_id: AccountId,
+        max_per_payout: U128,
+        daily_limit: U128,
+        allowed_corridors: Vec<String>,
+        cooldown_ns: near_sdk::json_types::U64,
+        expiry_ns: near_sdk::json_types::U64,
+    ) {
+        policies::set_agent_policy(
+            self,
+            agent_id,
+            max_per_payout,
+            daily_limit,
+            allowed_corridors,
+            cooldown_ns,
+            expiry_ns,
+        );
+    }
+
+    pub fn revoke_agent(&mut self, agent_id: AccountId) {
+        policies::revoke_agent(self, &agent_id);
+    }
+
+    pub fn get_policy(&self, agent_id: AccountId) -> Option<AgentPolicyView> {
+        policies::get_policy(self, &agent_id)
     }
 
     pub fn set_payout_timeout(&mut self, payout_timeout: near_sdk::json_types::U64) {
