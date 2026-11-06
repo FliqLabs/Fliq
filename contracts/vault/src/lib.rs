@@ -16,6 +16,8 @@ use near_sdk::{AccountId, NearToken, PanicOnDefault, Promise, PromiseOrValue, en
 
 use crate::orders::{set_status as apply_status, validate_deposit_address, validate_order};
 use crate::receipts::FliqEvent;
+#[cfg(all(feature = "testing", debug_assertions))]
+use crate::types::Amount;
 use crate::types::{
     Config, DEFAULT_MAX_EXPIRY, DEFAULT_PAYOUT_TIMEOUT, PayoutOrder, Receipt, StorageKey,
     TransferState, now,
