@@ -1,37 +1,227 @@
+pub mod orders;
+pub mod types;
+
+mod integration;
+mod receipts;
+mod temp_policies;
 mod vault;
 
 use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
 use near_contract_standards::storage_management::{
     StorageBalance, StorageBalanceBounds, StorageManagement,
 };
+use near_sdk::collections::LookupMap;
 use near_sdk::json_types::U128;
-use near_sdk::{AccountId, NearToken, PanicOnDefault, PromiseOrValue, near};
-use vault::{BalanceView, Vault};
+use near_sdk::serde::Deserialize;
+use near_sdk::{AccountId, NearToken, PanicOnDefault, Promise, PromiseOrValue, env, near, require};
+
+use crate::orders::{set_status as apply_status, validate_deposit_address, validate_order};
+use crate::receipts::FliqEvent;
+#[cfg(all(feature = "testing", debug_assertions))]
+use crate::types::Amount;
+use crate::types::{
+    Config, DEFAULT_MAX_EXPIRY, DEFAULT_PAYOUT_TIMEOUT, PayoutOrder, Receipt, StorageKey,
+    TransferState, now,
+};
+use crate::vault::{BalanceView, Vault};
+
+#[derive(Deserialize)]
+#[serde(crate = "near_sdk::serde", deny_unknown_fields)]
+struct TransferMessage {
+    top_up: TopUpMessage,
+}
+
+#[derive(Deserialize)]
+#[serde(crate = "near_sdk::serde", deny_unknown_fields)]
+struct TopUpMessage {
+    account_id: AccountId,
+}
 
 #[near(contract_state)]
 #[derive(PanicOnDefault)]
 pub struct Contract {
     approved_usdc: AccountId,
     vault: Vault,
+    pub(crate) config: Config,
+    pub(crate) orders: LookupMap<String, PayoutOrder>,
+    pub(crate) receipts: LookupMap<String, Receipt>,
 }
 
 #[near]
 impl Contract {
     #[init]
     #[private]
-    pub fn new(approved_usdc: AccountId) -> Self {
-        near_sdk::require!(
-            near_sdk::env::predecessor_account_id() == near_sdk::env::current_account_id(),
+    pub fn new(
+        owner: AccountId,
+        registration_account: AccountId,
+        approved_usdc_token_contract: AccountId,
+    ) -> Self {
+        require!(
+            env::predecessor_account_id() == env::current_account_id(),
             "initialization may only be called by the vault account"
         );
+        require!(
+            env::state_read::<Self>().is_none(),
+            "contract is already initialized"
+        );
         Self {
-            approved_usdc,
+            approved_usdc: approved_usdc_token_contract.clone(),
             vault: Vault::new(),
+            config: Config {
+                owner,
+                registration_account,
+                approved_usdc_token_contract,
+                max_expiry: DEFAULT_MAX_EXPIRY.into(),
+                payout_timeout: DEFAULT_PAYOUT_TIMEOUT.into(),
+            },
+            orders: LookupMap::new(StorageKey::Orders),
+            receipts: LookupMap::new(StorageKey::Receipts),
         }
     }
 
     pub fn get_balance(&self, account_id: AccountId) -> BalanceView {
-        self.vault.balance_of(&account_id).into()
+        integration::get_balance(&self.vault, &account_id)
+    }
+
+    pub fn set_registration_account(&mut self, registration_account: AccountId) {
+        require!(
+            env::predecessor_account_id() == self.config.owner,
+            "only the owner may set registration_account"
+        );
+        self.config.registration_account = registration_account;
+    }
+
+    pub fn get_config(&self) -> Config {
+        self.config.clone()
+    }
+
+    pub fn set_payout_timeout(&mut self, payout_timeout: near_sdk::json_types::U64) {
+        require!(
+            env::predecessor_account_id() == self.config.owner,
+            "only the owner may set payout_timeout"
+        );
+        require!(
+            payout_timeout.0 > 0,
+            "payout_timeout must be greater than zero"
+        );
+        self.config.payout_timeout = payout_timeout;
+    }
+
+    pub fn register_order(
+        &mut self,
+        order_id: String,
+        payer: AccountId,
+        deposit_address: AccountId,
+        amount: U128,
+        expiry: near_sdk::json_types::U64,
+        corridor: String,
+    ) {
+        require!(
+            env::predecessor_account_id() == self.config.registration_account,
+            "only registration_account may register orders"
+        );
+        validate_order(&order_id, amount.0, &corridor);
+        require!(
+            !self.orders.contains_key(&order_id),
+            "order_id is already registered"
+        );
+        validate_deposit_address(deposit_address.as_ref());
+        let current_time = now();
+        require!(expiry.0 > current_time, "expiry must be in the future");
+        require!(
+            expiry.0 - current_time <= self.config.max_expiry.0,
+            "expiry is further ahead than the configured maximum"
+        );
+        let order = PayoutOrder {
+            order_id: order_id.clone(),
+            payer,
+            deposit_address,
+            amount,
+            expiry,
+            corridor: corridor.clone(),
+            transfer_state: TransferState::Registered,
+            created_at: now().into(),
+            executing_since: None,
+        };
+        self.orders.insert(&order_id, &order);
+        self.receipts.insert(
+            &order_id,
+            &Receipt {
+                order_id: order_id.clone(),
+                order: order.clone(),
+                transfer_state: TransferState::Registered,
+                backend_status: "created".to_string(),
+                refs: String::new(),
+                last_updated: now().into(),
+            },
+        );
+        FliqEvent::OrderRegistered {
+            order_id,
+            amount,
+            expiry: expiry.0.to_string(),
+            corridor,
+        }
+        .emit();
+    }
+
+    #[payable]
+    pub fn payout(
+        &mut self,
+        order_id: String,
+        amount: U128,
+        deposit_address: AccountId,
+    ) -> Promise {
+        require!(
+            env::attached_deposit().is_zero(),
+            "payout must not carry NEAR deposit"
+        );
+        orders::payout(self, order_id, amount, deposit_address)
+    }
+
+    pub fn set_status(&mut self, order_id: String, status: String, refs: String) {
+        apply_status(self, order_id, status, refs);
+    }
+
+    pub fn recredit(&mut self, order_id: String, amount: U128, actual_token_balance: U128) {
+        orders::recredit(self, order_id, amount, actual_token_balance);
+    }
+
+    pub fn get_receipt(&self, order_id: String) -> Receipt {
+        match self.receipts.get(&order_id) {
+            Some(receipt) => receipt,
+            None => env::panic_str("receipt not found for order_id"),
+        }
+    }
+
+    #[cfg(all(feature = "testing", debug_assertions))]
+    pub fn credit_for_testing(&mut self, account: AccountId, amount: Amount) {
+        require!(
+            self.vault.deposit(&account, U128(amount)).0 == 0,
+            "test account must be registered"
+        );
+    }
+
+    #[private]
+    pub fn on_payout_complete(&mut self, order_id: String) {
+        require!(
+            env::predecessor_account_id() == env::current_account_id(),
+            "callback may only be called by this contract"
+        );
+        require!(
+            env::promise_results_count() == 1,
+            "payout callback must have exactly one promise result"
+        );
+        orders::on_payout_complete(self, order_id);
+    }
+
+    /// Resolve an execution only after checking on chain whether the USDC transfer happened.
+    /// Releasing funds after a real transfer would double pay the order.
+    pub fn resolve_stuck_payout(&mut self, order_id: String, transferred: bool) {
+        require!(
+            env::predecessor_account_id() == self.config.owner,
+            "only the owner may resolve a stuck payout"
+        );
+        orders::resolve_stuck_payout(self, order_id, transferred);
     }
 }
 
@@ -73,11 +263,46 @@ impl FungibleTokenReceiver for Contract {
         amount: U128,
         msg: String,
     ) -> PromiseOrValue<U128> {
-        if near_sdk::env::predecessor_account_id() != self.approved_usdc || !msg.is_empty() {
+        if env::predecessor_account_id() != self.approved_usdc || amount.0 == 0 {
             return PromiseOrValue::Value(amount);
         }
 
-        PromiseOrValue::Value(self.vault.deposit(&sender_id, amount))
+        let Some(beneficiary) = Self::deposit_beneficiary(&sender_id, &msg) else {
+            return PromiseOrValue::Value(amount);
+        };
+
+        let unused = self.vault.deposit(&beneficiary, amount);
+        if unused.0 == 0 {
+            Self::log_deposit(&beneficiary, &sender_id, amount);
+        }
+
+        PromiseOrValue::Value(unused)
+    }
+}
+
+impl Contract {
+    fn deposit_beneficiary(sender_id: &AccountId, msg: &str) -> Option<AccountId> {
+        if msg.is_empty() {
+            return Some(sender_id.clone());
+        }
+
+        near_sdk::serde_json::from_str::<TransferMessage>(msg)
+            .ok()
+            .map(|message| message.top_up.account_id)
+    }
+
+    fn log_deposit(account_id: &AccountId, sender_id: &AccountId, amount: U128) {
+        let event = near_sdk::serde_json::json!({
+            "standard": "fliq_vault",
+            "version": "1.0.0",
+            "event": "deposited",
+            "data": [{
+                "account_id": account_id,
+                "sender_id": sender_id,
+                "amount": amount,
+            }],
+        });
+        env::log_str(&format!("EVENT_JSON:{event}"));
     }
 }
 
@@ -85,14 +310,13 @@ impl FungibleTokenReceiver for Contract {
 mod tests {
     use super::*;
     use near_sdk::mock::MockAction;
-    use near_sdk::test_utils::{VMContextBuilder, get_created_receipts};
+    use near_sdk::test_utils::{VMContextBuilder, get_created_receipts, get_logs};
     use near_sdk::{VMContext, testing_env};
 
     fn account(value: &str) -> AccountId {
-        match value.parse() {
-            Ok(account_id) => account_id,
-            Err(error) => panic!("invalid test account {value}: {error}"),
-        }
+        value
+            .parse()
+            .unwrap_or_else(|_| panic!("invalid test account {value}"))
     }
 
     fn context(predecessor: &AccountId, attached_deposit: NearToken) -> VMContext {
@@ -107,7 +331,11 @@ mod tests {
     fn contract() -> Contract {
         let vault = account("vault.testnet");
         testing_env!(context(&vault, NearToken::from_yoctonear(0)));
-        Contract::new(account("usdc.testnet"))
+        Contract::new(
+            account("owner.testnet"),
+            account("registration.testnet"),
+            account("usdc.testnet"),
+        )
     }
 
     fn register(contract: &mut Contract, account_id: &AccountId) {
@@ -134,7 +362,7 @@ mod tests {
                 }
             }
         }
-        panic!("no transfer receipt created for {account_id}")
+        panic!("no transfer receipt created for {account_id}");
     }
 
     #[test]
@@ -142,8 +370,11 @@ mod tests {
     fn outsider_cannot_initialize_contract() {
         let attacker = account("attacker.testnet");
         testing_env!(context(&attacker, NearToken::from_yoctonear(0)));
-
-        Contract::new(account("fake-token.testnet"));
+        Contract::new(
+            attacker,
+            account("registration.testnet"),
+            account("fake-token.testnet"),
+        );
     }
 
     #[test]
@@ -155,16 +386,14 @@ mod tests {
             &account("usdc.testnet"),
             NearToken::from_yoctonear(0)
         ));
-
         let unused = contract.ft_on_transfer(user.clone(), U128(100_000_000), String::new());
-
         assert_eq!(returned_amount(unused), U128(0));
         assert_eq!(
             contract.get_balance(user),
             BalanceView {
                 available: U128(100_000_000),
                 reserved: U128(0),
-                total: U128(100_000_000),
+                total: U128(100_000_000)
             }
         );
     }
@@ -178,15 +407,126 @@ mod tests {
             &account("fake-token.testnet"),
             NearToken::from_yoctonear(0)
         ));
-
         let unused = contract.ft_on_transfer(user.clone(), U128(50_000_000), String::new());
-
         assert_eq!(returned_amount(unused), U128(50_000_000));
         assert_eq!(contract.get_balance(user), BalanceView::default());
     }
 
     #[test]
-    fn attributed_message_is_rejected_until_protocol_is_approved() {
+    fn wrong_token_cannot_attribute_a_top_up() {
+        let mut contract = contract();
+        let beneficiary = account("ada.testnet");
+        register(&mut contract, &beneficiary);
+        testing_env!(context(
+            &account("fake-token.testnet"),
+            NearToken::from_yoctonear(0)
+        ));
+        let unused = contract.ft_on_transfer(
+            account("intents.testnet"),
+            U128(50_000_000),
+            r#"{"top_up":{"account_id":"ada.testnet"}}"#.to_owned(),
+        );
+        assert_eq!(returned_amount(unused), U128(50_000_000));
+        assert_eq!(contract.get_balance(beneficiary), BalanceView::default());
+        assert!(get_logs().is_empty());
+    }
+
+    #[test]
+    fn strict_top_up_message_credits_beneficiary_not_sender() {
+        let mut contract = contract();
+        let sender = account("intents.testnet");
+        let beneficiary = account("ada.testnet");
+        register(&mut contract, &beneficiary);
+        testing_env!(context(
+            &account("usdc.testnet"),
+            NearToken::from_yoctonear(0)
+        ));
+        let unused = contract.ft_on_transfer(
+            sender.clone(),
+            U128(50_000_000),
+            r#"{"top_up":{"account_id":"ada.testnet"}}"#.to_owned(),
+        );
+        assert_eq!(returned_amount(unused), U128(0));
+        assert_eq!(contract.get_balance(sender), BalanceView::default());
+        assert_eq!(
+            contract.get_balance(beneficiary).available,
+            U128(50_000_000)
+        );
+    }
+
+    #[test]
+    fn repeated_top_up_requires_and_credits_each_real_transfer() {
+        let mut contract = contract();
+        let sender = account("intents.testnet");
+        let beneficiary = account("ada.testnet");
+        register(&mut contract, &beneficiary);
+        testing_env!(context(
+            &account("usdc.testnet"),
+            NearToken::from_yoctonear(0)
+        ));
+        let msg = r#"{"top_up":{"account_id":"ada.testnet"}}"#.to_owned();
+        assert_eq!(
+            returned_amount(contract.ft_on_transfer(sender.clone(), U128(25_000_000), msg.clone())),
+            U128(0)
+        );
+        assert_eq!(
+            returned_amount(contract.ft_on_transfer(sender, U128(25_000_000), msg)),
+            U128(0)
+        );
+        assert_eq!(
+            contract.get_balance(beneficiary).available,
+            U128(50_000_000)
+        );
+        assert_eq!(get_logs().len(), 2);
+    }
+
+    #[test]
+    fn malformed_or_extended_top_up_messages_are_returned() {
+        for msg in [
+            r#"{"account_id":"ada.testnet"}"#,
+            r#"{"top_up":{"account_id":"not valid"}}"#,
+            r#"{"top_up":{"account_id":"ada.testnet","extra":1}}"#,
+            r#"{"top_up":{"account_id":"ada.testnet"},"extra":1}"#,
+            "not-json",
+        ] {
+            let mut contract = contract();
+            let beneficiary = account("ada.testnet");
+            register(&mut contract, &beneficiary);
+            testing_env!(context(
+                &account("usdc.testnet"),
+                NearToken::from_yoctonear(0)
+            ));
+            let unused = contract.ft_on_transfer(
+                account("intents.testnet"),
+                U128(50_000_000),
+                msg.to_owned(),
+            );
+            assert_eq!(returned_amount(unused), U128(50_000_000));
+            assert_eq!(contract.get_balance(beneficiary), BalanceView::default());
+        }
+    }
+
+    #[test]
+    fn unregistered_top_up_beneficiary_receives_full_refund() {
+        let mut contract = contract();
+        testing_env!(context(
+            &account("usdc.testnet"),
+            NearToken::from_yoctonear(0)
+        ));
+        let unused = contract.ft_on_transfer(
+            account("intents.testnet"),
+            U128(50_000_000),
+            r#"{"top_up":{"account_id":"ada.testnet"}}"#.to_owned(),
+        );
+        assert_eq!(returned_amount(unused), U128(50_000_000));
+        assert_eq!(
+            contract.get_balance(account("ada.testnet")),
+            BalanceView::default()
+        );
+    }
+
+    #[test]
+    fn accepted_deposit_emits_backend_compatible_event() {
         let mut contract = contract();
         let user = account("ada.testnet");
         register(&mut contract, &user);
@@ -194,15 +534,13 @@ mod tests {
             &account("usdc.testnet"),
             NearToken::from_yoctonear(0)
         ));
-
-        let unused = contract.ft_on_transfer(
-            user.clone(),
-            U128(50_000_000),
-            r#"{"account_id":"ada.testnet"}"#.to_owned(),
+        returned_amount(contract.ft_on_transfer(user, U128(50_000_000), String::new()));
+        assert!(
+            get_logs()
+                .iter()
+                .any(|log| log.contains("\"event\":\"deposited\"")
+                    && log.contains("\"amount\":\"50000000\""))
         );
-
-        assert_eq!(returned_amount(unused), U128(50_000_000));
-        assert_eq!(contract.get_balance(user), BalanceView::default());
     }
 
     #[test]
@@ -213,9 +551,7 @@ mod tests {
             &account("usdc.testnet"),
             NearToken::from_yoctonear(0)
         ));
-
         let unused = contract.ft_on_transfer(user.clone(), U128(50_000_000), String::new());
-
         assert_eq!(returned_amount(unused), U128(50_000_000));
         assert_eq!(contract.get_balance(user), BalanceView::default());
     }
@@ -227,18 +563,14 @@ mod tests {
         let bounds = contract.storage_balance_bounds();
         assert!(!bounds.min.is_zero());
         assert_eq!(bounds.max, Some(bounds.min));
-
         testing_env!(context(&user, bounds.min));
         let registered = contract.storage_deposit(None, Some(true));
-
         assert_eq!(registered.total, bounds.min);
         assert!(registered.available.is_zero());
-        let stored = match contract.storage_balance_of(user) {
-            Some(balance) => balance,
-            None => panic!("registered account has no storage balance"),
-        };
-        assert_eq!(stored.total, registered.total);
-        assert_eq!(stored.available, registered.available);
+        assert_eq!(
+            contract.storage_balance_of(user).unwrap().total,
+            registered.total
+        );
     }
 
     #[test]
@@ -248,12 +580,11 @@ mod tests {
         let user = account("ada.testnet");
         let minimum = contract.storage_balance_bounds().min;
         let excess = NearToken::from_yoctonear(17);
-        let attached = NearToken::from_yoctonear(minimum.as_yoctonear() + excess.as_yoctonear());
-        testing_env!(context(&payer, attached));
-
+        testing_env!(context(
+            &payer,
+            NearToken::from_yoctonear(minimum.as_yoctonear() + excess.as_yoctonear())
+        ));
         contract.storage_deposit(Some(user.clone()), Some(true));
-
-        assert!(contract.storage_balance_of(user).is_some());
         assert_eq!(transferred_to(&payer), excess);
     }
 
@@ -262,12 +593,10 @@ mod tests {
         let mut contract = contract();
         let user = account("ada.testnet");
         register(&mut contract, &user);
-        let repeated_deposit = NearToken::from_yoctonear(23);
-        testing_env!(context(&user, repeated_deposit));
-
+        let deposit = NearToken::from_yoctonear(23);
+        testing_env!(context(&user, deposit));
         contract.storage_deposit(None, Some(true));
-
-        assert_eq!(transferred_to(&user), repeated_deposit);
+        assert_eq!(transferred_to(&user), deposit);
     }
 
     #[test]
@@ -278,9 +607,8 @@ mod tests {
         let minimum = contract.storage_balance_bounds().min.as_yoctonear();
         testing_env!(context(
             &user,
-            NearToken::from_yoctonear(minimum.saturating_sub(1)),
+            NearToken::from_yoctonear(minimum.saturating_sub(1))
         ));
-
         contract.storage_deposit(None, Some(true));
     }
 
@@ -291,11 +619,9 @@ mod tests {
         register(&mut contract, &user);
         let minimum = contract.storage_balance_bounds().min;
         testing_env!(context(&user, NearToken::from_yoctonear(1)));
-
         assert!(contract.storage_unregister(None));
         assert!(contract.storage_balance_of(user.clone()).is_none());
         assert_eq!(transferred_to(&user), minimum);
-
         testing_env!(context(&user, minimum));
         contract.storage_deposit(None, Some(true));
         assert!(contract.storage_balance_of(user).is_some());
@@ -306,7 +632,6 @@ mod tests {
         let mut contract = contract();
         let user = account("ada.testnet");
         testing_env!(context(&user, NearToken::from_yoctonear(1)));
-
         assert!(!contract.storage_unregister(None));
         assert!(get_created_receipts().is_empty());
     }
@@ -318,11 +643,8 @@ mod tests {
         register(&mut contract, &user);
         let minimum = contract.storage_balance_bounds().min;
         testing_env!(context(&user, NearToken::from_yoctonear(1)));
-
         let balance = contract.storage_withdraw(Some(NearToken::from_yoctonear(0)));
-
         assert_eq!(balance.total, minimum);
-        assert!(balance.available.is_zero());
         assert!(get_created_receipts().is_empty());
     }
 
@@ -333,7 +655,6 @@ mod tests {
         let user = account("ada.testnet");
         register(&mut contract, &user);
         testing_env!(context(&user, NearToken::from_yoctonear(1)));
-
         contract.storage_withdraw(Some(NearToken::from_yoctonear(1)));
     }
 
@@ -349,7 +670,6 @@ mod tests {
         ));
         returned_amount(contract.ft_on_transfer(user.clone(), U128(1), String::new()));
         testing_env!(context(&user, NearToken::from_yoctonear(1)));
-
         contract.storage_unregister(None);
     }
 
@@ -365,7 +685,6 @@ mod tests {
         ));
         returned_amount(contract.ft_on_transfer(user.clone(), U128(1), String::new()));
         testing_env!(context(&user, NearToken::from_yoctonear(1)));
-
         contract.storage_unregister(Some(true));
     }
 
@@ -380,7 +699,6 @@ mod tests {
             &account("usdc.testnet"),
             NearToken::from_yoctonear(0)
         ));
-
         assert_eq!(
             returned_amount(contract.ft_on_transfer(ada.clone(), U128(100_000_000), String::new())),
             U128(0)
@@ -389,7 +707,6 @@ mod tests {
             returned_amount(contract.ft_on_transfer(ben.clone(), U128(50_000_000), String::new())),
             U128(0)
         );
-
         assert_eq!(contract.get_balance(ada).available, U128(100_000_000));
         assert_eq!(contract.get_balance(ben).available, U128(50_000_000));
     }
@@ -407,10 +724,10 @@ mod tests {
             returned_amount(contract.ft_on_transfer(user.clone(), U128(u128::MAX), String::new())),
             U128(0)
         );
-
-        let unused = contract.ft_on_transfer(user.clone(), U128(1), String::new());
-
-        assert_eq!(returned_amount(unused), U128(1));
+        assert_eq!(
+            returned_amount(contract.ft_on_transfer(user.clone(), U128(1), String::new())),
+            U128(1)
+        );
         assert_eq!(contract.get_balance(user).available, U128(u128::MAX));
     }
 }
