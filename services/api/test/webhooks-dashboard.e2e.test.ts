@@ -57,6 +57,7 @@ describe.skipIf(!databaseEnabled)("webhook dashboard against a real database", (
   beforeAll(async () => {
     alice = await harness.signUp("wh-alice");
     bob = await harness.signUp("wh-bob");
+    deps.workspaceIds = [alice.workspaceId, bob.workspaceId];
   }, 60_000);
   afterAll(() => harness.cleanUp(), 60_000);
 

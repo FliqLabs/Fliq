@@ -34,7 +34,11 @@ export interface DeliveryDeps {
   transport: Transport;
   now: () => Date;
   random?: () => number;
+  // Limits a run to these workspaces. Only tests set it, so suites sharing one database leave each other's events alone.
+  workspaceIds?: readonly string[];
 }
+
+const scopeOf = (deps: DeliveryDeps) => ({ all: !deps.workspaceIds, ids: [...(deps.workspaceIds ?? [])] });
 
 export function eventIdFor(payoutEventId: string): string {
   return `evt_${payoutEventId.replace(/^pev_/, "")}`;
@@ -71,12 +75,14 @@ interface PendingEvent {
 // run once per event however many workers poll, and it never touches the payout itself.
 export async function fanOut(deps: DeliveryDeps): Promise<number> {
   const since = new Date(deps.now().getTime() - FANOUT_WINDOW_MS);
+  const scope = scopeOf(deps);
   const pending = await deps.unit(
     (tx) => tx.$queryRaw<PendingEvent[]>`
     SELECT pe.id, pe.payout_id, pe.to_state::text AS to_state, pe.version, pe.created_at, p.developer_id
     FROM core.payout_events pe
     JOIN core.payouts p ON p.id = pe.payout_id
     WHERE pe.created_at > ${since}
+      AND (${scope.all} OR p.developer_id = ANY(${scope.ids}::text[]))
       AND EXISTS (SELECT 1 FROM developer.webhook_endpoints e
                   WHERE e.workspace_id = p.developer_id AND e.deleted_at IS NULL AND e.status <> 'disabled')
       AND NOT EXISTS (SELECT 1 FROM messaging.inbox i WHERE i.consumer = ${FANOUT_CONSUMER} AND i.message_id = pe.id)
@@ -143,6 +149,7 @@ function nextDelay(attempt: number, random: () => number): number {
 async function claim(deps: DeliveryDeps): Promise<string[]> {
   const now = deps.now();
   const until = new Date(now.getTime() + CLAIM_LEASE_MS);
+  const scope = scopeOf(deps);
   return deps.unit(async (tx) => {
     const rows = await tx.$queryRaw<{ id: string }[]>`
       UPDATE developer.webhook_deliveries d SET next_attempt_at = ${until}
@@ -151,6 +158,7 @@ async function claim(deps: DeliveryDeps): Promise<string[]> {
         JOIN developer.webhook_endpoints e ON e.id = d2.endpoint_id
         WHERE d2.status = 'pending' AND d2.next_attempt_at <= ${now}
           AND e.status <> 'disabled' AND e.deleted_at IS NULL
+          AND (${scope.all} OR e.workspace_id = ANY(${scope.ids}::text[]))
         ORDER BY d2.next_attempt_at
         LIMIT ${BATCH}
         FOR UPDATE OF d2 SKIP LOCKED)
