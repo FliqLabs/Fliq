@@ -19,7 +19,8 @@ use near_sdk::{AccountId, NearToken, PanicOnDefault, Promise, PromiseOrValue, en
 use crate::orders::{set_status as apply_status, validate_deposit_address, validate_order};
 use crate::receipts::FliqEvent;
 use crate::types::{
-    Amount, Config, DEFAULT_MAX_EXPIRY, PayoutOrder, Receipt, StorageKey, TransferState, now,
+    Amount, Config, DEFAULT_MAX_EXPIRY, DEFAULT_PAYOUT_TIMEOUT, PayoutOrder, Receipt, StorageKey,
+    TransferState, now,
 };
 use crate::vault::{BalanceView, Vault};
 
@@ -57,7 +58,8 @@ impl Contract {
                 owner,
                 registration_account,
                 approved_usdc_token_contract,
-                max_expiry: DEFAULT_MAX_EXPIRY,
+                max_expiry: DEFAULT_MAX_EXPIRY.into(),
+                payout_timeout: DEFAULT_PAYOUT_TIMEOUT.into(),
             },
             orders: LookupMap::new(StorageKey::Orders),
             receipts: LookupMap::new(StorageKey::Receipts),
@@ -80,13 +82,25 @@ impl Contract {
         self.config.clone()
     }
 
+    pub fn set_payout_timeout(&mut self, payout_timeout: near_sdk::json_types::U64) {
+        require!(
+            env::predecessor_account_id() == self.config.owner,
+            "only the owner may set payout_timeout"
+        );
+        require!(
+            payout_timeout.0 > 0,
+            "payout_timeout must be greater than zero"
+        );
+        self.config.payout_timeout = payout_timeout;
+    }
+
     pub fn register_order(
         &mut self,
         order_id: String,
         payer: AccountId,
         deposit_address: AccountId,
         amount: Amount,
-        expiry: u64,
+        expiry: near_sdk::json_types::U64,
         corridor: String,
     ) {
         require!(
@@ -100,9 +114,9 @@ impl Contract {
         );
         validate_deposit_address(deposit_address.as_ref());
         let current_time = now();
-        require!(expiry > current_time, "expiry must be in the future");
+        require!(expiry.0 > current_time, "expiry must be in the future");
         require!(
-            expiry - current_time <= self.config.max_expiry,
+            expiry.0 - current_time <= self.config.max_expiry.0,
             "expiry is further ahead than the configured maximum"
         );
         let order = PayoutOrder {
@@ -110,10 +124,11 @@ impl Contract {
             payer,
             deposit_address,
             amount,
-            expiry,
+            expiry: expiry.into(),
             corridor: corridor.clone(),
             transfer_state: TransferState::Registered,
-            created_at: now(),
+            created_at: now().into(),
+            executing_since: None,
         };
         self.orders.insert(&order_id, &order);
         self.receipts.insert(
@@ -124,13 +139,13 @@ impl Contract {
                 transfer_state: TransferState::Registered,
                 backend_status: "created".to_string(),
                 refs: String::new(),
-                last_updated: now(),
+                last_updated: now().into(),
             },
         );
         FliqEvent::OrderRegistered {
             order_id,
             amount: amount.to_string(),
-            expiry: expiry.to_string(),
+            expiry: expiry.0.to_string(),
             corridor,
         }
         .emit();
@@ -189,6 +204,16 @@ impl Contract {
             "payout callback must have exactly one promise result"
         );
         orders::on_payout_complete(self, order_id);
+    }
+
+    /// Resolve an execution only after checking on chain whether the USDC transfer happened.
+    /// Releasing funds after a real transfer would double pay the order.
+    pub fn resolve_stuck_payout(&mut self, order_id: String, transferred: bool) {
+        require!(
+            env::predecessor_account_id() == self.config.owner,
+            "only the owner may resolve a stuck payout"
+        );
+        orders::resolve_stuck_payout(self, order_id, transferred);
     }
 }
 

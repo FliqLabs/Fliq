@@ -97,8 +97,8 @@ pub fn transition(order: &mut PayoutOrder, next: TransferState) -> Result<(), St
     }
 }
 
-pub fn is_expired(expiry: Timestamp, current: Timestamp) -> bool {
-    current >= expiry
+pub fn is_expired(expiry: near_sdk::json_types::U64, current: Timestamp) -> bool {
+    current >= expiry.0
 }
 
 pub fn set_status(contract: &mut Contract, order_id: String, status: String, refs: String) {
@@ -123,8 +123,8 @@ pub fn set_status(contract: &mut Contract, order_id: String, status: String, ref
     }
     receipt.backend_status = status.clone();
     receipt.refs = refs.clone();
-    receipt.last_updated = now();
-    let last_updated = receipt.last_updated.to_string();
+    receipt.last_updated = now().into();
+    let last_updated = receipt.last_updated.0.to_string();
     contract.receipts.insert(&order_id, &receipt);
     FliqEvent::StatusSet {
         order_id,
@@ -207,11 +207,12 @@ pub fn payout(
     if let Err(error) = transition(&mut order, TransferState::Executing) {
         env::panic_str(&error);
     }
+    order.executing_since = Some(now().into());
     contract.orders.insert(&order_id, &order);
     if let Some(mut receipt) = contract.receipts.get(&order_id) {
         receipt.order = order.clone();
         receipt.transfer_state = TransferState::Executing;
-        receipt.last_updated = now();
+        receipt.last_updated = now().into();
         contract.receipts.insert(&order_id, &receipt);
     }
 
@@ -247,14 +248,13 @@ pub fn payout(
         )
 }
 
-pub fn on_payout_complete(contract: &mut Contract, order_id: String) {
+fn finalize_payout(contract: &mut Contract, order_id: String, successful: bool) -> bool {
     let Some(mut order) = contract.orders.get(&order_id) else {
-        return;
+        return false;
     };
     if order.transfer_state != TransferState::Executing {
-        return;
+        return false;
     }
-    let successful = env::promise_result_checked(0, 1024 * 1024).is_ok();
     if successful {
         integration::commit_outflow(&mut contract.vault, &order_id);
         integration::settle_pending(&order_id);
@@ -268,7 +268,7 @@ pub fn on_payout_complete(contract: &mut Contract, order_id: String) {
     if let Some(mut receipt) = contract.receipts.get(&order_id) {
         receipt.order = order.clone();
         receipt.transfer_state = order.transfer_state.clone();
-        receipt.last_updated = crate::types::now();
+        receipt.last_updated = crate::types::now().into();
         contract.receipts.insert(&order_id, &receipt);
     }
     FliqEvent::PayoutExecuted {
@@ -276,4 +276,34 @@ pub fn on_payout_complete(contract: &mut Contract, order_id: String) {
         transfer_state: order.transfer_state,
     }
     .emit();
+    true
+}
+
+pub fn on_payout_complete(contract: &mut Contract, order_id: String) {
+    let successful = env::promise_result_checked(0, 1024 * 1024).is_ok();
+    finalize_payout(contract, order_id, successful);
+}
+
+pub fn resolve_stuck_payout(contract: &mut Contract, order_id: String, transferred: bool) {
+    let Some(order) = contract.orders.get(&order_id) else {
+        env::panic_str("order_id is not registered");
+    };
+    require!(
+        order.transfer_state == TransferState::Executing,
+        "order is not in Executing state"
+    );
+    let Some(executing_since) = order.executing_since else {
+        env::panic_str("executing_since is missing");
+    };
+    require!(
+        now()
+            >= executing_since
+                .0
+                .saturating_add(contract.config.payout_timeout.0),
+        "payout timeout has not elapsed"
+    );
+    require!(
+        finalize_payout(contract, order_id, transferred),
+        "stuck payout could not be resolved"
+    );
 }

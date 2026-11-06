@@ -7,7 +7,7 @@ use fliq_vault::types::{PayoutOrder, TransferState};
 use near_contract_standards::storage_management::StorageManagement;
 use near_sdk::env;
 #[cfg(feature = "testing")]
-use near_sdk::json_types::U128;
+use near_sdk::json_types::{U64, U128};
 use near_sdk::test_utils::{VMContextBuilder, accounts};
 use near_sdk::{AccountId, testing_env};
 #[cfg(feature = "testing")]
@@ -101,7 +101,7 @@ fn register_named_order(contract: &mut Contract, order_id: &str, payer: AccountI
         payer,
         accounts(4),
         amount,
-        NOW + 3_600_000_000_000,
+        U64(NOW + 3_600_000_000_000),
         "USDC-NGN".to_string(),
     );
 }
@@ -114,7 +114,7 @@ fn register_payout_order(contract: &mut Contract, amount: u128, expiry: u64) {
         accounts(3),
         accounts(4),
         amount,
-        expiry,
+        U64(expiry),
         "USDC-NGN".to_string(),
     );
 }
@@ -125,10 +125,11 @@ fn order(state: TransferState) -> PayoutOrder {
         payer: accounts(0),
         deposit_address: accounts(1),
         amount: 1,
-        expiry: 1,
+        expiry: U64(1),
         corridor: "USDC-NGN".to_string(),
         transfer_state: state,
-        created_at: 1,
+        created_at: U64(1),
+        executing_since: None,
     }
 }
 
@@ -204,7 +205,7 @@ fn registration_account_can_register() {
         accounts(3),
         accounts(4),
         10,
-        NOW + 3_600_000_000_000,
+        U64(NOW + 3_600_000_000_000),
         "USDC-NGN".to_string(),
     );
     let receipt = contract.get_receipt("order-1".to_string());
@@ -240,7 +241,7 @@ fn another_account_cannot_register() {
             accounts(3),
             accounts(4),
             10,
-            NOW + 3_600_000_000_000,
+            U64(NOW + 3_600_000_000_000),
             "USDC-NGN".to_string(),
         );
     }));
@@ -258,7 +259,7 @@ fn duplicate_order_id_fails() {
             accounts(3),
             accounts(4),
             10,
-            expiry,
+            U64(expiry),
             "USDC-NGN".to_string(),
         );
         contract.register_order(
@@ -266,7 +267,7 @@ fn duplicate_order_id_fails() {
             accounts(3),
             accounts(4),
             10,
-            expiry,
+            U64(expiry),
             "USDC-NGN".to_string(),
         );
     }));
@@ -291,7 +292,7 @@ fn invalid_registration_fields_fail() {
                 accounts(3),
                 accounts(4),
                 amount,
-                expiry,
+                U64(expiry),
                 corridor.to_string(),
             );
         }));
@@ -311,7 +312,7 @@ fn registered_order_fields_cannot_be_changed() {
         accounts(3),
         accounts(4),
         10,
-        NOW + 3_600_000_000_000,
+        U64(NOW + 3_600_000_000_000),
         "USDC-NGN".to_string(),
     );
     let receipt_before = contract.get_receipt("order-1".to_string());
@@ -323,7 +324,7 @@ fn registered_order_fields_cannot_be_changed() {
                 accounts(5),
                 accounts(6),
                 20,
-                NOW + 7_200_000_000_000,
+                U64(NOW + 7_200_000_000_000),
                 "USDC-KES".to_string(),
             );
         }))
@@ -353,7 +354,7 @@ fn registration_event_contains_order_fields() {
         accounts(3),
         accounts(4),
         10,
-        NOW + 3_600_000_000_000,
+        U64(NOW + 3_600_000_000_000),
         "USDC-NGN".to_string(),
     );
     let logs = near_sdk::test_utils::get_logs();
@@ -682,6 +683,99 @@ fn matching_payout_arguments_pass() {
         order_transfer_state(&contract, "order-1"),
         Some(TransferState::Executing)
     );
+}
+
+#[cfg(feature = "testing")]
+#[test]
+fn payout_timeout_is_owner_configurable() {
+    let mut contract = contract();
+    assert_eq!(contract.get_config().payout_timeout, U64(600_000_000_000));
+    set_caller(accounts(3), NOW);
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            contract.set_payout_timeout(U64(1));
+        }))
+        .is_err()
+    );
+    set_caller(accounts(0), NOW);
+    contract.set_payout_timeout(U64(1));
+    assert_eq!(contract.get_config().payout_timeout, U64(1));
+}
+
+#[cfg(feature = "testing")]
+#[test]
+fn stuck_payout_requires_owner_timeout_and_executing_state() {
+    let mut contract = contract();
+    set_caller(accounts(0), NOW);
+    contract.set_payout_timeout(U64(10));
+    set_caller(accounts(1), NOW);
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            contract.resolve_stuck_payout("missing".to_string(), false);
+        }))
+        .is_err()
+    );
+
+    contract.credit_for_testing(accounts(3), 100);
+    register_payout_order(&mut contract, 10, NOW + 3_600_000_000_000);
+    set_caller(accounts(3), NOW);
+    let _promise = payout(&mut contract, "order-1");
+    set_caller(accounts(0), NOW + 9);
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            contract.resolve_stuck_payout("order-1".to_string(), false);
+        }))
+        .is_err()
+    );
+    set_caller(accounts(0), NOW + 10);
+    contract.resolve_stuck_payout("order-1".to_string(), false);
+    assert_eq!(
+        order_transfer_state(&contract, "order-1"),
+        Some(TransferState::TransferFailed)
+    );
+    assert_eq!(contract.get_balance(accounts(3)).available, U128(100));
+}
+
+#[cfg(feature = "testing")]
+#[test]
+fn stuck_payout_transferred_commits_and_is_single_use() {
+    let mut contract = contract();
+    set_caller(accounts(0), NOW);
+    contract.set_payout_timeout(U64(10));
+    contract.credit_for_testing(accounts(3), 100);
+    register_payout_order(&mut contract, 10, NOW + 3_600_000_000_000);
+    set_caller(accounts(3), NOW);
+    let _promise = payout(&mut contract, "order-1");
+    set_caller(accounts(0), NOW + 10);
+    contract.resolve_stuck_payout("order-1".to_string(), true);
+    assert_eq!(
+        order_transfer_state(&contract, "order-1"),
+        Some(TransferState::Dispatched)
+    );
+    assert_eq!(contract.get_balance(accounts(3)).available, U128(90));
+    assert_eq!(contract.get_balance(accounts(3)).reserved, U128(0));
+
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            contract.resolve_stuck_payout("order-1".to_string(), true);
+        }))
+        .is_err()
+    );
+
+    set_promise_result(
+        VMContextBuilder::new()
+            .current_account_id(accounts(0))
+            .predecessor_account_id(accounts(0))
+            .block_timestamp(NOW + 10)
+            .build(),
+        PromiseResult::Successful(vec![]),
+    );
+    contract.on_payout_complete("order-1".to_string());
+    assert_eq!(
+        order_transfer_state(&contract, "order-1"),
+        Some(TransferState::Dispatched)
+    );
+    assert_eq!(contract.get_balance(accounts(3)).available, U128(90));
 }
 
 #[cfg(feature = "testing")]

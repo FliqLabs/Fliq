@@ -1,4 +1,5 @@
 use near_sdk::borsh::{BorshDeserialize, BorshSerialize};
+use near_sdk::json_types::U64;
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{AccountId, BorshStorageKey};
 
@@ -6,6 +7,7 @@ pub type Amount = u128;
 pub type Timestamp = u64;
 
 pub const DEFAULT_MAX_EXPIRY: Timestamp = 24 * 60 * 60 * 1_000_000_000;
+pub const DEFAULT_PAYOUT_TIMEOUT: Timestamp = 10 * 60 * 1_000_000_000;
 
 // OPEN: expiry unit is not agreed; this currently follows NEAR block timestamp nanoseconds.
 pub fn now() -> Timestamp {
@@ -24,7 +26,8 @@ pub struct Config {
     pub owner: AccountId,
     pub registration_account: AccountId,
     pub approved_usdc_token_contract: AccountId,
-    pub max_expiry: Timestamp,
+    pub max_expiry: U64,
+    pub payout_timeout: U64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -58,10 +61,11 @@ pub struct PayoutOrder {
     pub payer: AccountId,
     pub deposit_address: AccountId,
     pub amount: Amount,
-    pub expiry: Timestamp,
+    pub expiry: U64,
     pub corridor: String,
     pub transfer_state: TransferState,
-    pub created_at: Timestamp,
+    pub created_at: U64,
+    pub executing_since: Option<U64>,
 }
 
 /// A receipt keeps the NEAR-verified transfer state visibly separate from backend reporting.
@@ -74,7 +78,7 @@ pub struct Receipt {
     pub transfer_state: TransferState,
     pub backend_status: String,
     pub refs: String,
-    pub last_updated: Timestamp,
+    pub last_updated: U64,
 }
 
 pub const BACKEND_STATUSES: &[&str] = &[
