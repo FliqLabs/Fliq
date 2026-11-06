@@ -23,7 +23,7 @@ struct OnboardingView: View {
 
     var body: some View {
         NavigationStack(path: $path) {
-            WelcomeView(onStart: start, onExistingAccount: isLive ? start : finish, onSkip: isLive ? nil : finish)
+            WelcomeView(onStart: start, onExistingAccount: existingAccount, onSkip: skip)
                 .navigationDestination(for: OnboardingStep.self, destination: screen)
         }
         .tint(Theme.textPrimary)
@@ -41,6 +41,18 @@ struct OnboardingView: View {
         case .ownAccount:
             YourAccountView(entry: flow.ownAccount, onDone: finish)
         }
+    }
+
+    /// Spelled out as closures: Xcode 26.3 crashes type-checking `isLive ? nil : finish` inline.
+    private var existingAccount: () -> Void {
+        if isLive { return { start() } }
+        return { finish() }
+    }
+
+    /// The demo build can skip to Home. The live build cannot.
+    private var skip: (() -> Void)? {
+        if isLive { return nil }
+        return { finish() }
     }
 
     private func start() {
