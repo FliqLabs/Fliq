@@ -444,7 +444,10 @@ mod tests {
         );
         assert_eq!(returned_amount(unused), U128(0));
         assert_eq!(contract.get_balance(sender), BalanceView::default());
-        assert_eq!(contract.get_balance(beneficiary).available, U128(50_000_000));
+        assert_eq!(
+            contract.get_balance(beneficiary).available,
+            U128(50_000_000)
+        );
     }
 
     #[test]
@@ -458,9 +461,18 @@ mod tests {
             NearToken::from_yoctonear(0)
         ));
         let msg = r#"{"top_up":{"account_id":"ada.testnet"}}"#.to_owned();
-        assert_eq!(returned_amount(contract.ft_on_transfer(sender.clone(), U128(25_000_000), msg.clone())), U128(0));
-        assert_eq!(returned_amount(contract.ft_on_transfer(sender, U128(25_000_000), msg)), U128(0));
-        assert_eq!(contract.get_balance(beneficiary).available, U128(50_000_000));
+        assert_eq!(
+            returned_amount(contract.ft_on_transfer(sender.clone(), U128(25_000_000), msg.clone())),
+            U128(0)
+        );
+        assert_eq!(
+            returned_amount(contract.ft_on_transfer(sender, U128(25_000_000), msg)),
+            U128(0)
+        );
+        assert_eq!(
+            contract.get_balance(beneficiary).available,
+            U128(50_000_000)
+        );
         assert_eq!(get_logs().len(), 2);
     }
 
@@ -476,8 +488,15 @@ mod tests {
             let mut contract = contract();
             let beneficiary = account("ada.testnet");
             register(&mut contract, &beneficiary);
-            testing_env!(context(&account("usdc.testnet"), NearToken::from_yoctonear(0)));
-            let unused = contract.ft_on_transfer(account("intents.testnet"), U128(50_000_000), msg.to_owned());
+            testing_env!(context(
+                &account("usdc.testnet"),
+                NearToken::from_yoctonear(0)
+            ));
+            let unused = contract.ft_on_transfer(
+                account("intents.testnet"),
+                U128(50_000_000),
+                msg.to_owned(),
+            );
             assert_eq!(returned_amount(unused), U128(50_000_000));
             assert_eq!(contract.get_balance(beneficiary), BalanceView::default());
         }
@@ -496,7 +515,10 @@ mod tests {
             r#"{"top_up":{"account_id":"ada.testnet"}}"#.to_owned(),
         );
         assert_eq!(returned_amount(unused), U128(50_000_000));
-        assert_eq!(contract.get_balance(account("ada.testnet")), BalanceView::default());
+        assert_eq!(
+            contract.get_balance(account("ada.testnet")),
+            BalanceView::default()
+        );
     }
 
     #[test]
@@ -504,9 +526,17 @@ mod tests {
         let mut contract = contract();
         let user = account("ada.testnet");
         register(&mut contract, &user);
-        testing_env!(context(&account("usdc.testnet"), NearToken::from_yoctonear(0)));
+        testing_env!(context(
+            &account("usdc.testnet"),
+            NearToken::from_yoctonear(0)
+        ));
         returned_amount(contract.ft_on_transfer(user, U128(50_000_000), String::new()));
-        assert!(get_logs().iter().any(|log| log.contains("\"event\":\"deposited\"") && log.contains("\"amount\":\"50000000\"")));
+        assert!(
+            get_logs()
+                .iter()
+                .any(|log| log.contains("\"event\":\"deposited\"")
+                    && log.contains("\"amount\":\"50000000\""))
+        );
     }
 
     #[test]
