@@ -1,3 +1,4 @@
+use crate::errors;
 use near_contract_standards::storage_management::{StorageBalance, StorageBalanceBounds};
 use near_sdk::collections::LookupMap;
 use near_sdk::json_types::U128;
@@ -27,7 +28,7 @@ impl From<Balance> for BalanceView {
     fn from(balance: Balance) -> Self {
         let total = match balance.available.checked_add(balance.reserved) {
             Some(total) => total,
-            None => env::panic_str("vault balance invariant violated"),
+            None => env::panic_str(errors::BALANCE_INVARIANT),
         };
         Self {
             available: U128(balance.available),
@@ -75,6 +76,16 @@ pub(crate) enum RefundError {
     Underbacked,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum TransferError {
+    AmountMustBePositive,
+    SameAccount,
+    SenderNotRegistered,
+    RecipientNotRegistered,
+    InsufficientBalance,
+    ArithmeticOverflow,
+}
+
 #[near(serializers = [borsh])]
 pub(crate) struct Vault {
     balances: LookupMap<AccountId, Balance>,
@@ -92,7 +103,7 @@ impl Vault {
         balances.insert(&measurement_account, &Balance::default());
         let account_storage_usage = match env::storage_usage().checked_sub(initial_storage_usage) {
             Some(storage_usage) => storage_usage,
-            None => env::panic_str("failed to measure account storage"),
+            None => env::panic_str(errors::STORAGE_MEASUREMENT_FAILED),
         };
         balances.remove(&measurement_account);
 
@@ -130,6 +141,54 @@ impl Vault {
         self.balances.insert(account_id, &updated);
         self.total_liabilities = total_liabilities;
         U128(0)
+    }
+
+    pub(crate) fn transfer_available(
+        &mut self,
+        sender: &AccountId,
+        recipient: &AccountId,
+        amount: u128,
+    ) -> Result<(), TransferError> {
+        if amount == 0 {
+            return Err(TransferError::AmountMustBePositive);
+        }
+        if sender == recipient {
+            return Err(TransferError::SameAccount);
+        }
+        let Some(sender_balance) = self.balances.get(sender) else {
+            return Err(TransferError::SenderNotRegistered);
+        };
+        let Some(recipient_balance) = self.balances.get(recipient) else {
+            return Err(TransferError::RecipientNotRegistered);
+        };
+        let Some(sender_available) = sender_balance.available.checked_sub(amount) else {
+            return Err(TransferError::InsufficientBalance);
+        };
+        let Some(recipient_available) = recipient_balance.available.checked_add(amount) else {
+            return Err(TransferError::ArithmeticOverflow);
+        };
+        if recipient_available
+            .checked_add(recipient_balance.reserved)
+            .is_none()
+        {
+            return Err(TransferError::ArithmeticOverflow);
+        }
+
+        self.balances.insert(
+            sender,
+            &Balance {
+                available: sender_available,
+                reserved: sender_balance.reserved,
+            },
+        );
+        self.balances.insert(
+            recipient,
+            &Balance {
+                available: recipient_available,
+                reserved: recipient_balance.reserved,
+            },
+        );
+        Ok(())
     }
 
     #[allow(dead_code)]
@@ -337,17 +396,11 @@ impl Vault {
             return self.registered_storage_balance();
         }
 
-        require!(
-            attached >= minimum,
-            format!(
-                "requires storage deposit of at least {} yoctoNEAR",
-                minimum.as_yoctonear()
-            )
-        );
+        require!(attached >= minimum, errors::STORAGE_DEPOSIT_REQUIRED);
         self.balances.insert(&account_id, &Balance::default());
         let refund_amount = match attached.as_yoctonear().checked_sub(minimum.as_yoctonear()) {
             Some(refund) => refund,
-            None => env::panic_str("storage deposit invariant violated"),
+            None => env::panic_str(errors::BALANCE_INVARIANT),
         };
         let refund = NearToken::from_yoctonear(refund_amount);
         Self::refund_storage_deposit(env::predecessor_account_id(), refund);
@@ -358,11 +411,11 @@ impl Vault {
         Self::require_one_yocto();
         require!(
             amount.unwrap_or(NearToken::from_yoctonear(0)).is_zero(),
-            "registered storage has no withdrawable balance"
+            errors::STORAGE_WITHDRAWAL_UNAVAILABLE
         );
         require!(
             self.balances.get(&env::predecessor_account_id()).is_some(),
-            "account is not registered"
+            errors::ACCOUNT_NOT_REGISTERED
         );
         self.registered_storage_balance()
     }
@@ -375,7 +428,7 @@ impl Vault {
         };
         require!(
             balance.available == 0 && balance.reserved == 0,
-            "cannot unregister an account with a vault balance"
+            errors::ACCOUNT_BALANCE_NONZERO
         );
 
         self.balances.remove(&account_id);
@@ -398,7 +451,7 @@ impl Vault {
             .checked_mul(u128::from(self.account_storage_usage))
         {
             Some(minimum) => minimum,
-            None => env::panic_str("storage balance calculation overflowed"),
+            None => env::panic_str(errors::STORAGE_CALCULATION_OVERFLOW),
         };
         NearToken::from_yoctonear(minimum)
     }
@@ -419,7 +472,7 @@ impl Vault {
     fn require_one_yocto() {
         require!(
             env::attached_deposit() == NearToken::from_yoctonear(1),
-            "requires attached deposit of exactly 1 yoctoNEAR"
+            errors::ONE_YOCTO_REQUIRED
         );
     }
 
@@ -427,7 +480,7 @@ impl Vault {
         let value = "a".repeat(MAX_ACCOUNT_ID_LENGTH);
         match value.parse() {
             Ok(account_id) => account_id,
-            Err(_) => env::panic_str("failed to create storage measurement account"),
+            Err(_) => env::panic_str(errors::STORAGE_MEASUREMENT_FAILED),
         }
     }
 }
