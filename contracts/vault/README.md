@@ -12,6 +12,8 @@ Accounts must call `storage_deposit` before depositing USDC. The vault accepts `
 
 `recredit` is registration-account-only and queries the vault's real USDC balance before restoring a refunded payout. The amount cannot exceed the original outflow or the vault's unattributed token balance, and each order can be recredited once. `transfer` moves available balances between two registered vault users without changing aggregate liabilities.
 
+The registration account is fixed at initialization and rotates keys on that account rather than through a contract setter. Receipt reference fields are write-once. A recredit requires a recorded `refund_tx`, and each refund transaction can back at most one order across the contract; only a successful recredit can mark the receipt `refunded`. The complete event wire fixture is `tests/fixtures/events.jsonl`, shared with the backend parser tests.
+
 The current payout authorization is payer-only. Aria's signing-key policy implementation will replace that temporary rule; `get_policy` therefore returns `null` until that work is integrated. Order storage is currently funded by the vault account and must be included in the contract team's deployment funding decision.
 
 Rules:

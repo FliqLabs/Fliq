@@ -61,6 +61,7 @@ pub struct Contract {
     orders: LookupMap<String, PayoutOrder>,
     receipts: LookupMap<String, ReceiptRecord>,
     payouts_pending: LookupSet<String>,
+    used_refund_transactions: LookupSet<String>,
 }
 
 #[near]
@@ -83,6 +84,7 @@ impl Contract {
             orders: LookupMap::new(StorageKey::Orders),
             receipts: LookupMap::new(StorageKey::Receipts),
             payouts_pending: LookupSet::new(StorageKey::PayoutsPending),
+            used_refund_transactions: LookupSet::new(StorageKey::UsedRefundTransactions),
         }
     }
 
@@ -104,11 +106,6 @@ impl Contract {
 
     pub fn get_policy(&self, _public_key: String) -> Option<String> {
         None
-    }
-
-    pub fn set_registration_account(&mut self, registration_account: AccountId) {
-        self.require_owner();
-        self.config.registration_account = registration_account;
     }
 
     pub fn register_order(
@@ -226,14 +223,21 @@ impl Contract {
         }
         self.validate_refs(&refs);
         let mut receipt = self.receipts.get(&order_id).unwrap_or_default();
-        if receipt.status.as_deref() == Some(status.as_str()) && receipt.refs == refs {
+        let same_status = receipt.status.as_deref() == Some(status.as_str());
+        let refs_changed = match receipt.refs.merge_once(refs) {
+            Ok(changed) => changed,
+            Err(()) => fail("INVALID_TRANSITION"),
+        };
+        if same_status {
+            if refs_changed {
+                fail("INVALID_TRANSITION");
+            }
             return;
         }
         if !valid_status_transition(receipt.status.as_deref(), &status) {
             fail("INVALID_TRANSITION");
         }
         receipt.status = Some(status.clone());
-        receipt.refs.merge(refs);
         let event_refs = receipt.refs.clone();
         self.receipts.insert(&order_id, &receipt);
         FliqVaultEvent::StatusSet {
@@ -250,10 +254,14 @@ impl Contract {
             fail("ORDER_NOT_FOUND");
         };
         let receipt = self.receipts.get(&order_id).unwrap_or_default();
-        if order.state != OrderState::Executed
-            || !matches!(receipt.status.as_deref(), Some("refunding" | "refunded"))
-        {
+        if order.state != OrderState::Executed || receipt.status.as_deref() != Some("refunding") {
             fail("NOT_REFUNDABLE");
+        }
+        let Some(refund_tx) = receipt.refs.refund_tx.as_ref() else {
+            fail("NOT_REFUNDABLE");
+        };
+        if self.used_refund_transactions.contains(refund_tx) {
+            fail("ALREADY_RECREDITED");
         }
         if receipt.recredited_amount != 0 {
             fail("ALREADY_RECREDITED");
@@ -340,10 +348,16 @@ impl Contract {
         };
         let mut receipt = self.receipts.get(&order_id).unwrap_or_default();
         if order.state != OrderState::Executed
-            || !matches!(receipt.status.as_deref(), Some("refunding" | "refunded"))
+            || receipt.status.as_deref() != Some("refunding")
             || receipt.recredited_amount != 0
         {
             return false;
+        }
+        let Some(refund_tx) = receipt.refs.refund_tx.clone() else {
+            return false;
+        };
+        if self.used_refund_transactions.contains(&refund_tx) {
+            fail("ALREADY_RECREDITED");
         }
         match self
             .vault
@@ -362,9 +376,17 @@ impl Contract {
             ) => fail("INVALID_AMOUNT"),
             Err(RefundError::NotFound) => fail("NOT_REFUNDABLE"),
         }
+        self.used_refund_transactions.insert(&refund_tx);
         receipt.recredited_amount = amount.0;
         receipt.status = Some("refunded".to_owned());
+        let event_refs = receipt.refs.clone();
         self.receipts.insert(&order_id, &receipt);
+        FliqVaultEvent::StatusSet {
+            order_id,
+            status: "refunded".to_owned(),
+            refs: event_refs,
+        }
+        .emit();
         true
     }
 
@@ -427,11 +449,6 @@ impl FungibleTokenReceiver for Contract {
 }
 
 impl Contract {
-    fn require_owner(&self) {
-        if env::predecessor_account_id() != self.config.owner {
-            fail("UNAUTHORIZED");
-        }
-    }
     fn require_registration_account(&self) {
         if env::predecessor_account_id() != self.config.registration_account {
             fail("UNAUTHORIZED");
@@ -512,7 +529,7 @@ fn valid_status_transition(current: Option<&str>, next: &str) -> bool {
         ),
         Some("with_provider") => matches!(next, "paying_out" | "settled" | "refunding" | "failed"),
         Some("paying_out") => matches!(next, "settled" | "refunding" | "failed"),
-        Some("refunding") => matches!(next, "refunded" | "failed"),
+        Some("refunding") => next == "failed",
         Some("settled" | "refunded" | "failed") | Some(_) => false,
     }
 }
@@ -576,6 +593,15 @@ mod tests {
             (NOW + 1_000_000_000).to_string(),
             "NG-NGN-bank".to_owned(),
         );
+    }
+
+    fn execute_order(contract: &mut Contract, payer: &AccountId, order_id: &str) {
+        register_order(contract, payer, order_id);
+        testing_env!(context(payer, NOW, NearToken::from_yoctonear(0)));
+        let _promise = contract.payout(order_id.to_owned());
+        let vault = account("vault.testnet");
+        testing_env!(context(&vault, NOW, NearToken::from_yoctonear(0)));
+        contract.on_payout_complete(order_id.to_owned(), "ed25519:test".to_owned(), Ok(()));
     }
 
     #[test]
@@ -723,5 +749,128 @@ mod tests {
         assert_eq!(receipt.status.as_deref(), Some("refunded"));
         assert_eq!(receipt.recredited_amount, U128(50_000_000));
         assert_eq!(contract.get_balance(payer).available, U128(50_000_000));
+    }
+
+    #[test]
+    fn shared_event_fixture_covers_every_contract_event() {
+        let fixture = include_str!("../tests/fixtures/events.jsonl");
+        let mut names = std::collections::BTreeSet::new();
+        for line in fixture.lines() {
+            let value: near_sdk::serde_json::Value = near_sdk::serde_json::from_str(line)
+                .unwrap_or_else(|error| panic!("invalid event fixture: {error}"));
+            assert_eq!(value["standard"], "fliq_vault");
+            assert_eq!(value["version"], "1.0.0");
+            let Some(name) = value["event"].as_str() else {
+                panic!("event fixture is missing its name");
+            };
+            names.insert(name.to_owned());
+        }
+        assert_eq!(
+            names,
+            std::collections::BTreeSet::from([
+                "deposited",
+                "order_registered",
+                "order_released",
+                "payout_executed",
+                "recredited",
+                "status_set",
+                "transferred",
+            ])
+            .into_iter()
+            .map(str::to_owned)
+            .collect()
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "fliq_vault: INVALID_TRANSITION")]
+    fn registrar_cannot_mark_an_order_refunded() {
+        let mut contract = contract();
+        let payer = account("payer.testnet");
+        register_account(&mut contract, &payer);
+        credit(&mut contract, &payer, 50_000_000);
+        execute_order(&mut contract, &payer, "order-refunded");
+        let registrar = account("registrar.testnet");
+        testing_env!(context(&registrar, NOW, NearToken::from_yoctonear(0)));
+        contract.set_status(
+            "order-refunded".to_owned(),
+            "refunding".to_owned(),
+            ReceiptRefs {
+                refund_tx: Some("refund-evidence".to_owned()),
+                ..ReceiptRefs::default()
+            },
+        );
+
+        contract.set_status(
+            "order-refunded".to_owned(),
+            "refunded".to_owned(),
+            ReceiptRefs::default(),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "fliq_vault: INVALID_TRANSITION")]
+    fn receipt_reference_cannot_be_changed() {
+        let mut contract = contract();
+        let payer = account("payer.testnet");
+        register_account(&mut contract, &payer);
+        credit(&mut contract, &payer, 50_000_000);
+        execute_order(&mut contract, &payer, "order-refs");
+        let registrar = account("registrar.testnet");
+        testing_env!(context(&registrar, NOW, NearToken::from_yoctonear(0)));
+        contract.set_status(
+            "order-refs".to_owned(),
+            "routing".to_owned(),
+            ReceiptRefs {
+                provider: Some("provider-a".to_owned()),
+                ..ReceiptRefs::default()
+            },
+        );
+
+        contract.set_status(
+            "order-refs".to_owned(),
+            "with_provider".to_owned(),
+            ReceiptRefs {
+                provider: Some("provider-b".to_owned()),
+                ..ReceiptRefs::default()
+            },
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "fliq_vault: ALREADY_RECREDITED")]
+    fn refund_transaction_cannot_back_two_orders() {
+        let mut contract = contract();
+        let payer = account("payer.testnet");
+        register_account(&mut contract, &payer);
+        credit(&mut contract, &payer, 100_000_000);
+        execute_order(&mut contract, &payer, "order-refund-a");
+        execute_order(&mut contract, &payer, "order-refund-b");
+        let registrar = account("registrar.testnet");
+        testing_env!(context(&registrar, NOW, NearToken::from_yoctonear(0)));
+        let evidence = ReceiptRefs {
+            refund_tx: Some("shared-refund-tx".to_owned()),
+            ..ReceiptRefs::default()
+        };
+        contract.set_status(
+            "order-refund-a".to_owned(),
+            "refunding".to_owned(),
+            evidence.clone(),
+        );
+        contract.set_status(
+            "order-refund-b".to_owned(),
+            "refunding".to_owned(),
+            evidence,
+        );
+        let vault = account("vault.testnet");
+        testing_env!(context(&vault, NOW, NearToken::from_yoctonear(0)));
+        assert!(contract.on_recredit_balance(
+            "order-refund-a".to_owned(),
+            U128(25_000_000),
+            Ok(U128(25_000_000)),
+        ));
+        testing_env!(context(&registrar, NOW, NearToken::from_yoctonear(0)));
+
+        let _promise = contract.recredit("order-refund-b".to_owned(), U128(25_000_000));
     }
 }

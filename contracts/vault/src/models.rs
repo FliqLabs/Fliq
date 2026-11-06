@@ -9,6 +9,7 @@ pub enum StorageKey {
     Orders,
     Receipts,
     PayoutsPending,
+    UsedRefundTransactions,
 }
 
 #[near(serializers = [borsh, json])]
@@ -40,19 +41,13 @@ pub struct ReceiptRefs {
 }
 
 impl ReceiptRefs {
-    pub fn merge(&mut self, next: Self) {
-        if next.provider.is_some() {
-            self.provider = next.provider;
-        }
-        if next.provider_order.is_some() {
-            self.provider_order = next.provider_order;
-        }
-        if next.bank_reference.is_some() {
-            self.bank_reference = next.bank_reference;
-        }
-        if next.refund_tx.is_some() {
-            self.refund_tx = next.refund_tx;
-        }
+    pub fn merge_once(&mut self, next: Self) -> Result<bool, ()> {
+        let mut changed = false;
+        changed |= merge_field_once(&mut self.provider, next.provider)?;
+        changed |= merge_field_once(&mut self.provider_order, next.provider_order)?;
+        changed |= merge_field_once(&mut self.bank_reference, next.bank_reference)?;
+        changed |= merge_field_once(&mut self.refund_tx, next.refund_tx)?;
+        Ok(changed)
     }
 
     pub fn values(&self) -> impl Iterator<Item = &String> {
@@ -64,6 +59,20 @@ impl ReceiptRefs {
         ]
         .into_iter()
         .flatten()
+    }
+}
+
+fn merge_field_once(current: &mut Option<String>, next: Option<String>) -> Result<bool, ()> {
+    let Some(next) = next else {
+        return Ok(false);
+    };
+    match current {
+        None => {
+            *current = Some(next);
+            Ok(true)
+        }
+        Some(value) if *value == next => Ok(false),
+        Some(_) => Err(()),
     }
 }
 
