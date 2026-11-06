@@ -1,7 +1,7 @@
 use near_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use near_sdk::json_types::{U64, U128};
 use near_sdk::serde::{Deserialize, Serialize};
-use near_sdk::{AccountId, BorshStorageKey};
+use near_sdk::{AccountId, BorshStorageKey, PublicKey};
 
 pub type Amount = u128;
 pub type Timestamp = u64;
@@ -22,22 +22,17 @@ pub enum StorageKey {
     PayoutKeys,
     AgentPolicies,
     PendingPolicySpends,
-}
-
-#[derive(BorshDeserialize, BorshSerialize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(crate = "near_sdk::serde", rename_all = "snake_case")]
-pub enum PolicyAction {
-    Payout,
+    AgentPolicyKeys,
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Clone, Debug, PartialEq, Eq)]
 pub struct AgentPolicy {
     pub owner: AccountId,
     pub agent_id: AccountId,
-    pub allowed_action: PolicyAction,
-    pub max_per_payout: Amount,
-    pub daily_limit: Amount,
-    pub allowed_corridors: Vec<String>,
+    pub public_key: PublicKey,
+    pub per_payout_cap: Amount,
+    pub daily_cap: Amount,
+    pub corridors: Option<Vec<String>>,
     pub cooldown_ns: Timestamp,
     pub expiry_ns: Timestamp,
     pub revoked: bool,
@@ -50,21 +45,15 @@ pub struct AgentPolicy {
 #[serde(crate = "near_sdk::serde")]
 pub struct AgentPolicyView {
     pub owner: AccountId,
-    pub agent_id: AccountId,
-    pub allowed_action: PolicyAction,
-    pub max_per_payout: U128,
-    pub daily_limit: U128,
+    pub per_payout_cap: U128,
+    pub daily_cap: U128,
     pub spent_today: U128,
-    pub allowed_corridors: Vec<String>,
-    pub cooldown_ns: U64,
-    pub expiry_ns: U64,
-    pub revoked: bool,
-    pub last_payout_at: Option<U64>,
+    pub corridors: Option<Vec<String>>,
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Clone, Debug, PartialEq, Eq)]
 pub struct PendingPolicySpend {
-    pub agent_id: Option<AccountId>,
+    pub policy_key: Option<PublicKey>,
     pub amount: Amount,
     pub day_index: u64,
 }

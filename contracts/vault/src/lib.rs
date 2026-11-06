@@ -15,8 +15,8 @@ use near_sdk::collections::{LookupMap, LookupSet};
 use near_sdk::json_types::U128;
 use near_sdk::serde::Deserialize;
 use near_sdk::{
-    AccountId, Gas, NearToken, PanicOnDefault, Promise, PromiseError, PromiseOrValue, env,
-    ext_contract, near, require,
+    AccountId, Gas, NearToken, PanicOnDefault, Promise, PromiseError, PromiseOrValue, PublicKey,
+    env, ext_contract, near, require,
 };
 
 use crate::orders::{set_status as apply_status, validate_deposit_address, validate_order};
@@ -66,7 +66,8 @@ pub struct Contract {
     pub(crate) receipts: LookupMap<String, Receipt>,
     pub(crate) used_refund_transactions: LookupSet<String>,
     pub(crate) payout_keys: LookupMap<String, String>,
-    pub(crate) agent_policies: LookupMap<AccountId, AgentPolicy>,
+    pub(crate) agent_policies: LookupMap<PublicKey, AgentPolicy>,
+    pub(crate) agent_policy_keys: LookupMap<AccountId, PublicKey>,
     pub(crate) pending_policy_spends: LookupMap<String, PendingPolicySpend>,
 }
 
@@ -102,6 +103,7 @@ impl Contract {
             used_refund_transactions: LookupSet::new(StorageKey::UsedRefundTransactions),
             payout_keys: LookupMap::new(StorageKey::PayoutKeys),
             agent_policies: LookupMap::new(StorageKey::AgentPolicies),
+            agent_policy_keys: LookupMap::new(StorageKey::AgentPolicyKeys),
             pending_policy_spends: LookupMap::new(StorageKey::PendingPolicySpends),
         }
     }
@@ -118,32 +120,37 @@ impl Contract {
         self.config.clone()
     }
 
-    pub fn set_agent_policy(
+    #[payable]
+    #[allow(clippy::too_many_arguments)]
+    pub fn set_agent(
         &mut self,
+        public_key: PublicKey,
         agent_id: AccountId,
-        max_per_payout: U128,
-        daily_limit: U128,
-        allowed_corridors: Vec<String>,
+        per_payout_cap: U128,
+        daily_cap: U128,
+        corridors: Option<Vec<String>>,
         cooldown_ns: near_sdk::json_types::U64,
         expiry_ns: near_sdk::json_types::U64,
     ) {
-        policies::set_agent_policy(
+        policies::set_agent(
             self,
+            public_key,
             agent_id,
-            max_per_payout,
-            daily_limit,
-            allowed_corridors,
+            per_payout_cap,
+            daily_cap,
+            corridors,
             cooldown_ns,
             expiry_ns,
         );
     }
 
-    pub fn revoke_agent(&mut self, agent_id: AccountId) {
-        policies::revoke_agent(self, &agent_id);
+    #[payable]
+    pub fn remove_agent(&mut self, public_key: PublicKey) {
+        policies::remove_agent(self, &public_key);
     }
 
-    pub fn get_policy(&self, agent_id: AccountId) -> Option<AgentPolicyView> {
-        policies::get_policy(self, &agent_id)
+    pub fn get_policy(&self, public_key: PublicKey) -> Option<AgentPolicyView> {
+        policies::get_policy(self, &public_key)
     }
 
     pub fn set_payout_timeout(&mut self, payout_timeout: near_sdk::json_types::U64) {
@@ -282,7 +289,8 @@ impl Contract {
             env::attached_deposit() == NearToken::from_yoctonear(1),
             errors::ONE_YOCTO_REQUIRED
         );
-        let from = env::predecessor_account_id();
+        let caller = env::predecessor_account_id();
+        let from = integration::authorize_transfer(self, &caller, amount.0);
         match self.vault.transfer_available(&from, &to_account, amount.0) {
             Ok(()) => {}
             Err(TransferError::AmountMustBePositive | TransferError::ArithmeticOverflow) => {

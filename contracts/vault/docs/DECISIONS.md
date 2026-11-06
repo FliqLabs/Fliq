@@ -30,11 +30,11 @@ These rules are PROPOSED and require backend approval:
 
 ## Agent policy behavior
 
-- Policies are keyed by a distinct NEAR agent account. The policy owner is the payer account that created the policy; an agent account cannot own or increase its own policy.
-- `set_agent_policy` creates or updates caps, exact-match corridors, cooldown and expiry without resetting same-day spend. `revoke_agent` blocks every future payout by that agent.
+- Policies are looked up by public key and bind that key to one distinct NEAR agent account. The policy owner is the payer account that created the policy; an agent account cannot own or increase its own policy.
+- `set_agent` creates or updates caps, optional exact-match corridors, cooldown and expiry without resetting same-day spend. `remove_agent` revokes the binding. Both require exactly 1 yoctoNEAR so an ordinary function-call key cannot change agent permissions.
 - Daily spend includes pending and successful payouts. Parallel attempts therefore cannot race past the limit. A failed transfer releases its same-day amount; a successful payout remains counted even if it is later refunded.
 - Cooldown starts when a payout is authorized and remains in force after a failed transfer. Daily buckets use NEAR block timestamp nanoseconds and UTC-sized 24-hour intervals.
-- Direct payer calls do not require an agent policy. Agent calls require the policy owner to equal the registered order payer.
+- Direct payer calls do not require an agent policy. Agent payout calls require the policy owner to equal the registered order payer. Agent-initiated vault transfers debit the policy owner and enforce the same per-action cap, daily cap, cooldown, expiry and revocation rules; corridor validation applies only to payouts because a vault transfer has no corridor.
 
 ## Other OPEN contract questions
 

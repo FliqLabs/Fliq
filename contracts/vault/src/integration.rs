@@ -44,6 +44,14 @@ pub fn authorize_payout(
     policies::authorize_payout(contract, caller, payer, order_id, amount, corridor);
 }
 
+pub fn authorize_transfer(
+    contract: &mut Contract,
+    caller: &AccountId,
+    amount: Amount,
+) -> AccountId {
+    policies::authorize_transfer(contract, caller, amount)
+}
+
 pub fn release_pending(contract: &mut Contract, order_id: &str) {
     policies::release_pending(contract, order_id);
 }

@@ -55,10 +55,9 @@ Every contract-owned panic uses the exact `fliq_vault: CODE` form.
 | POLICY_PAYER_MISMATCH | The policy owner is not the order payer. |
 | POLICY_REVOKED | The agent policy is revoked. |
 | POLICY_EXPIRED | The agent policy has expired. |
-| POLICY_ACTION_DENIED | The policy does not permit payouts. |
-| POLICY_PER_PAYOUT_LIMIT | The order exceeds the single-payout cap. |
-| POLICY_DAILY_LIMIT | Pending plus completed spend would exceed the daily cap. |
-| POLICY_CORRIDOR_DENIED | The order corridor is not allowed by the policy. |
+| POLICY_PER_PAYOUT_CAP | The action exceeds the single-action cap. |
+| POLICY_DAILY_CAP | Pending plus completed spend would exceed the daily cap. |
+| POLICY_CORRIDOR | The order corridor is not allowed by the policy. |
 | POLICY_COOLDOWN | The agent is attempting another payout too soon. |
 | POLICY_PENDING_EXISTS | The order already has pending policy spend. |
 | POLICY_PENDING_MISSING | Expected pending policy spend is missing. |
