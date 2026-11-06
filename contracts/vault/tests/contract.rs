@@ -44,7 +44,7 @@ fn refs(value: &str) -> ReceiptRefs {
 }
 
 fn agent_key() -> PublicKey {
-    "ed25519:11111111111111111111111111111111"
+    "ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp"
         .parse()
         .unwrap_or_else(|_| panic!("invalid test public key"))
 }
@@ -103,6 +103,20 @@ fn payout(contract: &mut Contract, order_id: &str) -> near_sdk::Promise {
     contract.payout(order_id.to_owned(), order.amount, order.deposit_address)
 }
 
+/// Enough NEAR to pay for one policy's storage. The contract refunds the rest.
+const POLICY_DEPOSIT: u128 = 100_000_000_000_000_000_000_000;
+
+/// The agent calls from its own account, accounts(5).
+fn set_agent_caller(timestamp: u64, deposit: u128) {
+    set_caller_with_deposit(accounts(5), timestamp, deposit);
+}
+
+fn policy(contract: &Contract, owner: AccountId) -> fliq_vault::types::AgentPolicyView {
+    contract
+        .get_policy(owner, accounts(5))
+        .unwrap_or_else(|| panic!("agent policy was not stored"))
+}
+
 fn set_agent(
     contract: &mut Contract,
     owner: AccountId,
@@ -112,7 +126,7 @@ fn set_agent(
     cooldown_ns: u64,
     expiry_ns: u64,
 ) {
-    set_caller_with_deposit(owner, NOW, 1);
+    set_caller_with_deposit(owner, NOW, POLICY_DEPOSIT);
     contract.set_agent(
         agent_key(),
         accounts(5),
@@ -144,6 +158,19 @@ fn register_agent_order(
     );
 }
 
+#[cfg(feature = "testing")]
+fn complete_payout(contract: &mut Contract, order_id: &str, result: PromiseResult) {
+    set_promise_result(
+        VMContextBuilder::new()
+            .current_account_id(accounts(0))
+            .predecessor_account_id(accounts(0))
+            .block_timestamp(NOW)
+            .build(),
+        result,
+    );
+    contract.on_payout_complete(order_id.to_string());
+}
+
 #[test]
 fn contract_account_can_initialize_contract() {
     set_caller(accounts(0), NOW);
@@ -155,39 +182,42 @@ fn contract_account_can_initialize_contract() {
 #[test]
 fn owner_can_create_update_and_read_agent_policy() {
     let mut contract = contract();
-    set_caller_with_deposit(accounts(3), NOW, 1);
-    contract.set_agent(
-        agent_key(),
-        accounts(5),
-        U128(50),
-        U128(200),
-        Some(vec!["USDC-NGN".to_string()]),
-        U64(60_000_000_000),
-        U64(NOW + 3_600_000_000_000),
+    set_agent(
+        &mut contract,
+        accounts(3),
+        50,
+        200,
+        &["USDC-NGN"],
+        60_000_000_000,
+        NOW + 3_600_000_000_000,
     );
 
-    let policy = contract
-        .get_policy(agent_key())
-        .unwrap_or_else(|| panic!("agent policy was not stored"));
-    assert_eq!(policy.owner, accounts(3));
-    assert_eq!(policy.per_payout_cap, U128(50));
-    assert_eq!(policy.daily_cap, U128(200));
-    assert_eq!(policy.spent_today, U128(0));
-    assert_eq!(policy.corridors, Some(vec!["USDC-NGN".to_string()]));
-
-    set_caller_with_deposit(accounts(3), NOW, 1);
-    contract.set_agent(
-        agent_key(),
-        accounts(5),
-        U128(25),
-        U128(100),
-        Some(vec!["USDC-KES".to_string(), "USDC-NGN".to_string()]),
-        U64(0),
-        U64(NOW + 7_200_000_000_000),
+    let stored = policy(&contract, accounts(3));
+    assert_eq!(stored.owner, accounts(3));
+    assert_eq!(stored.agent_id, accounts(5));
+    assert_eq!(stored.public_key, String::from(&agent_key()));
+    assert_eq!(stored.per_payout_cap, U128(50));
+    assert_eq!(stored.daily_cap, U128(200));
+    assert_eq!(stored.spent_today, U128(0));
+    assert_eq!(stored.corridors, Some(vec!["USDC-NGN".to_string()]));
+    assert_eq!(stored.cooldown_ns, U64(60_000_000_000));
+    assert!(!stored.revoked);
+    assert!(
+        near_sdk::test_utils::get_logs()
+            .iter()
+            .any(|log| log.contains("\"event\":\"agent_set\""))
     );
-    let updated = contract
-        .get_policy(agent_key())
-        .unwrap_or_else(|| panic!("updated policy was not stored"));
+
+    set_agent(
+        &mut contract,
+        accounts(3),
+        25,
+        100,
+        &["USDC-NGN", "USDC-KES"],
+        0,
+        NOW + 7_200_000_000_000,
+    );
+    let updated = policy(&contract, accounts(3));
     assert_eq!(updated.per_payout_cap, U128(25));
     assert_eq!(
         updated.corridors,
@@ -196,47 +226,62 @@ fn owner_can_create_update_and_read_agent_policy() {
 }
 
 #[test]
-fn only_policy_owner_can_change_or_revoke_agent() {
+fn policies_are_per_owner_and_only_the_owner_can_revoke() {
     let mut contract = contract();
-    set_caller_with_deposit(accounts(3), NOW, 1);
-    contract.set_agent(
-        agent_key(),
-        accounts(5),
-        U128(50),
-        U128(200),
-        Some(vec!["USDC-NGN".to_string()]),
-        U64(0),
-        U64(NOW + 3_600_000_000_000),
+    set_agent(
+        &mut contract,
+        accounts(3),
+        50,
+        200,
+        &["USDC-NGN"],
+        0,
+        NOW + 3_600_000_000_000,
     );
 
     set_caller_with_deposit(accounts(4), NOW, 1);
     assert!(
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            contract.remove_agent(agent_key());
+            contract.remove_agent(accounts(5));
         }))
         .is_err()
     );
+    set_agent(
+        &mut contract,
+        accounts(4),
+        1,
+        1,
+        &["USDC-KES"],
+        0,
+        NOW + 3_600_000_000_000,
+    );
+    assert_eq!(policy(&contract, accounts(3)).per_payout_cap, U128(50));
+
     set_caller_with_deposit(accounts(3), NOW, 1);
-    contract.remove_agent(agent_key());
-    assert!(contract.get_policy(agent_key()).is_none());
+    contract.remove_agent(accounts(5));
+    assert!(policy(&contract, accounts(3)).revoked);
+    assert!(!policy(&contract, accounts(4)).revoked);
+    assert!(
+        near_sdk::test_utils::get_logs()
+            .iter()
+            .any(|log| log.contains("\"event\":\"agent_revoked\""))
+    );
 }
 
 #[test]
 fn invalid_agent_policy_is_rejected() {
     let mut contract = contract();
-    for (agent, per_payout, daily, corridors, expiry) in [
-        (accounts(3), 10, 20, vec!["USDC-NGN".to_string()], NOW + 1),
-        (accounts(5), 0, 20, vec!["USDC-NGN".to_string()], NOW + 1),
-        (accounts(5), 30, 20, vec!["USDC-NGN".to_string()], NOW + 1),
-        (accounts(5), 10, 20, Vec::new(), NOW + 1),
-        (accounts(5), 10, 20, vec!["USDC-NGN".to_string()], NOW),
+    for (per_payout, daily, corridors, expiry) in [
+        (0, 20, vec!["USDC-NGN".to_string()], NOW + 1),
+        (30, 20, vec!["USDC-NGN".to_string()], NOW + 1),
+        (10, 20, Vec::new(), NOW + 1),
+        (10, 20, vec!["USDC-NGN".to_string()], NOW),
     ] {
         assert!(
             std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                set_caller_with_deposit(accounts(3), NOW, 1);
+                set_caller_with_deposit(accounts(3), NOW, POLICY_DEPOSIT);
                 contract.set_agent(
                     agent_key(),
-                    agent,
+                    accounts(5),
                     U128(per_payout),
                     U128(daily),
                     Some(corridors),
@@ -247,11 +292,27 @@ fn invalid_agent_policy_is_rejected() {
             .is_err()
         );
     }
+
+    set_caller_with_deposit(accounts(3), NOW, POLICY_DEPOSIT);
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            contract.set_agent(
+                agent_key(),
+                accounts(3),
+                U128(10),
+                U128(20),
+                None,
+                U64(0),
+                U64(NOW + 1),
+            );
+        }))
+        .is_err()
+    );
 }
 
 #[test]
-fn agent_changes_require_exactly_one_yocto() {
-    for deposit in [0, 2] {
+fn setting_an_agent_pays_for_its_storage_and_revoking_needs_one_yocto() {
+    for deposit in [0, 1] {
         let mut contract = contract();
         set_caller_with_deposit(accounts(3), NOW, deposit);
         assert!(
@@ -268,21 +329,23 @@ fn agent_changes_require_exactly_one_yocto() {
             }))
             .is_err()
         );
+    }
 
-        set_caller_with_deposit(accounts(3), NOW, 1);
-        contract.set_agent(
-            agent_key(),
-            accounts(5),
-            U128(10),
-            U128(20),
-            None,
-            U64(0),
-            U64(NOW + 1),
+    for deposit in [0, 2] {
+        let mut contract = contract();
+        set_agent(
+            &mut contract,
+            accounts(3),
+            10,
+            20,
+            &["USDC-NGN"],
+            0,
+            NOW + 1,
         );
         set_caller_with_deposit(accounts(3), NOW, deposit);
         assert!(
             std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                contract.remove_agent(agent_key());
+                contract.remove_agent(accounts(5));
             }))
             .is_err()
         );
@@ -312,32 +375,60 @@ fn authorized_agent_payout_counts_pending_and_completed_spend() {
         NOW + 2 * 24 * 60 * 60 * 1_000_000_000,
     );
 
-    set_caller(accounts(5), NOW);
+    set_agent_caller(NOW, 0);
     let _promise = payout(&mut contract, "agent-order");
-    assert_eq!(
-        contract
-            .get_policy(agent_key())
-            .unwrap_or_else(|| panic!("agent policy was not stored"))
-            .spent_today,
-        U128(30)
-    );
+    assert_eq!(policy(&contract, accounts(3)).spent_today, U128(30));
 
-    set_promise_result(
-        VMContextBuilder::new()
-            .current_account_id(accounts(0))
-            .predecessor_account_id(accounts(0))
-            .block_timestamp(NOW)
-            .build(),
+    complete_payout(
+        &mut contract,
+        "agent-order",
         PromiseResult::Successful(vec![]),
     );
-    contract.on_payout_complete("agent-order".to_string());
-    assert_eq!(
-        contract
-            .get_policy(agent_key())
-            .unwrap_or_else(|| panic!("agent policy was not stored"))
-            .spent_today,
-        U128(30)
+    assert_eq!(policy(&contract, accounts(3)).spent_today, U128(30));
+}
+
+#[cfg(feature = "testing")]
+#[test]
+fn naming_someone_as_your_agent_never_limits_their_own_funds() {
+    let mut contract = contract();
+    register_storage(&mut contract, accounts(4));
+    register_storage(&mut contract, accounts(5));
+    contract.credit_for_testing(accounts(5), 100);
+    register_agent_order(&mut contract, "own-order", accounts(5), 60, "USDC-NGN", NOW);
+    set_caller_with_deposit(accounts(3), NOW, POLICY_DEPOSIT);
+    contract.set_agent(
+        agent_key(),
+        accounts(5),
+        U128(1),
+        U128(1),
+        Some(vec!["USDC-KES".to_string()]),
+        U64(0),
+        U64(NOW + 3_600_000_000_000),
     );
+
+    set_caller(accounts(5), NOW);
+    let _promise = payout(&mut contract, "own-order");
+    set_caller_with_deposit(accounts(5), NOW, 1);
+    contract.transfer(accounts(4), U128(40));
+    assert_eq!(contract.get_balance(accounts(4)).available, U128(40));
+    assert_eq!(policy(&contract, accounts(3)).spent_today, U128(0));
+}
+
+#[cfg(feature = "testing")]
+#[test]
+fn caller_without_a_policy_cannot_pay_out_for_the_payer() {
+    let mut contract = contract();
+    contract.credit_for_testing(accounts(3), 100);
+    register_agent_order(&mut contract, "order-1", accounts(3), 10, "USDC-NGN", NOW);
+
+    set_agent_caller(NOW, 0);
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = payout(&mut contract, "order-1");
+        }))
+        .is_err()
+    );
+    assert_eq!(contract.get_balance(accounts(3)).reserved, U128(10));
 }
 
 #[cfg(feature = "testing")]
@@ -357,7 +448,7 @@ fn pending_agent_spend_blocks_parallel_daily_limit_bypass() {
         NOW + 3_600_000_000_000,
     );
 
-    set_caller(accounts(5), NOW);
+    set_agent_caller(NOW, 0);
     let _first = payout(&mut contract, "order-1");
     assert!(
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -366,31 +457,11 @@ fn pending_agent_spend_blocks_parallel_daily_limit_bypass() {
         .is_err()
     );
 
-    set_promise_result(
-        VMContextBuilder::new()
-            .current_account_id(accounts(0))
-            .predecessor_account_id(accounts(0))
-            .block_timestamp(NOW)
-            .build(),
-        PromiseResult::Failed,
-    );
-    contract.on_payout_complete("order-1".to_string());
-    assert_eq!(
-        contract
-            .get_policy(agent_key())
-            .unwrap_or_else(|| panic!("agent policy was not stored"))
-            .spent_today,
-        U128(0)
-    );
-    set_caller(accounts(5), NOW);
+    complete_payout(&mut contract, "order-1", PromiseResult::Failed);
+    assert_eq!(policy(&contract, accounts(3)).spent_today, U128(0));
+    set_agent_caller(NOW, 0);
     let _second = payout(&mut contract, "order-2");
-    assert_eq!(
-        contract
-            .get_policy(agent_key())
-            .unwrap_or_else(|| panic!("agent policy was not stored"))
-            .spent_today,
-        U128(30)
-    );
+    assert_eq!(policy(&contract, accounts(3)).spent_today, U128(30));
 }
 
 #[cfg(feature = "testing")]
@@ -399,6 +470,14 @@ fn agent_policy_enforces_payer_amount_corridor_expiry_and_revocation() {
     let mut contract = contract();
     contract.credit_for_testing(accounts(3), 100);
     register_agent_order(&mut contract, "order-1", accounts(3), 30, "USDC-NGN", NOW);
+    let attempt = |contract: &mut Contract, timestamp: u64| {
+        set_agent_caller(timestamp, 0);
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = payout(contract, "order-1");
+        }))
+        .is_err()
+    };
+
     set_agent(
         &mut contract,
         accounts(3),
@@ -408,13 +487,7 @@ fn agent_policy_enforces_payer_amount_corridor_expiry_and_revocation() {
         0,
         NOW + 3_600_000_000_000,
     );
-    set_caller(accounts(5), NOW);
-    assert!(
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let _ = payout(&mut contract, "order-1");
-        }))
-        .is_err()
-    );
+    assert!(attempt(&mut contract, NOW));
 
     set_agent(
         &mut contract,
@@ -425,13 +498,7 @@ fn agent_policy_enforces_payer_amount_corridor_expiry_and_revocation() {
         0,
         NOW + 3_600_000_000_000,
     );
-    set_caller(accounts(5), NOW);
-    assert!(
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let _ = payout(&mut contract, "order-1");
-        }))
-        .is_err()
-    );
+    assert!(attempt(&mut contract, NOW));
 
     set_agent(
         &mut contract,
@@ -442,13 +509,7 @@ fn agent_policy_enforces_payer_amount_corridor_expiry_and_revocation() {
         0,
         NOW + 1,
     );
-    set_caller(accounts(5), NOW + 1);
-    assert!(
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let _ = payout(&mut contract, "order-1");
-        }))
-        .is_err()
-    );
+    assert!(attempt(&mut contract, NOW + 1));
 
     set_agent(
         &mut contract,
@@ -460,14 +521,8 @@ fn agent_policy_enforces_payer_amount_corridor_expiry_and_revocation() {
         NOW + 3_600_000_000_000,
     );
     set_caller_with_deposit(accounts(3), NOW, 1);
-    contract.remove_agent(agent_key());
-    set_caller(accounts(5), NOW);
-    assert!(
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let _ = payout(&mut contract, "order-1");
-        }))
-        .is_err()
-    );
+    contract.remove_agent(accounts(5));
+    assert!(attempt(&mut contract, NOW));
 
     let mut other_payer_contract = crate::contract();
     register_storage(&mut other_payer_contract, accounts(4));
@@ -489,7 +544,7 @@ fn agent_policy_enforces_payer_amount_corridor_expiry_and_revocation() {
         0,
         NOW + 3_600_000_000_000,
     );
-    set_caller(accounts(5), NOW);
+    set_agent_caller(NOW, 0);
     assert!(
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let _ = payout(&mut other_payer_contract, "other-payer");
@@ -516,43 +571,23 @@ fn cooldown_survives_failed_transfer_and_daily_spend_resets() {
         cooldown,
         next_day + 3_600_000_000_000,
     );
-    set_caller(accounts(5), NOW);
+    set_agent_caller(NOW, 0);
     let _first = payout(&mut contract, "order-1");
-    set_promise_result(
-        VMContextBuilder::new()
-            .current_account_id(accounts(0))
-            .predecessor_account_id(accounts(0))
-            .block_timestamp(NOW)
-            .build(),
-        PromiseResult::Failed,
-    );
-    contract.on_payout_complete("order-1".to_string());
+    complete_payout(&mut contract, "order-1", PromiseResult::Failed);
 
-    set_caller(accounts(5), NOW + cooldown - 1);
+    set_agent_caller(NOW + cooldown - 1, 0);
     assert!(
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let _ = payout(&mut contract, "order-2");
         }))
         .is_err()
     );
-    set_caller(accounts(5), NOW + cooldown);
+    set_agent_caller(NOW + cooldown, 0);
     let _second = payout(&mut contract, "order-2");
-    assert_eq!(
-        contract
-            .get_policy(agent_key())
-            .unwrap_or_else(|| panic!("agent policy was not stored"))
-            .spent_today,
-        U128(20)
-    );
+    assert_eq!(policy(&contract, accounts(3)).spent_today, U128(20));
 
     set_caller(accounts(4), next_day);
-    assert_eq!(
-        contract
-            .get_policy(agent_key())
-            .unwrap_or_else(|| panic!("agent policy was not stored"))
-            .spent_today,
-        U128(0)
-    );
+    assert_eq!(policy(&contract, accounts(3)).spent_today, U128(0));
 }
 
 #[test]
@@ -1416,9 +1451,10 @@ fn transfer_requires_one_yocto_and_moves_only_available_balance() {
 }
 
 #[test]
-fn agent_caps_apply_to_vault_transfers() {
+fn agent_cannot_move_the_owners_funds_with_transfer() {
     let mut contract = contract();
     register_storage(&mut contract, accounts(4));
+    register_storage(&mut contract, accounts(5));
     fund(&mut contract, accounts(3), 100);
     set_agent(
         &mut contract,
@@ -1430,28 +1466,16 @@ fn agent_caps_apply_to_vault_transfers() {
         NOW + 3_600_000_000_000,
     );
 
-    set_caller_with_deposit(accounts(5), NOW, 1);
-    contract.transfer(accounts(4), U128(25));
-    assert_eq!(contract.get_balance(accounts(3)).available, U128(75));
-    assert_eq!(contract.get_balance(accounts(4)).available, U128(25));
-    assert_eq!(
-        contract
-            .get_policy(agent_key())
-            .unwrap_or_else(|| panic!("agent policy was not stored"))
-            .spent_today,
-        U128(25)
+    set_agent_caller(NOW, 1);
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            contract.transfer(accounts(4), U128(25));
+        }))
+        .is_err()
     );
-
-    for amount in [20, 35] {
-        assert!(
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                contract.transfer(accounts(4), U128(amount));
-            }))
-            .is_err()
-        );
-    }
-    assert_eq!(contract.get_balance(accounts(3)).available, U128(75));
-    assert_eq!(contract.get_balance(accounts(4)).available, U128(25));
+    assert_eq!(contract.get_balance(accounts(3)).available, U128(100));
+    assert_eq!(contract.get_balance(accounts(4)).available, U128(0));
+    assert_eq!(policy(&contract, accounts(3)).spent_today, U128(0));
 }
 
 #[cfg(feature = "testing")]

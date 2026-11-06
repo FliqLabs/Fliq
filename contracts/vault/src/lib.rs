@@ -67,8 +67,7 @@ pub struct Contract {
     pub(crate) receipts: LookupMap<String, Receipt>,
     pub(crate) used_refund_transactions: LookupSet<String>,
     pub(crate) payout_keys: LookupMap<String, String>,
-    pub(crate) agent_policies: LookupMap<PublicKey, AgentPolicy>,
-    pub(crate) agent_policy_keys: LookupMap<AccountId, PublicKey>,
+    pub(crate) agent_policies: LookupMap<(AccountId, AccountId), AgentPolicy>,
     pub(crate) pending_policy_spends: LookupMap<String, PendingPolicySpend>,
 }
 
@@ -115,7 +114,6 @@ impl Contract {
             used_refund_transactions: LookupSet::new(StorageKey::UsedRefundTransactions),
             payout_keys: LookupMap::new(StorageKey::PayoutKeys),
             agent_policies: LookupMap::new(StorageKey::AgentPolicies),
-            agent_policy_keys: LookupMap::new(StorageKey::AgentPolicyKeys),
             pending_policy_spends: LookupMap::new(StorageKey::PendingPolicySpends),
         }
     }
@@ -139,7 +137,6 @@ impl Contract {
             used_refund_transactions: legacy.used_refund_transactions,
             payout_keys: legacy.payout_keys,
             agent_policies: LookupMap::new(StorageKey::AgentPolicies),
-            agent_policy_keys: LookupMap::new(StorageKey::AgentPolicyKeys),
             pending_policy_spends: LookupMap::new(StorageKey::PendingPolicySpends),
         }
     }
@@ -181,12 +178,12 @@ impl Contract {
     }
 
     #[payable]
-    pub fn remove_agent(&mut self, public_key: PublicKey) {
-        policies::remove_agent(self, &public_key);
+    pub fn remove_agent(&mut self, agent_id: AccountId) {
+        policies::remove_agent(self, &agent_id);
     }
 
-    pub fn get_policy(&self, public_key: PublicKey) -> Option<AgentPolicyView> {
-        policies::get_policy(self, &public_key)
+    pub fn get_policy(&self, owner: AccountId, agent_id: AccountId) -> Option<AgentPolicyView> {
+        policies::get_policy(self, owner, agent_id)
     }
 
     pub fn set_payout_timeout(&mut self, payout_timeout: near_sdk::json_types::U64) {
@@ -325,8 +322,7 @@ impl Contract {
             env::attached_deposit() == NearToken::from_yoctonear(1),
             errors::ONE_YOCTO_REQUIRED
         );
-        let caller = env::predecessor_account_id();
-        let from = integration::authorize_transfer(self, &caller, amount.0);
+        let from = env::predecessor_account_id();
         match self.vault.transfer_available(&from, &to_account, amount.0) {
             Ok(()) => {}
             Err(TransferError::AmountMustBePositive | TransferError::ArithmeticOverflow) => {
@@ -503,12 +499,6 @@ mod tests {
             .unwrap_or_else(|_| panic!("invalid test account {value}"))
     }
 
-    fn agent_key() -> PublicKey {
-        "ed25519:11111111111111111111111111111111"
-            .parse()
-            .unwrap_or_else(|_| panic!("invalid test public key"))
-    }
-
     fn context(predecessor: &AccountId, attached_deposit: NearToken) -> VMContext {
         VMContextBuilder::new()
             .current_account_id(account("vault.testnet"))
@@ -606,8 +596,29 @@ mod tests {
         let migrated = Contract::migrate();
 
         assert_eq!(migrated.get_config().owner, account("owner.testnet"));
-        assert_eq!(migrated.get_balance(user).available, U128(50_000_000));
-        assert!(migrated.get_policy(agent_key()).is_none());
+        assert_eq!(
+            migrated.get_balance(user.clone()).available,
+            U128(50_000_000)
+        );
+        assert!(
+            migrated
+                .get_policy(user, account("agent.testnet"))
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn payout_started_before_upgrade_settles_without_a_pending_row() {
+        let mut contract = contract();
+        let legacy_key = b"fliq:temp:pending:legacy-order";
+        env::storage_write(legacy_key, b"legacy");
+
+        crate::policies::release_pending(&mut contract, "legacy-order");
+        assert!(!env::storage_has_key(legacy_key));
+
+        env::storage_write(legacy_key, b"legacy");
+        crate::policies::settle_pending(&mut contract, "legacy-order");
+        assert!(!env::storage_has_key(legacy_key));
     }
 
     #[test]

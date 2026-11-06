@@ -22,7 +22,6 @@ pub enum StorageKey {
     PayoutKeys,
     AgentPolicies,
     PendingPolicySpends,
-    AgentPolicyKeys,
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Clone, Debug, PartialEq, Eq)]
@@ -45,15 +44,21 @@ pub struct AgentPolicy {
 #[serde(crate = "near_sdk::serde")]
 pub struct AgentPolicyView {
     pub owner: AccountId,
+    pub agent_id: AccountId,
+    pub public_key: String,
     pub per_payout_cap: U128,
     pub daily_cap: U128,
     pub spent_today: U128,
     pub corridors: Option<Vec<String>>,
+    pub cooldown_ns: U64,
+    pub expiry_ns: U64,
+    pub last_payout_at: Option<U64>,
+    pub revoked: bool,
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Clone, Debug, PartialEq, Eq)]
 pub struct PendingPolicySpend {
-    pub policy_key: Option<PublicKey>,
+    pub policy_id: Option<(AccountId, AccountId)>,
     pub amount: Amount,
     pub day_index: u64,
 }

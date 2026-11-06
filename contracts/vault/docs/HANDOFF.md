@@ -9,10 +9,10 @@ Branch: `Ariya-Agent-Permissions`
 | `new`, `get_config` | `lib.rs` | Stores immutable owner, registration account and approved USDC token plus expiry and stuck-payout limits. Initialization is vault-account-only and one-time. |
 | `migrate` | `lib.rs` | Vault-account-only upgrade from the pre-policy state layout; preserves all existing vault and payout state and initializes empty policy maps. |
 | `register_order` | `orders.rs`, `vault.rs` | Registration-account-only immutable order creation with immediate balance reservation. |
-| `payout` | `orders.rs`, `policies.rs`, `vault.rs` | Requires exact registered amount and destination, authorizes the payer or a policy-bound agent account, counts pending policy spend, changes state before sending USDC, and resolves through a private callback. |
-| `set_agent` | `policies.rs` | With exactly 1 yoctoNEAR, binds a public key to one distinct agent account and creates or updates its per-action cap, daily cap, optional exact corridors, cooldown and expiry without resetting same-day spend. |
-| `remove_agent` | `policies.rs` | With exactly 1 yoctoNEAR, lets only the stored policy owner revoke the public-key binding. |
-| `get_policy(public_key)` | `policies.rs` | Returns the backend-compatible owner, per-payout cap, daily cap, current-day spend and optional corridors view. |
+| `payout` | `orders.rs`, `policies.rs`, `vault.rs` | Requires exact registered amount and destination, authorizes the payer or an agent account with an active policy from that payer, counts pending policy spend, changes state before sending USDC, and resolves through a private callback. |
+| `set_agent` | `policies.rs` | With a deposit covering storage, creates or updates the (owner, agent account) policy: per-payout cap, daily cap, optional exact corridors, cooldown and expiry, without resetting same-day spend. Emits `agent_set`. |
+| `remove_agent(agent_id)` | `policies.rs` | With exactly 1 yoctoNEAR, revokes the caller's policy for that agent. Emits `agent_revoked`. |
+| `get_policy(owner, agent_id)` | `policies.rs` | Returns owner, agent, public key label, caps, current-day spend, corridors, cooldown, expiry, last payout time and the revoked flag. |
 | Policy lifecycle | `policies.rs`, `integration.rs` | Counts pending plus successful spend, releases same-day spend after failed transfers, retains successful spend, rolls daily buckets, and makes parallel-limit bypass fail. |
 | `on_payout_complete`, `resolve_stuck_payout` | `orders.rs` | Commits a confirmed transfer or returns the order to retryable `Registered`; policy pending state follows the same outcome. |
 | `release_order` | `lib.rs`, `vault.rs` | Registration account or contract owner restores a reservation and moves a never-executed order to terminal `Released`. |
@@ -22,9 +22,9 @@ Branch: `Ariya-Agent-Permissions`
 
 ## Agent identity decision
 
-A public key is the backend lookup and administration key for each policy, and `set_agent` binds it to a distinct NEAR agent account. The payer owns that policy. Direct and NEP-366-relayed calls expose the delegated sender account as the vault predecessor, which the contract can verify. The contract does not claim that `env::signer_account_pk()` identifies the delegated key because NEAR does not expose that key identity to the called method.
+Each policy is keyed by the payer that owns it and a distinct NEAR agent account. The public key is stored as a label for the backend. Direct and NEP-366-relayed calls expose the agent account as the vault predecessor, which the contract can verify. The contract does not use `env::signer_account_pk()` to identify the agent, because a relayed call reports the relayer's key there.
 
-Hosted-agent key removal should accompany `remove_agent`, but the on-chain revoked flag is independently enforced. An agent cannot create or change its own policy because policy ownership is always the predecessor that configured a different `agent_id`; exactly 1 yoctoNEAR is also required for permission changes.
+Hosted-agent key removal should accompany `remove_agent`, but the on-chain revoked flag is independently enforced. An agent cannot create or change its own policy because the owner is always the predecessor that configured a different `agent_id`, and a deposit is required for permission changes. An agent must never be given a key on the owner's account: calls from the owner's account are treated as the owner.
 
 ## Spending semantics
 
@@ -62,7 +62,7 @@ An already-initialized vault running the pre-policy layout must deploy this Wasm
 
 The backend already verifies NEP-366 delegate signatures, sender accounts, access-key membership, nonces, receiver, method, arguments and gas sponsorship. The vault adds independent on-chain amount, destination, payer and agent-policy enforcement. The backend must send the existing confirmed payout arguments: `order_id`, `amount`, and `deposit_address`.
 
-The contract now exposes the agreed `set_agent`, `remove_agent`, and `get_policy(public_key)` interface and the `POLICY_PER_PAYOUT_CAP`, `POLICY_DAILY_CAP`, and `POLICY_CORRIDOR` errors. The public key identifies the policy at the interface boundary; the bound agent account remains the enforceable call identity. No backend source file was changed on this branch.
+The contract exposes `set_agent`, `remove_agent(agent_id)` and `get_policy(owner, agent_id)` with the `POLICY_PER_PAYOUT_CAP`, `POLICY_DAILY_CAP` and `POLICY_CORRIDOR` errors, and emits `agent_set` and `agent_revoked`. The agent account is the enforceable call identity. No backend source file was changed on this branch.
 
 ## Remaining open decisions
 
