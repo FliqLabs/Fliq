@@ -6,24 +6,25 @@ Branch: `sQuiDbOb-Orders-and-Payouts`
 
 | Method or area | File | What it does | Test evidence |
 | --- | --- | --- | --- |
-| `new` | `contracts/vault/src/lib.rs` | Stores owner, registration account, approved USDC token, and 24-hour expiry limit; only the vault account itself may call it, and it can run only once. | Configuration and initialization authorization tests in `tests/contract.rs`. |
+| `new` | `contracts/vault/src/lib.rs` | Stores owner, registration account, approved USDC token, 24-hour expiry limit, and 10-minute payout timeout; only the vault account itself may call it, and it can run only once. | Configuration and initialization authorization tests in `tests/contract.rs`. |
 | `set_registration_account` | `lib.rs` | Lets only the owner rotate the registration account. | Owner and non-owner tests. |
 | `get_config` | `lib.rs` | Read-only configuration view. | Used by configuration tests. |
 | `register_order` | `lib.rs`, `orders.rs` | Authorizes the registration account, validates fields and expiry, stores an immutable order, and emits `order_registered`. It does not reserve funds. | Registration, duplicate, field, expiry, authorization, and event tests. |
-| `payout` | `lib.rs`, `orders.rs` | Checks the stored order, asks the integration layer for policy approval, reserves funds, changes state before creating the USDC transfer, and calls the private callback. | Happy path, duplicate, same-block, wrong caller, expiry, oversubscription, edge amount, and stored destination/amount tests. |
+| `payout` | `lib.rs`, `orders.rs` | Accepts `order_id`, `amount`, and `deposit_address`; validates both against the stored order, asks the integration layer for policy approval, reserves funds, changes state before creating the USDC transfer, and calls the private callback. | Matching/mismatch arguments, duplicate, same-block, wrong caller, expiry, oversubscription, edge amount, and stored destination/amount tests. |
+| `resolve_stuck_payout` | `lib.rs`, `orders.rs` | Owner-only recovery after the configured timeout; commits or releases the real vault reservation after an on-chain transfer check and emits `payout_executed`. | Owner, timeout, success, failure, late callback, and single-use tests. |
 | `on_payout_complete` | `lib.rs`, `orders.rs` | Accepts only the contract's callback with exactly one result; commits on success or releases on failure; stale callbacks do nothing. | Success, failure, outsider, stale, and invariant tests. |
-| `set_status` | `lib.rs`, `orders.rs` | Lets only the registration account report monotonic backend progress. Replays are no-ops; it cannot change transfer state or balances. | Authorization, unknown values, replay, backward, gating, receipt, balance, and event tests. |
-| `recredit` | `lib.rs` | Deliberately disabled until refund design approval. | Existing disabled-path behavior. |
+| `set_status` | `lib.rs`, `orders.rs` | Lets only the registration account report proposed branching backend progress, including `refused` and `not_received`. Replays are no-ops; it cannot change transfer state or balances. | Authorization, branching edges, terminal-state, replay, gating, receipt, balance, and event tests. |
+| `set_payout_timeout` | `lib.rs` | Lets only the owner change the U64-encoded stuck-payout timeout. | Owner and non-owner configuration tests. |
 | `get_receipt` | `lib.rs`, `types.rs` | Shows the stored order, verified NEAR transfer state, backend status, refs, and update time as separate tracks. | Receipt separation and unknown-order tests. |
 | `get_balance` | `lib.rs`, `integration.rs`, `vault.rs` | Read-only `vault::BalanceView` backed by Dapper's real ledger. | Dapper deposit/isolation/overflow tests and payout invariants. |
 | Recredit read helpers | `orders.rs` | `order_exists`, `order_payer`, `order_amount`, and `order_transfer_state`. | Read-helper test. |
 | Integration boundary | `integration.rs` | Routes balance, reservation, commit, and release operations to `Vault`; keeps policy lifecycle calls on the temporary policy module. | Dapper vault tests and payout tests. |
 
-Current vault result: 40 tests passed, 0 failed with `--features testing`; the default `make test-contract` run passes 29 tests. The near-workspaces smoke test is present but ignored by default. The standalone mock USDC crate builds and its test target has 0 tests and 0 failures.
+Current vault result: 29 unit tests and 48 order/integration tests passed with `--features testing`; the default `make test-contract` run passes 29 unit tests and 31 order/integration tests. The near-workspaces smoke test is present but ignored by default. The standalone mock USDC crate builds and its test target has 0 tests and 0 failures.
 
 The deploy workflow intentionally uses `without-init-call`. After deployment, initialize by sending `new(owner, registration_account, approved_usdc_token_contract)` from the vault account itself. The initializer is private and rejects calls from any other predecessor; initialization cannot be repeated.
 
-The latest `origin/Contract` branch was merged into this branch. Its real `vault.rs` is wired through `integration.rs`; no incoming `policies.rs` exists, so policy calls remain on the temporary policy module.
+The latest `origin/Contract` branch is included. Its real `vault.rs` is wired through `integration.rs`; no incoming `policies.rs` exists, so policy calls remain on the temporary policy module.
 
 ## What is still a placeholder
 
@@ -38,9 +39,9 @@ Every marker below is intentional. Replace the temporary policy implementation o
 
 ### `OPEN` comments and decisions
 
-- `contracts/vault/src/lib.rs:37`: provider allowlist is not implemented; backend must decide whether one is needed.
+- `contracts/vault/src/lib.rs`: provider allowlist is not implemented; backend must decide whether one is needed.
 - `contracts/vault/src/receipts.rs:29`: event payload fields and version need backend approval.
-- `contracts/vault/src/types.rs:10`: expiry currently follows NEAR block timestamp nanoseconds; the final unit is open.
+- `contracts/vault/src/types.rs`: expiry and timeout currently follow NEAR block timestamp nanoseconds; the final unit is open.
 - `contracts/vault/src/types.rs:42`: relayed-agent identity is open.
 - `contracts/vault/docs/CONTEXT.md:7` and `contracts/vault/docs/DECISIONS.md`: the remaining open questions are order ID versus `po_` ID, corridor encoding, registration-account rotation, refs/status format, refund proof and recredit, daily limits, and event approval.
 
@@ -75,12 +76,12 @@ The open question is what identity is authoritative for a relayed agent call. Th
 ## Risks and gaps
 
 - The temporary policy module is not a production authorization system.
-- No refund or recredit path exists; adding one without proof could create value.
+- No refund or recredit path exists; the public stub was removed, and adding the capability without proof could create value.
 - Backend status is deliberately not proof of bank settlement.
 - The refs character filter cannot prove that a value is not personal data.
 - The near-workspaces test is a smoke harness and is ignored by default; the detailed checks use unit-test promise results.
 - Cargo resolves the semver range to the current lockfile version; the manifest still expresses the repository's required near-sdk `5.17.2` compatibility range.
-- No real Dapper or Aria modules are present in this checkout, so their exact compile-time interfaces remain to be validated.
+- Dapper's real `vault.rs` is active and its required `pub(crate)` methods are wired; Aria's production policy module is not present, so policy calls remain on `temp_policies.rs`.
 
 ## Readiness for checks belonging to this side
 
@@ -89,12 +90,12 @@ The open question is what identity is authoritative for a relayed agent call. Th
 | Register only through the configured account | Done | Authorization and forged-caller tests pass. |
 | Validate order ID, amount, corridor, destination, and expiry | Done | Validation and edge-value tests pass. |
 | Never send an order twice | Done | Duplicate, same-block, terminal-state, and invariant tests pass. |
-| Reserve before transfer and restore after failure | Done, real vault | Dapper vault tests and 40 feature-enabled order tests pass. |
+| Reserve before transfer and restore after failure | Done, real vault | Dapper vault tests and 48 feature-enabled order tests pass. |
 | Callback is private and stale-safe | Done | Outsider, exact-result, failure, and stale callback tests pass. |
 | Separate verified transfer state from backend status | Done | Receipt and status-gating tests pass. |
-| Backend status replay and monotonicity | Done, proposed | Tests pass; rules remain marked PROPOSED pending backend approval. |
+| Backend status branching and replay | Done, proposed | Tests pass; rules remain marked PROPOSED pending backend approval. |
 | No value movement from `set_status` | Done | Transfer-state and balance-invariance tests pass. |
-| Refund proof and `recredit` | Not yet | Method intentionally fails until the OPEN design is approved. |
+| Refund proof and `recredit` | Not yet | The public stub was removed; the capability returns only with an approved real design. |
 | Dapper/Aria production integration | Dapper done, Aria pending | Real `vault.rs` is wired; policy calls still use `temp_policies.rs`. |
 | Test-only credit absent from release build | Done | Release WASM check passes with `testing` enabled and debug assertions disabled. |
 | Formatting and lint | Done | `cargo fmt --check` and strict clippy pass. |

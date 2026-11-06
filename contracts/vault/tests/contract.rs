@@ -6,8 +6,9 @@ use fliq_vault::orders::{
 use fliq_vault::types::{PayoutOrder, TransferState};
 use near_contract_standards::storage_management::StorageManagement;
 use near_sdk::env;
+use near_sdk::json_types::U64;
 #[cfg(feature = "testing")]
-use near_sdk::json_types::{U64, U128};
+use near_sdk::json_types::U128;
 use near_sdk::test_utils::{VMContextBuilder, accounts};
 use near_sdk::{AccountId, testing_env};
 #[cfg(feature = "testing")]
@@ -53,6 +54,7 @@ fn contract() -> Contract {
     contract
 }
 
+#[cfg(feature = "testing")]
 fn payout(contract: &mut Contract, order_id: &str) -> near_sdk::Promise {
     let order = contract.get_receipt(order_id.to_owned()).order;
     contract.payout(order_id.to_owned(), order.amount, order.deposit_address)

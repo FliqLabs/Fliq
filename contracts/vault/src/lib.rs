@@ -122,7 +122,7 @@ impl Contract {
             payer,
             deposit_address,
             amount,
-            expiry: expiry.into(),
+            expiry,
             corridor: corridor.clone(),
             transfer_state: TransferState::Registered,
             created_at: now().into(),
