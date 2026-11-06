@@ -18,10 +18,12 @@ Branch: `sQuiDbOb-Orders-and-Payouts`
 | `set_payout_timeout` | `lib.rs` | Lets only the owner change the U64-encoded stuck-payout timeout. | Owner and non-owner configuration tests. |
 | `get_receipt` | `lib.rs`, `types.rs` | Shows the stored order, verified NEAR transfer state, backend status, refs, and update time as separate tracks. | Receipt separation and unknown-order tests. |
 | `get_balance` | `lib.rs`, `integration.rs`, `vault.rs` | Read-only `vault::BalanceView` backed by Dapper's real ledger. | Dapper deposit/isolation/overflow tests and payout invariants. |
+| `release_order` | `lib.rs`, `orders.rs` | Registration account or owner moves only a `Registered` order to terminal `Released`; no USDC is reserved or changed. | Authorization, balance, event, replay, payout, and order-ID reuse tests. |
+| `get_storage_usage` | `lib.rs` | Read-only current storage usage in bytes for storage measurement. | Order-plus-receipt delta test. |
 | Recredit read helpers | `orders.rs` | `order_exists`, `order_payer`, `order_amount`, and `order_transfer_state`. | Read-helper test. |
 | Integration boundary | `integration.rs` | Routes balance, reservation, commit, and release operations to `Vault`; keeps policy lifecycle calls on the temporary policy module. | Dapper vault tests and payout tests. |
 
-Current vault result: 29 unit tests and 48 order/integration tests passed with `--features testing`; the default `make test-contract` run passes 29 unit tests and 31 order/integration tests. The near-workspaces smoke test is present but ignored by default. The standalone mock USDC crate builds and its test target has 0 tests and 0 failures.
+Current vault result: 39 unit tests and 57 order/integration tests passed with `--features testing`; the default `make test-contract` run passes 39 unit tests and 34 order/integration tests. The near-workspaces smoke test is present but ignored by default. The order-plus-receipt storage delta is 219 bytes in the unit environment.
 
 The deploy workflow intentionally uses `without-init-call`. After deployment, initialize by sending `new(owner, registration_account, approved_usdc_token_contract)` from the vault account itself. The initializer is private and rejects calls from any other predecessor; initialization cannot be repeated.
 

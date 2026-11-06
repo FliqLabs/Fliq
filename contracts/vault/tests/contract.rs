@@ -214,6 +214,86 @@ fn registration_account_can_register() {
 }
 
 #[test]
+fn registration_account_can_release_registered_order_without_changing_balance() {
+    let mut contract = contract();
+    register_named_order(&mut contract, "release-1", accounts(3), 10);
+    let before = contract.get_balance(accounts(3));
+    set_caller(accounts(1), NOW);
+    contract.release_order("release-1".to_owned());
+    assert_eq!(contract.get_balance(accounts(3)), before);
+    assert_eq!(
+        contract.get_receipt("release-1".to_owned()).transfer_state,
+        TransferState::Released
+    );
+    assert!(
+        near_sdk::test_utils::get_logs()
+            .iter()
+            .any(|log| log.contains("order_released") && log.contains("release-1"))
+    );
+}
+
+#[test]
+fn storage_usage_reports_order_and_receipt_delta() {
+    let mut contract = contract();
+    let before = contract.get_storage_usage();
+    register_named_order(&mut contract, "storage-1", accounts(3), 10);
+    let after = contract.get_storage_usage();
+    let delta = after - before;
+    println!(
+        "ORDER_RECEIPT_BYTES={delta} STORAGE_BYTE_COST_YOCTONEAR={}",
+        env::storage_byte_cost().as_yoctonear()
+    );
+    assert!(delta > 0);
+}
+
+#[test]
+fn unauthorized_release_fails_and_released_order_cannot_be_reused() {
+    let mut contract = contract();
+    register_named_order(&mut contract, "release-2", accounts(3), 10);
+    set_caller(accounts(5), NOW);
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            contract.release_order("release-2".to_owned());
+        }))
+        .is_err()
+    );
+    set_caller(accounts(0), NOW);
+    contract.release_order("release-2".to_owned());
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            contract.release_order("release-2".to_owned());
+        }))
+        .is_err()
+    );
+    set_caller(accounts(3), NOW);
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let receipt = contract.get_receipt("release-2".to_owned());
+            let _ = contract.payout(
+                "release-2".to_owned(),
+                receipt.order.amount,
+                receipt.order.deposit_address,
+            );
+        }))
+        .is_err()
+    );
+    set_caller(accounts(1), NOW);
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            contract.register_order(
+                "release-2".to_owned(),
+                accounts(3),
+                accounts(4),
+                U128(10),
+                U64(NOW + 3_600_000_000_000),
+                "USDC-NGN".to_owned(),
+            );
+        }))
+        .is_err()
+    );
+}
+
+#[test]
 fn owner_can_change_registration_account() {
     let mut contract = contract();
     set_caller(accounts(0), NOW);

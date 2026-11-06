@@ -1,6 +1,6 @@
 # Security review: sQuiDbOb contract surface
 
-Scope: `lib.rs`, `orders.rs`, `types.rs`, `receipts.rs`, `integration.rs`, and `vault.rs`. `vault.rs` was not changed; no `policies.rs` exists, so policy calls remain on `temp_policies.rs`.
+Scope: `lib.rs`, `orders.rs`, `types.rs`, `receipts.rs`, `integration.rs`, and `vault.rs`. `vault.rs` changes are limited to standardized error strings; no `policies.rs` exists, so policy calls remain on `temp_policies.rs`.
 
 ## Public methods and callbacks
 
@@ -30,6 +30,8 @@ Scope: `lib.rs`, `orders.rs`, `types.rs`, `receipts.rs`, `integration.rs`, and `
 - Restored Dapper's real vault entrypoints and routed balance, deposit, reservation, commit, and release operations through `vault.rs`, leaving only policy lifecycle calls on the temporary policy stand-in.
 - Added payout amount/destination validation, timeout-based stuck-payout recovery, U64-safe public timestamps, and proposed branching backend status transitions.
 - Removed the temporary vault ledger and the `get_policy` stub; retained Dapper's real guarded recredit and wired it through the order boundary.
+- Added the terminal `Released` state and `release_order`; completed orders retain their order IDs and receipts, and `get_storage_usage` supports measurement without mutation.
+- Standardized contract-owned panic strings as `fliq_vault: CODE`; Dapper enum failures are mapped at `integration.rs` and documented for conversion.
 
 ## Residual risks
 
