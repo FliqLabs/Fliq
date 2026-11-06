@@ -1,0 +1,16 @@
+{
+  "steps": [
+    {
+      "id": "create_test_payout",
+      "done": false
+    },
+    {
+      "id": "add_webhook",
+      "done": false
+    },
+    {
+      "id": "go_live",
+      "done": false
+    }
+  ]
+}
