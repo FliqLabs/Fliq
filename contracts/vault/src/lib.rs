@@ -4,8 +4,6 @@ pub mod types;
 mod integration;
 mod receipts;
 mod temp_policies;
-#[allow(dead_code)]
-mod temp_vault;
 mod vault;
 
 use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;

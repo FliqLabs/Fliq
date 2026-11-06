@@ -29,10 +29,6 @@ The latest `origin/Contract` branch was merged into this branch. Its real `vault
 
 Every marker below is intentional. Replace the temporary policy implementation only through `integration.rs`; do not make the stand-ins production custody or policy code.
 
-### `contracts/vault/src/temp_vault.rs`
-
-Retained as an unused historical fallback only. Runtime custody and reservation operations no longer call it; `vault.rs` is the single source of truth for balances.
-
 ### `contracts/vault/src/temp_policies.rs`
 
 - Line 11: temporary pending-spend storage key. Aria replaces it with policy storage.
@@ -78,7 +74,7 @@ The open question is what identity is authoritative for a relayed agent call. Th
 
 ## Risks and gaps
 
-- The temporary vault and policy modules are not production custody or permission systems.
+- The temporary policy module is not a production authorization system.
 - No refund or recredit path exists; adding one without proof could create value.
 - Backend status is deliberately not proof of bank settlement.
 - The refs character filter cannot prove that a value is not personal data.
