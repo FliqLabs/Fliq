@@ -260,6 +260,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/payouts/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Payout history as CSV, with the same filters as the list
+         * @description Needs a signed-in session. The newest 5000 matching payouts; x-export-truncated is true when there were more, so narrow the dates and export again. No account names or full account numbers: bank and last four digits only. Cells that a spreadsheet would run as a formula are prefixed with a quote.
+         */
+        get: operations["exportPayouts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * API-key usage per day and per key, for the dashboard's usage section
+         * @description Needs a signed-in session. Counts requests made with the workspace's API keys, by UTC day; dashboard sessions are not counted. requests = succeeded + failed + rate_limited. payouts_created counts 201 answers to POST /payouts, including an idempotent replay of one.
+         */
+        get: operations["getUsage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/payouts/stats": {
         parameters: {
             query?: never;
@@ -1099,7 +1139,22 @@ export interface components {
             provider: components["schemas"]["ProviderId"];
             /** Format: date-time */
             created_at: string;
+            status?: components["schemas"]["PayoutDisplayStatus"];
+            client_reference?: string;
+            /** Format: date-time */
+            updated_at?: string;
+            /** Format: date-time */
+            settled_at?: string | null;
+            /** @description From the deposit being seen to settlement, as on the receipt */
+            seconds_to_bank?: number | null;
+            /** @description Why a payout failed. Reasons starting with vault_ are refusals by the vault caps. */
+            failure_reason?: string | null;
         };
+        /**
+         * @description The dashboard's status. pending includes provider_timeout and awaiting_recon: the outcome is unknown and being re-checked, never a failure.
+         * @enum {string}
+         */
+        PayoutDisplayStatus: "pending" | "paying_out" | "settled" | "refused" | "refunding" | "refunded" | "failed" | "expired";
         PayoutList: {
             items: components["schemas"]["PayoutSummary"][];
             next_cursor: string | null;
@@ -1360,6 +1415,36 @@ export interface components {
                 version?: number;
                 test?: boolean;
                 message?: string;
+            };
+        };
+        UsageCounters: {
+            requests: number;
+            succeeded: number;
+            failed: number;
+            rate_limited: number;
+            payouts_created: number;
+        };
+        UsageDay: {
+            /** Format: date */
+            date: string;
+        } & components["schemas"]["UsageCounters"];
+        UsageKey: components["schemas"]["ApiKeyView"] & components["schemas"]["UsageCounters"];
+        Usage: {
+            period: {
+                /** Format: date */
+                from: string;
+                /** Format: date */
+                to: string;
+                days: number;
+                timezone: string;
+            };
+            totals: components["schemas"]["UsageCounters"];
+            daily: components["schemas"]["UsageDay"][];
+            /** @description Active keys, and revoked keys that had usage in the period */
+            keys: components["schemas"]["UsageKey"][];
+            rate_limit: {
+                requests_per_minute: number;
+                scope: string;
             };
         };
     };
@@ -1729,8 +1814,19 @@ export interface operations {
         parameters: {
             query?: {
                 limit?: number;
-                /** @description next_cursor from the previous page */
+                /** @description next_cursor from the previous page. Send the same filters with it. */
                 cursor?: string;
+                /** @description Comma-separated dashboard statuses. pending covers every state before the provider pays out, including an unknown provider outcome that is being re-checked. refused is a payout the vault caps stopped. */
+                status?: string;
+                provider?: components["schemas"]["ProviderId"];
+                /** @description The payout corridor's currency, for example ngn or kes */
+                currency?: string;
+                /** @description Created at or after this time */
+                from?: string;
+                /** @description Created before this time */
+                to?: string;
+                /** @description An exact payout id or client_reference. Recipient names are encrypted at rest and cannot be searched. */
+                q?: string;
             };
             header?: never;
             path?: never;
@@ -1785,6 +1881,66 @@ export interface operations {
                     "application/json": components["schemas"]["Refusal"];
                 };
             };
+        };
+    };
+    exportPayouts: {
+        parameters: {
+            query?: {
+                /** @description Comma-separated dashboard statuses. pending covers every state before the provider pays out, including an unknown provider outcome that is being re-checked. refused is a payout the vault caps stopped. */
+                status?: string;
+                provider?: components["schemas"]["ProviderId"];
+                /** @description The payout corridor's currency, for example ngn or kes */
+                currency?: string;
+                /** @description Created at or after this time */
+                from?: string;
+                /** @description Created before this time */
+                to?: string;
+                /** @description An exact payout id or client_reference. Recipient names are encrypted at rest and cannot be searched. */
+                q?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Columns: payout_id, client_reference, status, state, created_at, updated_at, settled_at, seconds_to_bank, amount, receive, currency, provider, bank_code, bank_name, account_last4, failure_reason */
+            200: {
+                headers: {
+                    "x-export-rows"?: number;
+                    "x-export-truncated"?: boolean;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            400: components["responses"]["Error"];
+        };
+    };
+    getUsage: {
+        parameters: {
+            query?: {
+                /** @description The last N UTC days, today included */
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Totals, a daily series with every day present, and each key's share */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Usage"];
+                };
+            };
+            400: components["responses"]["Error"];
+            404: components["responses"]["Error"];
         };
     };
     getPayoutStats: {

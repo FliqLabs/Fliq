@@ -17,6 +17,7 @@ import { sandboxAdapters } from "./sandbox.js";
 import { startHealthChecks, type Probe } from "./status.js";
 import { createWebhookHandler } from "./webhooks.js";
 import { startWebhookDelivery } from "./webhook-delivery.js";
+import { usageRecorder } from "./usage.js";
 import { httpsTransport } from "../../../packages/webhooks/transport.js";
 
 const config = loadConfig();
@@ -82,7 +83,8 @@ const handlers = createHandlers({
 });
 
 const app = buildApp({ config, unit, handlers, logger: true, limiter: createLimiter(process.env.REDIS_URL),
-  webhooks: createWebhookHandler({ unit, adapters, dataKey: config.dataKey }) });
+  webhooks: createWebhookHandler({ unit, adapters, dataKey: config.dataKey }),
+  recordUsage: usageRecorder(unit, (message) => console.error(message)) });
 await app.listen({ port: config.port, host: "0.0.0.0" });
 startHealthChecks(unit, probes, Number(process.env.HEALTH_CHECK_INTERVAL_MS ?? 60_000));
 startWebhookDelivery(

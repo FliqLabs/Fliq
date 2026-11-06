@@ -11,6 +11,8 @@ import { createDatabase, unitOf, type Database } from "../apps/api/src/db.js";
 import { createHandlers } from "../apps/api/src/handlers.js";
 import { DEFAULT_VELOCITY } from "../apps/api/src/payouts.js";
 import { sandboxAdapters } from "../apps/api/src/sandbox.js";
+import { usageRecorder } from "../apps/api/src/usage.js";
+import type { Limiter } from "../apps/api/src/rate-limit.js";
 import type { Resolve } from "../packages/webhooks/destination.js";
 
 // Throwaway local database only; Prisma loads .env, which may point at a shared one.
@@ -44,7 +46,7 @@ export interface Harness {
 }
 
 export function createHarness(
-  overrides: { config?: Partial<Config>; now?: () => Date; webhookResolve?: Resolve } = {},
+  overrides: { config?: Partial<Config>; now?: () => Date; webhookResolve?: Resolve; limiter?: Limiter } = {},
 ): Harness {
   const database = createDatabase();
   const config = { ...loadConfig(), ...overrides.config };
@@ -56,6 +58,8 @@ export function createHarness(
   const app = buildApp({
     config,
     unit,
+    recordUsage: usageRecorder(unit, () => undefined),
+    ...(overrides.limiter ? { limiter: overrides.limiter } : {}),
     handlers: createHandlers({
       config,
       unit,
@@ -112,6 +116,7 @@ export function createHarness(
       await tx.$executeRaw`DELETE FROM developer.webhook_deliveries WHERE endpoint_id IN (SELECT id FROM developer.webhook_endpoints WHERE workspace_id = ANY(${workspaceIds}::text[]))`;
       await tx.$executeRaw`DELETE FROM developer.webhook_endpoints WHERE workspace_id = ANY(${workspaceIds}::text[])`;
       await tx.$executeRaw`DELETE FROM messaging.inbox WHERE consumer = 'webhook_fanout' AND message_id IN (SELECT pe.id FROM core.payout_events pe JOIN core.payouts p ON p.id = pe.payout_id WHERE p.developer_id = ANY(${developers}::text[]))`;
+      await tx.$executeRaw`DELETE FROM developer.api_usage_daily WHERE workspace_id = ANY(${workspaceIds}::text[])`;
       await tx.$executeRaw`DELETE FROM developer.audit_events WHERE workspace_id = ANY(${workspaceIds}::text[])`;
       await tx.$executeRaw`DELETE FROM ledger.journal_lines WHERE entry_id IN (SELECT e.id FROM ledger.journal_entries e JOIN core.payouts p ON p.id = e.payout_id WHERE p.developer_id = ANY(${developers}::text[]))`;
       await tx.$executeRaw`DELETE FROM ledger.journal_entries WHERE payout_id IN (SELECT id FROM core.payouts WHERE developer_id = ANY(${developers}::text[]))`;

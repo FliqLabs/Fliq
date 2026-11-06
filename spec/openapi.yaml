@@ -320,9 +320,51 @@ paths:
         - name: cursor
           in: query
           required: false
-          description: next_cursor from the previous page
+          description: next_cursor from the previous page. Send the same filters with it.
           schema:
             type: string
+        - name: status
+          in: query
+          required: false
+          description: >-
+            Comma-separated dashboard statuses. pending covers every state before the provider pays out, including
+            an unknown provider outcome that is being re-checked. refused is a payout the vault caps stopped.
+          schema:
+            type: string
+            example: settled,refused
+        - name: provider
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/ProviderId"
+        - name: currency
+          in: query
+          required: false
+          description: The payout corridor's currency, for example ngn or kes
+          schema:
+            type: string
+        - name: from
+          in: query
+          required: false
+          description: Created at or after this time
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          required: false
+          description: Created before this time
+          schema:
+            type: string
+            format: date-time
+        - name: q
+          in: query
+          required: false
+          description: >-
+            An exact payout id or client_reference. Recipient names are encrypted at rest and cannot be searched.
+          schema:
+            type: string
+            maxLength: 100
       responses:
         "200":
           description: One page of payouts. Empty for a new workspace.
@@ -365,6 +407,106 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Refusal"
+  /payouts/export:
+    get:
+      operationId: exportPayouts
+      summary: Payout history as CSV, with the same filters as the list
+      description: >-
+        Needs a signed-in session. The newest 5000 matching payouts; x-export-truncated is true when there were more,
+        so narrow the dates and export again. No account names or full account numbers: bank and last four digits only.
+        Cells that a spreadsheet would run as a formula are prefixed with a quote.
+      tags: [payouts]
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: >-
+            Comma-separated dashboard statuses. pending covers every state before the provider pays out, including
+            an unknown provider outcome that is being re-checked. refused is a payout the vault caps stopped.
+          schema:
+            type: string
+            example: settled,refused
+        - name: provider
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/ProviderId"
+        - name: currency
+          in: query
+          required: false
+          description: The payout corridor's currency, for example ngn or kes
+          schema:
+            type: string
+        - name: from
+          in: query
+          required: false
+          description: Created at or after this time
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          required: false
+          description: Created before this time
+          schema:
+            type: string
+            format: date-time
+        - name: q
+          in: query
+          required: false
+          description: >-
+            An exact payout id or client_reference. Recipient names are encrypted at rest and cannot be searched.
+          schema:
+            type: string
+            maxLength: 100
+      responses:
+        "200":
+          description: >-
+            Columns: payout_id, client_reference, status, state, created_at, updated_at, settled_at, seconds_to_bank,
+            amount, receive, currency, provider, bank_code, bank_name, account_last4, failure_reason
+          headers:
+            x-export-rows:
+              schema:
+                type: integer
+            x-export-truncated:
+              schema:
+                type: boolean
+          content:
+            text/csv:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/Error"
+  /usage:
+    get:
+      operationId: getUsage
+      summary: API-key usage per day and per key, for the dashboard's usage section
+      description: >-
+        Needs a signed-in session. Counts requests made with the workspace's API keys, by UTC day; dashboard
+        sessions are not counted. requests = succeeded + failed + rate_limited. payouts_created counts 201 answers
+        to POST /payouts, including an idempotent replay of one.
+      tags: [workspaces]
+      parameters:
+        - name: days
+          in: query
+          required: false
+          description: The last N UTC days, today included
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 90
+            default: 7
+      responses:
+        "200":
+          description: Totals, a daily series with every day present, and each key's share
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Usage"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
   /payouts/stats:
     get:
       operationId: getPayoutStats
@@ -1706,6 +1848,28 @@ components:
         created_at:
           type: string
           format: date-time
+        status:
+          $ref: "#/components/schemas/PayoutDisplayStatus"
+        client_reference:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+        settled_at:
+          type: [string, "null"]
+          format: date-time
+        seconds_to_bank:
+          type: [integer, "null"]
+          description: From the deposit being seen to settlement, as on the receipt
+        failure_reason:
+          type: [string, "null"]
+          description: Why a payout failed. Reasons starting with vault_ are refusals by the vault caps.
+    PayoutDisplayStatus:
+      type: string
+      enum: [pending, paying_out, settled, refused, refunding, refunded, failed, expired]
+      description: >-
+        The dashboard's status. pending includes provider_timeout and awaiting_recon: the outcome is unknown and
+        being re-checked, never a failure.
     PayoutList:
       type: object
       required: [items, next_cursor]
@@ -2225,4 +2389,68 @@ components:
             test:
               type: boolean
             message:
+              type: string
+    UsageCounters:
+      type: object
+      required: [requests, succeeded, failed, rate_limited, payouts_created]
+      properties:
+        requests:
+          type: integer
+        succeeded:
+          type: integer
+        failed:
+          type: integer
+        rate_limited:
+          type: integer
+        payouts_created:
+          type: integer
+    UsageDay:
+      allOf:
+        - type: object
+          required: [date]
+          properties:
+            date:
+              type: string
+              format: date
+        - $ref: "#/components/schemas/UsageCounters"
+    UsageKey:
+      allOf:
+        - $ref: "#/components/schemas/ApiKeyView"
+        - $ref: "#/components/schemas/UsageCounters"
+    Usage:
+      type: object
+      required: [period, totals, daily, keys, rate_limit]
+      properties:
+        period:
+          type: object
+          required: [from, to, days, timezone]
+          properties:
+            from:
+              type: string
+              format: date
+            to:
+              type: string
+              format: date
+            days:
+              type: integer
+            timezone:
+              type: string
+        totals:
+          $ref: "#/components/schemas/UsageCounters"
+        daily:
+          type: array
+          items:
+            $ref: "#/components/schemas/UsageDay"
+        keys:
+          type: array
+          description: Active keys, and revoked keys that had usage in the period
+          items:
+            $ref: "#/components/schemas/UsageKey"
+        rate_limit:
+          type: object
+          required: [requests_per_minute, scope]
+          properties:
+            requests_per_minute:
+              type: integer
+            scope:
               type: string

@@ -9,6 +9,7 @@ import type { Reply } from "./idempotency.js";
 import { authenticateKey, keyEnvironmentOf } from "./keys.js";
 import { loadSpec, operations } from "./openapi.js";
 import { rateLimitHook, type Limiter } from "./rate-limit.js";
+import type { UsageOutcome } from "./usage.js";
 import type { InboundWebhook } from "../../../packages/providers/types.js";
 
 export interface AuthContext {
@@ -47,6 +48,7 @@ export interface AppDeps {
   logger?: boolean;
   limiter?: Limiter;
   webhooks?: (provider: string, webhook: InboundWebhook) => Promise<Reply>;
+  recordUsage?: (event: { keyId?: string; token?: string; outcome: UsageOutcome; payoutCreated: boolean; at: Date }) => Promise<void>;
 }
 
 function errorBody(code: string, message: string) {
@@ -74,6 +76,25 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   app.addHook("onSend", async (request, reply) => {
     reply.header("x-trace-id", request.id);
   });
+
+  // Only API-key traffic is usage. Runs after the response is sent, so counting never slows a request.
+  const recordUsage = deps.recordUsage;
+  if (recordUsage) {
+    app.addHook("onResponse", async (request, reply) => {
+      const status = reply.statusCode;
+      const at = new Date();
+      const keyId = request.auth?.keyId;
+      if (keyId) {
+        const payoutCreated = request.method === "POST" && request.routeOptions.url === "/v1/payouts" && status === 201;
+        await recordUsage({ keyId, outcome: status < 400 ? "succeeded" : "failed", payoutCreated, at });
+        return;
+      }
+      const token = bearerToken(request);
+      if (status === 429 && token && keyEnvironmentOf(token)) {
+        await recordUsage({ token, outcome: "rate_limited", payoutCreated: false, at });
+      }
+    });
+  }
 
   app.setErrorHandler((error: any, request: FastifyRequest, reply: FastifyReply) => {
     if (error instanceof ApiError) return reply.status(error.status).send(errorBody(error.code, error.message));
