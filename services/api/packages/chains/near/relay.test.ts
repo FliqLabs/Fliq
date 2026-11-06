@@ -129,9 +129,14 @@ describe("relay", () => {
     expect(await code(relay(deps, (await signDelegate(agent, { methodName: "payout" })).base64))).toBe(
       "key_not_allowed",
     );
-    expect(await code(relay(deps, (await signDelegate(agent, { methodName: "release_order" })).base64))).toBe(
-      "ok",
-    );
+    expect(
+      await code(
+        relay(
+          deps,
+          (await signDelegate(agent, { methodName: "release_order", args: { order_id: "po_1" } })).base64,
+        ),
+      ),
+    ).toBe("ok");
   });
 
   it("reports pending with the transaction hash when the outcome is unknown, and does not resubmit", async () => {
