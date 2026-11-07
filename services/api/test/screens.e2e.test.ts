@@ -52,6 +52,7 @@ describe.skipIf(!enabled)("the app's activity, agents, requests and settings", (
     relayStatus: async () => {
       throw new Error("not used");
     },
+    health: async () => ({ status: "ok" }),
     provisionAccount: async () => {
       throw new Error("not used");
     },

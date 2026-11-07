@@ -123,6 +123,14 @@ const relayerUrl = process.env.RELAYER_URL?.trim();
 const relayerToken = process.env.RELAYER_AUTH_TOKEN?.trim();
 if (relayerUrl && !relayerToken) console.warn("RELAYER_URL is set without RELAYER_AUTH_TOKEN: names are claimed without NEAR accounts.");
 const relayer = relayerUrl && relayerToken ? createRelayerClient({ url: relayerUrl, authToken: relayerToken }) : undefined;
+// On Render's free plan a service sleeps after 15 minutes without requests and takes about a minute to wake, longer
+// than a name claim waits. Pinging it while the API is up keeps it awake.
+const RELAYER_KEEPALIVE_MS = 10 * 60 * 1000;
+if (relayer) {
+  const ping = () => relayer.health().catch((error: Error) => console.warn(`relayer health check failed: ${error.message}`));
+  void ping();
+  setInterval(ping, RELAYER_KEEPALIVE_MS).unref();
+}
 const provisioner = relayer
   ? new RelayerProvisioner(relayer, config.vaultAccount)
   : new MockProvisioner(config.vaultAccount, mockVault ? (account) => mockVault.registerStorage(account) : undefined);

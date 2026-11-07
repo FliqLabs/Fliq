@@ -25,6 +25,20 @@ final class OnboardingTests: XCTestCase {
         XCTAssertTrue(flow.canClaim)
     }
 
+    func testACancelledCheckLeavesTheAnswerAlone() async throws {
+        let flow = OnboardingFlow(api: FixtureClient(), names: CancellableDirectory())
+        flow.nameText = "olien"
+        let name = try XCTUnwrap(flow.name)
+        await flow.resolve(name)
+        XCTAssertEqual(flow.status, .available)
+
+        let cancelled = Task { await flow.resolve(name) }
+        cancelled.cancel()
+        await cancelled.value
+
+        XCTAssertEqual(flow.status, .available)
+    }
+
     func testTakenNameOffersFreeAlternatives() async throws {
         let flow = makeFlow()
         flow.displayName = "Dara Okonkwo"
@@ -59,5 +73,13 @@ final class OnboardingTests: XCTestCase {
 
         relaunched.signOut()
         XCTAssertFalse(ProfileStore(defaults: defaults).isOnboarded)
+    }
+}
+
+/// Fails the way URLSession does when the check's task is cancelled by the next keystroke.
+private struct CancellableDirectory: NameDirectory {
+    func isAvailable(_ name: FliqName) async throws -> Bool {
+        if Task.isCancelled { throw URLError(.cancelled) }
+        return true
     }
 }

@@ -62,6 +62,7 @@ describe.skipIf(!enabled)("an agent paying from its owner's vault through the MC
     relayStatus: async () => {
       throw new Error("not used");
     },
+    health: async () => ({ status: "ok" }),
     provisionAccount: async () => {
       throw new Error("not used");
     },
