@@ -1,5 +1,7 @@
 import type { FastifyRequest } from "fastify";
-import { checkName, claimName, type NearProvisioner } from "./accounts.js";
+import { checkName, claimName, type ClaimInput, type NearProvisioner } from "./accounts.js";
+import type { RelayerClient } from "../../../packages/chains/near/index.js";
+import { getRelay, relayDelegate } from "./relay.js";
 import type { Handler } from "./app.js";
 import { createEmailLink, verifyEmailLink, type EmailSender } from "./auth/email-links.js";
 import { finishLogin, finishRegistration, startLogin, startRegistration } from "./auth/passkeys.js";
@@ -56,6 +58,8 @@ export interface HandlerDeps {
   unit: Unit;
   email: EmailSender;
   provisioner: NearProvisioner;
+  // The private relayer, when one is configured: it creates NEAR accounts and pays gas for user-signed calls.
+  relayer?: RelayerClient;
   quotes: QuoteDeps;
   payouts: Omit<PayoutDeps, "quotes">;
   vault: VaultClient;
@@ -81,6 +85,7 @@ export function createHandlers({
   status = { probes: [] },
   deposits = createDeposits({ client: undefined, vaultAccount: config.vaultAccount, usdcContract: "", slippageBps: 0 }),
   rateBoard = createRateBoard(quotes, unit),
+  relayer,
   now = () => new Date(),
   webhookResolve,
 }: HandlerDeps): Record<string, Handler> {
@@ -163,10 +168,9 @@ export function createHandlers({
       body: await unit((tx) => checkName(tx, config, (request.params as { name: string }).name)),
     }),
     claimName: (request) =>
-      withIdempotency(unit, auth(request).userId, request, async (tx) => ({
-        status: 201,
-        body: await claimName(tx, config, provisioner, auth(request).userId, body<{ name: string }>(request).name),
-      })),
+      claimName(unit, config, provisioner, auth(request).userId, request.headers["idempotency-key"] as string | undefined, body<ClaimInput>(request)),
+    relay: (request) => relayDelegate(unit, relayer, auth(request).userId, body<{ signed_delegate: string }>(request).signed_delegate),
+    getRelay: (request) => getRelay(unit, relayer, auth(request).userId, (request.params as { delegateHash: string }).delegateHash),
 
     getCurrentWorkspace: async (request) => ({
       status: 200,

@@ -16,7 +16,6 @@ import {
 } from "./types";
 
 const NS_PER_DAY = 86_400n * 1_000_000_000n;
-const ONE_HOUR_NS = 3_600n * 1_000_000_000n;
 
 export type MockVaultOptions = {
   registrar: AccountId;
@@ -43,7 +42,7 @@ export class MockVault implements VaultClient {
   #txCount = 0;
 
   constructor(options: MockVaultOptions) {
-    this.#options = { maxOrderTtlNs: ONE_HOUR_NS, ...options };
+    this.#options = { maxOrderTtlNs: NS_PER_DAY, ...options };
   }
 
   as(predecessor: AccountId): Pick<VaultClient, "registerOrder" | "setStatus" | "recredit" | "releaseOrder"> {
@@ -81,9 +80,9 @@ export class MockVault implements VaultClient {
     return { available, reserved, total: available + reserved };
   }
 
-  async getAgent(agentId: AccountId): Promise<AgentPolicy | null> {
+  async getAgent(owner: AccountId, agentId: AccountId): Promise<AgentPolicy | null> {
     const agent = this.#agents.get(agentId);
-    return agent ? { ...agent, spentToday: this.#spentToday(agentId) } : null;
+    return agent && agent.owner === owner ? { ...agent, spentToday: this.#spentToday(agentId) } : null;
   }
 
   logs(): string[] {
@@ -93,7 +92,6 @@ export class MockVault implements VaultClient {
   registerStorage(accountId: AccountId): void {
     this.#storage.add(accountId);
   }
-
   setAgent(owner: AccountId, agentId: AccountId, rule: AgentRule): VaultTx {
     if (rule.perPayoutCap <= 0n || rule.dailyCap <= 0n) throw new VaultError("INVALID_AMOUNT");
     const existing = this.#agents.get(agentId);

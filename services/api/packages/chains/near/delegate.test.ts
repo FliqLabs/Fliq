@@ -21,7 +21,7 @@ describe("verifySignedDelegate", () => {
       publicKey: ada.publicKey,
     });
     expect(delegate.calls).toEqual([
-      { methodName: "payout", args: expect.any(Uint8Array), gas: 30n * TGAS, deposit: 0n },
+      { methodName: "payout", args: expect.any(Uint8Array), gas: 80n * TGAS, deposit: 0n },
     ]);
     expect(delegate.hash).toMatch(/^[0-9a-f]{64}$/);
   });
@@ -121,6 +121,7 @@ describe("checkPolicy", () => {
     ["a deposit on payout", { deposit: 1n }],
     ["more than 100 Tgas", { gas: 101n * TGAS }],
     ["zero gas", { gas: 0n }],
+    ["a payout with less than 50 Tgas", { gas: 49n * TGAS }],
     ["extra arguments", { args: { ...PAYOUT_ARGS, memo: "x" } }],
     ["a payout without amount or destination", { args: { order_id: "po_1" } }],
     ["a missing order id", { args: { amount: "1", deposit_address: "pay.paycrest.testnet" } }],

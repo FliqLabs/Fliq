@@ -1,9 +1,10 @@
 import { createOneClickClient } from "../../../packages/chains/oneclick/index.js";
-import { MockVault } from "../../../packages/chains/vault/index.js";
+import { createNearRpc, createRelayerClient, TokenStorage, type NearRpc } from "../../../packages/chains/near/index.js";
+import { MockVault, NearVault, type VaultClient } from "../../../packages/chains/vault/index.js";
 import { DEFAULT_ROUTING_CONFIG, NO_SIGNALS } from "../../../packages/domain/routing.js";
 import { withCache } from "../../../packages/providers/cache.js";
 import { enabledAdapters } from "../../../packages/providers/enabled.js";
-import { MockProvisioner } from "./accounts.js";
+import { MockProvisioner, RelayerProvisioner } from "./accounts.js";
 import { buildApp } from "./app.js";
 import { createEmailSender } from "./auth/email-links.js";
 import { loadConfig } from "./config.js";
@@ -31,13 +32,40 @@ const configured = enabledAdapters(process.env, {
 }).map((adapter) => withCache(adapter, { hashKey: config.hashKey }));
 const adapters = configured.length > 0 ? configured : sandboxAdapters();
 
-// Until a testnet deployment exists, the vault is Ladipeo's in-memory model.
+// The deployed vault when an RPC and the registration key are set; otherwise Ladipeo's in-memory model for local runs.
 const usdcContract = process.env.USDC_CONTRACT_ID ?? "usdc.test.near";
-const vault = new MockVault({
-  registrar: process.env.NEAR_REGISTRATION_ACCOUNT_ID ?? "registrar.test.near",
-  usdc: usdcContract,
-  now: () => BigInt(Date.now()) * 1_000_000n,
-});
+const registrationAccount = process.env.NEAR_REGISTRATION_ACCOUNT_ID ?? "registrar.test.near";
+const registrationKey = process.env.NEAR_REGISTRATION_PRIVATE_KEY?.trim();
+const nearRpcUrl = process.env.NEAR_RPC_URL?.trim();
+// Top-ups and refunds are addressed to VAULT_ACCOUNT, so the contract the backend signs for must be that same account.
+if (registrationKey && process.env.VAULT_CONTRACT_ID && process.env.VAULT_CONTRACT_ID !== config.vaultAccount) {
+  throw new Error("VAULT_CONTRACT_ID and VAULT_ACCOUNT name different vaults");
+}
+if (registrationKey && !nearRpcUrl) throw new Error("NEAR_REGISTRATION_PRIVATE_KEY is set but NEAR_RPC_URL is not");
+const mockVault = registrationKey
+  ? null
+  : new MockVault({ registrar: registrationAccount, usdc: usdcContract, now: () => BigInt(Date.now()) * 1_000_000n });
+const nearRpc = nearRpcUrl ? createNearRpc({ url: nearRpcUrl }) : null;
+const vault: VaultClient =
+  mockVault ??
+  new NearVault({
+    rpc: nearRpc as NearRpc,
+    contractId: config.vaultAccount,
+    registration: { accountId: registrationAccount, privateKey: registrationKey as string },
+  });
+
+const storagePayerAccount = process.env.NEAR_STORAGE_PAYER_ACCOUNT_ID?.trim();
+const storagePayerKey = process.env.NEAR_STORAGE_PAYER_PRIVATE_KEY?.trim();
+if (!mockVault && !(storagePayerAccount && storagePayerKey)) {
+  throw new Error("The deployed vault needs NEAR_STORAGE_PAYER_ACCOUNT_ID and NEAR_STORAGE_PAYER_PRIVATE_KEY to register payout addresses");
+}
+const tokenStorage = mockVault
+  ? { ensure: async (accountId: string) => mockVault.registerStorage(accountId) }
+  : new TokenStorage({
+      rpc: nearRpc as NearRpc,
+      tokenContractId: usdcContract,
+      payer: { accountId: storagePayerAccount as string, privateKey: storagePayerKey as string },
+    });
 
 // Paycrest takes no NEAR, so a NEAR sender reaches it through 1Click. Without a 1Click URL there is no hop.
 const oneClick = process.env.ONECLICK_URL
@@ -60,7 +88,8 @@ const probes: Probe[] = [
   { id: "database", name: "Database", kind: "service", run: async () => (await unit((tx) => tx.$queryRaw`SELECT 1`), ok) },
   ...(redis ? [{ id: "redis", name: "Redis", kind: "service" as const, run: async () => ((await withReconnect(redis, () => redis.ping())) === "PONG" ? ok : { result: "down" as const }) }] : []),
   ...(oneClick ? [{ id: "near_intents", name: "NEAR Intents", kind: "service" as const, run: async () => ((await oneClick.tokens()).length > 0 ? ok : { result: "down" as const }) }] : []),
-  // Only configured providers: the sandbox provider always reports healthy, which says nothing. No vault probe until MockVault is replaced.
+  ...(mockVault ? [] : [{ id: "vault", name: "Vault", kind: "service" as const, run: async () => (await vault.getBalance(registrationAccount), ok) }]),
+  // Only configured providers: the sandbox provider always reports healthy, which says nothing.
   ...configured.map((adapter) => ({
     id: adapter.id,
     name: adapter.id.charAt(0).toUpperCase() + adapter.id.slice(1),
@@ -75,20 +104,34 @@ const deposits = createDeposits({
   usdcContract,
   slippageBps: Number(process.env.ONECLICK_DEPOSIT_SLIPPAGE_BPS ?? 200),
   // The MockVault stands in for the chain, so it is handed the ft_transfer_call 1Click makes to the real vault.
-  onLanded: ({ account, units, message }) => {
-    const returned = vault.ftOnTransfer({ predecessor: usdcContract, senderId: "intents.near", amount: units, msg: message });
-    if (returned > 0n) console.error("[deposits] vault refused a top-up", account);
-  },
+  ...(mockVault
+    ? {
+        onLanded: ({ account, units, message }: { account: string; units: bigint; message: string }) => {
+          const returned = mockVault.ftOnTransfer({ predecessor: usdcContract, senderId: "intents.near", amount: units, msg: message });
+          if (returned > 0n) console.error("[deposits] vault refused a top-up", account);
+        },
+      }
+    : {}),
 });
 
 const quoteDeps = { adapters, ...(hops ? { hop: hops } : {}), routing: DEFAULT_ROUTING_CONFIG, signals: NO_SIGNALS, now: () => new Date() };
 const rateBoard = createRateBoard(quoteDeps, unit);
 
+// With a relayer, claiming a name creates the user's NEAR account on chain; without one, nothing is created on chain.
+const relayerUrl = process.env.RELAYER_URL?.trim();
+const relayerToken = process.env.RELAYER_AUTH_TOKEN?.trim();
+if (relayerUrl && !relayerToken) console.warn("RELAYER_URL is set without RELAYER_AUTH_TOKEN: names are claimed without NEAR accounts.");
+const relayer = relayerUrl && relayerToken ? createRelayerClient({ url: relayerUrl, authToken: relayerToken }) : undefined;
+const provisioner = relayer
+  ? new RelayerProvisioner(relayer, config.vaultAccount)
+  : new MockProvisioner(config.vaultAccount, mockVault ? (account) => mockVault.registerStorage(account) : undefined);
+
 const handlers = createHandlers({
   config,
   unit,
   email: createEmailSender(config),
-  provisioner: new MockProvisioner(config.vaultAccount, (account) => vault.registerStorage(account)),
+  provisioner,
+  ...(relayer ? { relayer } : {}),
   vault,
   status: { probes },
   deposits,
@@ -99,7 +142,7 @@ const handlers = createHandlers({
     adapters,
     velocity: DEFAULT_VELOCITY,
     now: () => new Date(),
-    ...(hops ? { intents: { hops, vault, guardBps: DEFAULT_GUARD_BPS, deadlineMarginMs: Number(process.env.ONECLICK_DEADLINE_MARGIN_MS ?? DEFAULT_DEADLINE_MARGIN_MS) } } : {}),
+    ...(hops ? { intents: { hops, vault, tokenStorage, guardBps: DEFAULT_GUARD_BPS, deadlineMarginMs: Number(process.env.ONECLICK_DEADLINE_MARGIN_MS ?? DEFAULT_DEADLINE_MARGIN_MS) } } : {}),
   },
 });
 

@@ -19,6 +19,7 @@ export type ErrorCode =
   | "idempotency_key_required"
   | "idempotency_mismatch"
   | "rate_limited"
+  | "chain_unavailable"
   | "internal";
 
 export class ApiError extends Error {

@@ -4,7 +4,7 @@ import { newId } from "../../../packages/db/src/ids.js";
 import { transitionPayout } from "../../../packages/domain/transition.js";
 import { InsufficientVaultBalance, postEntry, reserveVault } from "../../../packages/ledger/post.js";
 import { orderCommitted, vaultReleased } from "../../../packages/ledger/postings.js";
-import type { VaultClient } from "../../../packages/chains/vault/index.js";
+import { MAX_ORDER_TTL_MS, type VaultClient } from "../../../packages/chains/vault/index.js";
 import { ProviderError } from "../../../packages/providers/errors.js";
 import type { Asset, Chain, CreatedOrder, FiatCurrency, ProviderAdapter } from "../../../packages/providers/types.js";
 import type { Config } from "./config.js";
@@ -31,6 +31,8 @@ export interface PayoutDeps {
 export interface IntentsDeps {
   hops: OneClickHops;
   vault: VaultClient;
+  // Registers the 1Click deposit address on the vault's token, without which the vault's transfer to it fails.
+  tokenStorage: { ensure(accountId: string): Promise<unknown> };
   // Spec 10.1: the hop may cost this much more than quoted before the payout is stopped and re-quoted.
   guardBps: bigint;
   // The 1Click deadline is the provider address validity minus this margin.
@@ -355,7 +357,7 @@ async function openHop(
   const payer = prepared.payer as string;
   const now = deps.now();
   const validUntil = funding.validUntil ?? new Date(now.getTime() + DEFAULT_ADDRESS_VALIDITY_MS);
-  const deadline = new Date(validUntil.getTime() - intents.deadlineMarginMs);
+  const deadline = new Date(Math.min(validUntil.getTime() - intents.deadlineMarginMs, now.getTime() + MAX_ORDER_TTL_MS));
   if (deadline <= now) return { kind: "route_unavailable" };
 
   let swap;
@@ -377,6 +379,11 @@ async function openHop(
   if (swap.minAmountIn * 10_000n > hop.amountIn * (10_000n + intents.guardBps)) return { kind: "quote_changed" };
 
   const deposit: Deposit = { chain: "near", address: swap.depositAddress, units: swap.amountIn, validUntil: deadline, memo: swap.depositMemo ?? null };
+  try {
+    await intents.tokenStorage.ensure(deposit.address);
+  } catch {
+    return { kind: "route_unavailable" };
+  }
   try {
     await unit((tx) => reserveVault(tx, payoutId, payer, asset, deposit.units));
   } catch (error) {

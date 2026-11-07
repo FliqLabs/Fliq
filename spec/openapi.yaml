@@ -981,6 +981,12 @@ paths:
           $ref: "#/components/responses/Error"
         "409":
           $ref: "#/components/responses/Error"
+        "503":
+          description: The NEAR account could not be created right now (code chain_unavailable); retry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /relays:
     post:
       operationId: relay
@@ -1014,6 +1020,12 @@ paths:
           $ref: "#/components/responses/Error"
         "429":
           $ref: "#/components/responses/Error"
+        "502":
+          description: The chain refused the transaction outright (code rejected_by_chain); nothing ran and retrying is safe
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "503":
           $ref: "#/components/responses/Error"
   /relays/{delegateHash}:

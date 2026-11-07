@@ -2,6 +2,8 @@ import type { DelegatedCall, VerifiedDelegate } from "./delegate";
 
 const TGAS = 1_000_000_000_000n;
 export const MAX_GAS_PER_CALL = 100n * TGAS;
+// The vault's payout forwards 30 Tgas to ft_transfer and 20 Tgas to its callback, and refuses less prepaid gas.
+export const MIN_PAYOUT_GAS = 50n * TGAS;
 const MAX_ARGS_BYTES = 2_048;
 const ONE_YOCTO = 1n;
 const POSITIVE_INTEGER = /^[1-9]\d*$/;
@@ -113,6 +115,8 @@ export function checkPolicy(policy: RelayPolicy, delegate: VerifiedDelegate): vo
     throw new PolicyError(`${call.methodName} must attach exactly ${rule.deposit} yoctoNEAR`);
   if (call.gas <= 0n || call.gas > MAX_GAS_PER_CALL)
     throw new PolicyError("gas must be between 1 and 100 Tgas");
+  if (call.methodName === "payout" && call.gas < MIN_PAYOUT_GAS)
+    throw new PolicyError("payout needs at least 50 Tgas");
   if (call.args.length > MAX_ARGS_BYTES) throw new PolicyError("arguments are too large");
   rule.checkArgs(jsonArgs(call.args));
 }

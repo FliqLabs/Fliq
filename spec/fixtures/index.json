@@ -44,5 +44,6 @@
   "webhook-send.replayed.json": "WebhookSend",
   "usage.week.json": "Usage",
   "payouts.filtered.json": "PayoutList",
+  "name.claim-pending.json": "ClaimPending",
   "relay.failed.json": "RelayResult"
 }

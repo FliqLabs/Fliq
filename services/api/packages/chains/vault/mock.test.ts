@@ -74,8 +74,8 @@ describe("register_order", () => {
     ],
     ["an expiry in the past", () => vault.registerOrder(order({ expiresAtNs: now })), "INVALID_EXPIRY"],
     [
-      "an expiry beyond the TTL",
-      () => vault.registerOrder(order({ expiresAtNs: now + 3_601n * SECOND_NS })),
+      "an expiry more than 24 hours ahead",
+      () => vault.registerOrder(order({ expiresAtNs: now + DAY_NS + SECOND_NS })),
       "INVALID_EXPIRY",
     ],
   ])("refuses %s", async (_, action, code) => {
@@ -144,14 +144,14 @@ describe("agent policy", () => {
     expect(await refusal(agentPays("po_ke"))).toBe("POLICY_CORRIDOR");
     agentPays("po_a")();
     expect(await refusal(agentPays("po_b"))).toBe("POLICY_DAILY_CAP");
-    expect((await vault.getAgent(AGENT))?.spentToday).toBe(50n * USDC_UNIT);
+    expect((await vault.getAgent(ADA, AGENT))?.spentToday).toBe(50n * USDC_UNIT);
   });
 
   it("resets the daily allowance the next day and leaves the payer unlimited", async () => {
     await vault.registerOrder(order({ orderId: "po_a", amount: 60n * USDC_UNIT }));
     agentPays("po_a")();
     now += DAY_NS;
-    expect((await vault.getAgent(AGENT))?.spentToday).toBe(0n);
+    expect((await vault.getAgent(ADA, AGENT))?.spentToday).toBe(0n);
     await vault.registerOrder(order({ orderId: "po_big", amount: 100n * USDC_UNIT }));
     vault.payout(ADA, "po_big");
   });
@@ -181,7 +181,7 @@ describe("agent policy", () => {
     vault.removeAgent(ADA, AGENT);
     await vault.registerOrder(order({ amount: USDC_UNIT }));
     expect(await refusal(agentPays("po_1"))).toBe("UNAUTHORIZED");
-    expect(await vault.getAgent(AGENT)).toBeNull();
+    expect(await vault.getAgent(ADA, AGENT)).toBeNull();
   });
 });
 

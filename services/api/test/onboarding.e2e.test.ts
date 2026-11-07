@@ -119,7 +119,7 @@ describe.skipIf(!enabled)("onboarding against a real database", () => {
 
   it("checks names, then claims one idempotently", async () => {
     const free = await call("GET", `/names/${label}`, undefined, authed());
-    expect(free.json()).toEqual({ name: `${label}.fliq.near`, available: true, reason: null });
+    expect(free.json()).toEqual({ name: `${label}.${config.nearRootAccount}`, available: true, reason: null });
     expect((await call("GET", "/names/admin", undefined, authed())).json().reason).toBe("reserved");
     expect((await call("GET", "/names/A_B", undefined, authed())).json().reason).toBe("invalid");
 
@@ -129,7 +129,7 @@ describe.skipIf(!enabled)("onboarding against a real database", () => {
 
     const claimed = await call("POST", "/me/name", { name: label }, authed({ "idempotency-key": `claim-${suffix}` }));
     expect(claimed.statusCode).toBe(201);
-    expect(claimed.json()).toMatchObject({ near_account: `${label}.fliq.near`, vault: "fliq-vault.testnet" });
+    expect(claimed.json()).toMatchObject({ near_account: `${label}.${config.nearRootAccount}`, vault: "fliq-vault.testnet" });
 
     const replay = await call("POST", "/me/name", { name: label }, authed({ "idempotency-key": `claim-${suffix}` }));
     expect(replay.statusCode).toBe(201);

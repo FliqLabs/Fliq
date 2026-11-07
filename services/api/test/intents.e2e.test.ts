@@ -80,8 +80,7 @@ describe.skipIf(!enabled)("paying a bank account from the vault through NEAR Int
     releaseOrder: (orderId) => vault.releaseOrder(orderId),
     getReceipt: (orderId) => vault.getReceipt(orderId),
     getBalance: (accountId) => vault.getBalance(accountId),
-    getAgent: (agentId) => vault.getAgent(agentId),
-  };
+    getAgent: (owner, agentId) => vault.getAgent(owner, agentId),  };
 
   let app: ReturnType<typeof buildApp>;
   let hops: OneClickHops;
@@ -109,7 +108,7 @@ describe.skipIf(!enabled)("paying a bank account from the vault through NEAR Int
           adapters: [paycrest],
           velocity: DEFAULT_VELOCITY,
           now: () => new Date(),
-          intents: { hops, vault: faultyVault, guardBps: DEFAULT_GUARD_BPS, deadlineMarginMs: DEFAULT_DEADLINE_MARGIN_MS },
+          intents: { hops, vault: faultyVault, tokenStorage: { ensure: async (account: string) => vault.registerStorage(account) }, guardBps: DEFAULT_GUARD_BPS, deadlineMarginMs: DEFAULT_DEADLINE_MARGIN_MS },
         },
       }),
     });
