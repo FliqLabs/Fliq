@@ -13,9 +13,9 @@ Branch: `Ariya-Agent-Permissions`
 | `remove_agent(agent_id)` | `policies.rs` | With exactly 1 yoctoNEAR, revokes the caller's policy for that agent. Emits `agent_revoked`. |
 | `get_policy(owner, agent_id)` | `policies.rs` | Returns owner, agent, public key label, caps, current-day spend, corridors, cooldown, expiry, last payout time and the revoked flag. |
 | Policy lifecycle | `policies.rs`, `integration.rs` | Counts pending plus successful spend, releases same-day spend after failed transfers, retains successful spend, rolls daily buckets, and makes parallel-limit bypass fail. |
-| `on_payout_complete`, `resolve_stuck_payout` | `orders.rs` | Commits a confirmed transfer or returns the order to retryable `Registered`; policy pending state follows the same outcome. |
+| `on_payout_complete`, `resolve_stuck_payout` | `orders.rs` | Commits a confirmed transfer or releases the reservation and enters terminal `TransferFailed`; policy pending state follows the same outcome. |
 | `release_order` | `lib.rs`, `vault.rs` | Registration account or contract owner restores a reservation and moves a never-executed order to terminal `Released`. |
-| `set_status`, `get_receipt` | `orders.rs`, `receipts.rs` | Keeps authenticated backend status separate from verified NEAR transfer state. |
+| `set_status`, `get_receipt` | `orders.rs`, `receipts.rs` | Keeps authenticated backend status separate from verified NEAR transfer state; missing receipts return `null`. |
 | `recredit` | `orders.rs`, `vault.rs` | Requires write-once refund evidence and real unattributed USDC backing before exactly-once recredit. |
 | `ft_on_transfer`, `get_balance`, `transfer` | `vault.rs`, `lib.rs`, `policies.rs` | Handles approved-USDC deposits, isolated available/reserved balances and registered internal transfers; agent transfers debit the policy owner and enforce policy spend limits. |
 

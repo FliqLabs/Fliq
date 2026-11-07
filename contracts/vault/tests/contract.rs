@@ -381,6 +381,11 @@ fn authorized_agent_payout_counts_pending_and_completed_spend() {
     set_agent_caller(NOW, 0);
     let _promise = payout(&mut contract, "agent-order");
     assert_eq!(policy(&contract, accounts(3)).spent_today, U128(30));
+    assert!(
+        near_sdk::test_utils::get_logs()
+            .iter()
+            .any(|log| log.contains("\"event\":\"agent_spend\""))
+    );
 
     complete_payout(
         &mut contract,
