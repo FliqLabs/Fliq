@@ -1,0 +1,24 @@
+{
+  "name": "@fliq/mcp",
+  "version": "0.1.0",
+  "description": "MCP server for fliq: lets an AI agent quote, verify, pay and track stablecoin cash-outs over stdio.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "fliq-mcp": "dist/mcp/src/bin.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "node ../node_modules/typescript/bin/tsc -p tsconfig.build.json"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}
