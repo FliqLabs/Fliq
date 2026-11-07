@@ -170,11 +170,8 @@ pub fn authorize_payout(
     );
 }
 
-/// A payout that started before this upgrade has no pending row. It never counted
-/// against a policy, so there is nothing to give back. Only the old marker is cleared.
 pub fn release_pending(contract: &mut Contract, order_id: &str) {
     let Some(pending) = contract.pending_policy_spends.remove(&order_id.to_owned()) else {
-        clear_legacy_pending(order_id);
         return;
     };
     let Some(id) = pending.policy_id else {
@@ -193,22 +190,11 @@ pub fn release_pending(contract: &mut Contract, order_id: &str) {
 }
 
 pub fn settle_pending(contract: &mut Contract, order_id: &str) {
-    if contract
-        .pending_policy_spends
-        .remove(&order_id.to_owned())
-        .is_none()
-    {
-        clear_legacy_pending(order_id);
-    }
+    contract.pending_policy_spends.remove(&order_id.to_owned());
 }
 
 pub(crate) fn day_index(timestamp: u64) -> u64 {
     timestamp / DAY_NS
-}
-
-/// The marker the payer-only placeholder wrote before agent policies existed.
-fn clear_legacy_pending(order_id: &str) {
-    env::storage_remove(format!("fliq:temp:pending:{order_id}").as_bytes());
 }
 
 fn charge_storage(owner: &AccountId, storage_before: u64, attached: NearToken) {

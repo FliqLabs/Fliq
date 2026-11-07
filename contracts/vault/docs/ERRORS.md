@@ -6,8 +6,6 @@ Every contract-owned panic uses the exact `fliq_vault: CODE` form.
 | --- | --- |
 | INITIALIZER_ONLY | Only the vault account may initialize. |
 | ALREADY_INITIALIZED | State already exists. |
-| MIGRATION_ONLY | Only the vault account may run a state migration. |
-| MIGRATION_STATE_INVALID | Stored state is not the supported pre-policy vault layout. |
 | OWNER_ONLY | Only the owner may call this method. |
 | REGISTRATION_ONLY | Only the registration account may call this method. |
 | UNAUTHORIZED | The caller or transfer participants are not authorized. |
