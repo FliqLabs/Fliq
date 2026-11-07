@@ -36,6 +36,8 @@ tags:
     description: The signed-in user, their fliq name and profile
   - name: workspaces
     description: Developer workspaces and sandbox keys
+  - name: webhooks
+    description: Outbound webhook endpoints, deliveries, replay and test events
 paths:
   /health:
     get:
@@ -318,9 +320,51 @@ paths:
         - name: cursor
           in: query
           required: false
-          description: next_cursor from the previous page
+          description: next_cursor from the previous page. Send the same filters with it.
           schema:
             type: string
+        - name: status
+          in: query
+          required: false
+          description: >-
+            Comma-separated dashboard statuses. pending covers every state before the provider pays out, including
+            an unknown provider outcome that is being re-checked. refused is a payout the vault caps stopped.
+          schema:
+            type: string
+            example: settled,refused
+        - name: provider
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/ProviderId"
+        - name: currency
+          in: query
+          required: false
+          description: The payout corridor's currency, for example ngn or kes
+          schema:
+            type: string
+        - name: from
+          in: query
+          required: false
+          description: Created at or after this time
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          required: false
+          description: Created before this time
+          schema:
+            type: string
+            format: date-time
+        - name: q
+          in: query
+          required: false
+          description: >-
+            An exact payout id or client_reference. Recipient names are encrypted at rest and cannot be searched.
+          schema:
+            type: string
+            maxLength: 100
       responses:
         "200":
           description: One page of payouts. Empty for a new workspace.
@@ -363,6 +407,106 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Refusal"
+  /payouts/export:
+    get:
+      operationId: exportPayouts
+      summary: Payout history as CSV, with the same filters as the list
+      description: >-
+        Needs a signed-in session. The newest 5000 matching payouts; x-export-truncated is true when there were more,
+        so narrow the dates and export again. No account names or full account numbers: bank and last four digits only.
+        Cells that a spreadsheet would run as a formula are prefixed with a quote.
+      tags: [payouts]
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: >-
+            Comma-separated dashboard statuses. pending covers every state before the provider pays out, including
+            an unknown provider outcome that is being re-checked. refused is a payout the vault caps stopped.
+          schema:
+            type: string
+            example: settled,refused
+        - name: provider
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/ProviderId"
+        - name: currency
+          in: query
+          required: false
+          description: The payout corridor's currency, for example ngn or kes
+          schema:
+            type: string
+        - name: from
+          in: query
+          required: false
+          description: Created at or after this time
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          required: false
+          description: Created before this time
+          schema:
+            type: string
+            format: date-time
+        - name: q
+          in: query
+          required: false
+          description: >-
+            An exact payout id or client_reference. Recipient names are encrypted at rest and cannot be searched.
+          schema:
+            type: string
+            maxLength: 100
+      responses:
+        "200":
+          description: >-
+            Columns: payout_id, client_reference, status, state, created_at, updated_at, settled_at, seconds_to_bank,
+            amount, receive, currency, provider, bank_code, bank_name, account_last4, failure_reason
+          headers:
+            x-export-rows:
+              schema:
+                type: integer
+            x-export-truncated:
+              schema:
+                type: boolean
+          content:
+            text/csv:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/Error"
+  /usage:
+    get:
+      operationId: getUsage
+      summary: API-key usage per day and per key, for the dashboard's usage section
+      description: >-
+        Needs a signed-in session. Counts requests made with the workspace's API keys, by UTC day; dashboard
+        sessions are not counted. requests = succeeded + failed + rate_limited. payouts_created counts 201 answers
+        to POST /payouts, including an idempotent replay of one.
+      tags: [workspaces]
+      parameters:
+        - name: days
+          in: query
+          required: false
+          description: The last N UTC days, today included
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 90
+            default: 7
+      responses:
+        "200":
+          description: Totals, a daily series with every day present, and each key's share
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Usage"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
   /payouts/stats:
     get:
       operationId: getPayoutStats
@@ -668,6 +812,106 @@ paths:
                 $ref: "#/components/schemas/KeyList"
         "404":
           $ref: "#/components/responses/Error"
+    post:
+      operationId: createKey
+      summary: Create an API key. The full key is in this response only.
+      description: >-
+        Needs a signed-in session; API keys cannot create keys. Each deployment issues one environment
+        (sandbox issues test, production issues live), and live keys also need an approved KYB review.
+        There is no Idempotency-Key, so a stored replay never holds the plaintext key; a double submit makes two keys.
+      tags: [workspaces]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/KeyRequest"
+      responses:
+        "201":
+          description: The key. Store it now; it is never shown again.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KeyCreated"
+        "400":
+          $ref: "#/components/responses/Error"
+        "403":
+          description: live_not_enabled, the workspace has not passed KYB
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          description: limit_reached, the workspace already holds 20 active keys
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: environment_unavailable, this deployment does not issue that environment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /keys/{keyId}:
+    delete:
+      operationId: revokeKey
+      summary: Revoke an API key. It stops authenticating at once.
+      description: Needs a signed-in session. Revoking a revoked key succeeds and changes nothing.
+      tags: [workspaces]
+      parameters:
+        - name: keyId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Revoked
+        "404":
+          $ref: "#/components/responses/Error"
+  /keys/{keyId}/rotate:
+    post:
+      operationId: rotateKey
+      summary: Replace an API key with a new one of the same name and environment
+      description: Needs a signed-in session. The old key stops working in the same moment the new one is created.
+      tags: [workspaces]
+      parameters:
+        - name: keyId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "201":
+          description: The replacement key, shown once
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KeyCreated"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+  /workspaces/current/live-access:
+    get:
+      operationId: getLiveAccess
+      summary: Whether the workspace can use live keys, for the Go live screen
+      description: >-
+        Read only. Live access needs an approved KYB review, and no review process exists yet, so
+        live_enabled is false for every workspace and kyb_status is not_started.
+      tags: [workspaces]
+      responses:
+        "200":
+          description: Live access and KYB state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveAccess"
+        "404":
+          $ref: "#/components/responses/Error"
   /onboarding:
     get:
       operationId: getOnboarding
@@ -682,13 +926,250 @@ paths:
                 $ref: "#/components/schemas/Onboarding"
         "404":
           $ref: "#/components/responses/Error"
+  /webhook-endpoints:
+    get:
+      operationId: listWebhookEndpoints
+      summary: The workspace's webhook endpoints, the event types and how deliveries are signed
+      description: Needs a signed-in session. Secrets are never listed; they are shown once at creation and rotation.
+      tags: [webhooks]
+      responses:
+        "200":
+          description: Endpoints, newest first
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookEndpointList"
+        "404":
+          $ref: "#/components/responses/Error"
+    post:
+      operationId: createWebhookEndpoint
+      summary: Register a webhook endpoint. The signing secret is in this response only.
+      description: >-
+        Needs a signed-in session. The URL must be https, carry no credentials and resolve only to public
+        addresses; private, loopback, link-local and metadata addresses are refused. Deliveries do not follow
+        redirects. An empty or missing events list subscribes to every event type. At most 10 endpoints.
+      tags: [webhooks]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookEndpointRequest"
+      responses:
+        "201":
+          description: The endpoint and its signing secret
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookEndpointCreated"
+        "400":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+  /webhook-endpoints/{endpointId}:
+    patch:
+      operationId: updateWebhookEndpoint
+      summary: Change the URL, description or events, or turn the endpoint off and on
+      description: Needs a signed-in session. enabled true also clears a failing endpoint.
+      tags: [webhooks]
+      parameters:
+        - $ref: "#/components/parameters/EndpointId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookEndpointUpdate"
+      responses:
+        "200":
+          description: The endpoint after the change
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookEndpoint"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+    delete:
+      operationId: deleteWebhookEndpoint
+      summary: Delete a webhook endpoint. Its pending deliveries stop.
+      tags: [webhooks]
+      parameters:
+        - $ref: "#/components/parameters/EndpointId"
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          $ref: "#/components/responses/Error"
+  /webhook-endpoints/{endpointId}/rotate-secret:
+    post:
+      operationId: rotateWebhookSecret
+      summary: Issue a new signing secret. The old one also signs for 24 hours.
+      description: Send no request body. During the overlap each delivery carries one v1 signature per secret.
+      tags: [webhooks]
+      parameters:
+        - $ref: "#/components/parameters/EndpointId"
+      responses:
+        "200":
+          description: The new secret, shown once
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookSecretRotated"
+        "404":
+          $ref: "#/components/responses/Error"
+  /webhook-endpoints/{endpointId}/test:
+    post:
+      operationId: sendWebhookTest
+      summary: Send a test.webhook event to this endpoint
+      description: >-
+        Send no request body. The event is marked test and names no payout. It goes through the normal
+        signing, delivery and retry path; read its result with getWebhookDelivery. Replays and test events
+        share a limit of 30 per workspace per minute.
+      tags: [webhooks]
+      parameters:
+        - $ref: "#/components/parameters/EndpointId"
+      responses:
+        "202":
+          description: Queued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookSend"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/Error"
+  /webhook-deliveries:
+    get:
+      operationId: listWebhookDeliveries
+      summary: Deliveries to the workspace's endpoints, newest first
+      tags: [webhooks]
+      parameters:
+        - name: endpoint_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: event_type
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [pending, delivered, failed]
+        - name: payout_id
+          in: query
+          required: false
+          description: The deliveries of one payout, for the payout detail screen
+          schema:
+            type: string
+        - name: from
+          in: query
+          required: false
+          description: Created at or after this time
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          required: false
+          description: Created before this time
+          schema:
+            type: string
+            format: date-time
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 25
+        - name: cursor
+          in: query
+          required: false
+          description: next_cursor from the previous page
+          schema:
+            type: string
+      responses:
+        "200":
+          description: One page of deliveries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookDeliveryList"
+        "400":
+          $ref: "#/components/responses/Error"
+  /webhook-deliveries/{deliveryId}:
+    get:
+      operationId: getWebhookDelivery
+      summary: One delivery with the event it sent and every attempt
+      tags: [webhooks]
+      parameters:
+        - $ref: "#/components/parameters/DeliveryId"
+      responses:
+        "200":
+          description: The delivery
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookDeliveryDetail"
+        "404":
+          $ref: "#/components/responses/Error"
+  /webhook-deliveries/{deliveryId}/replay:
+    post:
+      operationId: replayWebhookDelivery
+      summary: Send the same event again as a new delivery
+      description: >-
+        Send no request body. The new delivery keeps the original event id and payload, so receivers
+        that deduplicate by event id see a repeat. Only the webhook is sent again; the payout is never re-run.
+        Each replay is audited. Replays and test events share a limit of 30 per workspace per minute.
+      tags: [webhooks]
+      parameters:
+        - $ref: "#/components/parameters/DeliveryId"
+      responses:
+        "202":
+          description: Queued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookSend"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/Error"
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
-      description: rt_test_ keys for sandbox, rt_live_ keys after KYB. Signed-in users send their access token the same way.
+      description: >-
+        rt_test_ keys for sandbox, rt_live_ keys after KYB. Signed-in users send their access token the same way.
+        Keys are accepted on rates, quotes, institutions, account verification and payouts; every other endpoint
+        answers 403 to a key and needs a signed-in session.
   parameters:
+    EndpointId:
+      name: endpointId
+      in: path
+      required: true
+      schema:
+        type: string
+    DeliveryId:
+      name: deliveryId
+      in: path
+      required: true
+      schema:
+        type: string
     IdempotencyKey:
       name: Idempotency-Key
       in: header
@@ -1244,6 +1725,69 @@ components:
         created_at:
           type: string
           format: date-time
+        name:
+          type: string
+          description: Keys made with the workspace are called Sandbox key
+        status:
+          type: string
+          enum: [active, revoked]
+        last_used_at:
+          type: [string, "null"]
+          format: date-time
+          description: Updated at most once a minute
+    KeyRequest:
+      type: object
+      required: [name, environment]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+        environment:
+          type: string
+          enum: [test, live]
+    KeyCreated:
+      type: object
+      required: [key_id, name, environment, masked, status, created_at, last_used_at, key]
+      properties:
+        key_id:
+          type: string
+        name:
+          type: string
+        environment:
+          type: string
+          enum: [test, live]
+        masked:
+          type: string
+        status:
+          type: string
+          enum: [active, revoked]
+        created_at:
+          type: string
+          format: date-time
+        last_used_at:
+          type: [string, "null"]
+          format: date-time
+        key:
+          type: string
+          description: The full key. Returned once and never again.
+    LiveAccess:
+      type: object
+      required: [live_enabled, kyb_status, deployment_environment, test_keys_allowed, live_keys_allowed]
+      properties:
+        live_enabled:
+          type: boolean
+        kyb_status:
+          type: string
+          enum: [not_started, submitted, in_review, approved, rejected]
+        deployment_environment:
+          type: string
+          enum: [test, live]
+          description: Sandbox and production are separate deployments; each issues and accepts one key environment
+        test_keys_allowed:
+          type: boolean
+        live_keys_allowed:
+          type: boolean
     KeyList:
       type: object
       required: [items]
@@ -1304,6 +1848,28 @@ components:
         created_at:
           type: string
           format: date-time
+        status:
+          $ref: "#/components/schemas/PayoutDisplayStatus"
+        client_reference:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+        settled_at:
+          type: [string, "null"]
+          format: date-time
+        seconds_to_bank:
+          type: [integer, "null"]
+          description: From the deposit being seen to settlement, as on the receipt
+        failure_reason:
+          type: [string, "null"]
+          description: Why a payout failed. Reasons starting with vault_ are refusals by the vault caps.
+    PayoutDisplayStatus:
+      type: string
+      enum: [pending, paying_out, settled, refused, refunding, refunded, failed, expired]
+      description: >-
+        The dashboard's status. pending includes provider_timeout and awaiting_recon: the outcome is unknown and
+        being re-checked, never a failure.
     PayoutList:
       type: object
       required: [items, next_cursor]
@@ -1551,3 +2117,340 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/StatusIncident"
+    WebhookEventType:
+      type: string
+      enum:
+        - payout.created
+        - payout.provider_timeout
+        - payout.awaiting_recon
+        - payout.awaiting_deposit
+        - payout.deposit_seen
+        - payout.routing
+        - payout.with_provider
+        - payout.paying_out
+        - payout.settled
+        - payout.refunding
+        - payout.refunded
+        - payout.expired
+        - payout.failed
+    WebhookEndpointRequest:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+          maxLength: 2048
+          description: https only, public hosts only
+        description:
+          type: string
+          maxLength: 200
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/WebhookEventType"
+    WebhookEndpointUpdate:
+      type: object
+      properties:
+        url:
+          type: string
+          maxLength: 2048
+        description:
+          type: [string, "null"]
+          maxLength: 200
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/WebhookEventType"
+        enabled:
+          type: boolean
+    WebhookEndpoint:
+      type: object
+      required: [endpoint_id, url, description, events, status, environment, created_at, updated_at, failing_since]
+      properties:
+        endpoint_id:
+          type: string
+        url:
+          type: string
+        description:
+          type: [string, "null"]
+        events:
+          type: array
+          description: Empty means every event type
+          items:
+            $ref: "#/components/schemas/WebhookEventType"
+        status:
+          type: string
+          enum: [active, failing, disabled]
+          description: failing once a delivery used up all its retries; the next successful delivery makes it active again
+        environment:
+          type: string
+          enum: [test, live]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        failing_since:
+          type: [string, "null"]
+          format: date-time
+    WebhookEndpointCreated:
+      allOf:
+        - $ref: "#/components/schemas/WebhookEndpoint"
+        - type: object
+          required: [secret]
+          properties:
+            secret:
+              type: string
+              description: Starts with whsec_. Returned once and never again.
+    WebhookSecretRotated:
+      allOf:
+        - $ref: "#/components/schemas/WebhookEndpoint"
+        - type: object
+          required: [secret, previous_secret_expires_at]
+          properties:
+            secret:
+              type: string
+            previous_secret_expires_at:
+              type: string
+              format: date-time
+    WebhookSigning:
+      type: object
+      required: [header, algorithm, signed_payload, format, tolerance_seconds, event_id_header, event_type_header, delivery_id_header]
+      description: >-
+        How to verify a delivery. Compute HMAC-SHA256 of "<t>.<raw body>" with the endpoint secret, hex encoded,
+        compare in constant time with any v1 value, and reject t more than tolerance_seconds from your clock.
+        Deduplicate by event id and keep the highest data.version per payout, since order is not guaranteed.
+      properties:
+        header:
+          type: string
+        algorithm:
+          type: string
+        signed_payload:
+          type: string
+        format:
+          type: string
+        tolerance_seconds:
+          type: integer
+        event_id_header:
+          type: string
+        event_type_header:
+          type: string
+        delivery_id_header:
+          type: string
+    WebhookEndpointList:
+      type: object
+      required: [items, event_types, signing]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WebhookEndpoint"
+        event_types:
+          type: array
+          items:
+            $ref: "#/components/schemas/WebhookEventType"
+        signing:
+          $ref: "#/components/schemas/WebhookSigning"
+    WebhookSend:
+      type: object
+      required: [event_id, delivery_id, status]
+      properties:
+        event_id:
+          type: string
+        delivery_id:
+          type: string
+        status:
+          type: string
+          enum: [pending, delivered, failed]
+        replay_of:
+          type: string
+          description: Only on a replay, the delivery it repeats
+    WebhookDelivery:
+      type: object
+      required:
+        - delivery_id
+        - event_id
+        - event_type
+        - payout_id
+        - endpoint_id
+        - endpoint_url
+        - status
+        - attempts
+        - response_status
+        - error
+        - replay_of
+        - created_at
+        - last_attempt_at
+        - next_attempt_at
+        - delivered_at
+      properties:
+        delivery_id:
+          type: string
+        event_id:
+          type: string
+          description: The same on a replay as on the original
+        event_type:
+          type: string
+          description: A WebhookEventType, or test.webhook
+        payout_id:
+          type: [string, "null"]
+          description: Null for test events
+        endpoint_id:
+          type: string
+        endpoint_url:
+          type: string
+        status:
+          type: string
+          enum: [pending, delivered, failed]
+        attempts:
+          type: integer
+        response_status:
+          type: [integer, "null"]
+          description: HTTP status of the latest attempt
+        error:
+          type: [string, "null"]
+          description: Category of the latest failure, for example timeout, connection, tls, blocked_destination or http_500
+        replay_of:
+          type: [string, "null"]
+        created_at:
+          type: string
+          format: date-time
+        last_attempt_at:
+          type: [string, "null"]
+          format: date-time
+        next_attempt_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the next retry runs, while pending
+        delivered_at:
+          type: [string, "null"]
+          format: date-time
+    WebhookDeliveryList:
+      type: object
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WebhookDelivery"
+        next_cursor:
+          type: [string, "null"]
+    WebhookAttempt:
+      type: object
+      required: [attempt, at, duration_ms, response_status, error]
+      properties:
+        attempt:
+          type: integer
+        at:
+          type: string
+          format: date-time
+        duration_ms:
+          type: integer
+        response_status:
+          type: [integer, "null"]
+        error:
+          type: [string, "null"]
+    WebhookDeliveryDetail:
+      allOf:
+        - $ref: "#/components/schemas/WebhookDelivery"
+        - type: object
+          required: [payload, history]
+          properties:
+            payload:
+              $ref: "#/components/schemas/WebhookEvent"
+            history:
+              type: array
+              items:
+                $ref: "#/components/schemas/WebhookAttempt"
+    WebhookEvent:
+      type: object
+      description: >-
+        The body of every delivery, signed as sent. Payout events carry the masked payout summary at the
+        state of the event and its version.
+      required: [id, type, created_at, livemode, data]
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        livemode:
+          type: boolean
+        data:
+          type: object
+          properties:
+            payout:
+              $ref: "#/components/schemas/PayoutSummary"
+            version:
+              type: integer
+            test:
+              type: boolean
+            message:
+              type: string
+    UsageCounters:
+      type: object
+      required: [requests, succeeded, failed, rate_limited, payouts_created]
+      properties:
+        requests:
+          type: integer
+        succeeded:
+          type: integer
+        failed:
+          type: integer
+        rate_limited:
+          type: integer
+        payouts_created:
+          type: integer
+    UsageDay:
+      allOf:
+        - type: object
+          required: [date]
+          properties:
+            date:
+              type: string
+              format: date
+        - $ref: "#/components/schemas/UsageCounters"
+    UsageKey:
+      allOf:
+        - $ref: "#/components/schemas/ApiKeyView"
+        - $ref: "#/components/schemas/UsageCounters"
+    Usage:
+      type: object
+      required: [period, totals, daily, keys, rate_limit]
+      properties:
+        period:
+          type: object
+          required: [from, to, days, timezone]
+          properties:
+            from:
+              type: string
+              format: date
+            to:
+              type: string
+              format: date
+            days:
+              type: integer
+            timezone:
+              type: string
+        totals:
+          $ref: "#/components/schemas/UsageCounters"
+        daily:
+          type: array
+          items:
+            $ref: "#/components/schemas/UsageDay"
+        keys:
+          type: array
+          description: Active keys, and revoked keys that had usage in the period
+          items:
+            $ref: "#/components/schemas/UsageKey"
+        rate_limit:
+          type: object
+          required: [requests_per_minute, scope]
+          properties:
+            requests_per_minute:
+              type: integer
+            scope:
+              type: string

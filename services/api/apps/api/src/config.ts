@@ -13,6 +13,8 @@ export interface Config {
   emailLinkBaseUrl: string;
   emailFrom: string;
   resendApiKey: string | undefined;
+  // Decision 12: sandbox and production are separate deployments, so each issues and accepts one key environment.
+  keyEnvironment: "test" | "live";
 }
 
 function required(env: NodeJS.ProcessEnv, name: string): string {
@@ -35,5 +37,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     emailLinkBaseUrl: env.EMAIL_LINK_BASE_URL ?? "http://localhost:3000",
     emailFrom: env.EMAIL_FROM ?? "FLIQ <noreply@fliq.cash>",
     resendApiKey: env.RESEND_API_KEY || undefined,
+    keyEnvironment: env.FLIQ_ENV === "production" ? "live" : "test",
   };
 }

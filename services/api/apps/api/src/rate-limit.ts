@@ -1,5 +1,6 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { Redis } from "ioredis";
+import { sha256Hex } from "../../../packages/db/src/crypto.js";
 import { verifyAccessToken } from "./auth/tokens.js";
 import { ApiError } from "./errors.js";
 
@@ -27,6 +28,7 @@ export const POLICIES = {
   auth: perMinute("auth", 10),
   anonymous: perMinute("anonymous", 60),
   signedIn: perMinute("signed_in", 300),
+  apiKey: perMinute("api_key", 300),
 };
 
 function decide(tokens: number, policy: Policy): Decision {
@@ -97,6 +99,8 @@ interface Identity {
 function identify(request: FastifyRequest, accessSecret: string): Identity {
   if (request.url.startsWith("/v1/auth/")) return { policy: POLICIES.auth, key: `ip:${request.ip}` };
   const token = request.headers.authorization?.startsWith("Bearer ") ? request.headers.authorization.slice(7) : null;
+  // Keyed by the key's hash, never the key itself, because bucket names are visible to anyone reading Redis.
+  if (token?.startsWith("rt_")) return { policy: POLICIES.apiKey, key: `key:${sha256Hex(token).slice(0, 32)}` };
   const claims = token ? verifyAccessToken(token, accessSecret, Math.floor(Date.now() / 1000)) : null;
   return claims ? { policy: POLICIES.signedIn, key: `user:${claims.sub}` } : { policy: POLICIES.anonymous, key: `ip:${request.ip}` };
 }

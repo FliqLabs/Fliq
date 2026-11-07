@@ -1,0 +1,7 @@
+{"standard":"fliq_vault","version":"1.0.0","event":"deposited","data":[{"account_id":"payer.testnet","sender_id":"payer.testnet","amount":"50000000"}]}
+{"standard":"fliq_vault","version":"1.0.0","event":"order_registered","data":[{"order_id":"order-fixture","payer":"payer.testnet","deposit_address":"deposit.testnet","amount":"50000000","expires_at_ns":"3610000000000","corridor":"NG-NGN-bank"}]}
+{"standard":"fliq_vault","version":"1.0.0","event":"payout_executed","data":[{"order_id":"order-fixture","payer":"payer.testnet","deposit_address":"deposit.testnet","amount":"50000000","public_key":"ed25519:11111111111111111111111111111111"}]}
+{"standard":"fliq_vault","version":"1.0.0","event":"order_released","data":[{"order_id":"order-released","payer":"payer.testnet","amount":"50000000"}]}
+{"standard":"fliq_vault","version":"1.0.0","event":"status_set","data":[{"order_id":"order-fixture","status":"refunding","refs":{"refund_tx":"refund-fixture"}}]}
+{"standard":"fliq_vault","version":"1.0.0","event":"recredited","data":[{"order_id":"order-fixture","payer":"payer.testnet","amount":"25000000"}]}
+{"standard":"fliq_vault","version":"1.0.0","event":"transferred","data":[{"from":"payer.testnet","to":"recipient.testnet","amount":"1000000"}]}
