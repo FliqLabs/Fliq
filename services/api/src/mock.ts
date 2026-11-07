@@ -13,10 +13,18 @@ type Route = { method: string; path: RegExp; fixture: string; status?: number; a
 const routes: Route[] = [
   { method: "GET", path: /^\/v1\/health$/, fixture: "health.json", auth: false },
   { method: "GET", path: /^\/v1\/rates\/usdc\/ngn$/, fixture: "rate.usdc-ngn.json", auth: false },
+  { method: "GET", path: /^\/v1\/rates\/usdc\/ngn\/providers$/, fixture: "rates.board.usdc-ngn.json", auth: false },
+  { method: "GET", path: /^\/v1\/rates\/usdc\/ngn\/history(\?.*)?$/, fixture: "rates.history.usdc-ngn-24h.json", auth: false },
   { method: "POST", path: /^\/v1\/quote$/, fixture: "quote.usdc-ngn-50.json" },
   { method: "POST", path: /^\/v1\/institutions\/verify$/, fixture: "verify.gtbank-0123456789.json" },
   { method: "POST", path: /^\/v1\/payouts$/, fixture: "payout.created.json", status: 201 },
   { method: "GET", path: /^\/v1\/payouts\/[\w-]+$/, fixture: "payout.settled.json" },
+  { method: "POST", path: /^\/v1\/payouts\/[\w-]+\/retry-quote$/, fixture: "quote.usdc-ngn-50.json" },
+  { method: "POST", path: /^\/v1\/payouts\/[\w-]+\/claims$/, fixture: "payout.claim.json", status: 201 },
+  { method: "GET", path: /^\/v1\/deposits\/sources$/, fixture: "deposit.sources.json" },
+  { method: "GET", path: /^\/v1\/deposits\/estimate(\?.*)?$/, fixture: "deposit.estimate.json" },
+  { method: "POST", path: /^\/v1\/deposits$/, fixture: "deposit.waiting.json", status: 201 },
+  { method: "GET", path: /^\/v1\/deposits\/[\w-]+$/, fixture: "deposit.landed.json" },
 ];
 
 async function fixture(name: string): Promise<string> {

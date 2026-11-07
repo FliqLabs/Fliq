@@ -86,9 +86,9 @@ function parseAmount(input: QuoteInput): QuoteAmount {
 }
 
 // Whole units to four decimals, from integers: minor units per token is (minor / 100) / (units / 1e6).
-const rateOf = (minor: bigint, amountIn: bigint) => Number((minor * 10n ** 8n) / amountIn) / 10_000;
+export const rateOf = (minor: bigint, amountIn: bigint) => Number((minor * 10n ** 8n) / amountIn) / 10_000;
 const wholeUnits = (minor: bigint) => Number(minor / 100n);
-const total = (route: Route) => route.fees.provider + route.fees.network + route.fees.intents + route.fees.ours;
+export const total = (route: Route) => route.fees.provider + route.fees.network + route.fees.intents + route.fees.ours;
 
 export async function developerIdFor(tx: Db, userId: string): Promise<string> {
   const workspace = await tx.workspace.findFirst({ where: { ownerId: userId }, orderBy: { createdAt: "desc" }, select: { id: true } });

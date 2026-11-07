@@ -1,5 +1,7 @@
 import type { FastifyRequest } from "fastify";
-import { checkName, claimName, type NearProvisioner } from "./accounts.js";
+import { checkName, claimName, type ClaimInput, type NearProvisioner } from "./accounts.js";
+import type { RelayerClient } from "../../../packages/chains/near/index.js";
+import { getRelay, relayDelegate } from "./relay.js";
 import type { Handler } from "./app.js";
 import { createEmailLink, verifyEmailLink, type EmailSender } from "./auth/email-links.js";
 import { finishLogin, finishRegistration, startLogin, startRegistration } from "./auth/passkeys.js";
@@ -17,6 +19,7 @@ import {
   workspaceView,
 } from "./dashboard.js";
 import { requireHttpsUrl, settle } from "./errors.js";
+import { createDeposits, type DepositChain, type DepositInput, type Deposits, type DepositToken } from "./deposits.js";
 import { withIdempotency } from "./idempotency.js";
 import { exportPayoutsCsv, parsePayoutFilter, type PayoutQuery } from "./payout-history.js";
 import { parseDays, usageReport } from "./usage.js";
@@ -26,7 +29,10 @@ import { lookupPerson, recentPeople } from "./people.js";
 import { DEFAULT_STATUS_CONFIG, statusReport, type Probe, type StatusConfig } from "./status.js";
 import { vaultBalance } from "./vault.js";
 import { deleteRecipient, listInstitutions, listRecipients, saveRecipient, verifyAccount, type AccountLookup } from "./recipients.js";
-import { createPayout, getPayout, type PayoutDeps, type PayoutInput } from "./payouts.js";
+import { bankReference, createPayout, getPayout, type PayoutDeps, type PayoutInput } from "./payouts.js";
+import { openClaim, quoteRetry } from "./recovery.js";
+import { createRateBoard, type RateBoard } from "./rate-board.js";
+import { createRates } from "./rates.js";
 import { requestQuote, type QuoteDeps, type QuoteInput } from "./quotes.js";
 import { createWorkspace } from "./workspaces.js";
 import type { Resolve } from "../../../packages/webhooks/destination.js";
@@ -52,10 +58,14 @@ export interface HandlerDeps {
   unit: Unit;
   email: EmailSender;
   provisioner: NearProvisioner;
+  // The private relayer, when one is configured: it creates NEAR accounts and pays gas for user-signed calls.
+  relayer?: RelayerClient;
   quotes: QuoteDeps;
   payouts: Omit<PayoutDeps, "quotes">;
   vault: VaultClient;
   status?: { probes: readonly Probe[]; config?: StatusConfig };
+  deposits?: Deposits;
+  rateBoard?: RateBoard;
   now?: () => Date;
   // Resolves webhook hostnames when an endpoint is saved. Tests replace it; production uses the system resolver.
   webhookResolve?: Resolve;
@@ -64,7 +74,22 @@ export interface HandlerDeps {
 const body = <T>(request: FastifyRequest) => request.body as T;
 const auth = (request: FastifyRequest) => request.auth as NonNullable<FastifyRequest["auth"]>;
 
-export function createHandlers({ config, unit, email, provisioner, quotes, payouts, vault, status = { probes: [] }, now = () => new Date(), webhookResolve }: HandlerDeps): Record<string, Handler> {
+export function createHandlers({
+  config,
+  unit,
+  email,
+  provisioner,
+  quotes,
+  payouts,
+  vault,
+  status = { probes: [] },
+  deposits = createDeposits({ client: undefined, vaultAccount: config.vaultAccount, usdcContract: "", slippageBps: 0 }),
+  rateBoard = createRateBoard(quotes, unit),
+  relayer,
+  now = () => new Date(),
+  webhookResolve,
+}: HandlerDeps): Record<string, Handler> {
+  const rates = createRates(quotes);
   const callerIn = async (tx: Db, request: FastifyRequest): Promise<Caller> => ({
     userId: auth(request).userId,
     workspaceId: (await currentWorkspace(tx, auth(request).userId)).id,
@@ -77,6 +102,19 @@ export function createHandlers({ config, unit, email, provisioner, quotes, payou
   const deliveryId = (request: FastifyRequest) => (request.params as { deliveryId: string }).deliveryId;
 
   return {
+    getRate: async (request) => {
+      const { token, currency } = request.params as { token: string; currency: string };
+      return { status: 200, body: await rates(token, currency), headers: { "cache-control": "public, max-age=10" } };
+    },
+    getRateBoard: async (request) => {
+      const { token, currency } = request.params as { token: string; currency: string };
+      return { status: 200, body: await rateBoard.board(token, currency), headers: { "cache-control": "public, max-age=10" } };
+    },
+    getRateHistory: async (request) => {
+      const { token, currency } = request.params as { token: string; currency: string };
+      const { range } = request.query as { range?: string };
+      return { status: 200, body: await rateBoard.history(token, currency, range), headers: { "cache-control": "public, max-age=60" } };
+    },
     getHealth: async () => ({ status: 200, body: { status: "ok", version: "0.1.0" } }),
 
     startPasskeyRegistration: async () => ({ status: 200, body: await unit((tx) => startRegistration(tx, config)) }),
@@ -130,10 +168,9 @@ export function createHandlers({ config, unit, email, provisioner, quotes, payou
       body: await unit((tx) => checkName(tx, config, (request.params as { name: string }).name)),
     }),
     claimName: (request) =>
-      withIdempotency(unit, auth(request).userId, request, async (tx) => ({
-        status: 201,
-        body: await claimName(tx, config, provisioner, auth(request).userId, body<{ name: string }>(request).name),
-      })),
+      claimName(unit, config, provisioner, auth(request).userId, request.headers["idempotency-key"] as string | undefined, body<ClaimInput>(request)),
+    relay: (request) => relayDelegate(unit, relayer, auth(request).userId, body<{ signed_delegate: string }>(request).signed_delegate),
+    getRelay: (request) => getRelay(unit, relayer, auth(request).userId, (request.params as { delegateHash: string }).delegateHash),
 
     getCurrentWorkspace: async (request) => ({
       status: 200,
@@ -244,6 +281,15 @@ export function createHandlers({ config, unit, email, provisioner, quotes, payou
       body: await getPayout(unit, config, auth(request).userId, (request.params as { payoutId: string }).payoutId),
     }),
 
+    quoteRetry: async (request) => ({
+      status: 200,
+      body: await quoteRetry(unit, quotes, auth(request).userId, (request.params as { payoutId: string }).payoutId),
+    }),
+    openPayoutClaim: (request) =>
+      withIdempotency(unit, auth(request).userId, request, (tx) =>
+        openClaim(tx, auth(request).userId, (request.params as { payoutId: string }).payoutId, bankReference),
+      ),
+
     listInstitutions: async (request) => ({
       status: 200,
       body: await listInstitutions(quotes.adapters, (request.query as { country?: string }).country),
@@ -264,6 +310,21 @@ export function createHandlers({ config, unit, email, provisioner, quotes, payou
     }),
 
     getVaultBalance: async (request) => ({ status: 200, body: await vaultBalance(unit, vault, auth(request).userId) }),
+    listDepositSources: async (request) => ({ status: 200, body: await deposits.sources(unit, auth(request).userId) }),
+    estimateDeposit: async (request) => {
+      const { token, chain, amount } = request.query as { token?: string; chain?: string; amount?: string };
+      const input = { token: token as DepositToken, chain: chain as DepositChain, amount: amount ?? "" };
+      return { status: 200, body: await deposits.estimate(unit, auth(request).userId, input) };
+    },
+    createDeposit: (request) =>
+      withIdempotency(unit, auth(request).userId, request, async (tx) => ({
+        status: 201,
+        body: await deposits.create(tx, auth(request).userId, body<DepositInput>(request)),
+      })),
+    getDeposit: async (request) => ({
+      status: 200,
+      body: await deposits.get(unit, auth(request).userId, (request.params as { depositId: string }).depositId),
+    }),
     lookupPerson: async (request) => ({
       status: 200,
       body: await unit((tx) => lookupPerson(tx, config, (request.params as { name: string }).name)),

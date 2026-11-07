@@ -156,6 +156,7 @@ model Payout {
   retryOf         Payout?     @relation("PayoutRetry", fields: [retryOfId], references: [id])
   retries         Payout[]    @relation("PayoutRetry")
   events          PayoutEvent[]
+  claims          PayoutClaim[]
 
   @@unique([developerId, clientReference])
   @@index([developerId, createdAt])
@@ -498,6 +499,102 @@ model Transfer {
   @@index([fromUserId, createdAt])
   @@index([toUserId, createdAt])
   @@map("transfers")
+  @@schema("core")
+}
+
+// One provider's after-fee rate for a corridor, sampled once a minute for the public rate chart. Kept 90 days.
+model RateSample {
+  id             String   @id @db.Text
+  token          String   @db.Text
+  currency       String   @db.Text
+  provider       String   @db.Text
+  rate           Decimal  @db.Decimal(24, 10)
+  rateBeforeFees Decimal  @map("rate_before_fees") @db.Decimal(24, 10)
+  feeMinor       BigInt   @map("fee_minor")
+  receiveMinor   BigInt   @map("receive_minor")
+  etaSeconds     Int      @map("eta_seconds")
+  onTimePercent  Int      @map("on_time_percent")
+  sampledAt      DateTime @map("sampled_at") @db.Timestamptz(6)
+
+  @@index([token, currency, sampledAt])
+  @@index([token, currency, provider, sampledAt])
+  @@index([sampledAt])
+  @@map("rate_samples")
+  @@schema("core")
+}
+
+enum ClaimState {
+  open
+  resolved
+
+  @@schema("core")
+}
+
+// A user saying a settled payout never reached the account. One open claim per payout.
+model PayoutClaim {
+  id         String     @id @db.Text
+  payoutId   String     @map("payout_id") @db.Text
+  userId     String     @map("user_id") @db.Text
+  state      ClaimState @default(open)
+  openedAt   DateTime   @default(now()) @map("opened_at") @db.Timestamptz(6)
+  resolvedAt DateTime?  @map("resolved_at") @db.Timestamptz(6)
+  payout     Payout     @relation(fields: [payoutId], references: [id])
+
+  @@index([payoutId, openedAt])
+  @@map("payout_claims")
+  @@schema("core")
+}
+
+enum DepositState {
+  waiting
+  seen
+  underpaid
+  bridging
+  landed
+  refunded
+  expired
+  failed
+
+  @@schema("core")
+}
+
+// A top-up of the user's vault from another chain through a NEAR Intents FLEX_INPUT swap.
+model VaultDeposit {
+  id             String       @id @db.Text
+  userId         String       @map("user_id") @db.Text
+  account        String       @db.Text
+  token          String       @db.Text
+  chain          String       @db.Text
+  // Units below are in the source token's decimals, except lands and landed (USDC) and fee (micro US dollars).
+  decimals       Int
+  depositAddress String       @map("deposit_address") @db.Text
+  depositMemo    String?      @map("deposit_memo") @db.Text
+  amountUnits    BigInt       @map("amount_units")
+  minimumUnits   BigInt       @map("minimum_units")
+  feeMicroUsd    BigInt       @map("fee_micro_usd")
+  landsUnits     BigInt       @map("lands_units")
+  etaSeconds     Int          @map("eta_seconds")
+  reservedUntil  DateTime     @map("reserved_until") @db.Timestamptz(6)
+  state          DepositState @default(waiting)
+  intentsStatus  String?      @map("intents_status") @db.Text
+  receivedUnits  BigInt?      @map("received_units")
+  landedUnits    BigInt?      @map("landed_units")
+  refundedUnits  BigInt?      @map("refunded_units")
+  refundReason   String?      @map("refund_reason") @db.Text
+  originTx       String?      @map("origin_tx") @db.Text
+  seenAt         DateTime?    @map("seen_at") @db.Timestamptz(6)
+  bridgingAt     DateTime?    @map("bridging_at") @db.Timestamptz(6)
+  landedAt       DateTime?    @map("landed_at") @db.Timestamptz(6)
+  polledAt       DateTime?    @map("polled_at") @db.Timestamptz(6)
+  // The full 1Click quote, which 1Click asks integrators to keep.
+  quote          Json
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime     @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([depositAddress])
+  @@index([userId, createdAt])
+  @@index([state, reservedUntil])
+  @@map("vault_deposits")
   @@schema("core")
 }
 
