@@ -43,5 +43,6 @@
   "webhook-delivery.detail.json": "WebhookDeliveryDetail",
   "webhook-send.replayed.json": "WebhookSend",
   "usage.week.json": "Usage",
-  "payouts.filtered.json": "PayoutList"
+  "payouts.filtered.json": "PayoutList",
+  "relay.failed.json": "RelayResult"
 }

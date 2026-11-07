@@ -105,6 +105,40 @@ final class HTTPClientTests: XCTestCase {
         XCTAssertFalse(needsSignIn)
     }
 
+    func testClaimSendsTheDeviceKeyAndWaitsOutAPendingAccount() async throws {
+        var client = makeClient()
+        client.claimRetryDelay = .zero
+        StubProtocol.respond { _ in
+            StubProtocol.requests.count < 3
+                ? (202, Data(#"{"status":"pending","near_account":"frank.fliq.testnet"}"#.utf8))
+                : (201, try fixtures.data("user.new"))
+        }
+
+        _ = try await client.claimName(try XCTUnwrap(FliqName("frank")), publicKey: "ed25519:11111111111111111111111111111111")
+
+        XCTAssertEqual(StubProtocol.requests.count, 3)
+        let request = try XCTUnwrap(StubProtocol.requests.last)
+        XCTAssertEqual(request.url?.path, "/v1/me/name")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Idempotency-Key"), "claim-frank")
+        let body = try XCTUnwrap(request.httpBodyStream.map(Data.init(reading:)) ?? request.httpBody)
+        let sent = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: String])
+        XCTAssertEqual(sent, ["name": "frank", "public_key": "ed25519:11111111111111111111111111111111"])
+    }
+
+    func testClaimGivesUpWhenTheAccountStaysPending() async throws {
+        var client = makeClient()
+        client.claimRetryDelay = .zero
+        StubProtocol.respond { _ in (202, Data(#"{"status":"pending","near_account":"frank.fliq.testnet"}"#.utf8)) }
+
+        do {
+            _ = try await client.claimName(try XCTUnwrap(FliqName("frank")), publicKey: "ed25519:11111111111111111111111111111111")
+            XCTFail("a claim that never finishes must not succeed")
+        } catch {
+            XCTAssertEqual(error as? APIError, .unexpected(status: 202))
+        }
+        XCTAssertEqual(StubProtocol.requests.count, HTTPClient.claimAttempts)
+    }
+
     func testBase64URLRoundTrips() {
         let bytes = Data([0xfb, 0xff, 0x00, 0x10])
         XCTAssertEqual(bytes.base64URL, "-_8AEA")

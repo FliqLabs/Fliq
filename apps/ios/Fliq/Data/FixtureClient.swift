@@ -80,7 +80,7 @@ struct FixtureClient: FliqAPI {
         return NameAvailability(name: name.value, available: free, reason: free ? nil : "taken")
     }
 
-    func claimName(_ name: FliqName) async throws -> User {
+    func claimName(_ name: FliqName, publicKey: String) async throws -> User {
         let user: User = try load("user.new")
         return user.named(name.account)
     }
