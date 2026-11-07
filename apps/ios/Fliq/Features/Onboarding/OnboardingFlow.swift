@@ -53,9 +53,12 @@ final class OnboardingFlow {
         do {
             claimed = try await api.claimName(name, publicKey: publicKey).nearAccount
             return true
-        } catch {
+        } catch APIError.server(status: 409, _) {
             status = .taken
             suggestions = await freeAlternatives(to: name)
+            return false
+        } catch {
+            status = .unreachable
             return false
         }
     }
@@ -86,11 +89,13 @@ final class OnboardingFlow {
     func resolve(_ name: FliqName) async {
         do {
             let free = try await names.isAvailable(name)
-            guard self.name == name else { return }
+            guard !Task.isCancelled, self.name == name else { return }
             status = free ? .available : .taken
             if !free { suggestions = await freeAlternatives(to: name) }
         } catch {
-            if self.name == name { status = .unreachable }
+            // A newer keystroke cancelled this check; its own check will answer, even for the same name.
+            guard !Task.isCancelled, self.name == name else { return }
+            status = .unreachable
         }
     }
 
