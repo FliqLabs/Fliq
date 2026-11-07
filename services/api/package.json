@@ -16,6 +16,8 @@
     "db:deploy": "prisma migrate deploy --schema packages/db/prisma/schema.prisma",
     "start": "tsx apps/api/src/server.ts",
     "start:relayer": "tsx apps/relayer/src/server.ts",
+    "mcp": "tsx apps/mcp/src/server.ts",
+    "mcp:keygen": "tsx apps/mcp/src/keygen.ts",
     "dev:oneclick-mock": "tsx packages/chains/oneclick/server.ts",
     "vault:testnet": "tsx --env-file=.env scripts/vault-testnet.ts"
   },

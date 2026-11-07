@@ -28,6 +28,12 @@ tags:
     description: The user's vault balance
   - name: deposits
     description: Topping up the vault from other chains through NEAR Intents
+  - name: activity
+    description: Everything that moved money, and the notifications about it
+  - name: agents
+    description: AI agents that pay within limits the vault enforces
+  - name: requests
+    description: Payment requests and their public pay links
   - name: people
     description: Other fliq users, for paying by name
   - name: recipients
@@ -259,6 +265,31 @@ paths:
         "404":
           $ref: "#/components/responses/Error"
   /recipients/{recipientId}:
+    patch:
+      operationId: updateRecipient
+      summary: Mark a saved account as the user's own, or as the default for cash-outs
+      tags: [recipients]
+      parameters:
+        - name: recipientId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecipientUpdate"
+      responses:
+        "200":
+          description: The updated recipient
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Recipient"
+        "404":
+          $ref: "#/components/responses/Error"
     delete:
       operationId: deleteRecipient
       summary: Remove a saved recipient
@@ -402,6 +433,565 @@ paths:
                 $ref: "#/components/schemas/VaultDeposit"
         "404":
           $ref: "#/components/responses/Error"
+  /activity:
+    get:
+      operationId: listActivity
+      summary: Everything that moved money for the user, newest first
+      description: Payouts, top-ups, transfers between fliq users, paid requests and agent payouts the vault refused, in one list. mine leaves out what agents did; agents keeps only that.
+      tags: [activity]
+      parameters:
+        - name: filter
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [all, mine, agents]
+            default: all
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 25
+        - name: cursor
+          in: query
+          required: false
+          description: next_cursor from the previous page
+          schema:
+            type: string
+      responses:
+        "200":
+          description: One page, newest first
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivityList"
+        "400":
+          $ref: "#/components/responses/Error"
+  /notifications:
+    get:
+      operationId: listNotifications
+      summary: The user's notifications, newest first
+      tags: [activity]
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 25
+      responses:
+        "200":
+          description: Notifications, built from the same events as the activity list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationList"
+  /devices/push:
+    post:
+      operationId: registerPushToken
+      summary: Register this device for push notifications
+      tags: [accounts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PushTokenRequest"
+      responses:
+        "204":
+          description: Registered; registering the same token again is harmless
+        "400":
+          $ref: "#/components/responses/Error"
+  /agents:
+    get:
+      operationId: listAgents
+      summary: The user's agents, their limits and what they spent today
+      tags: [agents]
+      responses:
+        "200":
+          description: Agents, newest first
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentList"
+    post:
+      operationId: connectAgent
+      summary: Connect an agent and get what the device must sign
+      description: >-
+        fliq creates the agent's own NEAR account, <agent>-<user>.<root>, with the scanned key as its only key. Its
+        policy changes nothing until the user signs: the answer lists the steps, which the device signs as delegate
+        actions and sends to POST /relays. The agent shows as active once the vault holds its policy.
+      tags: [agents]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentRequest"
+      responses:
+        "201":
+          description: The agent, pending until the steps are signed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentChange"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+  /agents/{agentId}:
+    parameters:
+      - name: agentId
+        in: path
+        required: true
+        description: The agent's NEAR account
+        schema:
+          type: string
+    patch:
+      operationId: updateAgentLimits
+      summary: Change an agent's limits and get what the device must sign
+      description: The new limits take effect on the agent's next payout once the device signs the policy change.
+      tags: [agents]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentLimitsRequest"
+      responses:
+        "200":
+          description: The agent and the step to sign
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentChange"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+    delete:
+      operationId: revokeAgent
+      summary: Revoke an agent and get what the device must sign
+      description: Revocation takes effect on chain when the device signs remove_agent. What the agent already paid stays paid.
+      tags: [agents]
+      responses:
+        "200":
+          description: The agent and the step to sign
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentChange"
+        "404":
+          $ref: "#/components/responses/Error"
+  /agent:
+    get:
+      operationId: getAgentSelf
+      summary: The calling agent's limits and what it can still spend today
+      description: For agents, not people. Every /agent call is signed with the agent's own key; see agentSignature.
+      tags: [agents]
+      security:
+        - agentSignature: []
+      responses:
+        "200":
+          description: The agent as the vault and the user's settings allow it
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSelf"
+        "401":
+          $ref: "#/components/responses/Error"
+  /agent/recipients:
+    get:
+      operationId: listAgentRecipients
+      summary: The owner's saved accounts the agent may pay
+      tags: [agents]
+      security:
+        - agentSignature: []
+      responses:
+        "200":
+          description: Saved accounts, the owner's own first
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecipientList"
+        "401":
+          $ref: "#/components/responses/Error"
+  /agent/quotes:
+    post:
+      operationId: quoteForAgent
+      summary: Quote a payout from the owner's vault
+      tags: [agents]
+      security:
+        - agentSignature: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentQuoteRequest"
+      responses:
+        "200":
+          description: The quote, paid from the vault over NEAR
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Quote"
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+  /agent/payouts:
+    post:
+      operationId: createAgentPayout
+      summary: Pay one of the owner's accounts within the agent's limits
+      description: >-
+        The API checks the currency, the saved-accounts rule and the vault's caps before anything is created. A
+        payout over a limit is refused with code agent_limit and recorded for the owner; nothing moves. A payout
+        within the limits is registered on the vault and the answer carries the payout call for the agent to sign
+        and send to POST /agent/relays. The vault checks the caps again when it runs.
+      tags: [agents]
+      security:
+        - agentSignature: []
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentPayoutRequest"
+      responses:
+        "201":
+          description: The payout and the call to sign
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentPayout"
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+  /agent/payouts/{payoutId}:
+    get:
+      operationId: getAgentPayout
+      summary: A payout this agent made
+      tags: [agents]
+      security:
+        - agentSignature: []
+      parameters:
+        - name: payoutId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The payout and its receipt
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Payout"
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+  /agent/relays:
+    post:
+      operationId: relayForAgent
+      summary: Send a payout the agent signed, with fliq paying the gas
+      tags: [agents]
+      security:
+        - agentSignature: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RelayRequest"
+      responses:
+        "200":
+          description: The transaction ran; status says whether the payout inside it succeeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RelayResult"
+        "202":
+          description: Sent, outcome not known yet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RelayResult"
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "503":
+          $ref: "#/components/responses/Error"
+  /requests:
+    get:
+      operationId: listRequests
+      summary: The user's payment requests, newest first
+      tags: [requests]
+      responses:
+        "200":
+          description: Requests
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentRequestList"
+    post:
+      operationId: createRequest
+      summary: Ask to be paid, with a link anyone can pay from any chain
+      tags: [requests]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PaymentRequestInput"
+      responses:
+        "201":
+          description: The request and its link
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentRequest"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+  /requests/{requestId}:
+    parameters:
+      - name: requestId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getRequest
+      summary: A payment request and whether it was paid
+      tags: [requests]
+      responses:
+        "200":
+          description: The request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentRequest"
+        "404":
+          $ref: "#/components/responses/Error"
+    delete:
+      operationId: cancelRequest
+      summary: Cancel an open request so its link stops taking payments
+      tags: [requests]
+      responses:
+        "200":
+          description: The cancelled request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentRequest"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+  /pay/{name}/{code}:
+    parameters:
+      - $ref: "#/components/parameters/PayeeName"
+      - $ref: "#/components/parameters/RequestCode"
+    get:
+      operationId: getPublicRequest
+      summary: The public page behind a pay link
+      description: No session needed. Shows who is asking, how much and what for, and the ways to pay. Never shows the payee's balance or accounts.
+      tags: [requests]
+      security: []
+      responses:
+        "200":
+          description: The request as the payer sees it
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicRequest"
+        "404":
+          $ref: "#/components/responses/Error"
+  /pay/{name}/{code}/deposits:
+    parameters:
+      - $ref: "#/components/parameters/PayeeName"
+      - $ref: "#/components/parameters/RequestCode"
+    post:
+      operationId: payRequestDeposit
+      summary: Get an address to pay a request from another chain
+      description: No session needed. The address lands the payment in the payee's vault as USDC; follow it with GET /pay/{name}/{code}/deposits/{depositId}.
+      tags: [requests]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RequestDepositInput"
+      responses:
+        "201":
+          description: Address reserved for this payment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VaultDeposit"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+        "503":
+          $ref: "#/components/responses/Error"
+  /pay/{name}/{code}/deposits/{depositId}:
+    parameters:
+      - $ref: "#/components/parameters/PayeeName"
+      - $ref: "#/components/parameters/RequestCode"
+      - name: depositId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getRequestDeposit
+      summary: Where a payment to a request is
+      tags: [requests]
+      security: []
+      responses:
+        "200":
+          description: The payment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VaultDeposit"
+        "404":
+          $ref: "#/components/responses/Error"
+  /receipts/{payoutId}:
+    get:
+      operationId: getPublicReceipt
+      summary: The public receipt for a payout, which anyone with the link can check
+      description: The bank session, the vault receipt on NEAR and the provider's order. The account holder's name and number are masked.
+      tags: [payouts]
+      security: []
+      parameters:
+        - name: payoutId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The receipt
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicReceipt"
+        "404":
+          $ref: "#/components/responses/Error"
+  /sessions:
+    get:
+      operationId: listSessions
+      summary: Devices signed in to the user's account
+      tags: [auth]
+      responses:
+        "200":
+          description: Active sessions, the current one first
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceSessionList"
+  /sessions/{sessionId}:
+    delete:
+      operationId: revokeSession
+      summary: Sign a device out
+      tags: [auth]
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Signed out
+        "404":
+          $ref: "#/components/responses/Error"
+  /passkeys:
+    get:
+      operationId: listPasskeys
+      summary: The user's passkeys
+      tags: [auth]
+      responses:
+        "200":
+          description: Passkeys, newest first
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PasskeyList"
+  /me/notification-settings:
+    get:
+      operationId: getNotificationSettings
+      summary: Which notifications the user wants
+      tags: [accounts]
+      responses:
+        "200":
+          description: The settings; a new user has every money and agent notification on
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationSettings"
+    put:
+      operationId: updateNotificationSettings
+      summary: Choose which notifications the user wants
+      tags: [accounts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NotificationSettings"
+      responses:
+        "200":
+          description: The saved settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationSettings"
+        "400":
+          $ref: "#/components/responses/Error"
+  /me/setup:
+    get:
+      operationId: getSetup
+      summary: The getting-started steps on Home and which are done
+      tags: [accounts]
+      responses:
+        "200":
+          description: Steps in order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Setup"
   /people/recent:
     get:
       operationId: listRecentPeople
@@ -1437,6 +2027,15 @@ paths:
           $ref: "#/components/responses/Error"
 components:
   securitySchemes:
+    agentSignature:
+      type: apiKey
+      in: header
+      name: X-Fliq-Signature
+      description: >-
+        An agent signs each /agent request with its own ed25519 key, the one the owner scanned when connecting it.
+        Send X-Fliq-Agent (the agent's NEAR account), X-Fliq-Timestamp (unix seconds, within 5 minutes of now) and
+        X-Fliq-Signature, the base58 ed25519 signature of METHOD, path with query, timestamp and the hex sha256 of
+        the exact body bytes (empty for none), joined by newlines.
     bearerAuth:
       type: http
       scheme: bearer
@@ -1457,6 +2056,20 @@ components:
       required: true
       schema:
         type: string
+    PayeeName:
+      name: name
+      in: path
+      required: true
+      description: The payee's fliq name, for example frank
+      schema:
+        type: string
+    RequestCode:
+      name: code
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^[0-9a-z]{4,16}$"
     IdempotencyKey:
       name: Idempotency-Key
       in: header
@@ -1904,6 +2517,11 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/StateChange"
+        agent:
+          oneOf:
+            - $ref: "#/components/schemas/AgentRef"
+            - type: "null"
+          description: The agent that made this payout, if one did
         failure:
           oneOf:
             - $ref: "#/components/schemas/PayoutFailure"
@@ -2059,6 +2677,568 @@ components:
       properties:
         refresh_token:
           type: string
+    Money:
+      type: object
+      required: [amount, currency]
+      properties:
+        amount:
+          type: string
+          description: Decimal string in the currency's own units
+        currency:
+          type: string
+          enum: [NGN, KES, GHS, USD]
+    ActivityParty:
+      type: object
+      required: [name, near_account, institution, account_last4, photo_url]
+      properties:
+        name:
+          type: string
+          description: Who the money went to or came from, as the row shows it
+        near_account:
+          type: [string, "null"]
+        institution:
+          type: [string, "null"]
+          description: Bank or mobile money code for a payout
+        account_last4:
+          type: [string, "null"]
+        photo_url:
+          type: [string, "null"]
+    ActivityItem:
+      type: object
+      required: [activity_id, kind, status, at, party, provider, agent, local, usd, token, seconds, reason, ref_id]
+      properties:
+        activity_id:
+          type: string
+        kind:
+          type: string
+          enum: [payout, deposit, transfer_in, transfer_out, refused]
+          description: refused is an agent payout the vault turned down; nothing moved
+        status:
+          type: string
+          enum: [pending, paid, received, sent, refunded, refused, failed, expired]
+        at:
+          type: string
+          format: date-time
+        party:
+          $ref: "#/components/schemas/ActivityParty"
+        provider:
+          oneOf:
+            - $ref: "#/components/schemas/ProviderId"
+            - type: "null"
+        agent:
+          oneOf:
+            - $ref: "#/components/schemas/AgentRef"
+            - type: "null"
+        local:
+          oneOf:
+            - $ref: "#/components/schemas/Money"
+            - type: "null"
+          description: The local currency amount, for a payout
+        usd:
+          type: [string, "null"]
+          description: The dollar amount that left or reached the vault
+        token:
+          type: [string, "null"]
+          description: What was sent from another chain, for a top-up, for example 200 USDC
+        seconds:
+          type: [integer, "null"]
+        reason:
+          type: [string, "null"]
+          enum: [over_daily_cap, over_per_payout_cap, corridor_not_allowed, not_saved_account, provider_failed, expired, null]
+        ref_id:
+          type: string
+          description: The payout, deposit, transfer or refusal behind the row
+    ActivityList:
+      type: object
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ActivityItem"
+        next_cursor:
+          type: [string, "null"]
+    Notification:
+      type: object
+      required: [notification_id, kind, title, body, at, activity_id]
+      properties:
+        notification_id:
+          type: string
+        kind:
+          type: string
+          enum: [received, payout_paid, payout_refunded, agent_paid, agent_refused, request_paid]
+        title:
+          type: string
+        body:
+          type: string
+        at:
+          type: string
+          format: date-time
+        activity_id:
+          type: [string, "null"]
+    NotificationList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Notification"
+    PushTokenRequest:
+      type: object
+      additionalProperties: false
+      required: [token, platform]
+      properties:
+        token:
+          type: string
+          maxLength: 512
+        platform:
+          type: string
+          enum: [ios, android]
+    AgentRef:
+      type: object
+      required: [agent_id, name]
+      properties:
+        agent_id:
+          type: string
+        name:
+          type: string
+    AgentSelf:
+      type: object
+      required: [agent_id, owner, name, state, daily_cap, per_payout_cap, currencies, saved_accounts_only, spent_today_usd, remaining_today_usd, per_payout_usd]
+      properties:
+        agent_id:
+          type: string
+        owner:
+          type: string
+          description: The NEAR account whose vault the agent pays from
+        name:
+          type: string
+        state:
+          type: string
+          enum: [pending, active, revoked]
+        daily_cap:
+          $ref: "#/components/schemas/Money"
+        per_payout_cap:
+          $ref: "#/components/schemas/Money"
+        currencies:
+          type: array
+          items:
+            type: string
+            enum: [NGN, KES]
+        saved_accounts_only:
+          type: boolean
+        spent_today_usd:
+          type: [string, "null"]
+          description: From the vault's policy, in USDC. Null when the vault cannot be read.
+        remaining_today_usd:
+          type: [string, "null"]
+        per_payout_usd:
+          type: [string, "null"]
+    AgentQuoteRequest:
+      type: object
+      additionalProperties: false
+      required: [currency, amount]
+      properties:
+        currency:
+          type: string
+          enum: [ngn, kes]
+        amount:
+          type: string
+          description: Dollars to send, or the local amount to receive when mode is receive
+        mode:
+          type: string
+          enum: [send, receive]
+          default: send
+    AgentPayoutRequest:
+      type: object
+      additionalProperties: false
+      required: [quote_id]
+      properties:
+        quote_id:
+          type: string
+        recipient_id:
+          type: string
+          description: One of the owner's saved accounts
+        account:
+          $ref: "#/components/schemas/Account"
+          description: Any account, only when the owner turned saved accounts only off
+    AgentPayout:
+      type: object
+      required: [payout, sign]
+      properties:
+        payout:
+          $ref: "#/components/schemas/Payout"
+        sign:
+          $ref: "#/components/schemas/SignStep"
+    Agent:
+      type: object
+      required: [agent_id, name, public_key, state, daily_cap, per_payout_cap, currencies, saved_accounts_only, spent_today, connected_at, expires_at]
+      properties:
+        agent_id:
+          type: string
+          description: The agent's own NEAR account, for example claude-frank.fliq.near, which the vault policy names
+        name:
+          type: string
+        public_key:
+          type: string
+        state:
+          type: string
+          enum: [pending, active, revoked]
+          description: pending until the device signs the policy; revoked once remove_agent ran
+        daily_cap:
+          $ref: "#/components/schemas/Money"
+        per_payout_cap:
+          $ref: "#/components/schemas/Money"
+        currencies:
+          type: array
+          items:
+            type: string
+            enum: [NGN, KES]
+        saved_accounts_only:
+          type: boolean
+          description: Enforced by the API, not the vault
+        spent_today:
+          $ref: "#/components/schemas/Money"
+        connected_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+    AgentList:
+      type: object
+      required: [agents]
+      properties:
+        agents:
+          type: array
+          items:
+            $ref: "#/components/schemas/Agent"
+    AgentLimitsRequest:
+      type: object
+      additionalProperties: false
+      required: [daily_cap, per_payout_cap, currencies, saved_accounts_only]
+      properties:
+        daily_cap:
+          $ref: "#/components/schemas/Money"
+        per_payout_cap:
+          $ref: "#/components/schemas/Money"
+        currencies:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            enum: [NGN, KES]
+        saved_accounts_only:
+          type: boolean
+    AgentRequest:
+      type: object
+      additionalProperties: false
+      required: [name, public_key, daily_cap, per_payout_cap, currencies, saved_accounts_only]
+      properties:
+        name:
+          type: string
+          maxLength: 40
+        public_key:
+          type: string
+          pattern: "^ed25519:[1-9A-HJ-NP-Za-km-z]{43,44}$"
+          description: The agent's own key, scanned from the agent
+        daily_cap:
+          $ref: "#/components/schemas/Money"
+        per_payout_cap:
+          $ref: "#/components/schemas/Money"
+        currencies:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            enum: [NGN, KES]
+        saved_accounts_only:
+          type: boolean
+    SignStep:
+      type: object
+      required: [kind, receiver_id, method_name, args, gas, deposit, public_key]
+      description: One action for the device to sign as a delegate action and send to POST /relays
+      properties:
+        kind:
+          type: string
+          enum: [create_account, function_call]
+        receiver_id:
+          type: string
+        method_name:
+          type: [string, "null"]
+        args:
+          type: [object, "null"]
+          additionalProperties: true
+        gas:
+          type: [string, "null"]
+          description: Gas in units, for a function call
+        deposit:
+          type: string
+          description: yoctoNEAR attached
+        public_key:
+          type: [string, "null"]
+          description: For create_account, the only full-access key of the new account
+    AgentChange:
+      type: object
+      required: [agent, steps]
+      properties:
+        agent:
+          $ref: "#/components/schemas/Agent"
+        steps:
+          type: array
+          items:
+            $ref: "#/components/schemas/SignStep"
+    PaymentRequestInput:
+      type: object
+      additionalProperties: false
+      required: [amount, note, cash_out_on_arrival]
+      properties:
+        amount:
+          type: string
+          description: US dollars, as a decimal string
+        note:
+          type: string
+          maxLength: 120
+        cash_out_on_arrival:
+          type: boolean
+          description: Pay it on to the user's default account when it lands
+    RequestPayment:
+      type: object
+      required: [paid_at, payer, token, chain, amount, fee, landed, deposit_id]
+      properties:
+        paid_at:
+          type: string
+          format: date-time
+        payer:
+          type: [string, "null"]
+          description: The payer's NEAR account when they paid from fliq or NEAR, else null
+        token:
+          type: string
+        chain:
+          type: string
+        amount:
+          type: string
+          description: What the payer sent, in token
+        fee:
+          type: string
+          description: US dollars
+        landed:
+          type: string
+          description: USDC credited to the vault
+        deposit_id:
+          type: [string, "null"]
+    PaymentRequest:
+      type: object
+      required: [request_id, code, link, amount, note, state, cash_out_on_arrival, created_at, paid]
+      properties:
+        request_id:
+          type: string
+        code:
+          type: string
+        link:
+          type: string
+          format: uri
+        amount:
+          type: string
+        note:
+          type: string
+        state:
+          type: string
+          enum: [open, paid, cancelled]
+        cash_out_on_arrival:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        paid:
+          oneOf:
+            - $ref: "#/components/schemas/RequestPayment"
+            - type: "null"
+    PaymentRequestList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PaymentRequest"
+    PublicRequest:
+      type: object
+      required: [near_account, display_name, photo_url, amount, note, state, sources]
+      properties:
+        near_account:
+          type: string
+        display_name:
+          type: [string, "null"]
+        photo_url:
+          type: [string, "null"]
+        amount:
+          type: string
+        note:
+          type: string
+        state:
+          type: string
+          enum: [open, paid, cancelled]
+        sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/DepositSource"
+    RequestDepositInput:
+      type: object
+      additionalProperties: false
+      required: [token, chain]
+      properties:
+        token:
+          $ref: "#/components/schemas/DepositTokenId"
+        chain:
+          $ref: "#/components/schemas/DepositChainId"
+    PublicReceipt:
+      type: object
+      required: [payout_id, state, receive, currency, account_masked, institution, provider, created_at, settled_at, seconds, bank_reference, vault_receipt, provider_order]
+      properties:
+        payout_id:
+          type: string
+        state:
+          $ref: "#/components/schemas/PayoutState"
+        receive:
+          type: integer
+        currency:
+          type: string
+        account_masked:
+          type: string
+          description: For example D*** O*** ···6789
+        institution:
+          type: string
+        provider:
+          $ref: "#/components/schemas/ProviderId"
+        created_at:
+          type: string
+          format: date-time
+        settled_at:
+          type: [string, "null"]
+          format: date-time
+        seconds:
+          type: [integer, "null"]
+        bank_reference:
+          type: [string, "null"]
+        vault_receipt:
+          type: [string, "null"]
+        provider_order:
+          type: [string, "null"]
+    DeviceSession:
+      type: object
+      required: [session_id, device, current, created_at, last_active_at]
+      properties:
+        session_id:
+          type: string
+        device:
+          type: string
+          description: From the app's X-Device-Name header at sign-in, else the user agent, for example iPhone 17 Pro
+        current:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        last_active_at:
+          type: string
+          format: date-time
+    DeviceSessionList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeviceSession"
+    Passkey:
+      type: object
+      required: [passkey_id, transports, created_at, last_used_at]
+      properties:
+        passkey_id:
+          type: string
+        transports:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+        last_used_at:
+          type: [string, "null"]
+          format: date-time
+    PasskeyList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Passkey"
+    NotificationSettings:
+      type: object
+      additionalProperties: false
+      required: [received, payout_paid, payout_refunded, agent_paid, agent_refused, cap_almost_reached, rate_alert, weekly_summary]
+      properties:
+        received:
+          type: boolean
+        payout_paid:
+          type: boolean
+        payout_refunded:
+          type: boolean
+        agent_paid:
+          type: boolean
+        agent_refused:
+          type: boolean
+        cap_almost_reached:
+          type: boolean
+          description: When an agent has spent 80 percent of its daily cap
+        rate_alert:
+          type: object
+          additionalProperties: false
+          required: [enabled, currency, above]
+          properties:
+            enabled:
+              type: boolean
+            currency:
+              type: string
+              enum: [NGN, KES]
+            above:
+              type: [number, "null"]
+              description: Alert when $1 pays more than this
+        weekly_summary:
+          type: boolean
+    SetupStep:
+      type: object
+      required: [step, done]
+      properties:
+        step:
+          type: string
+          enum: [add_account, top_up]
+        done:
+          type: boolean
+    Setup:
+      type: object
+      required: [steps, done, total]
+      properties:
+        steps:
+          type: array
+          items:
+            $ref: "#/components/schemas/SetupStep"
+        done:
+          type: integer
+        total:
+          type: integer
+    RecipientUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        own:
+          type: boolean
+          description: The user's own account, listed under Yours
+        default:
+          type: boolean
+          description: Where cash-outs go; setting it clears the previous default
     User:
       type: object
       required: [user_id, near_account, display_name, photo_url, occupation, vault]
@@ -2078,6 +3258,15 @@ components:
         vault:
           type: [string, "null"]
           description: Vault contract account holding the user's balance. Null until a name is claimed.
+        home_currency:
+          type: string
+          enum: [NGN, KES]
+          description: The currency the app shows rates and limits in
+        daily_limit:
+          $ref: "#/components/schemas/Money"
+        verified:
+          type: boolean
+          description: True once the user has a fliq name and a NEAR account
     Session:
       type: object
       required: [access_token, expires_in, refresh_token, user]
@@ -2164,6 +3353,9 @@ components:
           type: string
         occupation:
           type: [string, "null"]
+        home_currency:
+          type: string
+          enum: [NGN, KES]
     WorkspaceUseCase:
       type: string
       enum: [wallet, payroll, marketplace, agent, other]
@@ -2495,6 +3687,12 @@ components:
         created_at:
           type: string
           format: date-time
+        own:
+          type: boolean
+          description: The user's own account
+        default:
+          type: boolean
+          description: Where cash-outs go
     RecipientList:
       type: object
       required: [items]

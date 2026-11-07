@@ -85,6 +85,15 @@ function rules(policy: RelayPolicy): Map<string, Map<string, Rule>> {
       agentId(args.agent_id);
     },
   };
+  // Vault to vault between fliq users. The vault requires one yoctoNEAR so only a full-access key can move funds.
+  const transfer: Rule = {
+    deposit: exactly(ONE_YOCTO),
+    checkArgs: (args) => {
+      exactKeys(args, ["to_account", "amount"], ["to_account", "amount"]);
+      if (!NEAR_ACCOUNT.test(String(args.to_account))) throw new PolicyError("to_account must be a NEAR account id");
+      if (!POSITIVE_INTEGER.test(String(args.amount))) throw new PolicyError("amount must be a positive integer string");
+    },
+  };
   return new Map([
     [
       policy.vaultContractId,
@@ -93,6 +102,7 @@ function rules(policy: RelayPolicy): Map<string, Map<string, Rule>> {
         ["release_order", orderOnly],
         ["set_agent", setAgent],
         ["remove_agent", removeAgent],
+        ["transfer", transfer],
       ]),
     ],
     [

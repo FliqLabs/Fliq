@@ -1,0 +1,14 @@
+{
+  "steps": [
+    {
+      "step": "add_account",
+      "done": true
+    },
+    {
+      "step": "top_up",
+      "done": false
+    }
+  ],
+  "done": 1,
+  "total": 2
+}

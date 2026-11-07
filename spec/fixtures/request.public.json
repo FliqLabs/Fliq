@@ -1,0 +1,90 @@
+{
+  "near_account": "frank.fliq.near",
+  "display_name": "Frank",
+  "photo_url": null,
+  "amount": "1200.00",
+  "note": "Brand film, October",
+  "state": "open",
+  "sources": [
+    {
+      "token": "usdc",
+      "chain": "base",
+      "group": "dollars",
+      "minimum": "1.00",
+      "eta_seconds": 35,
+      "direct": false,
+      "available": true,
+      "address": null
+    },
+    {
+      "token": "usdc",
+      "chain": "solana",
+      "group": "dollars",
+      "minimum": "1.00",
+      "eta_seconds": 35,
+      "direct": false,
+      "available": true,
+      "address": null
+    },
+    {
+      "token": "usdt",
+      "chain": "tron",
+      "group": "dollars",
+      "minimum": "100.00",
+      "eta_seconds": 60,
+      "direct": false,
+      "available": true,
+      "address": null
+    },
+    {
+      "token": "usdc",
+      "chain": "arbitrum",
+      "group": "dollars",
+      "minimum": "1.00",
+      "eta_seconds": 35,
+      "direct": false,
+      "available": true,
+      "address": null
+    },
+    {
+      "token": "usdc",
+      "chain": "ethereum",
+      "group": "dollars",
+      "minimum": "1.00",
+      "eta_seconds": 90,
+      "direct": false,
+      "available": true,
+      "address": null
+    },
+    {
+      "token": "usdc",
+      "chain": "polygon",
+      "group": "dollars",
+      "minimum": "1.00",
+      "eta_seconds": 35,
+      "direct": false,
+      "available": true,
+      "address": null
+    },
+    {
+      "token": "btc",
+      "chain": "bitcoin",
+      "group": "bitcoin",
+      "minimum": "0.0001",
+      "eta_seconds": 600,
+      "direct": false,
+      "available": true,
+      "address": null
+    },
+    {
+      "token": "usdc",
+      "chain": "near",
+      "group": "near",
+      "minimum": "0.01",
+      "eta_seconds": 2,
+      "direct": true,
+      "available": true,
+      "address": "frank.fliq.near"
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "items": [
+    {
+      "notification_id": "ntf_po_9c2f71aa",
+      "kind": "payout_paid",
+      "title": "Paid",
+      "body": "₦68,816 landed in DARA OKONKWO's GTBank account. Paid by Paycrest in 21s.",
+      "at": "2026-10-29T13:02:32Z",
+      "activity_id": "act_po_9c2f71aa"
+    },
+    {
+      "notification_id": "ntf_ref_01jbd9a2c4e6g8j0k2m4p6r8s0",
+      "kind": "agent_refused",
+      "title": "Refused: Claude tried ₦500,000",
+      "body": "Over your ₦150,000 daily cap. The vault refused it; nothing moved.",
+      "at": "2026-10-29T12:41:00Z",
+      "activity_id": "act_ref_01jbd9a2c4e6g8j0k2m4p6r8s0"
+    },
+    {
+      "notification_id": "ntf_po_5d18e2b7",
+      "kind": "agent_paid",
+      "title": "Claude paid ₦30,000",
+      "body": "To DARA OKONKWO, Access Bank, via Paycrest. ₦120,000 of today's cap remains.",
+      "at": "2026-10-29T12:40:20Z",
+      "activity_id": "act_po_5d18e2b7"
+    },
+    {
+      "notification_id": "ntf_dep_01jbd2m5k8w3qf7v9x2c4n6h8t",
+      "kind": "received",
+      "title": "Received",
+      "body": "$199.98 from Solana is in your vault, 34 seconds after you sent it.",
+      "at": "2026-10-29T08:12:14Z",
+      "activity_id": "act_dep_01jbd2m5k8w3qf7v9x2c4n6h8t"
+    }
+  ]
+}
