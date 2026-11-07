@@ -3,20 +3,21 @@ pub mod types;
 
 mod errors;
 mod integration;
+mod policies;
 mod receipts;
-mod temp_policies;
 mod vault;
 
 use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
 use near_contract_standards::storage_management::{
     StorageBalance, StorageBalanceBounds, StorageManagement,
 };
+use near_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LookupMap, LookupSet};
 use near_sdk::json_types::U128;
 use near_sdk::serde::Deserialize;
 use near_sdk::{
-    AccountId, Gas, NearToken, PanicOnDefault, Promise, PromiseError, PromiseOrValue, env,
-    ext_contract, near, require,
+    AccountId, Gas, NearToken, PanicOnDefault, Promise, PromiseError, PromiseOrValue, PublicKey,
+    env, ext_contract, near, require,
 };
 
 use crate::orders::{set_status as apply_status, validate_deposit_address, validate_order};
@@ -24,8 +25,8 @@ use crate::receipts::FliqEvent;
 #[cfg(all(feature = "testing", debug_assertions))]
 use crate::types::Amount;
 use crate::types::{
-    Config, DEFAULT_MAX_EXPIRY, DEFAULT_PAYOUT_TIMEOUT, PayoutOrder, Receipt, ReceiptRefs,
-    ReceiptView, StorageKey, TransferState, now,
+    AgentPolicy, AgentPolicyView, Config, DEFAULT_MAX_EXPIRY, DEFAULT_PAYOUT_TIMEOUT, PayoutOrder,
+    PendingPolicySpend, Receipt, ReceiptRefs, ReceiptView, StorageKey, TransferState, now,
 };
 use crate::vault::{BalanceView, TransferError, Vault};
 
@@ -66,6 +67,19 @@ pub struct Contract {
     pub(crate) receipts: LookupMap<String, Receipt>,
     pub(crate) used_refund_transactions: LookupSet<String>,
     pub(crate) payout_keys: LookupMap<String, String>,
+    pub(crate) agent_policies: LookupMap<(AccountId, AccountId), AgentPolicy>,
+    pub(crate) pending_policy_spends: LookupMap<String, PendingPolicySpend>,
+}
+
+#[derive(BorshDeserialize, BorshSerialize)]
+struct LegacyContract {
+    approved_usdc: AccountId,
+    vault: Vault,
+    config: Config,
+    orders: LookupMap<String, PayoutOrder>,
+    receipts: LookupMap<String, Receipt>,
+    used_refund_transactions: LookupSet<String>,
+    payout_keys: LookupMap<String, String>,
 }
 
 #[near]
@@ -99,6 +113,31 @@ impl Contract {
             receipts: LookupMap::new(StorageKey::Receipts),
             used_refund_transactions: LookupSet::new(StorageKey::UsedRefundTransactions),
             payout_keys: LookupMap::new(StorageKey::PayoutKeys),
+            agent_policies: LookupMap::new(StorageKey::AgentPolicies),
+            pending_policy_spends: LookupMap::new(StorageKey::PendingPolicySpends),
+        }
+    }
+
+    #[init(ignore_state)]
+    #[private]
+    pub fn migrate() -> Self {
+        require!(
+            env::predecessor_account_id() == env::current_account_id(),
+            errors::MIGRATION_ONLY
+        );
+        let Some(legacy) = env::state_read::<LegacyContract>() else {
+            env::panic_str(errors::MIGRATION_STATE_INVALID);
+        };
+        Self {
+            approved_usdc: legacy.approved_usdc,
+            vault: legacy.vault,
+            config: legacy.config,
+            orders: legacy.orders,
+            receipts: legacy.receipts,
+            used_refund_transactions: legacy.used_refund_transactions,
+            payout_keys: legacy.payout_keys,
+            agent_policies: LookupMap::new(StorageKey::AgentPolicies),
+            pending_policy_spends: LookupMap::new(StorageKey::PendingPolicySpends),
         }
     }
 
@@ -112,6 +151,39 @@ impl Contract {
 
     pub fn get_config(&self) -> Config {
         self.config.clone()
+    }
+
+    #[payable]
+    #[allow(clippy::too_many_arguments)]
+    pub fn set_agent(
+        &mut self,
+        public_key: PublicKey,
+        agent_id: AccountId,
+        per_payout_cap: U128,
+        daily_cap: U128,
+        corridors: Option<Vec<String>>,
+        cooldown_ns: near_sdk::json_types::U64,
+        expiry_ns: near_sdk::json_types::U64,
+    ) {
+        policies::set_agent(
+            self,
+            public_key,
+            agent_id,
+            per_payout_cap,
+            daily_cap,
+            corridors,
+            cooldown_ns,
+            expiry_ns,
+        );
+    }
+
+    #[payable]
+    pub fn remove_agent(&mut self, agent_id: AccountId) {
+        policies::remove_agent(self, &agent_id);
+    }
+
+    pub fn get_policy(&self, owner: AccountId, agent_id: AccountId) -> Option<AgentPolicyView> {
+        policies::get_policy(self, owner, agent_id)
     }
 
     pub fn set_payout_timeout(&mut self, payout_timeout: near_sdk::json_types::U64) {
@@ -483,6 +555,78 @@ mod tests {
             account("registration.testnet"),
             account("fake-token.testnet"),
         );
+    }
+
+    #[test]
+    fn migration_preserves_legacy_state_and_initializes_policy_storage() {
+        let mut current = contract();
+        let user = account("ada.testnet");
+        register(&mut current, &user);
+        testing_env!(context(
+            &account("usdc.testnet"),
+            NearToken::from_yoctonear(0)
+        ));
+        assert_eq!(
+            returned_amount(current.ft_on_transfer(user.clone(), U128(50_000_000), String::new())),
+            U128(0)
+        );
+
+        let Contract {
+            approved_usdc,
+            vault,
+            config,
+            orders,
+            receipts,
+            used_refund_transactions,
+            payout_keys,
+            ..
+        } = current;
+        env::state_write(&LegacyContract {
+            approved_usdc,
+            vault,
+            config,
+            orders,
+            receipts,
+            used_refund_transactions,
+            payout_keys,
+        });
+
+        let vault_account = account("vault.testnet");
+        testing_env!(context(&vault_account, NearToken::from_yoctonear(0)));
+        let migrated = Contract::migrate();
+
+        assert_eq!(migrated.get_config().owner, account("owner.testnet"));
+        assert_eq!(
+            migrated.get_balance(user.clone()).available,
+            U128(50_000_000)
+        );
+        assert!(
+            migrated
+                .get_policy(user, account("agent.testnet"))
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn payout_started_before_upgrade_settles_without_a_pending_row() {
+        let mut contract = contract();
+        let legacy_key = b"fliq:temp:pending:legacy-order";
+        env::storage_write(legacy_key, b"legacy");
+
+        crate::policies::release_pending(&mut contract, "legacy-order");
+        assert!(!env::storage_has_key(legacy_key));
+
+        env::storage_write(legacy_key, b"legacy");
+        crate::policies::settle_pending(&mut contract, "legacy-order");
+        assert!(!env::storage_has_key(legacy_key));
+    }
+
+    #[test]
+    #[should_panic(expected = "fliq_vault: MIGRATION_ONLY")]
+    fn outsider_cannot_migrate_legacy_state() {
+        let attacker = account("attacker.testnet");
+        testing_env!(context(&attacker, NearToken::from_yoctonear(0)));
+        Contract::migrate();
     }
 
     #[test]

@@ -6,6 +6,8 @@ Every contract-owned panic uses the exact `fliq_vault: CODE` form.
 | --- | --- |
 | INITIALIZER_ONLY | Only the vault account may initialize. |
 | ALREADY_INITIALIZED | State already exists. |
+| MIGRATION_ONLY | Only the vault account may run a state migration. |
+| MIGRATION_STATE_INVALID | Stored state is not the supported pre-policy vault layout. |
 | OWNER_ONLY | Only the owner may call this method. |
 | REGISTRATION_ONLY | Only the registration account may call this method. |
 | UNAUTHORIZED | The caller or transfer participants are not authorized. |
@@ -49,7 +51,13 @@ Every contract-owned panic uses the exact `fliq_vault: CODE` form.
 | VAULT_COMMIT_FAILED | Dapper outflow commit failed. |
 | VAULT_RELEASE_FAILED | Dapper reservation release failed. |
 | VAULT_REFUND_FAILED | Dapper refund recredit failed. |
-| TEMP_POLICY_DENIED | Temporary policy rejected the caller. |
-| TEMP_PENDING_EXISTS | Temporary policy already has a pending spend. |
-| TEMP_PENDING_MISSING | Temporary policy spend record is missing. |
-| TEMP_PENDING_CORRUPT | Temporary policy spend record is corrupt. |
+| INVALID_POLICY | Policy fields are internally inconsistent or unsafe. |
+| POLICY_NOT_FOUND | The caller has no agent policy. |
+| POLICY_REVOKED | The agent policy is revoked. |
+| POLICY_EXPIRED | The agent policy has expired. |
+| POLICY_PER_PAYOUT_CAP | The action exceeds the single-action cap. |
+| POLICY_DAILY_CAP | Pending plus completed spend would exceed the daily cap. |
+| POLICY_CORRIDOR | The order corridor is not allowed by the policy. |
+| POLICY_COOLDOWN | The agent is attempting another payout too soon. |
+| POLICY_PENDING_EXISTS | The order already has pending policy spend. |
+| POLICY_ARITHMETIC | Policy spend accounting would overflow or underflow. |

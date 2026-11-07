@@ -28,6 +28,14 @@ These rules are PROPOSED and require backend approval:
 - A partial refund is allowed, but each order has at most one recredit. Only a successful callback changes the receipt status to `refunded`.
 - Failed transfers and `resolve_stuck_payout(..., false)` return to `Registered`, keep their reservation for retry, and create no refund record.
 
+## Agent policy behavior
+
+- Policies are keyed by (owner, agent account). The public key is a label for the backend. Naming an account as your agent never affects that account's own funds or anyone else's policy for it.
+- `set_agent` creates or updates caps, optional exact-match corridors, cooldown and expiry without resetting same-day spend, charges the policy storage to the owner and refunds the rest of the deposit. `remove_agent` marks the policy revoked and keeps it. A deposit is required for both, so an ordinary function-call key cannot change agent permissions.
+- Daily spend includes pending and successful payouts. Parallel attempts therefore cannot race past the limit. A failed transfer releases its same-day amount; a successful payout remains counted even if it is later refunded.
+- Cooldown starts when a payout is authorized and remains in force after a failed transfer. Daily buckets use NEAR block timestamp nanoseconds and UTC-sized 24-hour intervals.
+- Direct payer calls do not require an agent policy. Agent payout calls require the policy owner to equal the registered order payer. Agent-initiated vault transfers debit the policy owner and enforce the same per-action cap, daily cap, cooldown, expiry and revocation rules; corridor validation applies only to payouts because a vault transfer has no corridor.
+
 ## Other OPEN contract questions
 
 - The confirmed payout signature is now `payout(order_id, amount, deposit_address)` instead of `payout(order_id)`. This needs backend approval, and the relayer allowlist must permit both additional arguments.
@@ -37,6 +45,4 @@ These rules are PROPOSED and require backend approval:
 - What expiry time unit is final?
 - How is corridor encoded?
 - The registration account is stored once at initialization; key rotation happens on that account.
-- `get_policy` remains unavailable until Aria's real policy design and implementation is approved.
-- What agent identity is required for relayed calls?
-- What counts toward agent daily limits?
+- Agent policy identity and daily-limit accounting are implemented as described above.
