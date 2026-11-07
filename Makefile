@@ -1,4 +1,4 @@
-.PHONY: help setup dev-mock test test-spec test-api test-web test-contract ios
+.PHONY: help setup dev-mock test test-spec test-api test-web test-contract test-sandbox build-contract ios
 
 help:
 	@echo "make setup          install everything a fresh clone needs"
@@ -7,7 +7,9 @@ help:
 	@echo "make test-spec      lint the API spec and check fixtures and generated types"
 	@echo "make test-api       typecheck and test the API"
 	@echo "make test-web       lint, typecheck and build the web app"
+	@echo "make build-contract build release WASMs with cargo near"
 	@echo "make test-contract  fmt, clippy and test the vault contract"
+	@echo "make test-sandbox   build release WASMs and run near-workspaces"
 	@echo "make ios            generate the Xcode project from apps/ios/project.yml"
 
 setup:
@@ -35,8 +37,15 @@ test-web:
 
 test-contract:
 	@if [ -f contracts/vault/Cargo.toml ]; then \
-		cd contracts/vault && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test; \
+		cd contracts/vault && cargo fmt --check && cargo clippy --lib --test contract -- -D warnings && cargo test --lib --test contract; \
 	else echo "contracts/vault not scaffolded yet"; fi
+
+build-contract:
+	cd contracts/vault && cargo near build non-reproducible-wasm --no-abi
+	cd contracts/mock_usdc && cargo near build non-reproducible-wasm --no-abi
+
+test-sandbox: build-contract
+	cd contracts/vault && cargo test --features sandbox --test workspaces
 
 ios:
 	cd apps/ios && xcodegen generate

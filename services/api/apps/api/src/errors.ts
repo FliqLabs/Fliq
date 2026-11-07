@@ -10,6 +10,10 @@ export type ErrorCode =
   | "route_unavailable"
   | "insufficient_balance"
   | "unauthorized"
+  | "forbidden"
+  | "live_not_enabled"
+  | "environment_unavailable"
+  | "limit_reached"
   | "not_found"
   | "conflict"
   | "idempotency_key_required"
@@ -29,6 +33,7 @@ export class ApiError extends Error {
 
 export const unauthorized = (message = "Missing or invalid credentials.") => new ApiError(401, "unauthorized", message);
 export const invalidRequest = (message: string) => new ApiError(400, "invalid_request", message);
+export const forbidden = (message: string) => new ApiError(403, "forbidden", message);
 export const conflict = (message: string) => new ApiError(409, "conflict", message);
 
 // A transaction that must commit even though the request fails (for example revoking a reused session)

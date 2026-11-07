@@ -1,7 +1,7 @@
 use near_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use near_sdk::json_types::{U64, U128};
 use near_sdk::serde::{Deserialize, Serialize};
-use near_sdk::{AccountId, BorshStorageKey};
+use near_sdk::{AccountId, BorshStorageKey, PublicKey};
 
 pub type Amount = u128;
 pub type Timestamp = u64;
@@ -9,7 +9,7 @@ pub type Timestamp = u64;
 pub const DEFAULT_MAX_EXPIRY: Timestamp = 24 * 60 * 60 * 1_000_000_000;
 pub const DEFAULT_PAYOUT_TIMEOUT: Timestamp = 10 * 60 * 1_000_000_000;
 
-// OPEN: expiry unit is not agreed; this currently follows NEAR block timestamp nanoseconds.
+// PROPOSED: public expiry values use NEAR block-timestamp nanoseconds, matching now().
 pub fn now() -> Timestamp {
     near_sdk::env::block_timestamp()
 }
@@ -18,6 +18,64 @@ pub fn now() -> Timestamp {
 pub enum StorageKey {
     Orders,
     Receipts,
+    UsedRefundTransactions,
+    PayoutKeys,
+    AgentPolicies,
+    PendingPolicySpends,
+}
+
+#[derive(BorshDeserialize, BorshSerialize, Clone, Debug, PartialEq, Eq)]
+pub struct AgentPolicy {
+    pub owner: AccountId,
+    pub agent_id: AccountId,
+    pub public_key: PublicKey,
+    pub per_payout_cap: Amount,
+    pub daily_cap: Amount,
+    pub corridors: Option<Vec<String>>,
+    pub cooldown_ns: Timestamp,
+    pub expiry_ns: Timestamp,
+    pub revoked: bool,
+    pub day_index: u64,
+    pub spent_today: Amount,
+    pub last_payout_at: Option<Timestamp>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(crate = "near_sdk::serde")]
+pub struct AgentPolicyView {
+    pub owner: AccountId,
+    pub agent_id: AccountId,
+    pub public_key: String,
+    pub per_payout_cap: U128,
+    pub daily_cap: U128,
+    pub spent_today: U128,
+    pub corridors: Option<Vec<String>>,
+    pub cooldown_ns: U64,
+    pub expiry_ns: U64,
+    pub last_payout_at: Option<U64>,
+    pub revoked: bool,
+}
+
+#[derive(BorshDeserialize, BorshSerialize, Clone, Debug, PartialEq, Eq)]
+pub struct PendingPolicySpend {
+    pub policy_id: Option<(AccountId, AccountId)>,
+    pub amount: Amount,
+    pub day_index: u64,
+}
+
+#[derive(
+    BorshDeserialize, BorshSerialize, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize,
+)]
+#[serde(crate = "near_sdk::serde", deny_unknown_fields)]
+pub struct ReceiptRefs {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_order: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bank_reference: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refund_tx: Option<String>,
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -38,20 +96,14 @@ pub struct BalanceView {
     pub reserved: U128,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(crate = "near_sdk::serde")]
-pub struct PayoutCaller {
-    pub account_id: AccountId,
-    // OPEN: identity for relayed agent calls.
-}
-
 #[derive(BorshDeserialize, BorshSerialize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(crate = "near_sdk::serde")]
+#[serde(crate = "near_sdk::serde", rename_all = "snake_case")]
 pub enum TransferState {
     Registered,
     Executing,
     Dispatched,
     TransferFailed,
+    Released,
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -61,6 +113,7 @@ pub struct PayoutOrder {
     pub payer: AccountId,
     pub deposit_address: AccountId,
     pub amount: U128,
+    #[serde(rename = "expires_at_ns")]
     pub expiry: U64,
     pub corridor: String,
     pub transfer_state: TransferState,
@@ -77,7 +130,28 @@ pub struct Receipt {
     pub order: PayoutOrder,
     pub transfer_state: TransferState,
     pub backend_status: String,
-    pub refs: String,
+    pub refs: ReceiptRefs,
+    pub last_updated: U64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(crate = "near_sdk::serde")]
+pub struct ReceiptView {
+    pub order_id: String,
+    pub payer: AccountId,
+    pub deposit_address: AccountId,
+    pub amount: U128,
+    pub expires_at_ns: U64,
+    pub corridor: String,
+    pub state: String,
+    pub status: Option<String>,
+    pub recredited_amount: U128,
+    pub order: PayoutOrder,
+    pub transfer_state: TransferState,
+    pub expired: bool,
+    pub executing_since: Option<U64>,
+    pub backend_status: String,
+    pub refs: ReceiptRefs,
     pub last_updated: U64,
 }
 

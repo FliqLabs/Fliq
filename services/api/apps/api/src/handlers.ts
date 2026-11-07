@@ -5,7 +5,7 @@ import { createEmailLink, verifyEmailLink, type EmailSender } from "./auth/email
 import { finishLogin, finishRegistration, startLogin, startRegistration } from "./auth/passkeys.js";
 import { revokeFamily, rotateSession, toUserView } from "./auth/sessions.js";
 import type { Config } from "./config.js";
-import type { Unit } from "./db.js";
+import type { Db, Unit } from "./db.js";
 import {
   currentWorkspace,
   listKeys,
@@ -19,6 +19,9 @@ import {
 import { requireHttpsUrl, settle } from "./errors.js";
 import { createDeposits, type DepositChain, type DepositInput, type Deposits, type DepositToken } from "./deposits.js";
 import { withIdempotency } from "./idempotency.js";
+import { exportPayoutsCsv, parsePayoutFilter, type PayoutQuery } from "./payout-history.js";
+import { parseDays, usageReport } from "./usage.js";
+import { createKey, liveAccess, revokeKey, rotateKey, type Caller, type KeyRequest } from "./keys.js";
 import type { VaultClient } from "../../../packages/chains/vault/index.js";
 import { lookupPerson, recentPeople } from "./people.js";
 import { DEFAULT_STATUS_CONFIG, statusReport, type Probe, type StatusConfig } from "./status.js";
@@ -30,6 +33,23 @@ import { createRateBoard, type RateBoard } from "./rate-board.js";
 import { createRates } from "./rates.js";
 import { requestQuote, type QuoteDeps, type QuoteInput } from "./quotes.js";
 import { createWorkspace } from "./workspaces.js";
+import type { Resolve } from "../../../packages/webhooks/destination.js";
+import {
+  createEndpoint,
+  deleteEndpoint,
+  getDelivery,
+  listDeliveries,
+  listEndpoints,
+  prepareEndpoint,
+  prepareUpdate,
+  replayDelivery,
+  rotateEndpointSecret,
+  sendTestEvent,
+  updateEndpoint,
+  type DeliveryFilter,
+  type EndpointRequest,
+  type EndpointUpdate,
+} from "./webhook-endpoints.js";
 
 export interface HandlerDeps {
   config: Config;
@@ -43,6 +63,8 @@ export interface HandlerDeps {
   deposits?: Deposits;
   rateBoard?: RateBoard;
   now?: () => Date;
+  // Resolves webhook hostnames when an endpoint is saved. Tests replace it; production uses the system resolver.
+  webhookResolve?: Resolve;
 }
 
 const body = <T>(request: FastifyRequest) => request.body as T;
@@ -60,8 +82,20 @@ export function createHandlers({
   deposits = createDeposits({ client: undefined, vaultAccount: config.vaultAccount, usdcContract: "", slippageBps: 0 }),
   rateBoard = createRateBoard(quotes, unit),
   now = () => new Date(),
+  webhookResolve,
 }: HandlerDeps): Record<string, Handler> {
   const rates = createRates(quotes);
+  const callerIn = async (tx: Db, request: FastifyRequest): Promise<Caller> => ({
+    userId: auth(request).userId,
+    workspaceId: (await currentWorkspace(tx, auth(request).userId)).id,
+    traceId: request.id,
+    keyEnvironment: config.keyEnvironment,
+    now: now(),
+  });
+  const keyId = (request: FastifyRequest) => (request.params as { keyId: string }).keyId;
+  const endpointId = (request: FastifyRequest) => (request.params as { endpointId: string }).endpointId;
+  const deliveryId = (request: FastifyRequest) => (request.params as { deliveryId: string }).deliveryId;
+
   return {
     getRate: async (request) => {
       const { token, currency } = request.params as { token: string; currency: string };
@@ -142,16 +176,92 @@ export function createHandlers({
       status: 200,
       body: await unit(async (tx) => listKeys(tx, (await currentWorkspace(tx, auth(request).userId)).id)),
     }),
+    // Not behind Idempotency-Key: a stored replay would keep the plaintext key in the database for a day.
+    createKey: async (request) => ({
+      status: 201,
+      body: await unit(async (tx) => createKey(tx, await callerIn(tx, request), body<KeyRequest>(request))),
+    }),
+    revokeKey: async (request) => {
+      await unit(async (tx) => revokeKey(tx, await callerIn(tx, request), keyId(request)));
+      return { status: 204, body: undefined };
+    },
+    rotateKey: async (request) => ({
+      status: 201,
+      body: await unit(async (tx) => rotateKey(tx, await callerIn(tx, request), keyId(request))),
+    }),
+    getLiveAccess: async (request) => ({
+      status: 200,
+      body: await unit(async (tx) => liveAccess(tx, (await currentWorkspace(tx, auth(request).userId)).id, config.keyEnvironment)),
+    }),
+    listWebhookEndpoints: async (request) => ({
+      status: 200,
+      body: await unit(async (tx) => listEndpoints(tx, await callerIn(tx, request))),
+    }),
+    createWebhookEndpoint: async (request) => {
+      const prepared = await prepareEndpoint(body<EndpointRequest>(request), webhookResolve);
+      return { status: 201, body: await unit(async (tx) => createEndpoint(tx, config, await callerIn(tx, request), prepared)) };
+    },
+    updateWebhookEndpoint: async (request) => {
+      const update = await prepareUpdate(body<EndpointUpdate>(request), webhookResolve);
+      return { status: 200, body: await unit(async (tx) => updateEndpoint(tx, await callerIn(tx, request), endpointId(request), update)) };
+    },
+    deleteWebhookEndpoint: async (request) => {
+      await unit(async (tx) => deleteEndpoint(tx, await callerIn(tx, request), endpointId(request)));
+      return { status: 204, body: undefined };
+    },
+    rotateWebhookSecret: async (request) => ({
+      status: 200,
+      body: await unit(async (tx) => rotateEndpointSecret(tx, config, await callerIn(tx, request), endpointId(request))),
+    }),
+    sendWebhookTest: async (request) => ({
+      status: 202,
+      body: await unit(async (tx) => sendTestEvent(tx, config, await callerIn(tx, request), endpointId(request))),
+    }),
+    listWebhookDeliveries: async (request) => ({
+      status: 200,
+      body: await unit(async (tx) => listDeliveries(tx, await callerIn(tx, request), request.query as DeliveryFilter)),
+    }),
+    getWebhookDelivery: async (request) => ({
+      status: 200,
+      body: await unit(async (tx) => getDelivery(tx, await callerIn(tx, request), deliveryId(request))),
+    }),
+    replayWebhookDelivery: async (request) => ({
+      status: 202,
+      body: await unit(async (tx) => replayDelivery(tx, await callerIn(tx, request), deliveryId(request))),
+    }),
     getOnboarding: async (request) => ({
       status: 200,
       body: await unit(async (tx) => onboardingProgress(tx, (await currentWorkspace(tx, auth(request).userId)).id)),
     }),
     listPayouts: async (request) => {
-      const { limit: rawLimit, cursor } = request.query as { limit?: string; cursor?: string };
-      const limit = parseLimit(rawLimit);
+      const query = request.query as PayoutQuery;
+      const limit = parseLimit(query.limit);
+      const filter = parsePayoutFilter(query);
       return {
         status: 200,
-        body: await unit(async (tx) => listPayouts(tx, config, (await currentWorkspace(tx, auth(request).userId)).id, limit, cursor)),
+        body: await unit(async (tx) => listPayouts(tx, config, (await currentWorkspace(tx, auth(request).userId)).id, limit, query.cursor, filter)),
+      };
+    },
+    exportPayouts: async (request) => {
+      const filter = parsePayoutFilter(request.query as PayoutQuery);
+      const exported = await unit(async (tx) => exportPayoutsCsv(tx, config, (await currentWorkspace(tx, auth(request).userId)).id, filter));
+      return {
+        status: 200,
+        headers: {
+          "content-type": "text/csv; charset=utf-8",
+          "content-disposition": `attachment; filename="fliq-payouts-${now().toISOString().slice(0, 10)}.csv"`,
+          "cache-control": "no-store",
+          "x-export-rows": String(exported.rows),
+          "x-export-truncated": String(exported.truncated),
+        },
+        body: exported.csv,
+      };
+    },
+    getUsage: async (request) => {
+      const days = parseDays((request.query as { days?: string }).days);
+      return {
+        status: 200,
+        body: await unit(async (tx) => usageReport(tx, (await currentWorkspace(tx, auth(request).userId)).id, days, now())),
       };
     },
 

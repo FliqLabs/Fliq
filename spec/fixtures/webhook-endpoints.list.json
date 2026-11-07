@@ -1,0 +1,40 @@
+{
+  "items": [
+    {
+      "endpoint_id": "whe_4f1c8e20",
+      "url": "https://api.entrypoint.example/fliq/webhooks",
+      "description": "Production receiver",
+      "events": [],
+      "status": "active",
+      "environment": "test",
+      "created_at": "2026-10-29T13:05:00Z",
+      "updated_at": "2026-10-29T13:05:00Z",
+      "failing_since": null
+    }
+  ],
+  "event_types": [
+    "payout.created",
+    "payout.provider_timeout",
+    "payout.awaiting_recon",
+    "payout.awaiting_deposit",
+    "payout.deposit_seen",
+    "payout.routing",
+    "payout.with_provider",
+    "payout.paying_out",
+    "payout.settled",
+    "payout.refunding",
+    "payout.refunded",
+    "payout.expired",
+    "payout.failed"
+  ],
+  "signing": {
+    "header": "fliq-signature",
+    "algorithm": "hmac-sha256",
+    "signed_payload": "<t>.<raw request body>",
+    "format": "t=<unix seconds>,v1=<hex signature>[,v1=<hex signature during a secret rotation>]",
+    "tolerance_seconds": 300,
+    "event_id_header": "fliq-event-id",
+    "event_type_header": "fliq-event-type",
+    "delivery_id_header": "fliq-delivery-id"
+  }
+}

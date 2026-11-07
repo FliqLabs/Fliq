@@ -33,5 +33,15 @@
   "payout.refunded.json": "Payout",
   "payout.claim.json": "PayoutClaim",
   "rates.board.usdc-ngn.json": "RateBoard",
-  "rates.history.usdc-ngn-24h.json": "RateHistory"
+  "rates.history.usdc-ngn-24h.json": "RateHistory",
+  "key.created.json": "KeyCreated",
+  "live-access.sandbox.json": "LiveAccess",
+  "webhook-endpoints.list.json": "WebhookEndpointList",
+  "webhook-endpoint.created.json": "WebhookEndpointCreated",
+  "webhook-event.payout-settled.json": "WebhookEvent",
+  "webhook-deliveries.list.json": "WebhookDeliveryList",
+  "webhook-delivery.detail.json": "WebhookDeliveryDetail",
+  "webhook-send.replayed.json": "WebhookSend",
+  "usage.week.json": "Usage",
+  "payouts.filtered.json": "PayoutList"
 }

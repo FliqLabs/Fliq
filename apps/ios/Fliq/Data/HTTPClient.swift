@@ -41,6 +41,18 @@ struct HTTPClient: FliqAPI {
         get async { await !sessions.isSignedIn }
     }
 
+    func passkeyOptions(_ purpose: PasskeyPurpose) async throws -> PasskeyOptions {
+        try await send("POST", "auth/passkeys/\(purpose.rawValue)/options")
+    }
+
+    func finishPasskey(_ purpose: PasskeyPurpose, challengeId: String, credential: Data) async throws -> User {
+        let response = try JSONSerialization.jsonObject(with: credential)
+        let body = try JSONSerialization.data(withJSONObject: ["challenge_id": challengeId, "credential": response])
+        let signedIn: Session = try await send("POST", "auth/passkeys/\(purpose.rawValue)/verify", body: PreEncoded(data: body))
+        await sessions.store(signedIn)
+        return signedIn.user
+    }
+
     func sendEmailLink(to email: String) async throws -> EmailLinkSent {
         try await send("POST", "auth/email-links", body: ["email": email])
     }
@@ -153,7 +165,7 @@ struct HTTPClient: FliqAPI {
         headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
         if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = try FliqJSON.encoder().encode(body)
+            request.httpBody = try (body as? PreEncoded)?.data ?? FliqJSON.encoder().encode(body)
         }
         let (data, response) = try await session.data(for: request)
         return (data, (response as? HTTPURLResponse)?.statusCode ?? 0)
@@ -162,3 +174,10 @@ struct HTTPClient: FliqAPI {
 
 /// The body of a 204.
 struct Empty: Decodable, Sendable {}
+
+/// A body that is already JSON. WebAuthn's camelCase keys (rawId, clientDataJSON) must not be snake_cased.
+private struct PreEncoded: Encodable {
+    let data: Data
+
+    func encode(to encoder: Encoder) throws {}
+}
