@@ -3,6 +3,7 @@ import { createBushaAdapter } from "./busha/busha";
 import { createFonbnkAdapter } from "./fonbnk/fonbnk";
 import { withInstitutionCodes } from "./institutions/translate";
 import { createPaycrestAdapter } from "./paycrest/paycrest";
+import { createTransfiAdapter } from "./transfi/transfi";
 import type { AdapterDeps, ProviderAdapter } from "./types";
 
 export type Env = Readonly<Record<string, string | undefined>>;
