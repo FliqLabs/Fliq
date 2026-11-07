@@ -12,7 +12,7 @@ import { formatTokenAmount } from "./dashboard.js";
 import type { Db, Unit } from "./db.js";
 import { ApiError, conflict, invalidRequest, notFound } from "./errors.js";
 import { hashOf, type Reply } from "./idempotency.js";
-import { INSTITUTIONS } from "./institutions.js";
+import { institutionType } from "./institutions.js";
 import type { OneClickHops } from "./hop.js";
 import { COUNTRY, developerIdFor, requestQuote, reviveHop, reviveProviderQuote, type QuoteDeps, type QuoteInput } from "./quotes.js";
 import { resolveName } from "./recipients.js";
@@ -166,7 +166,10 @@ export async function createPayout(unit: Unit, deps: PayoutDeps, userId: string,
   const adapter = deps.adapters.find((candidate) => candidate.id === prepared.route.provider);
   if (!adapter) throw new ApiError(422, "no_route", "That provider is not available right now.");
   const country = COUNTRY[prepared.quote.currency as keyof typeof COUNTRY];
-  const verification = await adapter.verifyAccount({ institutionCode: input.account.bank, accountNumber: input.account.number, country });
+  const verification = await adapter.verifyAccount({ institutionCode: input.account.bank, accountNumber: input.account.number, country }).catch((error: unknown) => {
+    if (error instanceof ProviderError && error.kind === "not_supported") throw new ApiError(422, "route_unavailable", "The provider on this route cannot check or pay this account.");
+    throw error;
+  });
   if (!verification.found) throw new ApiError(422, "account_not_found", "The bank could not find that account.");
   const accountName = resolveName(verification.accountName, input.account_name).name;
 
@@ -254,8 +257,7 @@ export async function createPayout(unit: Unit, deps: PayoutDeps, userId: string,
 
   // Phase two: the provider call, only after the commitment is durable.
   const { payoutId, providerQuote } = committed;
-  const institution = INSTITUTIONS.find((item) => item.code === input.account.bank);
-  const corridor = { country, currency: prepared.quote.currency.toUpperCase() as FiatCurrency, payoutType: institution?.kind ?? ("bank" as const) };
+  const corridor = { country, currency: prepared.quote.currency.toUpperCase() as FiatCurrency, payoutType: institutionType(input.account.bank) };
   const asset = prepared.quote.tokenSymbol as Asset;
 
   const opened = await openOrder({
