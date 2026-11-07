@@ -2,6 +2,7 @@ import { createBitnobAdapter } from "./bitnob/bitnob";
 import { createBushaAdapter } from "./busha/busha";
 import { createFonbnkAdapter } from "./fonbnk/fonbnk";
 import { createPaycrestAdapter } from "./paycrest/paycrest";
+import { createTransfiAdapter } from "./transfi/transfi";
 import type { AdapterDeps, ProviderAdapter } from "./types";
 
 export type Env = Readonly<Record<string, string | undefined>>;
@@ -104,6 +105,29 @@ export function enabledAdapters(env: Env, deps: AdapterDeps): ProviderAdapter[] 
         webhookSecrets: webhookSecrets(env, "FONBNK_WEBHOOK_SECRET"),
         endUser: { email: fonbnk("FONBNK_USER_EMAIL"), ip: fonbnk("FONBNK_USER_IP") },
         ...(webhookUrl ? { webhookUrl } : {}),
+        deps,
+      }),
+    );
+  }
+
+  const transfi = section(env, "TransFi", [
+    "TRANSFI_USERNAME",
+    "TRANSFI_PASSWORD",
+    "TRANSFI_MID",
+    "TRANSFI_ENVIRONMENT",
+    "TRANSFI_WEBHOOK_SECRET",
+    "TRANSFI_SENDER_USER_ID",
+    "TRANSFI_SENDER_IP",
+  ]);
+  if (transfi) {
+    adapters.push(
+      createTransfiAdapter({
+        username: transfi("TRANSFI_USERNAME"),
+        password: transfi("TRANSFI_PASSWORD"),
+        mid: transfi("TRANSFI_MID"),
+        environment: environment("TransFi", transfi("TRANSFI_ENVIRONMENT")),
+        webhookSecrets: webhookSecrets(env, "TRANSFI_WEBHOOK_SECRET"),
+        sender: { userId: transfi("TRANSFI_SENDER_USER_ID"), ip: transfi("TRANSFI_SENDER_IP") },
         deps,
       }),
     );
