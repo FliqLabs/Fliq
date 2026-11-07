@@ -18,7 +18,12 @@ final class DeviceKeyTests: XCTestCase {
 
     func testTheDeviceKeyIsMadeOnceAndKept() throws {
         let keys = KeychainDeviceKeys(service: "cash.fliq.near-key.tests.\(UUID().uuidString)")
-        let first = try keys.publicKey()
+        let first: String
+        do {
+            first = try keys.publicKey()
+        } catch let error as KeychainError where error.status == errSecMissingEntitlement {
+            throw XCTSkip("Unsigned test build has no Keychain entitlement (CODE_SIGNING_ALLOWED=NO)")
+        }
         XCTAssertEqual(try keys.publicKey(), first)
         XCTAssertTrue(first.hasPrefix("ed25519:"))
     }
