@@ -17,16 +17,17 @@ Scope: `lib.rs`, `orders.rs`, `types.rs`, `receipts.rs`, `integration.rs`, `poli
 | `recredit` | Registration account | Validates `Dispatched`, `refunding`, and write-once `refund_tx`, then queries `ft_balance_of` on the approved USDC contract before guarded liability recredit; success changes status to `refunded` | Unknown, non-Dispatched, missing/reused evidence, oversized, under-backed, failed balance query, and repeated calls do not credit. |
 | `set_payout_timeout` | Owner only | Changes the U64-encoded stuck-payout timeout | Non-owner and zero timeout fail without state changes. |
 | `resolve_stuck_payout` | Owner only after timeout | Commits a confirmed transfer or returns the order to retryable `Registered` while preserving its reservation | The owner must verify the USDC transfer on chain first; reporting false after a real transfer could permit a retry. Non-owner, early, non-Executing, and repeated calls fail. |
-| `get_receipt` | Anyone | None | Unknown order fails clearly; otherwise read-only and exposes the order plus separate verified/reported tracks. |
+| `get_receipt` | Anyone | None | Unknown order returns JSON `null`; otherwise read-only and exposes flat backend fields plus separate verified/reported tracks. |
 | `get_balance` | Anyone | None | Delegates to the real `Vault` ledger through the integration layer; read-only. |
 | `credit_for_testing` | Only compiled with `testing` and debug assertions | Adds test funds through the real `Vault` ledger | Test-only funding; absent from release builds and not a production deposit path. |
-| `on_payout_complete` | Contract account only, with exactly one promise result | Commits on success; on failure returns the order to `Registered` and keeps its reservation for retry | Outsider, malformed, or stale callbacks change nothing. Any callback panic rolls back its whole state change. |
+| `on_payout_complete` | Contract account only, with exactly one promise result | Commits on success; on failure releases the reservation and enters terminal `TransferFailed` | Outsider, malformed, or stale callbacks change nothing. Any callback panic rolls back its whole state change. |
 | `transfer` | Registered account with exactly 1 yoctoNEAR | Moves the caller's own available balance to another registered vault user and emits `transferred` | Agents have no path to the owner's balance. Zero, same-account, unregistered, insufficient and overflow cases change nothing. |
 
 ## Findings and fixes
 
 - Added an exact one-promise-result guard to the private payout callback. This prevents interpreting an unexpected promise result set as the USDC transfer result.
 - Confirmed that state changes happen before the transfer promise and that callback success/failure paths are single-use through transfer-state and reservation checks.
+- Changed failed transfer and stuck-payout recovery to release Dapper's reservation and enter terminal `TransferFailed`; this is PROPOSED pending backend confirmation.
 - Confirmed that backend status updates cannot move funds or alter the verified transfer state.
 - Confirmed that the testing credit method is gated by both the `testing` feature and debug assertions.
 - Fixed initializer takeover risk by marking `Contract::new` private; deployment now requires a one-time `new` call made by the vault account itself.
