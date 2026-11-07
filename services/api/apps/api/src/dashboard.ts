@@ -4,6 +4,8 @@ import type { Config } from "./config.js";
 import type { Db } from "./db.js";
 import { invalidRequest, notFound } from "./errors.js";
 import { institutionName } from "./institutions.js";
+import { keyView } from "./keys.js";
+import { historyFields, historyInclude, payoutWhere, type PayoutFilter } from "./payout-history.js";
 
 type WorkspaceRow = Prisma.WorkspaceGetPayload<object>;
 
@@ -23,22 +25,16 @@ export async function currentWorkspace(db: Db, userId: string): Promise<Workspac
 
 export async function listKeys(db: Db, workspaceId: string) {
   const keys = await db.apiKey.findMany({ where: { workspaceId, revokedAt: null }, orderBy: { createdAt: "desc" } });
-  return {
-    items: keys.map((key) => ({
-      key_id: key.id,
-      environment: key.environment,
-      masked: `${key.prefix}...${key.last4}`,
-      created_at: key.createdAt.toISOString(),
-    })),
-  };
+  return { items: keys.map(keyView) };
 }
 
 export async function onboardingProgress(db: Db, workspaceId: string) {
   const payouts = await db.payout.count({ where: { developerId: workspaceId } });
+  const endpoints = await db.webhookEndpoint.count({ where: { workspaceId, deletedAt: null } });
   return {
     steps: [
       { id: "create_test_payout", done: payouts > 0 },
-      { id: "add_webhook", done: false },
+      { id: "add_webhook", done: endpoints > 0 },
       { id: "go_live", done: false },
     ],
   };
@@ -61,34 +57,41 @@ function decodeCursor(cursor: string): { createdAt: Date; id: string } {
   return { createdAt, id };
 }
 
-export async function listPayouts(db: Db, config: Config, workspaceId: string, limit: number, cursor: string | undefined) {
+type PayoutWithRecipient = Prisma.PayoutGetPayload<{ include: { recipient: true } }>;
+
+// The masked view: the list, the CSV export and outbound webhooks never carry a full account number.
+export const payoutSummary = (row: PayoutWithRecipient, config: Config) => ({
+  payout_id: row.id,
+  state: row.state,
+  account_name: decrypt(row.recipient.nameCipher, config.dataKey),
+  bank: { code: row.recipient.institutionCode, name: institutionName(row.recipient.institutionCode) },
+  account_last4: decrypt(row.recipient.accountCipher, config.dataKey).slice(-4),
+  amount: formatTokenAmount(row.amountIn),
+  receive: Number(row.amountOutMinor / 100n),
+  currency: row.currency,
+  provider: row.provider,
+  created_at: row.createdAt.toISOString(),
+});
+
+const NO_FILTER: PayoutFilter = { statuses: [] };
+
+export async function listPayouts(db: Db, config: Config, workspaceId: string, limit: number, cursor: string | undefined, filter: PayoutFilter = NO_FILTER) {
   const after = cursor ? decodeCursor(cursor) : undefined;
   const rows = await db.payout.findMany({
     where: {
-      developerId: workspaceId,
-      ...(after && {
-        OR: [{ createdAt: { lt: after.createdAt } }, { createdAt: after.createdAt, id: { lt: after.id } }],
-      }),
+      AND: [
+        payoutWhere(workspaceId, filter),
+        ...(after ? [{ OR: [{ createdAt: { lt: after.createdAt } }, { createdAt: after.createdAt, id: { lt: after.id } }] }] : []),
+      ],
     },
-    include: { recipient: true },
+    include: historyInclude,
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: limit + 1,
   });
   const page = rows.slice(0, limit);
   const last = page.at(-1);
   return {
-    items: page.map((row) => ({
-      payout_id: row.id,
-      state: row.state,
-      account_name: decrypt(row.recipient.nameCipher, config.dataKey),
-      bank: { code: row.recipient.institutionCode, name: institutionName(row.recipient.institutionCode) },
-      account_last4: decrypt(row.recipient.accountCipher, config.dataKey).slice(-4),
-      amount: formatTokenAmount(row.amountIn),
-      receive: Number(row.amountOutMinor / 100n),
-      currency: row.currency,
-      provider: row.provider,
-      created_at: row.createdAt.toISOString(),
-    })),
+    items: page.map((row) => ({ ...payoutSummary(row, config), ...historyFields(row) })),
     next_cursor: rows.length > limit && last ? encodeCursor(last.createdAt, last.id) : null,
   };
 }
