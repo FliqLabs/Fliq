@@ -210,6 +210,9 @@ export async function deleteEndpoint(tx: Db, caller: Caller, endpointId: string)
 }
 
 // The old secret keeps signing for 24 hours next to the new one, so receivers can switch without dropping events.
+// Only the most recent previous secret is kept: a second rotation inside the window replaces it, so the secret
+// from two rotations ago stops signing at once. That is on purpose: a quick second rotation usually means the
+// last secret leaked or was lost, and receivers only ever need the secret they were last given.
 export async function rotateEndpointSecret(tx: Db, config: Config, caller: Caller, endpointId: string) {
   const endpoint = await ownedEndpoint(tx, caller, endpointId);
   const secret = newSigningSecret();

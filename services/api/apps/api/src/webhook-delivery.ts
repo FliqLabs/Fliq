@@ -9,7 +9,7 @@ import {
   SIGNATURE_HEADER,
   signatureHeader,
 } from "../../../packages/webhooks/signature.js";
-import type { Transport } from "../../../packages/webhooks/transport.js";
+import type { Outcome, Transport } from "../../../packages/webhooks/transport.js";
 import type { Config } from "./config.js";
 import { payoutSummary } from "./dashboard.js";
 import type { Db, Unit } from "./db.js";
@@ -20,8 +20,12 @@ export const PAYOUT_EVENT_TYPES = PAYOUT_STATES.map((state) => `payout.${state}`
 // ARCH §12.4: first attempt at once, then these delays with jitter. After the last one the endpoint is marked failing.
 export const RETRY_DELAYS_SECONDS = [30, 120, 600, 1800, 3600, 7200, 14_400, 28_800, 86_400];
 export const MAX_ATTEMPTS = RETRY_DELAYS_SECONDS.length + 1;
+// The idle timeout ends a silent socket. The deadline ends the whole attempt, so a receiver that drips bytes
+// cannot keep it open past the claim lease and have the delivery claimed and sent a second time.
 const REQUEST_TIMEOUT_MS = 10_000;
+export const REQUEST_DEADLINE_MS = 30_000;
 // A claimed delivery is hidden for this long, so a worker that dies mid-send hands it back instead of losing it.
+// It must stay longer than REQUEST_DEADLINE_MS plus the writes that record the attempt.
 const CLAIM_LEASE_MS = 60_000;
 const FANOUT_CONSUMER = "webhook_fanout";
 // Events older than this are not fanned out, so a first deploy does not send a backlog.
@@ -187,32 +191,49 @@ function secretsOf(
   return secrets;
 }
 
+// Backs up the transport's own deadline, so no transport can hold an attempt past the claim lease.
+function withDeadline(sent: Promise<Outcome>, ms: number): Promise<Outcome> {
+  let timer: NodeJS.Timeout | undefined;
+  const expired = new Promise<Outcome>((resolve) => {
+    timer = setTimeout(() => resolve({ error: "timeout" }), ms);
+  });
+  return Promise.race([sent, expired]).finally(() => clearTimeout(timer));
+}
+
 async function attempt(deps: DeliveryDeps, deliveryId: string): Promise<void> {
   const delivery = await deps.unit((tx) =>
     tx.webhookDelivery.findUniqueOrThrow({ where: { id: deliveryId }, include: { endpoint: true } }),
   );
   if (delivery.status !== "pending") return;
   const started = deps.now();
-  const body = JSON.stringify(delivery.payload);
   const timestamp = Math.floor(started.getTime() / 1000);
   const clock = Date.now();
-  const outcome = await deps.transport({
-    url: delivery.endpoint.url,
-    body,
-    timeoutMs: REQUEST_TIMEOUT_MS,
-    headers: {
-      "content-type": "application/json",
-      "user-agent": "fliq-webhooks/1",
-      [SIGNATURE_HEADER]: signatureHeader(
-        secretsOf(delivery.endpoint, deps.config.dataKey, started),
-        timestamp,
+  // A secret that will not decrypt or a payload that will not serialise still counts as a failed attempt,
+  // so it follows the bounded retry schedule instead of coming back on every claim.
+  let outcome: Outcome;
+  try {
+    const body = JSON.stringify(delivery.payload);
+    const signature = signatureHeader(secretsOf(delivery.endpoint, deps.config.dataKey, started), timestamp, body);
+    outcome = await withDeadline(
+      deps.transport({
+        url: delivery.endpoint.url,
         body,
-      ),
-      [EVENT_ID_HEADER]: delivery.eventId,
-      [EVENT_TYPE_HEADER]: delivery.eventType,
-      [DELIVERY_ID_HEADER]: delivery.id,
-    },
-  });
+        timeoutMs: REQUEST_TIMEOUT_MS,
+        deadlineMs: REQUEST_DEADLINE_MS,
+        headers: {
+          "content-type": "application/json",
+          "user-agent": "fliq-webhooks/1",
+          [SIGNATURE_HEADER]: signature,
+          [EVENT_ID_HEADER]: delivery.eventId,
+          [EVENT_TYPE_HEADER]: delivery.eventType,
+          [DELIVERY_ID_HEADER]: delivery.id,
+        },
+      }),
+      REQUEST_DEADLINE_MS,
+    );
+  } catch {
+    outcome = { error: "internal" };
+  }
   const durationMs = Date.now() - clock;
   const number = delivery.attempts + 1;
   const status = "status" in outcome ? outcome.status : null;
