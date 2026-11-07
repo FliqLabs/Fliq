@@ -20,7 +20,8 @@ protocol FliqAPI: Sendable {
     func signOut() async
     func me() async throws -> User
     func checkName(_ name: FliqName) async throws -> NameAvailability
-    func claimName(_ name: FliqName) async throws -> User
+    /// Creates the NEAR account behind the name, owned by the device key `publicKey`.
+    func claimName(_ name: FliqName, publicKey: String) async throws -> User
     func updateProfile(displayName: String) async throws -> User
 
     func institutions() async throws -> [Institution]
