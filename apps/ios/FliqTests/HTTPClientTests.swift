@@ -165,6 +165,20 @@ final class HTTPClientTests: XCTestCase {
         XCTAssertFalse(flow.suggestions.isEmpty)
     }
 
+    @MainActor
+    func testTappingContinueAgainWhileClaimingSendsOneClaim() async throws {
+        StubProtocol.respond { _ in (201, try fixtures.data("user.new")) }
+        let flow = try await claimingFlow()
+
+        async let first = flow.claim()
+        async let second = flow.claim()
+        let results = await [first, second]
+
+        XCTAssertEqual(results.filter { $0 }.count, 1)
+        XCTAssertEqual(StubProtocol.requests.filter { $0.url?.path == "/v1/me/name" }.count, 1)
+        XCTAssertFalse(flow.isClaiming)
+    }
+
     func testBase64URLRoundTrips() {
         let bytes = Data([0xfb, 0xff, 0x00, 0x10])
         XCTAssertEqual(bytes.base64URL, "-_8AEA")
