@@ -5,6 +5,7 @@ import type { Db } from "./db.js";
 import { invalidRequest, notFound } from "./errors.js";
 import { institutionName } from "./institutions.js";
 import { keyView } from "./keys.js";
+import { historyFields, historyInclude, payoutWhere, type PayoutFilter } from "./payout-history.js";
 
 type WorkspaceRow = Prisma.WorkspaceGetPayload<object>;
 
@@ -72,23 +73,25 @@ export const payoutSummary = (row: PayoutWithRecipient, config: Config) => ({
   created_at: row.createdAt.toISOString(),
 });
 
-export async function listPayouts(db: Db, config: Config, workspaceId: string, limit: number, cursor: string | undefined) {
+const NO_FILTER: PayoutFilter = { statuses: [] };
+
+export async function listPayouts(db: Db, config: Config, workspaceId: string, limit: number, cursor: string | undefined, filter: PayoutFilter = NO_FILTER) {
   const after = cursor ? decodeCursor(cursor) : undefined;
   const rows = await db.payout.findMany({
     where: {
-      developerId: workspaceId,
-      ...(after && {
-        OR: [{ createdAt: { lt: after.createdAt } }, { createdAt: after.createdAt, id: { lt: after.id } }],
-      }),
+      AND: [
+        payoutWhere(workspaceId, filter),
+        ...(after ? [{ OR: [{ createdAt: { lt: after.createdAt } }, { createdAt: after.createdAt, id: { lt: after.id } }] }] : []),
+      ],
     },
-    include: { recipient: true },
+    include: historyInclude,
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: limit + 1,
   });
   const page = rows.slice(0, limit);
   const last = page.at(-1);
   return {
-    items: page.map((row) => payoutSummary(row, config)),
+    items: page.map((row) => ({ ...payoutSummary(row, config), ...historyFields(row) })),
     next_cursor: rows.length > limit && last ? encodeCursor(last.createdAt, last.id) : null,
   };
 }

@@ -451,6 +451,23 @@ model AuditEvent {
   @@schema("developer")
 }
 
+// Per key per UTC day. requests = succeeded + failed + rate_limited.
+model ApiUsageDaily {
+  keyId          String   @map("key_id") @db.Text
+  day            DateTime @db.Date
+  workspaceId    String   @map("workspace_id") @db.Text
+  requests       Int      @default(0)
+  succeeded      Int      @default(0)
+  failed         Int      @default(0)
+  rateLimited    Int      @default(0) @map("rate_limited")
+  payoutsCreated Int      @default(0) @map("payouts_created")
+
+  @@id([keyId, day])
+  @@index([workspaceId, day])
+  @@map("api_usage_daily")
+  @@schema("developer")
+}
+
 // Spec 7.1: key, request-body hash and final response kept 24 hours, written in the same transaction as the work.
 model IdempotencyRecord {
   scope          String   @db.Text

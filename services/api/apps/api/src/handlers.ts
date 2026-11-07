@@ -18,6 +18,8 @@ import {
 } from "./dashboard.js";
 import { requireHttpsUrl, settle } from "./errors.js";
 import { withIdempotency } from "./idempotency.js";
+import { exportPayoutsCsv, parsePayoutFilter, type PayoutQuery } from "./payout-history.js";
+import { parseDays, usageReport } from "./usage.js";
 import { createKey, liveAccess, revokeKey, rotateKey, type Caller, type KeyRequest } from "./keys.js";
 import type { VaultClient } from "../../../packages/chains/vault/index.js";
 import { lookupPerson, recentPeople } from "./people.js";
@@ -199,11 +201,34 @@ export function createHandlers({ config, unit, email, provisioner, quotes, payou
       body: await unit(async (tx) => onboardingProgress(tx, (await currentWorkspace(tx, auth(request).userId)).id)),
     }),
     listPayouts: async (request) => {
-      const { limit: rawLimit, cursor } = request.query as { limit?: string; cursor?: string };
-      const limit = parseLimit(rawLimit);
+      const query = request.query as PayoutQuery;
+      const limit = parseLimit(query.limit);
+      const filter = parsePayoutFilter(query);
       return {
         status: 200,
-        body: await unit(async (tx) => listPayouts(tx, config, (await currentWorkspace(tx, auth(request).userId)).id, limit, cursor)),
+        body: await unit(async (tx) => listPayouts(tx, config, (await currentWorkspace(tx, auth(request).userId)).id, limit, query.cursor, filter)),
+      };
+    },
+    exportPayouts: async (request) => {
+      const filter = parsePayoutFilter(request.query as PayoutQuery);
+      const exported = await unit(async (tx) => exportPayoutsCsv(tx, config, (await currentWorkspace(tx, auth(request).userId)).id, filter));
+      return {
+        status: 200,
+        headers: {
+          "content-type": "text/csv; charset=utf-8",
+          "content-disposition": `attachment; filename="fliq-payouts-${now().toISOString().slice(0, 10)}.csv"`,
+          "cache-control": "no-store",
+          "x-export-rows": String(exported.rows),
+          "x-export-truncated": String(exported.truncated),
+        },
+        body: exported.csv,
+      };
+    },
+    getUsage: async (request) => {
+      const days = parseDays((request.query as { days?: string }).days);
+      return {
+        status: 200,
+        body: await unit(async (tx) => usageReport(tx, (await currentWorkspace(tx, auth(request).userId)).id, days, now())),
       };
     },
 
