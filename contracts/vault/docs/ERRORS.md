@@ -6,8 +6,6 @@ Every contract-owned panic uses the exact `fliq_vault: CODE` form.
 | --- | --- |
 | INITIALIZER_ONLY | Only the vault account may initialize. |
 | ALREADY_INITIALIZED | State already exists. |
-| MIGRATION_ONLY | Only the vault account may run a state migration. |
-| MIGRATION_STATE_INVALID | Stored state is not the supported pre-policy vault layout. |
 | OWNER_ONLY | Only the owner may call this method. |
 | REGISTRATION_ONLY | Only the registration account may call this method. |
 | UNAUTHORIZED | The caller or transfer participants are not authorized. |
@@ -61,3 +59,7 @@ Every contract-owned panic uses the exact `fliq_vault: CODE` form.
 | POLICY_COOLDOWN | The agent is attempting another payout too soon. |
 | POLICY_PENDING_EXISTS | The order already has pending policy spend. |
 | POLICY_ARITHMETIC | Policy spend accounting would overflow or underflow. |
+
+## Dapper to convert
+
+`vault.rs` currently reports typed vault failures that `integration.rs` maps to the contract-owned codes above. Its remaining internal panic strings are not changed in this run; Dapper must convert direct strings to the exact `fliq_vault: CODE` format before release.

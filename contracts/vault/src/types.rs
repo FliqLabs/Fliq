@@ -9,7 +9,7 @@ pub type Timestamp = u64;
 pub const DEFAULT_MAX_EXPIRY: Timestamp = 24 * 60 * 60 * 1_000_000_000;
 pub const DEFAULT_PAYOUT_TIMEOUT: Timestamp = 10 * 60 * 1_000_000_000;
 
-// OPEN: expiry unit is not agreed; this currently follows NEAR block timestamp nanoseconds.
+// PROPOSED: public expiry values use NEAR block-timestamp nanoseconds, matching now().
 pub fn now() -> Timestamp {
     near_sdk::env::block_timestamp()
 }
@@ -97,7 +97,7 @@ pub struct BalanceView {
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(crate = "near_sdk::serde")]
+#[serde(crate = "near_sdk::serde", rename_all = "snake_case")]
 pub enum TransferState {
     Registered,
     Executing,
@@ -113,6 +113,7 @@ pub struct PayoutOrder {
     pub payer: AccountId,
     pub deposit_address: AccountId,
     pub amount: U128,
+    #[serde(rename = "expires_at_ns")]
     pub expiry: U64,
     pub corridor: String,
     pub transfer_state: TransferState,
@@ -137,6 +138,14 @@ pub struct Receipt {
 #[serde(crate = "near_sdk::serde")]
 pub struct ReceiptView {
     pub order_id: String,
+    pub payer: AccountId,
+    pub deposit_address: AccountId,
+    pub amount: U128,
+    pub expires_at_ns: U64,
+    pub corridor: String,
+    pub state: String,
+    pub status: Option<String>,
+    pub recredited_amount: U128,
     pub order: PayoutOrder,
     pub transfer_state: TransferState,
     pub expired: bool,

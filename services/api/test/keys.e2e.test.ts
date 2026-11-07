@@ -98,7 +98,7 @@ describe.skipIf(!databaseEnabled)("API keys against a real database", () => {
       (await call("POST", "/keys", { payload: { name: "x", environment: "test" }, token: key.key }))
         .statusCode,
     ).toBe(403);
-    expect((await call("GET", "/payouts", { token: `${key.key.slice(0, -1)}A` })).statusCode).toBe(401);
+    expect((await call("GET", "/payouts", { token: `${key.key.slice(0, -1)}${key.key.endsWith("A") ? "B" : "A"}` })).statusCode).toBe(401);
     expect(
       (await call("GET", "/payouts", { token: "rt_live_notarealkeynotarealkeynotarealkey000" })).statusCode,
     ).toBe(401);
