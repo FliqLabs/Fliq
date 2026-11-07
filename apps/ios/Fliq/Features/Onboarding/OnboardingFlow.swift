@@ -53,9 +53,12 @@ final class OnboardingFlow {
         do {
             claimed = try await api.claimName(name, publicKey: publicKey).nearAccount
             return true
-        } catch {
+        } catch APIError.server(status: 409, _) {
             status = .taken
             suggestions = await freeAlternatives(to: name)
+            return false
+        } catch {
+            status = .unreachable
             return false
         }
     }
