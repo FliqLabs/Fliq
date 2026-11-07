@@ -76,7 +76,9 @@ const hops = oneClick
   ? new OneClickHops({
       client: oneClick,
       slippageBps: Number(process.env.ONECLICK_SLIPPAGE_BPS ?? 50),
-      pricingRefundTo: config.vaultAccount,
+      // 1Click is mainnet only and answers a testnet refundTo with 400 "Internal server error". Dry quotes never take
+      // funds, so any mainnet account prices correctly.
+      pricingRefundTo: process.env.ONECLICK_PRICING_REFUND_TO ?? "intents.near",
       pricingRecipient: process.env.ONECLICK_PRICING_RECIPIENT ?? "0x0000000000000000000000000000000000000001",
     })
   : undefined;
