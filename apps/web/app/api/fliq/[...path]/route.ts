@@ -15,6 +15,7 @@ const publicRoutes = new Set([
   "POST auth/email-links/verify",
   "GET institutions",
   "GET rates/usdc/ngn",
+  "GET rates/usdc/ngn/history",
 ]);
 
 const protectedRoutes = new Set([
@@ -144,7 +145,9 @@ async function handle(request: NextRequest, context: RouteContext) {
     return response;
   }
 
-  const query = ["payouts", "institutions"].includes(path) ? request.nextUrl.search : "";
+  const query = ["payouts", "institutions", "rates/usdc/ngn/history"].includes(path)
+    ? request.nextUrl.search
+    : "";
   const idempotencyKey = request.headers.get("idempotency-key") ?? undefined;
   let result = await upstream(method, path, body, accessToken, query, idempotencyKey);
   if (result?.status === 401 && !isPublic(method, path) && path !== "auth/logout" && !session) {

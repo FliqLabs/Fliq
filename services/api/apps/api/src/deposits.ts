@@ -5,6 +5,7 @@ import { postEntry } from "../../../packages/ledger/post.js";
 import { vaultCredited } from "../../../packages/ledger/postings.js";
 import type { Db, Unit } from "./db.js";
 import { ApiError, invalidRequest, notFound } from "./errors.js";
+import { markRequestPaid } from "./requests.js";
 
 export type DepositToken = "usdc" | "usdt" | "btc";
 export type DepositChain = "base" | "solana" | "tron" | "arbitrum" | "ethereum" | "polygon" | "bitcoin" | "near";
@@ -316,7 +317,10 @@ export function createDeposits(deps: DepositDeps) {
       const next = nextDeposit(current, execution, at);
       const landedNow = current.state !== "landed" && next.state === "landed" && next.landedUnits !== null;
       const saved = await tx.vaultDeposit.update({ where: { id: row.id }, data: { ...next, polledAt: at, updatedAt: next.state === current.state ? current.updatedAt : at } });
-      if (landedNow) await postEntry(tx, vaultCredited(saved.id, saved.account, "USDC", saved.landedUnits as bigint));
+      if (landedNow) {
+        await postEntry(tx, vaultCredited(saved.id, saved.account, "USDC", saved.landedUnits as bigint));
+        await markRequestPaid(tx, saved);
+      }
       return { updated: saved, landed: landedNow };
     });
     if (landed) await deps.onLanded?.({ account: updated.account, units: updated.landedUnits as bigint, message: topUpMessage(updated.account) });

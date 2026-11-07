@@ -13,6 +13,7 @@ export interface Config {
   emailLinkBaseUrl: string;
   emailFrom: string;
   resendApiKey: string | undefined;
+  payLinkBase: string;
   // Decision 12: sandbox and production are separate deployments, so each issues and accepts one key environment.
   keyEnvironment: "test" | "live";
 }
@@ -31,12 +32,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     hashKey: parseKey(required(env, "FLIQ_HASH_KEY")),
     rpId: env.WEBAUTHN_RP_ID ?? "localhost",
     rpName: "fliq",
-    origins: (env.WEBAUTHN_ORIGINS ?? "http://localhost:3000").split(","),
+    origins: (env.WEBAUTHN_ORIGINS ?? "http://localhost:3000").split(",").map((origin) => origin.trim()).filter(Boolean),
     nearRootAccount: env.NEAR_ROOT_ACCOUNT ?? "fliq.near",
     vaultAccount: env.VAULT_ACCOUNT ?? "fliq-vault.testnet",
     emailLinkBaseUrl: env.EMAIL_LINK_BASE_URL ?? "http://localhost:3000",
     emailFrom: env.EMAIL_FROM ?? "FLIQ <noreply@fliq.cash>",
     resendApiKey: env.RESEND_API_KEY || undefined,
+    payLinkBase: (env.PAY_LINK_BASE_URL ?? "https://pay.fliq.money").replace(/\/+$/, ""),
     keyEnvironment: env.FLIQ_ENV === "production" ? "live" : "test",
   };
 }

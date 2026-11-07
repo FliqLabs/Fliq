@@ -43,6 +43,7 @@ export type RelayerClient = {
   relay(signedDelegateBase64: string): Promise<RelayResponse>;
   relayStatus(delegateHash: string): Promise<RelayResponse>;
   provisionAccount(accountId: string, publicKey: string): Promise<AccountResponse>;
+  health(): Promise<{ status: string }>;
 };
 
 export function createRelayerClient(options: RelayerClientOptions): RelayerClient {
@@ -58,8 +59,12 @@ export function createRelayerClient(options: RelayerClientOptions): RelayerClien
         body: body === undefined ? undefined : JSON.stringify(body),
         signal: AbortSignal.timeout(options.timeoutMs ?? DEFAULT_TIMEOUT_MS),
       });
-    } catch {
-      throw new RelayerClientError(0, "relayer_unreachable", "the relayer did not answer");
+    } catch (error) {
+      const cause = (error as { cause?: { code?: string } }).cause?.code ?? (error as Error).name;
+      if ((error as Error).name === "TimeoutError") {
+        throw new RelayerClientError(0, "relayer_timeout", "the relayer did not answer in time");
+      }
+      throw new RelayerClientError(0, "relayer_unreachable", `the relayer did not answer (${cause})`);
     }
     const payload = (await response.json().catch(() => null)) as {
       error?: { code?: string; message?: string };
@@ -79,5 +84,6 @@ export function createRelayerClient(options: RelayerClientOptions): RelayerClien
     relayStatus: (delegateHash) => call("GET", `/v1/relays/${encodeURIComponent(delegateHash)}`),
     provisionAccount: (accountId, publicKey) =>
       call("POST", "/v1/accounts", { account_id: accountId, public_key: publicKey }),
+    health: () => call("GET", "/health"),
   };
 }

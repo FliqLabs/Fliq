@@ -1,6 +1,7 @@
 import { createBitnobAdapter } from "./bitnob/bitnob";
 import { createBushaAdapter } from "./busha/busha";
 import { createFonbnkAdapter } from "./fonbnk/fonbnk";
+import { withInstitutionCodes } from "./institutions/translate";
 import { createPaycrestAdapter } from "./paycrest/paycrest";
 import { createTransfiAdapter } from "./transfi/transfi";
 import type { AdapterDeps, ProviderAdapter } from "./types";
@@ -110,28 +111,5 @@ export function enabledAdapters(env: Env, deps: AdapterDeps): ProviderAdapter[] 
     );
   }
 
-  const transfi = section(env, "TransFi", [
-    "TRANSFI_USERNAME",
-    "TRANSFI_PASSWORD",
-    "TRANSFI_MID",
-    "TRANSFI_ENVIRONMENT",
-    "TRANSFI_WEBHOOK_SECRET",
-    "TRANSFI_SENDER_USER_ID",
-    "TRANSFI_SENDER_IP",
-  ]);
-  if (transfi) {
-    adapters.push(
-      createTransfiAdapter({
-        username: transfi("TRANSFI_USERNAME"),
-        password: transfi("TRANSFI_PASSWORD"),
-        mid: transfi("TRANSFI_MID"),
-        environment: environment("TransFi", transfi("TRANSFI_ENVIRONMENT")),
-        webhookSecrets: webhookSecrets(env, "TRANSFI_WEBHOOK_SECRET"),
-        sender: { userId: transfi("TRANSFI_SENDER_USER_ID"), ip: transfi("TRANSFI_SENDER_IP") },
-        deps,
-      }),
-    );
-  }
-
-  return adapters;
+  return adapters.map((adapter) => withInstitutionCodes(adapter));
 }

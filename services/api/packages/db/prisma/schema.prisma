@@ -116,6 +116,8 @@ model Recipient {
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   // Set when the user chose to save this account; recipients made by paying are not saved ones.
   savedAt         DateTime? @map("saved_at") @db.Timestamptz(6)
+  own             Boolean   @default(false)
+  isDefault       Boolean   @default(false) @map("is_default")
   deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(6)
   payouts         Payout[]
 
@@ -141,6 +143,8 @@ model Payout {
   currency        String      @db.Text
   rate            Decimal     @db.Decimal(24, 10)
   retryOfId       String?     @map("retry_of_id") @db.Text
+  // The agent that made the payout, or null when the user did.
+  agentId         String?     @map("agent_id") @db.Text
   // Why a payout ended in failed. Reasons starting with vault_ are refusals by the vault caps.
   failureReason   String?     @map("failure_reason") @db.Text
   // Where the sender pays, from the provider's createOrder answer. Empty while the order is not confirmed.
@@ -329,6 +333,9 @@ model User {
   // Uploaded by the client straight to object storage; we only keep the https URL it sends back.
   photoUrl      String?  @map("photo_url") @db.Text
   occupation    String?  @db.Text
+  homeCurrency  String   @default("NGN") @map("home_currency") @db.Text
+  // Null until the user changes a notification setting; the API then answers with its defaults.
+  notificationSettings Json? @map("notification_settings")
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   passkeys      PasskeyCredential[]
   sessions      Session[]
@@ -523,6 +530,110 @@ model RateSample {
   @@schema("core")
 }
 
+// What a sign-in family is called on the security screen, from the app's X-Device-Name header or the user agent.
+model SessionDevice {
+  familyId  String   @id @map("family_id") @db.Text
+  userId    String   @map("user_id") @db.Text
+  device    String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([userId])
+  @@map("session_devices")
+  @@schema("auth")
+}
+
+model PushToken {
+  token     String   @id @db.Text
+  userId    String   @map("user_id") @db.Text
+  platform  String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@index([userId])
+  @@map("push_tokens")
+  @@schema("auth")
+}
+
+enum RequestState {
+  open
+  paid
+  cancelled
+
+  @@schema("core")
+}
+
+model PaymentRequest {
+  id               String       @id @db.Text
+  userId           String       @map("user_id") @db.Text
+  code             String       @db.Text
+  amountUnits      BigInt       @map("amount_units")
+  note             String       @db.Text
+  state            RequestState @default(open)
+  cashOutOnArrival Boolean      @map("cash_out_on_arrival")
+  createdAt        DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  paidAt           DateTime?    @map("paid_at") @db.Timestamptz(6)
+  depositId        String?      @map("deposit_id") @db.Text
+  payer            String?      @db.Text
+  paidToken        String?      @map("paid_token") @db.Text
+  paidChain        String?      @map("paid_chain") @db.Text
+  paidAmount       String?      @map("paid_amount") @db.Text
+  feeMicroUsd      BigInt?      @map("fee_micro_usd")
+  landedUnits      BigInt?      @map("landed_units")
+
+  @@unique([userId, code])
+  @@index([userId, createdAt])
+  @@map("payment_requests")
+  @@schema("core")
+}
+
+enum AgentState {
+  pending
+  active
+  revoked
+
+  @@schema("core")
+}
+
+// An agent's own NEAR account under the user's, and the limits the user chose. The vault policy is the authority;
+// this row keeps what the chain does not: the name, the caps in local currency and saved_accounts_only.
+model Agent {
+  id                String     @id @db.Text
+  userId            String     @map("user_id") @db.Text
+  owner             String     @db.Text
+  name              String     @db.Text
+  publicKey         String     @map("public_key") @db.Text
+  state             AgentState @default(pending)
+  capCurrency       String     @map("cap_currency") @db.Text
+  dailyCapMinor     BigInt     @map("daily_cap_minor")
+  perPayoutCapMinor BigInt     @map("per_payout_cap_minor")
+  currencies        String[]
+  savedAccountsOnly Boolean    @map("saved_accounts_only")
+  expiresAt         DateTime   @map("expires_at") @db.Timestamptz(6)
+  createdAt         DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  revokedAt         DateTime?  @map("revoked_at") @db.Timestamptz(6)
+
+  @@index([userId, createdAt])
+  @@map("agents")
+  @@schema("core")
+}
+
+// An agent payout the vault turned down. Nothing moved, so this is the only record of it.
+model AgentRefusal {
+  id          String   @id @db.Text
+  userId      String   @map("user_id") @db.Text
+  agentId     String   @map("agent_id") @db.Text
+  reason      String   @db.Text
+  amountMinor BigInt?  @map("amount_minor")
+  currency    String?  @db.Text
+  orderId     String?  @map("order_id") @db.Text
+  txHash      String?  @map("tx_hash") @db.Text
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([userId, createdAt])
+  @@map("agent_refusals")
+  @@schema("core")
+}
+
 enum ClaimState {
   open
   resolved
@@ -586,6 +697,8 @@ model VaultDeposit {
   bridgingAt     DateTime?    @map("bridging_at") @db.Timestamptz(6)
   landedAt       DateTime?    @map("landed_at") @db.Timestamptz(6)
   polledAt       DateTime?    @map("polled_at") @db.Timestamptz(6)
+  // Set when the top-up pays a payment request, so landing it marks the request paid.
+  requestId      String?      @map("request_id") @db.Text
   // The full 1Click quote, which 1Click asks integrators to keep.
   quote          Json
   createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)

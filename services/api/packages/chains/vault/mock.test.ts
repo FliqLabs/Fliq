@@ -294,7 +294,7 @@ describe("events", () => {
       "order_registered",
       "payout_executed",
       "agent_set",
-      "agent_removed",
+      "agent_revoked",
     ]);
     expect(parsed).toEqual(vault.events);
   });
