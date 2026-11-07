@@ -32,6 +32,9 @@ for (const [network, prefix] of [
   ["::ffff:0:0", 96],
   ["64:ff9b::", 96],
   ["100::", 64],
+  // Teredo and 6to4 tunnel to an IPv4 address embedded in the IPv6 one, which could be a private host.
+  ["2001::", 32],
+  ["2002::", 16],
   ["2001:db8::", 32],
   ["fc00::", 7],
   ["fe80::", 10],

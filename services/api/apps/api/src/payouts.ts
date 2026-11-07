@@ -4,7 +4,7 @@ import { newId } from "../../../packages/db/src/ids.js";
 import { transitionPayout } from "../../../packages/domain/transition.js";
 import { InsufficientVaultBalance, postEntry, reserveVault } from "../../../packages/ledger/post.js";
 import { orderCommitted, vaultReleased } from "../../../packages/ledger/postings.js";
-import type { VaultClient } from "../../../packages/chains/vault/index.js";
+import { MAX_ORDER_TTL_MS, type VaultClient } from "../../../packages/chains/vault/index.js";
 import { ProviderError } from "../../../packages/providers/errors.js";
 import type { Asset, Chain, CreatedOrder, FiatCurrency, ProviderAdapter } from "../../../packages/providers/types.js";
 import type { Config } from "./config.js";
@@ -16,6 +16,7 @@ import { INSTITUTIONS } from "./institutions.js";
 import type { OneClickHops } from "./hop.js";
 import { COUNTRY, developerIdFor, requestQuote, reviveHop, reviveProviderQuote, type QuoteDeps, type QuoteInput } from "./quotes.js";
 import { resolveName } from "./recipients.js";
+import { recoveryView } from "./recovery.js";
 
 export interface PayoutDeps {
   config: Config;
@@ -30,6 +31,8 @@ export interface PayoutDeps {
 export interface IntentsDeps {
   hops: OneClickHops;
   vault: VaultClient;
+  // Registers the 1Click deposit address on the vault's token, without which the vault's transfer to it fails.
+  tokenStorage: { ensure(accountId: string): Promise<unknown> };
   // Spec 10.1: the hop may cost this much more than quoted before the payout is stopped and re-quoted.
   guardBps: bigint;
   // The 1Click deadline is the provider address validity minus this margin.
@@ -48,6 +51,7 @@ export interface PayoutInput {
   client_reference?: string;
   refund_address?: string;
   account_name?: string;
+  retry_of?: string;
 }
 
 const IN_PROGRESS = 202;
@@ -73,7 +77,7 @@ function isDefiniteRejection(error: unknown): boolean {
 }
 
 // The provider's fiat reference arrives on its settled webhook and is kept on that event.
-function bankReference(events: readonly { toState: string; detail: Prisma.JsonValue }[]): string | null {
+export function bankReference(events: readonly { toState: string; detail: Prisma.JsonValue }[]): string | null {
   const detail = events.find((event) => event.toState === "settled")?.detail;
   if (!detail || typeof detail !== "object" || Array.isArray(detail)) return null;
   const reference = detail.fiat_reference;
@@ -83,7 +87,12 @@ function bankReference(events: readonly { toState: string; detail: Prisma.JsonVa
 export async function payoutView(tx: Db, config: Config, payoutId: string) {
   const payout = await tx.payout.findUniqueOrThrow({
     where: { id: payoutId },
-    include: { recipient: true, events: { orderBy: { version: "asc" } } },
+    include: {
+      recipient: true,
+      events: { orderBy: { version: "asc" } },
+      retries: { select: { id: true, createdAt: true } },
+      claims: true,
+    },
   });
   const quote = await tx.quote.findUniqueOrThrow({ where: { id: payout.quoteId } });
   const route = quote.chosenRouteId ? await tx.quoteRoute.findUnique({ where: { id: quote.chosenRouteId } }) : null;
@@ -117,6 +126,7 @@ export async function payoutView(tx: Db, config: Config, payoutId: string) {
     bank_reference: bankReference(payout.events),
     seconds: settledAt && depositAt ? Math.round((settledAt.getTime() - depositAt.getTime()) / 1000) : null,
     history: payout.events.map((event) => ({ state: event.toState, at: event.createdAt.toISOString() })),
+    ...recoveryView(payout, bankReference(payout.events)),
   };
 }
 
@@ -144,11 +154,12 @@ export async function createPayout(unit: Unit, deps: PayoutDeps, userId: string,
     if (quote.expiresAt <= deps.now()) throw new ApiError(422, "quote_expired", "This quote has expired. Request a new one.");
     const user = await tx.user.findUnique({ where: { id: userId } });
     const intents = route.kind === "intents";
-    // On an Intents route the sender is the vault holder and any refund goes back to them.
     if (intents && !user?.nearAccount) throw invalidRequest("Claim a fliq name before paying from your vault.");
-    const refundAddress = intents ? (user?.nearAccount as string) : (input.refund_address ?? user?.nearAccount ?? null);
+    const payer = user?.nearAccount ?? null;
+    // An Intents refund goes to the vault contract, which holds it unattributed until recredit returns it to the payer.
+    const refundAddress = intents ? deps.config.vaultAccount : (input.refund_address ?? payer);
     if (!refundAddress) throw invalidRequest("refund_address is required when the account has no fliq name.");
-    return { developerId, quote, route, refundAddress, intents, hop: reviveHop(route.providerQuote) };
+    return { developerId, quote, route, payer, refundAddress, intents, hop: reviveHop(route.providerQuote) };
   });
 
   const adapter = deps.adapters.find((candidate) => candidate.id === prepared.route.provider);
@@ -176,6 +187,12 @@ export async function createPayout(unit: Unit, deps: PayoutDeps, userId: string,
     const today = await tx.payout.aggregate({ where: { developerId, createdAt: { gte: dayStart } }, _count: true, _sum: { amountIn: true } });
     if (today._count >= deps.velocity.maxPerDay || (today._sum.amountIn ?? 0n) + route.amountIn > deps.velocity.maxTokenUnitsPerDay) {
       throw new ApiError(422, "velocity_limit", "Daily payout limit reached for this account.");
+    }
+
+    if (input.retry_of) {
+      const original = await tx.payout.findFirst({ where: { id: input.retry_of, developerId }, select: { state: true } });
+      if (!original) throw notFound("No such payout to retry.");
+      if (!["refunded", "failed", "expired"].includes(original.state)) throw conflict("Only a refunded, failed or expired payout can be tried again.");
     }
 
     const payoutId = newId("po");
@@ -215,6 +232,7 @@ export async function createPayout(unit: Unit, deps: PayoutDeps, userId: string,
         amountOutMinor: route.amountOutMinor,
         currency: quote.currency,
         rate: quote.rate,
+        retryOfId: input.retry_of ?? null,
       },
     });
     await tx.payoutEvent.create({ data: { id: newId("pev"), payoutId, fromState: null, toState: "created", version: 1, cause: "created" } });
@@ -263,6 +281,7 @@ export async function createPayout(unit: Unit, deps: PayoutDeps, userId: string,
 type Prepared = {
   quote: { id: string; currency: string; tokenSymbol: string; sourceChain: string; mode: string; amountIn: bigint; amountOutMinor: bigint };
   route: { provider: string; amountIn: bigint };
+  payer: string | null;
   refundAddress: string;
   intents: boolean;
   hop: ReturnType<typeof reviveHop>;
@@ -298,7 +317,7 @@ async function openOrder(input: OpenInput): Promise<Opened> {
   if (prepared.intents && (!intents || !prepared.hop)) return { kind: "route_unavailable" };
 
   // Fail before any provider order exists when the vault cannot cover the payout.
-  if (intents && (await intents.vault.getBalance(prepared.refundAddress)).available < prepared.route.amountIn) {
+  if (intents && (await intents.vault.getBalance(prepared.payer as string)).available < prepared.route.amountIn) {
     return { kind: "insufficient_balance", order: null };
   }
 
@@ -335,9 +354,10 @@ async function openHop(
   input: OpenInput & { intents: IntentsDeps; hop: NonNullable<Prepared["hop"]>; order: CreatedOrder; funding: Extract<CreatedOrder["funding"], { kind: "deposit_address" }> },
 ): Promise<Opened> {
   const { deps, unit, payoutId, asset, prepared, intents, hop, order, funding } = input;
+  const payer = prepared.payer as string;
   const now = deps.now();
   const validUntil = funding.validUntil ?? new Date(now.getTime() + DEFAULT_ADDRESS_VALIDITY_MS);
-  const deadline = new Date(validUntil.getTime() - intents.deadlineMarginMs);
+  const deadline = new Date(Math.min(validUntil.getTime() - intents.deadlineMarginMs, now.getTime() + MAX_ORDER_TTL_MS));
   if (deadline <= now) return { kind: "route_unavailable" };
 
   let swap;
@@ -360,7 +380,12 @@ async function openHop(
 
   const deposit: Deposit = { chain: "near", address: swap.depositAddress, units: swap.amountIn, validUntil: deadline, memo: swap.depositMemo ?? null };
   try {
-    await unit((tx) => reserveVault(tx, payoutId, prepared.refundAddress, asset, deposit.units));
+    await intents.tokenStorage.ensure(deposit.address);
+  } catch {
+    return { kind: "route_unavailable" };
+  }
+  try {
+    await unit((tx) => reserveVault(tx, payoutId, payer, asset, deposit.units));
   } catch (error) {
     if (error instanceof InsufficientVaultBalance) return { kind: "insufficient_balance", order };
     throw error;
@@ -368,7 +393,7 @@ async function openHop(
   try {
     await intents.vault.registerOrder({
       orderId: payoutId,
-      payer: prepared.refundAddress,
+      payer,
       depositAddress: deposit.address,
       amount: deposit.units,
       expiresAtNs: BigInt(deadline.getTime()) * 1_000_000n,
@@ -376,7 +401,7 @@ async function openHop(
     });
   } catch {
     // The reservation was committed first, so a refused registration must give the funds back.
-    await unit((tx) => postEntry(tx, vaultReleased(payoutId, prepared.refundAddress, asset, deposit.units)));
+    await unit((tx) => postEntry(tx, vaultReleased(payoutId, payer, asset, deposit.units)));
     return { kind: "route_unavailable" };
   }
   return { kind: "ready", order, deposit };

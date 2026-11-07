@@ -11,13 +11,17 @@ protocol FliqAPI: Sendable {
 
     /// True when this client needs a signed-in session before the money endpoints answer.
     var needsSignIn: Bool { get async }
+    func passkeyOptions(_ purpose: PasskeyPurpose) async throws -> PasskeyOptions
+    /// Sends the platform's passkey response (WebAuthn JSON) and keeps the session it opens.
+    func finishPasskey(_ purpose: PasskeyPurpose, challengeId: String, credential: Data) async throws -> User
     func sendEmailLink(to email: String) async throws -> EmailLinkSent
     /// Exchanges the token from a sign-in link for a session and keeps it.
     func verifyEmailLink(token: String) async throws -> User
     func signOut() async
     func me() async throws -> User
     func checkName(_ name: FliqName) async throws -> NameAvailability
-    func claimName(_ name: FliqName) async throws -> User
+    /// Creates the NEAR account behind the name, owned by the device key `publicKey`.
+    func claimName(_ name: FliqName, publicKey: String) async throws -> User
     func updateProfile(displayName: String) async throws -> User
 
     func institutions() async throws -> [Institution]
@@ -25,6 +29,10 @@ protocol FliqAPI: Sendable {
     func recipients() async throws -> RecipientList
     func recentPeople() async throws -> RecentPeopleList
     func person(named name: String) async throws -> Person
+}
+
+enum PasskeyPurpose: String, Sendable {
+    case register, login
 }
 
 enum FliqJSON {

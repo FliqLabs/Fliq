@@ -28,12 +28,14 @@ final class OnboardingFlow {
     private let api: any FliqAPI
     private let isLive: Bool
     private let names: any NameDirectory
+    private let keys: any DeviceKeys
     private var check: Task<Void, Never>?
 
-    init(api: any FliqAPI, names: any NameDirectory, isLive: Bool = false) {
+    init(api: any FliqAPI, names: any NameDirectory, isLive: Bool = false, keys: any DeviceKeys = KeychainDeviceKeys()) {
         self.api = api
         self.isLive = isLive
         self.names = names
+        self.keys = keys
         ownAccount = AccountEntry(api: api)
     }
 
@@ -44,8 +46,12 @@ final class OnboardingFlow {
     func claim() async -> Bool {
         guard canClaim, let name else { return false }
         guard isLive else { return true }
+        guard let publicKey = try? keys.publicKey() else {
+            status = .unreachable
+            return false
+        }
         do {
-            claimed = try await api.claimName(name).nearAccount
+            claimed = try await api.claimName(name, publicKey: publicKey).nearAccount
             return true
         } catch {
             status = .taken

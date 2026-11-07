@@ -10,8 +10,7 @@ import {
 const REGISTRAR = "registrar.fliq.testnet";
 const USDC = "usdc.fakes.testnet";
 const ADA = "ada.testnet";
-const ADA_KEY = "ed25519:ada-full-access";
-const AGENT_KEY = "ed25519:ada-agent";
+const AGENT = "agent-1.ada.testnet";
 const SECOND_NS = 1_000_000_000n;
 const DAY_NS = 86_400n * SECOND_NS;
 const USDC_UNIT = 1_000_000n;
@@ -43,7 +42,7 @@ async function refusal(action: Promise<unknown> | (() => unknown)): Promise<Vaul
 
 async function executedOrder(): Promise<void> {
   await vault.registerOrder(order());
-  vault.payout({ accountId: ADA, publicKey: ADA_KEY }, "po_1");
+  vault.payout(ADA, "po_1");
 }
 
 beforeEach(() => {
@@ -75,8 +74,8 @@ describe("register_order", () => {
     ],
     ["an expiry in the past", () => vault.registerOrder(order({ expiresAtNs: now })), "INVALID_EXPIRY"],
     [
-      "an expiry beyond the TTL",
-      () => vault.registerOrder(order({ expiresAtNs: now + 3_601n * SECOND_NS })),
+      "an expiry more than 24 hours ahead",
+      () => vault.registerOrder(order({ expiresAtNs: now + DAY_NS + SECOND_NS })),
       "INVALID_EXPIRY",
     ],
   ])("refuses %s", async (_, action, code) => {
@@ -97,25 +96,19 @@ describe("payout", () => {
       reserved: 0n,
       total: 150n * USDC_UNIT,
     });
-    expect(await refusal(() => vault.payout({ accountId: ADA, publicKey: ADA_KEY }, "po_1"))).toBe(
-      "ORDER_NOT_REGISTERED",
-    );
+    expect(await refusal(() => vault.payout(ADA, "po_1"))).toBe("ORDER_NOT_REGISTERED");
   });
 
   it("only lets the payer release funds", async () => {
     await vault.registerOrder(order());
-    expect(await refusal(() => vault.payout({ accountId: REGISTRAR, publicKey: ADA_KEY }, "po_1"))).toBe(
-      "UNAUTHORIZED",
-    );
+    expect(await refusal(() => vault.payout(REGISTRAR, "po_1"))).toBe("UNAUTHORIZED");
   });
 
   it("refuses an expired order, which the payer can then release", async () => {
     await vault.registerOrder(order());
     expect(await refusal(vault.as(ADA).releaseOrder("po_1"))).toBe("ORDER_NOT_EXPIRED");
     now += 600n * SECOND_NS;
-    expect(await refusal(() => vault.payout({ accountId: ADA, publicKey: ADA_KEY }, "po_1"))).toBe(
-      "ORDER_EXPIRED",
-    );
+    expect(await refusal(() => vault.payout(ADA, "po_1"))).toBe("ORDER_EXPIRED");
     await vault.as(ADA).releaseOrder("po_1");
     expect(await vault.getBalance(ADA)).toMatchObject({ available: 200n * USDC_UNIT, reserved: 0n });
   });
@@ -130,18 +123,16 @@ describe("payout", () => {
 
 describe("agent policy", () => {
   beforeEach(() => {
-    vault.setPolicy(AGENT_KEY, {
-      owner: ADA,
+    vault.setAgent(ADA, AGENT, {
       perPayoutCap: 60n * USDC_UNIT,
       dailyCap: 80n * USDC_UNIT,
       corridors: ["NG-NGN-bank"],
     });
   });
 
-  const agentPays = (orderId: string) => () =>
-    vault.payout({ accountId: ADA, publicKey: AGENT_KEY }, orderId);
+  const agentPays = (orderId: string) => () => vault.payout(AGENT, orderId);
 
-  it("enforces the per-payout cap, daily cap and corridor list of the signing key", async () => {
+  it("enforces the per-payout cap, daily cap and corridor list of the agent account", async () => {
     await vault.registerOrder(order({ orderId: "po_big", amount: 61n * USDC_UNIT }));
     await vault.registerOrder(
       order({ orderId: "po_ke", corridor: "KE-KES-mobile_money", amount: USDC_UNIT }),
@@ -153,16 +144,44 @@ describe("agent policy", () => {
     expect(await refusal(agentPays("po_ke"))).toBe("POLICY_CORRIDOR");
     agentPays("po_a")();
     expect(await refusal(agentPays("po_b"))).toBe("POLICY_DAILY_CAP");
-    expect((await vault.getPolicy(AGENT_KEY))?.spentToday).toBe(50n * USDC_UNIT);
+    expect((await vault.getAgent(ADA, AGENT))?.spentToday).toBe(50n * USDC_UNIT);
   });
 
-  it("resets the daily allowance the next day and leaves the full-access key unlimited", async () => {
+  it("resets the daily allowance the next day and leaves the payer unlimited", async () => {
     await vault.registerOrder(order({ orderId: "po_a", amount: 60n * USDC_UNIT }));
     agentPays("po_a")();
     now += DAY_NS;
-    expect((await vault.getPolicy(AGENT_KEY))?.spentToday).toBe(0n);
+    expect((await vault.getAgent(ADA, AGENT))?.spentToday).toBe(0n);
     await vault.registerOrder(order({ orderId: "po_big", amount: 100n * USDC_UNIT }));
-    vault.payout({ accountId: ADA, publicKey: ADA_KEY }, "po_big");
+    vault.payout(ADA, "po_big");
+  });
+
+  it("refuses an agent of another payer and an account that is no agent", async () => {
+    vault.setAgent("bob.testnet", "agent-1.bob.testnet", {
+      perPayoutCap: USDC_UNIT,
+      dailyCap: USDC_UNIT,
+      corridors: null,
+    });
+    await vault.registerOrder(order({ amount: USDC_UNIT }));
+    expect(await refusal(() => vault.payout("agent-1.bob.testnet", "po_1"))).toBe("UNAUTHORIZED");
+    expect(await refusal(() => vault.payout("mallory.testnet", "po_1"))).toBe("UNAUTHORIZED");
+  });
+
+  it("stops an agent at once when the payer removes it, and keeps it to one owner", async () => {
+    expect(
+      await refusal(() =>
+        vault.setAgent("bob.testnet", AGENT, {
+          perPayoutCap: USDC_UNIT,
+          dailyCap: USDC_UNIT,
+          corridors: null,
+        }),
+      ),
+    ).toBe("AGENT_TAKEN");
+    expect(await refusal(() => vault.removeAgent("bob.testnet", AGENT))).toBe("AGENT_NOT_FOUND");
+    vault.removeAgent(ADA, AGENT);
+    await vault.registerOrder(order({ amount: USDC_UNIT }));
+    expect(await refusal(agentPays("po_1"))).toBe("UNAUTHORIZED");
+    expect(await vault.getAgent(ADA, AGENT)).toBeNull();
   });
 });
 
@@ -170,7 +189,7 @@ describe("set_status", () => {
   it("refuses a status before execution, a backward move and any move after a terminal status", async () => {
     await vault.registerOrder(order());
     expect(await refusal(vault.setStatus("po_1", "routing", {}))).toBe("INVALID_TRANSITION");
-    vault.payout({ accountId: ADA, publicKey: ADA_KEY }, "po_1");
+    vault.payout(ADA, "po_1");
     await vault.setStatus("po_1", "paying_out", { provider: "paycrest" });
     expect(await refusal(vault.setStatus("po_1", "routing", {}))).toBe("INVALID_TRANSITION");
     await vault.setStatus("po_1", "settled", { bankReference: "000013251029140213" });
@@ -179,6 +198,17 @@ describe("set_status", () => {
       provider: "paycrest",
       bankReference: "000013251029140213",
     });
+  });
+
+  it("never writes refunded, and never changes a reference once set", async () => {
+    await executedOrder();
+    await vault.setStatus("po_1", "refunding", { refundTx: "4Fx9refund" });
+    expect(await refusal(vault.setStatus("po_1", "refunded", {}))).toBe("INVALID_TRANSITION");
+    expect(await refusal(vault.setStatus("po_1", "failed", { refundTx: "other" }))).toBe("REF_IMMUTABLE");
+    expect(await refusal(vault.setStatus("po_1", "failed", { bankReference: "x".repeat(129) }))).toBe(
+      "INVALID_REF",
+    );
+    await vault.setStatus("po_1", "failed", { refundTx: "4Fx9refund" });
   });
 
   it("is refused for anyone but the registrar", async () => {
@@ -209,7 +239,7 @@ describe("recredit", () => {
     expect(await refusal(vault.recredit("po_1", 51n * USDC_UNIT))).toBe("RECREDIT_EXCEEDS_ORDER");
     expect(await refusal(vault.recredit("po_1", 0n))).toBe("INVALID_AMOUNT");
     await vault.registerOrder(order({ orderId: "po_2", amount: 100n * USDC_UNIT }));
-    vault.payout({ accountId: ADA, publicKey: ADA_KEY }, "po_2");
+    vault.payout(ADA, "po_2");
     await vault.setStatus("po_2", "refunding", {});
     expect(await refusal(vault.recredit("po_2", 100n * USDC_UNIT))).toBe("RECREDIT_EXCEEDS_UNATTRIBUTED");
   });
@@ -218,13 +248,13 @@ describe("recredit", () => {
     vault.receivePlainTransfer(50n * USDC_UNIT);
     expect(await refusal(vault.as(ADA).recredit("po_1", USDC_UNIT))).toBe("UNAUTHORIZED");
     await vault.registerOrder(order({ orderId: "po_2" }));
-    vault.payout({ accountId: ADA, publicKey: ADA_KEY }, "po_2");
+    vault.payout(ADA, "po_2");
     await vault.setStatus("po_2", "settled", {});
     expect(await refusal(vault.recredit("po_2", USDC_UNIT))).toBe("NOT_REFUNDABLE");
   });
 });
 
-describe("top-up attribution (PROPOSED in INTERFACE.md)", () => {
+describe("top-up attribution", () => {
   const BOB = "bob.testnet";
   const intents = (msg: string, amount = 10n * USDC_UNIT) =>
     vault.ftOnTransfer({ predecessor: USDC, senderId: "intents.near", amount, msg });
@@ -256,8 +286,16 @@ describe("top-up attribution (PROPOSED in INTERFACE.md)", () => {
 describe("events", () => {
   it("emits logs in the frozen wire format", async () => {
     await executedOrder();
+    vault.setAgent(ADA, AGENT, { perPayoutCap: USDC_UNIT, dailyCap: USDC_UNIT, corridors: null });
+    vault.removeAgent(ADA, AGENT);
     const parsed = vault.logs().flatMap((log) => parseVaultEvents(log) ?? []);
-    expect(parsed.map((event) => event.event)).toEqual(["deposited", "order_registered", "payout_executed"]);
+    expect(parsed.map((event) => event.event)).toEqual([
+      "deposited",
+      "order_registered",
+      "payout_executed",
+      "agent_set",
+      "agent_revoked",
+    ]);
     expect(parsed).toEqual(vault.events);
   });
 });

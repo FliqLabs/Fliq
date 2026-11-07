@@ -321,6 +321,44 @@ describe.skipIf(!databaseEnabled)("webhook dashboard against a real database", (
     }
   });
 
+  it("keeps only the most recent previous secret when rotating twice inside the window", async () => {
+    const rotate = async () =>
+      (await call("POST", `/webhook-endpoints/${endpoint.endpoint_id}/rotate-secret`, { token: alice.access })).json()
+        .secret as string;
+    const middle = await rotate();
+    const latest = await rotate();
+    sent.length = 0;
+    await call("POST", `/webhook-endpoints/${endpoint.endpoint_id}/test`, { token: alice.access });
+    await deliverDue(deps);
+    const request = sent[0] as OutboundRequest;
+    const now = Math.floor(Date.now() / 1000);
+    const verifies = (secret: string) =>
+      verifySignature({ header: request.headers["fliq-signature"], body: request.body, secret, now });
+    expect(verifies(latest)).toBe(true);
+    expect(verifies(middle)).toBe(true);
+    expect(verifies(endpoint.secret)).toBe(false);
+  });
+
+  it("counts an attempt whose secret cannot be decrypted, so it follows the retry schedule", async () => {
+    const test = (
+      await call("POST", `/webhook-endpoints/${endpoint.endpoint_id}/test`, { token: alice.access })
+    ).json();
+    sent.length = 0;
+    await deliverDue({ ...deps, config: { ...deps.config, dataKey: randomBytes(32) } });
+    expect(sent).toEqual([]);
+    const failed = await database.webhookDelivery.findUniqueOrThrow({ where: { id: test.delivery_id } });
+    expect(failed).toMatchObject({ status: "pending", attempts: 1, lastError: "internal" });
+    expect((failed.nextAttemptAt as Date).getTime() - Date.now()).toBeGreaterThan(25_000);
+    await database.webhookDelivery.update({
+      where: { id: test.delivery_id },
+      data: { nextAttemptAt: new Date(Date.now() - 1000) },
+    });
+    await deliverDue(deps);
+    expect(
+      (await database.webhookDelivery.findUniqueOrThrow({ where: { id: test.delivery_id } })).status,
+    ).toBe("delivered");
+  });
+
   it("stops deliveries to a disabled endpoint and refuses replays to it", async () => {
     const disabled = await call("PATCH", `/webhook-endpoints/${endpoint.endpoint_id}`, {
       payload: { enabled: false },

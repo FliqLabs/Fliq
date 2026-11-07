@@ -86,6 +86,65 @@ final class HTTPClientTests: XCTestCase {
         XCTAssertTrue(needsSignIn)
     }
 
+    func testPasskeyResponsesKeepTheirWebAuthnKeys() async throws {
+        let client = makeClient()
+        StubProtocol.respond { _ in (201, try fixtures.data("session.signed-in")) }
+        let credential = Data(#"{"id":"abc","rawId":"abc","type":"public-key","response":{"clientDataJSON":"e30","attestationObject":"o2M"}}"#.utf8)
+
+        _ = try await client.finishPasskey(.register, challengeId: "chl_1", credential: credential)
+
+        let request = try XCTUnwrap(StubProtocol.requests.last)
+        XCTAssertEqual(request.url?.path, "/v1/auth/passkeys/register/verify")
+        let body = try XCTUnwrap(request.httpBodyStream.map(Data.init(reading:)) ?? request.httpBody)
+        let sent = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        XCTAssertEqual(sent["challenge_id"] as? String, "chl_1")
+        let sentCredential = try XCTUnwrap(sent["credential"] as? [String: Any])
+        XCTAssertEqual(sentCredential["rawId"] as? String, "abc")
+        XCTAssertNotNil((sentCredential["response"] as? [String: Any])?["clientDataJSON"])
+        let needsSignIn = await client.needsSignIn
+        XCTAssertFalse(needsSignIn)
+    }
+
+    func testClaimSendsTheDeviceKeyAndWaitsOutAPendingAccount() async throws {
+        var client = makeClient()
+        client.claimRetryDelay = .zero
+        StubProtocol.respond { _ in
+            StubProtocol.requests.count < 3
+                ? (202, Data(#"{"status":"pending","near_account":"frank.fliq.testnet"}"#.utf8))
+                : (201, try fixtures.data("user.new"))
+        }
+
+        _ = try await client.claimName(try XCTUnwrap(FliqName("frank")), publicKey: "ed25519:11111111111111111111111111111111")
+
+        XCTAssertEqual(StubProtocol.requests.count, 3)
+        let request = try XCTUnwrap(StubProtocol.requests.last)
+        XCTAssertEqual(request.url?.path, "/v1/me/name")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Idempotency-Key"), "claim-frank")
+        let body = try XCTUnwrap(request.httpBodyStream.map(Data.init(reading:)) ?? request.httpBody)
+        let sent = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: String])
+        XCTAssertEqual(sent, ["name": "frank", "public_key": "ed25519:11111111111111111111111111111111"])
+    }
+
+    func testClaimGivesUpWhenTheAccountStaysPending() async throws {
+        var client = makeClient()
+        client.claimRetryDelay = .zero
+        StubProtocol.respond { _ in (202, Data(#"{"status":"pending","near_account":"frank.fliq.testnet"}"#.utf8)) }
+
+        do {
+            _ = try await client.claimName(try XCTUnwrap(FliqName("frank")), publicKey: "ed25519:11111111111111111111111111111111")
+            XCTFail("a claim that never finishes must not succeed")
+        } catch {
+            XCTAssertEqual(error as? APIError, .unexpected(status: 202))
+        }
+        XCTAssertEqual(StubProtocol.requests.count, HTTPClient.claimAttempts)
+    }
+
+    func testBase64URLRoundTrips() {
+        let bytes = Data([0xfb, 0xff, 0x00, 0x10])
+        XCTAssertEqual(bytes.base64URL, "-_8AEA")
+        XCTAssertEqual(Data(base64URL: "-_8AEA"), bytes)
+    }
+
     func testSignInLinksAreReadFromAnyForm() {
         XCTAssertEqual(SignInFlow.token(in: "https://fliq.cash/auth/verify?token=el_abc-123"), "el_abc-123")
         XCTAssertEqual(SignInFlow.token(in: "fliq://auth/verify?token=el_abc"), "el_abc")
@@ -103,6 +162,20 @@ final class HTTPClientTests: XCTestCase {
             sessions: sessions,
             session: URLSession(configuration: configuration)
         )
+    }
+}
+
+private extension Data {
+    init(reading stream: InputStream) {
+        self.init()
+        stream.open()
+        defer { stream.close() }
+        var buffer = [UInt8](repeating: 0, count: 4096)
+        while stream.hasBytesAvailable {
+            let count = stream.read(&buffer, maxLength: buffer.count)
+            guard count > 0 else { break }
+            append(buffer, count: count)
+        }
     }
 }
 

@@ -29,11 +29,15 @@ describe("webhook destinations", () => {
     "::ffff:10.0.0.1",
     "::ffff:127.0.0.1",
     "64:ff9b::a00:1",
+    "2002:a00:1::1",
+    "2002:7f00:1::",
+    "2001:0:4136:e378:8000:63bf:3fff:fdd2",
+    "2001::1",
   ])("refuses %s", (address) => {
     expect(isPublicAddress(address)).toBe(false);
   });
 
-  it.each(["93.184.215.14", "1.1.1.1", "2606:4700:4700::1111"])("accepts %s", (address) => {
+  it.each(["93.184.215.14", "1.1.1.1", "2606:4700:4700::1111", "2001:4860:4860::8888"])("accepts %s", (address) => {
     expect(isPublicAddress(address)).toBe(true);
   });
 

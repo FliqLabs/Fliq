@@ -7,7 +7,6 @@ Scope: `lib.rs`, `orders.rs`, `types.rs`, `receipts.rs`, `integration.rs`, `poli
 | Method | Who can call | State changed | Failure and balance effect |
 | --- | --- | --- | --- |
 | `new` | Vault account only during initialization | Writes owner, registration account, token contract, empty order/receipt maps | Calls from another predecessor and repeated initialization fail before state is changed. |
-| `migrate` | Vault account only during an upgrade | Converts the supported pre-policy state layout without changing existing ledger, order, receipt or configuration data; initializes empty policy maps | Wrong predecessor and unsupported or already-migrated state fail. |
 | `get_config` | Anyone | None | Read-only. |
 | `set_agent` | Policy owner with a deposit covering storage | Creates or updates the (owner, agent account) policy, preserving same-day spend, and refunds unused deposit | Invalid fields, self-authorization and too small a deposit fail without changing the policy. |
 | `remove_agent(agent_id)` | Policy owner with exactly 1 yoctoNEAR | Marks the caller's policy for that agent revoked | A missing policy fails without state changes. Another owner's policy for the same agent is untouched. |
@@ -18,23 +17,24 @@ Scope: `lib.rs`, `orders.rs`, `types.rs`, `receipts.rs`, `integration.rs`, `poli
 | `recredit` | Registration account | Validates `Dispatched`, `refunding`, and write-once `refund_tx`, then queries `ft_balance_of` on the approved USDC contract before guarded liability recredit; success changes status to `refunded` | Unknown, non-Dispatched, missing/reused evidence, oversized, under-backed, failed balance query, and repeated calls do not credit. |
 | `set_payout_timeout` | Owner only | Changes the U64-encoded stuck-payout timeout | Non-owner and zero timeout fail without state changes. |
 | `resolve_stuck_payout` | Owner only after timeout | Commits a confirmed transfer or returns the order to retryable `Registered` while preserving its reservation | The owner must verify the USDC transfer on chain first; reporting false after a real transfer could permit a retry. Non-owner, early, non-Executing, and repeated calls fail. |
-| `get_receipt` | Anyone | None | Unknown order fails clearly; otherwise read-only and exposes the order plus separate verified/reported tracks. |
+| `get_receipt` | Anyone | None | Unknown order returns JSON `null`; otherwise read-only and exposes flat backend fields plus separate verified/reported tracks. |
 | `get_balance` | Anyone | None | Delegates to the real `Vault` ledger through the integration layer; read-only. |
 | `credit_for_testing` | Only compiled with `testing` and debug assertions | Adds test funds through the real `Vault` ledger | Test-only funding; absent from release builds and not a production deposit path. |
-| `on_payout_complete` | Contract account only, with exactly one promise result | Commits on success; on failure returns the order to `Registered` and keeps its reservation for retry | Outsider, malformed, or stale callbacks change nothing. Any callback panic rolls back its whole state change. |
+| `on_payout_complete` | Contract account only, with exactly one promise result | Commits on success; on failure releases the reservation and enters terminal `TransferFailed` | Outsider, malformed, or stale callbacks change nothing. Any callback panic rolls back its whole state change. |
 | `transfer` | Registered account with exactly 1 yoctoNEAR | Moves the caller's own available balance to another registered vault user and emits `transferred` | Agents have no path to the owner's balance. Zero, same-account, unregistered, insufficient and overflow cases change nothing. |
 
 ## Findings and fixes
 
 - Added an exact one-promise-result guard to the private payout callback. This prevents interpreting an unexpected promise result set as the USDC transfer result.
 - Confirmed that state changes happen before the transfer promise and that callback success/failure paths are single-use through transfer-state and reservation checks.
+- Changed failed transfer and stuck-payout recovery to release Dapper's reservation and enter terminal `TransferFailed`; this is PROPOSED pending backend confirmation.
 - Confirmed that backend status updates cannot move funds or alter the verified transfer state.
 - Confirmed that the testing credit method is gated by both the `testing` feature and debug assertions.
 - Fixed initializer takeover risk by marking `Contract::new` private; deployment now requires a one-time `new` call made by the vault account itself.
 - Restored Dapper's real vault entrypoints and routed balance, deposit, reservation, commit, and release operations through `vault.rs`.
 - Added payout amount/destination validation, timeout-based stuck-payout recovery, U64-safe public timestamps, and proposed branching backend status transitions.
 - Replaced the temporary policy stand-in with (owner, agent account) policies: caps, corridors, cooldown, expiry, revocation and pending-spend accounting. The owner pays policy storage. Payouts started before the upgrade settle without a pending row.
-- Added a one-time vault-account-only migration from the initialized pre-policy state layout so an upgrade preserves existing balances and payout data.
+- Removed the unused upgrade migration path for the fresh testnet deployment.
 - Added the terminal `Released` state and `release_order`; completed orders retain their order IDs and receipts, and `get_storage_usage` supports measurement without mutation.
 - Standardized contract-owned panic strings as `fliq_vault: CODE`; Dapper enum failures are mapped at `integration.rs` and documented for conversion.
 

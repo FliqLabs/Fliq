@@ -8,6 +8,9 @@ struct HTTPClient: FliqAPI {
     let apiKey: String
     var sessions = SessionVault()
     var session: URLSession = .shared
+    /// How long to wait before asking again while the server is still creating the NEAR account.
+    var claimRetryDelay: Duration = .seconds(2)
+    static let claimAttempts = 5
 
     func health() async throws -> Health {
         try await send("GET", "health")
@@ -41,6 +44,18 @@ struct HTTPClient: FliqAPI {
         get async { await !sessions.isSignedIn }
     }
 
+    func passkeyOptions(_ purpose: PasskeyPurpose) async throws -> PasskeyOptions {
+        try await send("POST", "auth/passkeys/\(purpose.rawValue)/options")
+    }
+
+    func finishPasskey(_ purpose: PasskeyPurpose, challengeId: String, credential: Data) async throws -> User {
+        let response = try JSONSerialization.jsonObject(with: credential)
+        let body = try JSONSerialization.data(withJSONObject: ["challenge_id": challengeId, "credential": response])
+        let signedIn: Session = try await send("POST", "auth/passkeys/\(purpose.rawValue)/verify", body: PreEncoded(data: body))
+        await sessions.store(signedIn)
+        return signedIn.user
+    }
+
     func sendEmailLink(to email: String) async throws -> EmailLinkSent {
         try await send("POST", "auth/email-links", body: ["email": email])
     }
@@ -64,8 +79,16 @@ struct HTTPClient: FliqAPI {
         try await send("GET", "names/\(name.value)")
     }
 
-    func claimName(_ name: FliqName) async throws -> User {
-        try await send("POST", "me/name", body: ["name": name.value], headers: ["Idempotency-Key": "claim-\(name.value)"])
+    /// A 202 means the account is still being created; the same request with the same key finishes it.
+    func claimName(_ name: FliqName, publicKey: String) async throws -> User {
+        let body = ClaimNameRequest(name: name.value, publicKey: publicKey)
+        let headers = ["Idempotency-Key": "claim-\(name.value)"]
+        for attempt in 1...Self.claimAttempts {
+            let (data, status) = try await exchange("POST", "me/name", body: body, headers: headers)
+            guard status == 202 else { return try decode(data, status: status) }
+            if attempt < Self.claimAttempts { try await Task.sleep(for: claimRetryDelay) }
+        }
+        throw APIError.unexpected(status: 202)
     }
 
     func updateProfile(displayName: String) async throws -> User {
@@ -100,6 +123,10 @@ struct HTTPClient: FliqAPI {
         headers: [String: String] = [:]
     ) async throws -> Response {
         let (data, status) = try await exchange(method, path, body: body, headers: headers)
+        return try decode(data, status: status)
+    }
+
+    private func decode<Response: Decodable>(_ data: Data, status: Int) throws -> Response {
         let decoder = FliqJSON.decoder()
 
         guard (200..<300).contains(status) else {
@@ -153,12 +180,24 @@ struct HTTPClient: FliqAPI {
         headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
         if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = try FliqJSON.encoder().encode(body)
+            request.httpBody = try (body as? PreEncoded)?.data ?? FliqJSON.encoder().encode(body)
         }
         let (data, response) = try await session.data(for: request)
         return (data, (response as? HTTPURLResponse)?.statusCode ?? 0)
     }
 }
 
+private struct ClaimNameRequest: Encodable {
+    let name: String
+    let publicKey: String
+}
+
 /// The body of a 204.
 struct Empty: Decodable, Sendable {}
+
+/// A body that is already JSON. WebAuthn's camelCase keys (rawId, clientDataJSON) must not be snake_cased.
+private struct PreEncoded: Encodable {
+    let data: Data
+
+    func encode(to encoder: Encoder) throws {}
+}

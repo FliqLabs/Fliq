@@ -51,6 +51,15 @@ struct FixtureClient: FliqAPI {
         get async { false }
     }
 
+    func passkeyOptions(_ purpose: PasskeyPurpose) async throws -> PasskeyOptions {
+        try load("passkey.options")
+    }
+
+    func finishPasskey(_ purpose: PasskeyPurpose, challengeId: String, credential: Data) async throws -> User {
+        let session: Session = try load("session.signed-in")
+        return session.user
+    }
+
     func sendEmailLink(to email: String) async throws -> EmailLinkSent {
         try load("email-link.sent")
     }
@@ -71,7 +80,7 @@ struct FixtureClient: FliqAPI {
         return NameAvailability(name: name.value, available: free, reason: free ? nil : "taken")
     }
 
-    func claimName(_ name: FliqName) async throws -> User {
+    func claimName(_ name: FliqName, publicKey: String) async throws -> User {
         let user: User = try load("user.new")
         return user.named(name.account)
     }

@@ -1,0 +1,13 @@
+{
+  "token": "usdc",
+  "currency": "ngn",
+  "amount": "100.00",
+  "best": "paycrest",
+  "fetched_at": "2026-10-29T13:02:13Z",
+  "providers": [
+    { "provider": "paycrest", "status": "live", "rate": 1376.32, "rate_before_fees": 1383.2, "fee": 688, "fee_percent": 0.5, "receive": 137632, "eta_seconds": 21, "on_time_percent": 96, "updated_at": "2026-10-29T13:02:13Z", "not_offered_reason": null },
+    { "provider": "busha", "status": "live", "rate": 1370.08, "rate_before_fees": 1371.16, "fee": 107.5, "fee_percent": 0.08, "receive": 137008, "eta_seconds": 40, "on_time_percent": 99, "updated_at": "2026-10-29T13:02:13Z", "not_offered_reason": null },
+    { "provider": "fonbnk", "status": "stale", "rate": 1358.4, "rate_before_fees": 1361.7, "fee": 330, "fee_percent": 0.24, "receive": 135840, "eta_seconds": 60, "on_time_percent": 92, "updated_at": "2026-10-29T12:58:00Z", "not_offered_reason": "timeout" },
+    { "provider": "bitnob", "status": "paused", "rate": null, "rate_before_fees": null, "fee": null, "fee_percent": null, "receive": null, "eta_seconds": null, "on_time_percent": null, "updated_at": null, "not_offered_reason": "breaker_open" }
+  ]
+}

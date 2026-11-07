@@ -48,6 +48,12 @@ pub enum FliqEvent {
         agent_id: AccountId,
         public_key: String,
     },
+    AgentSpend {
+        owner: AccountId,
+        agent_id: AccountId,
+        order_id: String,
+        amount: U128,
+    },
 }
 
 impl FliqEvent {
@@ -151,6 +157,20 @@ impl FliqEvent {
                     "owner": owner,
                     "agent_id": agent_id,
                     "public_key": public_key,
+                }),
+            ),
+            Self::AgentSpend {
+                owner,
+                agent_id,
+                order_id,
+                amount,
+            } => (
+                "agent_spend",
+                near_sdk::serde_json::json!({
+                    "owner": owner,
+                    "agent_id": agent_id,
+                    "order_id": order_id,
+                    "amount": amount,
                 }),
             ),
         };

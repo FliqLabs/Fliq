@@ -26,6 +26,8 @@ tags:
     description: Public health of services and providers
   - name: vault
     description: The user's vault balance
+  - name: deposits
+    description: Topping up the vault from other chains through NEAR Intents
   - name: people
     description: Other fliq users, for paying by name
   - name: recipients
@@ -60,6 +62,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/Token"
         - $ref: "#/components/parameters/Currency"
+      description: Prices a 100 token payout through every eligible provider and returns the best route's rate. The official, p2p and change_24h reference fields are present only when a market source is connected.
       responses:
         "200":
           description: Best after-fee rate right now, cached for 10 seconds
@@ -67,6 +70,60 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Rate"
+        "400":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+  /rates/{token}/{currency}/providers:
+    get:
+      operationId: getRateBoard
+      summary: Every provider's rate, fee and status for a corridor
+      tags: [rates]
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/Token"
+        - $ref: "#/components/parameters/Currency"
+      description: >-
+        Prices the same 100 token payout as GET /rates/{token}/{currency} through every provider, best first.
+        A stale provider did not answer this time and shows its last sampled rate; a paused one is held back by its
+        circuit breaker.
+      responses:
+        "200":
+          description: All providers for the corridor, cached for 10 seconds
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RateBoard"
+        "400":
+          $ref: "#/components/responses/Error"
+  /rates/{token}/{currency}/history:
+    get:
+      operationId: getRateHistory
+      summary: Best and worst after-fee rates over time, for the rate chart
+      tags: [rates]
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/Token"
+        - $ref: "#/components/parameters/Currency"
+        - name: range
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [24h, 7d, 30d]
+            default: 24h
+      description: >-
+        Built from a sample of every provider taken once a minute and kept 90 days. Points are 15 minutes apart for
+        24h, an hour for 7d and 4 hours for 30d. A period with no sample has no point.
+      responses:
+        "200":
+          description: Points oldest first, cached for 60 seconds
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RateHistory"
+        "400":
+          $ref: "#/components/responses/Error"
   /quote:
     post:
       operationId: createQuote
@@ -248,6 +305,101 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/VaultBalance"
+        "404":
+          $ref: "#/components/responses/Error"
+  /deposits/sources:
+    get:
+      operationId: listDepositSources
+      summary: The tokens and chains the vault can be topped up from
+      description: >-
+        Every source the app shows, in display order. A source that is not available right now is still listed,
+        with available false. A direct source is the user's own NEAR account: there is nothing to reserve,
+        so it carries the address and POST /deposits refuses it.
+      tags: [deposits]
+      responses:
+        "200":
+          description: Sources in display order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DepositSourceList"
+        "404":
+          $ref: "#/components/responses/Error"
+  /deposits/estimate:
+    get:
+      operationId: estimateDeposit
+      summary: What a top-up of about this amount lands as, and how long it takes
+      description: Nothing is reserved. Use it while the user types the amount.
+      tags: [deposits]
+      parameters:
+        - $ref: "#/components/parameters/DepositToken"
+        - $ref: "#/components/parameters/DepositChain"
+        - name: amount
+          in: query
+          required: true
+          description: Amount of the source token, as a decimal string
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The estimate
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DepositEstimate"
+        "400":
+          $ref: "#/components/responses/Error"
+        "503":
+          $ref: "#/components/responses/Error"
+  /deposits:
+    post:
+      operationId: createDeposit
+      summary: Reserve a deposit address for one top-up
+      description: >-
+        The address takes any amount from minimum up and lands it in the vault as USDC. It is watched until
+        reserved_until. A deposit below minimum, or one that cannot be completed, is refunded to the user's
+        NEAR account, so nothing sent is lost.
+      tags: [deposits]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DepositRequest"
+      responses:
+        "201":
+          description: Address reserved, waiting for the transfer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VaultDeposit"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "503":
+          $ref: "#/components/responses/Error"
+  /deposits/{depositId}:
+    get:
+      operationId: getDeposit
+      summary: Where a top-up is
+      description: Poll every few seconds while the app shows it. Each step carries the time it was seen.
+      tags: [deposits]
+      parameters:
+        - name: depositId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The top-up
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VaultDeposit"
         "404":
           $ref: "#/components/responses/Error"
   /people/recent:
@@ -549,6 +701,65 @@ paths:
                 $ref: "#/components/schemas/Payout"
         "404":
           $ref: "#/components/responses/Error"
+  /payouts/{payoutId}/retry-quote:
+    post:
+      operationId: quoteRetry
+      summary: Quote the same payout again without the provider that could not pay it
+      description: >-
+        For a refunded, failed or expired payout. Same amount, currency and source; the provider that failed is
+        left out. Pay it with POST /payouts, passing this quote_id and retry_of.
+      tags: [payouts]
+      parameters:
+        - name: payoutId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: A fresh quote. routes[0] is the next best provider.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Quote"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+  /payouts/{payoutId}/claims:
+    post:
+      operationId: openPayoutClaim
+      summary: Tell support a settled payout has not reached the account
+      description: >-
+        Opens one claim per payout; asking again returns the open claim. Support chases the bank with the
+        bank reference. A credit that never lands is reversed by the bank rail and refunded.
+      tags: [payouts]
+      parameters:
+        - name: payoutId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "201":
+          description: Claim opened
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PayoutClaim"
+        "200":
+          description: A claim was already open; this is it
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PayoutClaim"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
   /auth/passkeys/register/options:
     post:
       operationId: startPasskeyRegistration
@@ -760,7 +971,83 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/User"
+        "202":
+          description: The NEAR account is still being created. Send the same request again with the same Idempotency-Key; it finishes the job without creating a second account.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClaimPending"
+        "400":
+          $ref: "#/components/responses/Error"
         "409":
+          $ref: "#/components/responses/Error"
+        "503":
+          description: The NEAR account could not be created right now (code chain_unavailable); retry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /relays:
+    post:
+      operationId: relay
+      summary: Relay a payout or deposit the user signed on their device, with fliq paying the gas
+      description: The app signs a NEP-366 delegate action with the device key and the API forwards it to the relayer unchanged. Allowed calls are the vault's payout and release_order, and ft_transfer_call of USDC into the vault. A repeat of the same delegate returns the same body and is never paid for twice.
+      tags: [payouts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RelayRequest"
+      responses:
+        "200":
+          description: The transaction ran. `failed` means a call inside it failed; `failures` says why.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RelayResult"
+        "202":
+          description: The outcome is not known yet. Poll GET /relays/{delegateHash}.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RelayResult"
+        "400":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/Error"
+        "502":
+          description: The chain refused the transaction outright (code rejected_by_chain); nothing ran and retrying is safe
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/Error"
+  /relays/{delegateHash}:
+    get:
+      operationId: getRelay
+      summary: The result of a relayed delegate, refreshed from the chain while it is pending
+      tags: [payouts]
+      parameters:
+        - name: delegateHash
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^[0-9a-f]{64}$"
+      responses:
+        "200":
+          description: The stored result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RelayResult"
+        "404":
           $ref: "#/components/responses/Error"
   /workspaces:
     post:
@@ -1176,6 +1463,18 @@ components:
       required: true
       schema:
         type: string
+    DepositToken:
+      name: token
+      in: query
+      required: true
+      schema:
+        $ref: "#/components/schemas/DepositTokenId"
+    DepositChain:
+      name: chain
+      in: query
+      required: true
+      schema:
+        $ref: "#/components/schemas/DepositChainId"
     Token:
       name: token
       in: path
@@ -1213,6 +1512,96 @@ components:
     ProviderStatus:
       type: string
       enum: [live, stale, paused]
+    ProviderRate:
+      type: object
+      required: [provider, status, rate, rate_before_fees, fee, fee_percent, receive, eta_seconds, on_time_percent, updated_at, not_offered_reason]
+      properties:
+        provider:
+          $ref: "#/components/schemas/ProviderId"
+        status:
+          $ref: "#/components/schemas/ProviderStatus"
+        rate:
+          type: [number, "null"]
+          description: Local currency per 1 token after every fee. For a stale provider, its last sampled rate.
+        rate_before_fees:
+          type: [number, "null"]
+        fee:
+          type: [number, "null"]
+          description: Every fee on the reference amount, in local currency
+        fee_percent:
+          type: [number, "null"]
+          description: fee as a share of the amount before fees, in percent
+        receive:
+          type: [number, "null"]
+          description: Local currency the reference amount lands as, whole units
+        eta_seconds:
+          type: [integer, "null"]
+        on_time_percent:
+          type: [integer, "null"]
+        updated_at:
+          type: [string, "null"]
+          format: date-time
+          description: When this provider's figures were priced. Null for a paused provider never sampled.
+        not_offered_reason:
+          type: [string, "null"]
+          enum: [breaker_open, half_open_over_limit, timeout, error, null]
+    RateBoard:
+      type: object
+      required: [token, currency, amount, best, fetched_at, providers]
+      properties:
+        token:
+          type: string
+        currency:
+          type: string
+        amount:
+          type: string
+          description: The reference amount priced, in the token
+        best:
+          oneOf:
+            - $ref: "#/components/schemas/ProviderId"
+            - type: "null"
+        fetched_at:
+          type: string
+          format: date-time
+        providers:
+          type: array
+          description: Live providers best first, then stale, then paused
+          items:
+            $ref: "#/components/schemas/ProviderRate"
+    RatePoint:
+      type: object
+      required: [at, best, worst, p2p]
+      properties:
+        at:
+          type: string
+          format: date-time
+          description: Start of the period
+        best:
+          type: number
+          description: The best provider's after-fee rate, averaged over the period
+        worst:
+          type: number
+          description: The worst quoting provider's after-fee rate, averaged over the period
+        p2p:
+          type: [number, "null"]
+          description: Present only when a market source is connected
+    RateHistory:
+      type: object
+      required: [token, currency, range, interval_seconds, points]
+      properties:
+        token:
+          type: string
+        currency:
+          type: string
+        range:
+          type: string
+          enum: [24h, 7d, 30d]
+        interval_seconds:
+          type: integer
+        points:
+          type: array
+          items:
+            $ref: "#/components/schemas/RatePoint"
     ReferenceRate:
       type: object
       required: [source, rate]
@@ -1232,9 +1621,6 @@ components:
           provider,
           providers_quoting,
           spread,
-          official,
-          p2p,
-          change_24h,
           fetched_at,
         ]
       properties:
@@ -1426,6 +1812,9 @@ components:
         account_name:
           type: string
           description: Only needed when the bank cannot return a name for the account.
+        retry_of:
+          type: string
+          description: The refunded, failed or expired payout this one tries again, quoted with POST /payouts/{payoutId}/retry-quote.
     PayoutState:
       type: string
       enum:
@@ -1515,6 +1904,82 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/StateChange"
+        failure:
+          oneOf:
+            - $ref: "#/components/schemas/PayoutFailure"
+            - type: "null"
+        refund:
+          oneOf:
+            - $ref: "#/components/schemas/PayoutRefund"
+            - type: "null"
+        settlement_name:
+          type: [string, "null"]
+          description: The sender name the recipient's bank alert shows. Null until the provider's is confirmed.
+        retry_of:
+          type: [string, "null"]
+          description: The payout this one tried again
+        retried_by:
+          type: [string, "null"]
+          description: The latest payout that tried this one again
+        claim:
+          oneOf:
+            - $ref: "#/components/schemas/PayoutClaim"
+            - type: "null"
+    PayoutFailure:
+      type: object
+      required: [stage, code, at]
+      description: Why a payout did not settle. Providers do not say why a bank credit failed, so stage is where it stopped.
+      properties:
+        stage:
+          type: string
+          enum: [deposit, routing, provider, bank]
+          description: >-
+            deposit: nothing was sent in time. routing: NEAR Intents could not deliver to the provider.
+            provider: the provider did not start the payout. bank: the provider could not credit the account.
+        code:
+          type: [string, "null"]
+          description: The provider's failure code, when it gave one
+        at:
+          type: string
+          format: date-time
+    PayoutRefund:
+      type: object
+      required: [amount, to, at, tx]
+      properties:
+        amount:
+          type: string
+          description: USDC returned, as a decimal string
+        to:
+          type: string
+          enum: [vault, sender]
+          description: vault when the payout was paid from the vault, otherwise the refund address
+        at:
+          type: string
+          format: date-time
+        tx:
+          type: [string, "null"]
+          description: The refund transaction, when the provider reported one
+    PayoutClaim:
+      type: object
+      required: [claim_id, payout_id, state, bank_reference, opened_at, reversal_after]
+      properties:
+        claim_id:
+          type: string
+        payout_id:
+          type: string
+        state:
+          type: string
+          enum: [open, resolved]
+        bank_reference:
+          type: [string, "null"]
+          description: What the recipient gives their bank, for NGN the NIP session id
+        opened_at:
+          type: string
+          format: date-time
+        reversal_after:
+          type: string
+          format: date-time
+          description: When a credit that never landed is due to be reversed by the bank rail, 24 hours after settlement
     Refusal:
       type: object
       required: [error, attempted, per_payout_cap, daily_cap, used_today]
@@ -1645,6 +2110,48 @@ components:
         name:
           type: string
           description: The label before .fliq.near
+        public_key:
+          type: string
+          pattern: "^ed25519:[1-9A-HJ-NP-Za-km-z]{43,44}$"
+          description: The device's NEAR key, generated and kept on the phone. It becomes the only full-access key of the new account, so only that device can move the user's money. A passkey cannot be this key, because passkeys are P-256 and NEAR keys are ed25519.
+    ClaimPending:
+      type: object
+      required: [status, near_account]
+      properties:
+        status:
+          type: string
+          enum: [pending]
+        near_account:
+          type: string
+    RelayRequest:
+      type: object
+      required: [signed_delegate]
+      additionalProperties: false
+      properties:
+        signed_delegate:
+          type: string
+          format: byte
+          maxLength: 8192
+          description: Base64 Borsh SignedDelegate, signed by the device key over sha256(NEP-461 prefix and borsh(DelegateAction))
+    RelayResult:
+      type: object
+      required: [status, delegate_hash, sender_id, receiver_id]
+      properties:
+        status:
+          type: string
+          enum: [succeeded, failed, pending]
+        tx_hash:
+          type: [string, "null"]
+        delegate_hash:
+          type: string
+        sender_id:
+          type: string
+        receiver_id:
+          type: string
+        failures:
+          type: array
+          items:
+            type: string
     ProfileUpdate:
       type: object
       properties:
@@ -2013,6 +2520,175 @@ components:
         in_sync:
           type: boolean
           description: False when the ledger mirror disagrees with the chain
+    DepositTokenId:
+      type: string
+      enum: [usdc, usdt, btc]
+    DepositChainId:
+      type: string
+      enum: [base, solana, tron, arbitrum, ethereum, polygon, bitcoin, near]
+    DepositSource:
+      type: object
+      required: [token, chain, group, minimum, eta_seconds, direct, available, address]
+      properties:
+        token:
+          $ref: "#/components/schemas/DepositTokenId"
+        chain:
+          $ref: "#/components/schemas/DepositChainId"
+        group:
+          type: string
+          enum: [dollars, bitcoin, near]
+          description: The heading the app lists the source under
+        minimum:
+          type: string
+          description: Smallest top-up, in the source token
+        eta_seconds:
+          type: integer
+          description: Typical time from sending to landing in the vault
+        direct:
+          type: boolean
+          description: True for the user's own NEAR account, which needs no address reserved
+        available:
+          type: boolean
+          description: False when NEAR Intents does not offer this source right now
+        address:
+          type: [string, "null"]
+          description: For a direct source, the account to send to. Null for the others; reserve one with POST /deposits.
+    DepositSourceList:
+      type: object
+      required: [sources]
+      properties:
+        sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/DepositSource"
+    DepositEstimate:
+      type: object
+      required: [token, chain, amount, minimum, fee, lands, eta_seconds]
+      properties:
+        token:
+          $ref: "#/components/schemas/DepositTokenId"
+        chain:
+          $ref: "#/components/schemas/DepositChainId"
+        amount:
+          type: string
+          description: What the user said they will send, in the source token
+        minimum:
+          type: string
+          description: Smallest amount the address will take, in the source token
+        fee:
+          type: string
+          description: NEAR Intents and network fees, in US dollars
+        lands:
+          type: string
+          description: USDC the vault receives for amount
+        eta_seconds:
+          type: integer
+    DepositRequest:
+      type: object
+      additionalProperties: false
+      required: [token, chain, amount]
+      properties:
+        token:
+          $ref: "#/components/schemas/DepositTokenId"
+        chain:
+          $ref: "#/components/schemas/DepositChainId"
+        amount:
+          type: string
+          description: About how much the user will send, in the source token. Any amount from minimum up is taken.
+    DepositState:
+      type: string
+      description: >-
+        waiting: nothing has arrived. seen: the transfer is on the source chain. underpaid: less than minimum
+        arrived; more can be sent until reserved_until, after that it is refunded. bridging: moving to NEAR.
+        landed: in the vault. refunded: returned to the user's NEAR account. expired: nothing arrived in time.
+        failed: NEAR Intents could not complete it and support has been told.
+      enum: [waiting, seen, underpaid, bridging, landed, refunded, expired, failed]
+    VaultDeposit:
+      type: object
+      required:
+        [
+          deposit_id,
+          state,
+          token,
+          chain,
+          address,
+          memo,
+          amount,
+          minimum,
+          fee,
+          lands,
+          eta_seconds,
+          reserved_until,
+          received,
+          landed,
+          refunded,
+          seen_at,
+          bridging_at,
+          landed_at,
+          seconds,
+          origin_tx,
+          created_at,
+        ]
+      properties:
+        deposit_id:
+          type: string
+        state:
+          $ref: "#/components/schemas/DepositState"
+        token:
+          $ref: "#/components/schemas/DepositTokenId"
+        chain:
+          $ref: "#/components/schemas/DepositChainId"
+        address:
+          type: string
+          description: Where to send, on chain only
+        memo:
+          type: [string, "null"]
+          description: Must go with the transfer when the chain needs one
+        amount:
+          type: string
+          description: What the user said they would send, in the source token
+        minimum:
+          type: string
+          description: Smallest amount the address takes, in the source token
+        fee:
+          type: string
+          description: Estimated fees for amount, in US dollars
+        lands:
+          type: string
+          description: Estimated USDC for amount. Once landed, the landed field is the real figure.
+        eta_seconds:
+          type: integer
+        reserved_until:
+          type: string
+          format: date-time
+          description: The address is watched until then
+        received:
+          type: [string, "null"]
+          description: What arrived on the source chain, in the source token
+        landed:
+          type: [string, "null"]
+          description: USDC credited to the vault
+        refunded:
+          type: [string, "null"]
+          description: What was returned to the user's NEAR account, in the source token
+        seen_at:
+          type: [string, "null"]
+          format: date-time
+        bridging_at:
+          type: [string, "null"]
+          format: date-time
+        landed_at:
+          type: [string, "null"]
+          format: date-time
+        seconds:
+          type: [integer, "null"]
+          description: From seen to landed
+        origin_tx:
+          type: [string, "null"]
+          description: The transfer's hash on the source chain
+        created_at:
+          type: string
+          format: date-time
     Person:
       type: object
       required: [near_account, display_name, photo_url, member_since]

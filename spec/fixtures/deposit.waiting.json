@@ -1,0 +1,23 @@
+{
+  "deposit_id": "dep_01jbd2m5k8w3qf7v9x2c4n6h8t",
+  "state": "waiting",
+  "token": "usdc",
+  "chain": "solana",
+  "address": "7xKqWmP3vRt8YhNcJ2uLdE5sBzA9fGkQe4oTiXwMk2r",
+  "memo": null,
+  "amount": "200.00",
+  "minimum": "196.00",
+  "fee": "0.02",
+  "lands": "199.98",
+  "eta_seconds": 35,
+  "reserved_until": "2026-10-29T08:12:00Z",
+  "received": null,
+  "landed": null,
+  "refunded": null,
+  "seen_at": null,
+  "bridging_at": null,
+  "landed_at": null,
+  "seconds": null,
+  "origin_tx": null,
+  "created_at": "2026-10-29T08:02:00Z"
+}

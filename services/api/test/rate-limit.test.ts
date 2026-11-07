@@ -74,6 +74,42 @@ describe("request pipeline", () => {
     expect(signedIn.headers["ratelimit-limit"]).toBe("300");
   });
 
+  it("keeps unproven API keys in the caller's IP bucket, so random keys cannot dodge the limit", async () => {
+    const app = appWith();
+    const statuses = [];
+    for (let i = 0; i < 61; i++) {
+      const authorization = `Bearer rt_test_${randomBytes(16).toString("hex")}`;
+      const reply = await app.inject({ method: "GET", url: "/v1/health", headers: { authorization } });
+      expect(reply.headers["ratelimit-limit"]).toBe("60");
+      statuses.push(reply.statusCode);
+    }
+    expect(statuses.slice(0, 60).every((status) => status === 200)).toBe(true);
+    expect(statuses[60]).toBe(429);
+  });
+
+  it("gives an API key its own bucket once it has authenticated", async () => {
+    const tx = {
+      apiKey: {
+        findUnique: async () => ({ id: "key_1", revokedAt: null, environment: "test", workspaceId: "ws_1", workspace: { ownerId: "usr_1" } }),
+        updateMany: async () => ({ count: 1 }),
+      },
+      workspace: { findFirst: async () => ({ id: "ws_1" }) },
+    };
+    const app = buildApp({
+      config: { ...config, keyEnvironment: "test" },
+      unit: (async (work: (db: typeof tx) => unknown) => work(tx)) as never,
+      limiter: new MemoryLimiter(),
+      handlers: { listPayouts: ok },
+    });
+    const headers = { authorization: `Bearer rt_test_${randomBytes(16).toString("hex")}` };
+    const first = await app.inject({ method: "GET", url: "/v1/payouts", headers });
+    expect(first.statusCode).toBe(200);
+    expect(first.headers["ratelimit-limit"]).toBe("60");
+    const second = await app.inject({ method: "GET", url: "/v1/payouts", headers });
+    expect(second.statusCode).toBe(200);
+    expect(second.headers["ratelimit-limit"]).toBe("300");
+  });
+
   it("fails open when the limiter is down", async () => {
     const broken = { take: async () => Promise.reject(new Error("redis down")) };
     const app = buildApp({ config, unit: idle as never, limiter: broken, handlers: { getHealth: ok } });

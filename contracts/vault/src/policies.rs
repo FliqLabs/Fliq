@@ -9,6 +9,8 @@ use near_sdk::{AccountId, NearToken, Promise, PublicKey, env, require};
 pub const DAY_NS: u64 = 24 * 60 * 60 * 1_000_000_000;
 pub const MAX_POLICY_CORRIDORS: usize = 16;
 
+// OPEN: the contract cannot see which function-call key signed a transaction. The
+// enforceable identity is the agent's NEAR account in the predecessor field.
 /// A policy belongs to one owner and one agent account. The agent calls from its own
 /// account: a relayed NEP-366 call reports the relayer's key as the signer, so the vault
 /// cannot tell an owner's keys apart and never hands an agent a key on the owner's account.
@@ -158,6 +160,13 @@ pub fn authorize_payout(
         };
         validate_spend(&mut policy, amount, corridor);
         contract.agent_policies.insert(&id, &policy);
+        FliqEvent::AgentSpend {
+            owner: payer.clone(),
+            agent_id: caller.clone(),
+            order_id: order_id.to_owned(),
+            amount: U128(amount),
+        }
+        .emit();
         Some(id)
     };
     contract.pending_policy_spends.insert(
@@ -170,11 +179,8 @@ pub fn authorize_payout(
     );
 }
 
-/// A payout that started before this upgrade has no pending row. It never counted
-/// against a policy, so there is nothing to give back. Only the old marker is cleared.
 pub fn release_pending(contract: &mut Contract, order_id: &str) {
     let Some(pending) = contract.pending_policy_spends.remove(&order_id.to_owned()) else {
-        clear_legacy_pending(order_id);
         return;
     };
     let Some(id) = pending.policy_id else {
@@ -193,22 +199,11 @@ pub fn release_pending(contract: &mut Contract, order_id: &str) {
 }
 
 pub fn settle_pending(contract: &mut Contract, order_id: &str) {
-    if contract
-        .pending_policy_spends
-        .remove(&order_id.to_owned())
-        .is_none()
-    {
-        clear_legacy_pending(order_id);
-    }
+    contract.pending_policy_spends.remove(&order_id.to_owned());
 }
 
 pub(crate) fn day_index(timestamp: u64) -> u64 {
     timestamp / DAY_NS
-}
-
-/// The marker the payer-only placeholder wrote before agent policies existed.
-fn clear_legacy_pending(order_id: &str) {
-    env::storage_remove(format!("fliq:temp:pending:{order_id}").as_bytes());
 }
 
 fn charge_storage(owner: &AccountId, storage_before: u64, attached: NearToken) {
@@ -218,7 +213,7 @@ fn charge_storage(owner: &AccountId, storage_before: u64, attached: NearToken) {
     };
     require!(attached >= cost, errors::STORAGE_DEPOSIT_REQUIRED);
     let refund = attached.saturating_sub(cost);
-    if refund > NearToken::from_yoctonear(1) {
+    if !refund.is_zero() {
         Promise::new(owner.clone()).transfer(refund).detach();
     }
 }

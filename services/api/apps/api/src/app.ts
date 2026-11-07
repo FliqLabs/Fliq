@@ -8,7 +8,7 @@ import { ApiError, forbidden, unauthorized } from "./errors.js";
 import type { Reply } from "./idempotency.js";
 import { authenticateKey, keyEnvironmentOf } from "./keys.js";
 import { loadSpec, operations } from "./openapi.js";
-import { rateLimitHook, type Limiter } from "./rate-limit.js";
+import { ProvenKeys, rateLimitHook, type Limiter } from "./rate-limit.js";
 import type { UsageOutcome } from "./usage.js";
 import type { InboundWebhook } from "../../../packages/providers/types.js";
 
@@ -71,7 +71,8 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     ajv: { customOptions: { removeAdditional: false, coerceTypes: false, allErrors: false } },
   });
 
-  if (deps.limiter) app.addHook("onRequest", rateLimitHook(deps.limiter, deps.config.accessSecret));
+  const provenKeys = new ProvenKeys();
+  if (deps.limiter) app.addHook("onRequest", rateLimitHook(deps.limiter, deps.config.accessSecret, provenKeys));
 
   app.addHook("onSend", async (request, reply) => {
     reply.header("x-trace-id", request.id);
@@ -114,6 +115,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
       if (!KEY_OPERATIONS.has(operationId)) throw forbidden("API keys cannot call this endpoint. Sign in to the dashboard instead.");
       const key = await deps.unit((tx) => authenticateKey(tx, token, deps.config.keyEnvironment, new Date()));
       if (!key) throw unauthorized();
+      provenKeys.add(token);
       request.auth = { userId: key.ownerId, familyId: "", keyId: key.keyId };
       return;
     }

@@ -177,7 +177,7 @@ export async function signDelegate(
       actions.functionCall(
         spec.methodName ?? "payout",
         spec.args ?? PAYOUT_ARGS,
-        spec.gas ?? 30n * TGAS,
+        spec.gas ?? 80n * TGAS,
         spec.deposit ?? 0n,
       ),
       ...(spec.extraActions ?? []),
