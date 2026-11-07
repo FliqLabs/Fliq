@@ -97,14 +97,25 @@ export class MockVault implements VaultClient {
     const existing = this.#agents.get(agentId);
     if (existing && existing.owner !== owner) throw new VaultError("AGENT_TAKEN");
     this.#agents.set(agentId, { ...rule, owner });
-    this.events.push({ event: "agent_set", owner, agentId, ...rule });
+    this.events.push({
+      event: "agent_set",
+      owner,
+      publicKey: mockKeyOf(agentId, rule.publicKey),
+      agentId,
+      perPayoutCap: rule.perPayoutCap,
+      dailyCap: rule.dailyCap,
+      corridors: rule.corridors,
+      cooldownNs: 0n,
+      expiryNs: rule.expiresAtNs ?? this.#options.now() + NS_PER_DAY,
+    });
     return this.#tx();
   }
 
   removeAgent(owner: AccountId, agentId: AccountId): VaultTx {
-    if (this.#agents.get(agentId)?.owner !== owner) throw new VaultError("AGENT_NOT_FOUND");
+    const agent = this.#agents.get(agentId);
+    if (agent?.owner !== owner) throw new VaultError("AGENT_NOT_FOUND");
     this.#agents.delete(agentId);
-    this.events.push({ event: "agent_removed", owner, agentId });
+    this.events.push({ event: "agent_revoked", owner, agentId, publicKey: mockKeyOf(agentId, agent.publicKey) });
     return this.#tx();
   }
 
@@ -144,13 +155,14 @@ export class MockVault implements VaultClient {
     this.#balances.set(order.payer, { ...balance, reserved: balance.reserved - order.amount });
     this.#tokenBalance -= order.amount;
     order.state = "executed";
+    order.transferState = "dispatched";
     this.events.push({
       event: "payout_executed",
       orderId,
       payer: order.payer,
       depositAddress: order.depositAddress,
       amount: order.amount,
-      executor: predecessor,
+      publicKey: mockKeyOf(predecessor, agent?.publicKey),
     });
     return this.#tx();
   }
@@ -173,6 +185,7 @@ export class MockVault implements VaultClient {
     this.#orders.set(input.orderId, {
       ...input,
       state: "registered",
+      transferState: "registered",
       status: null,
       refs: {},
       recreditedAmount: 0n,
@@ -194,6 +207,7 @@ export class MockVault implements VaultClient {
       reserved: balance.reserved - order.amount,
     });
     order.state = "released";
+    order.transferState = "released";
     this.events.push({ event: "order_released", orderId, payer: order.payer, amount: order.amount });
     return this.#tx();
   }
@@ -283,4 +297,9 @@ function parseTopUp(msg: string): AccountId | null {
   } catch {
     return null;
   }
+}
+
+// The contract logs the signing key; the model has no keys, so it names the caller instead.
+function mockKeyOf(accountId: AccountId, publicKey: string | undefined): string {
+  return publicKey ?? `mock:${accountId}`;
 }
