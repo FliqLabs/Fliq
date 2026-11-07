@@ -48,11 +48,21 @@ type Provider = {
   note?: string;
 };
 
-type Snapshot = {
-  time: string;
-  best: number;
-  worst: number;
-  p2p: number;
+type HistoryRange = "24h" | "7d" | "30d";
+type HistoryPoint = {
+  timestamp?: string;
+  time?: string;
+  at?: string;
+  rate?: number;
+  best_rate?: number;
+  best?: number;
+};
+type RateHistory = {
+  token: string;
+  currency: string;
+  range: HistoryRange;
+  interval_seconds: number;
+  points: HistoryPoint[];
 };
 
 type Corridor = {
@@ -66,9 +76,6 @@ type Corridor = {
    These values come from the Figma design reference.
    They are NOT live provider quotes or historical data.
 ------------------------------------------------------- */
-
-/* Shown while the rate history endpoint does not exist in the API spec. */
-const RATE_HISTORY_READY = false;
 
 /* Text for values the live rate has not filled in yet. */
 const EMPTY = "-";
@@ -125,18 +132,6 @@ const MOCK_PROVIDERS: Provider[] = [
     updated: "27 Oct",
     note: "Sandbox only",
   },
-];
-
-const MOCK_SNAPSHOTS: Snapshot[] = [
-  { time: "17:00", best: 1369.4, worst: 1372.2, p2p: 1381.85 },
-  { time: "20:00", best: 1370.1, worst: 1373.1, p2p: 1381.85 },
-  { time: "23:00", best: 1371.2, worst: 1374.3, p2p: 1381.85 },
-  { time: "02:00", best: 1370.8, worst: 1374.5, p2p: 1381.85 },
-  { time: "05:00", best: 1373.1, worst: 1375.2, p2p: 1381.85 },
-  { time: "07:00", best: 1378.2, worst: 1380.1, p2p: 1381.85 },
-  { time: "10:00", best: 1375.4, worst: 1378.1, p2p: 1381.85 },
-  { time: "13:00", best: 1376.32, worst: 1379.4, p2p: 1381.85 },
-  { time: "14:00", best: 1376.32, worst: 1378.8, p2p: 1381.85 },
 ];
 
 const MOCK_CORRIDORS: Corridor[] = [
@@ -274,55 +269,48 @@ function Metric({ label, value, detail }: { label: string; value: string; detail
 }
 
 /* -------------------------------------------------------
-   CHART
-   Uses MOCK_SNAPSHOTS. There is no rate history endpoint in
-   spec/openapi.yaml yet, so the chart stays hidden behind
-   RATE_HISTORY_READY until the spec and API add one.
+   RATE HISTORY
 ------------------------------------------------------- */
 
-function RateHistoryComingSoon() {
-  return (
-    <Panel className="p-5 sm:p-7">
-      <Eyebrow>Rate history</Eyebrow>
-      <h3 className="mt-2 text-sm font-semibold text-white">Coming soon</h3>
-      <p className="mt-2 text-sm text-[#858585]">
-        A chart of the best after-fee rate over 24 hours, 7 days and 30 days will appear here once fliq
-        records rate history.
-      </p>
-    </Panel>
-  );
+function historyLabel(value: string, range: HistoryRange) {
+  return new Intl.DateTimeFormat("en-NG", {
+    timeZone: "Africa/Lagos",
+    ...(range === "24h" ? { hour: "2-digit", minute: "2-digit" } : { month: "short", day: "numeric" }),
+  }).format(new Date(value));
 }
 
-function RateChart({ snapshots }: { snapshots: Snapshot[] }) {
-  const [period, setPeriod] = useState("24H");
+function RateChart() {
+  const [range, setRange] = useState<HistoryRange>("24h");
+  const { data, isPending, isError, error } = useQuery({
+    queryKey: ["rate-history", "usdc", "ngn", range],
+    queryFn: () => fliqApi<RateHistory>("rates/usdc/ngn/history?range=" + range),
+    staleTime: 60_000,
+    refetchInterval: 60_000,
+  });
+
+  const points = (data?.points ?? []).flatMap((point) => {
+    const time = point.timestamp ?? point.time ?? point.at;
+    const rate = point.rate ?? point.best_rate ?? point.best;
+    if (typeof time !== "string" || typeof rate !== "number") return [];
+    if (!Number.isFinite(rate) || Number.isNaN(Date.parse(time))) return [];
+    return [{ time, rate }];
+  });
 
   const width = 760;
   const height = 250;
-  const left = 48;
+  const left = 60;
   const right = 20;
-  const top = 16;
-  const bottom = 32;
-
-  const min = 1350;
-  const max = 1390;
-
-  const x = (index: number) => left + (index / Math.max(snapshots.length - 1, 1)) * (width - left - right);
-
+  const top = 20;
+  const bottom = 36;
+  const rates = points.map((point) => point.rate);
+  const low = Math.min(...rates);
+  const high = Math.max(...rates);
+  const padding = Math.max((high - low) * 0.1, 1);
+  const min = low - padding;
+  const max = high + padding;
+  const x = (index: number) => left + (index / Math.max(points.length - 1, 1)) * (width - left - right);
   const y = (value: number) => top + ((max - value) / (max - min)) * (height - top - bottom);
-
-  const bestLine = snapshots.map((point, index) => `${x(index)},${y(point.best)}`).join(" ");
-
-  const worstLine = snapshots.map((point, index) => `${x(index)},${y(point.worst)}`).join(" ");
-
-  const p2pLine = snapshots.map((point, index) => `${x(index)},${y(point.p2p)}`).join(" ");
-
-  const bandPoints = [
-    ...snapshots.map((point, index) => `${x(index)},${y(point.worst)}`),
-    ...snapshots.map(
-      (point, index) =>
-        `${x(snapshots.length - 1 - index)},${y(snapshots[snapshots.length - 1 - index].best)}`,
-    ),
-  ].join(" ");
+  const line = points.map((point, index) => x(index) + "," + y(point.rate)).join(" ");
 
   return (
     <Panel className="p-5 sm:p-7">
@@ -331,98 +319,94 @@ function RateChart({ snapshots }: { snapshots: Snapshot[] }) {
           <Eyebrow>Rate history</Eyebrow>
           <h3 className="mt-2 text-sm font-semibold text-white">Best after-fee rate over time</h3>
         </div>
-
-        <div className="flex rounded-lg border border-[#303030] p-1">
-          {["24H", "7D", "30D"].map((item) => (
+        <div className="flex rounded-lg border border-[#303030] p-1" aria-label="Rate history range">
+          {(["24h", "7d", "30d"] as const).map((option) => (
             <button
-              key={item}
-              onClick={() => setPeriod(item)}
-              className={`rounded-md px-3 py-1.5 text-[10px] font-semibold transition ${
-                period === item ? "bg-[#a594ff] text-[#111]" : "text-[#888] hover:text-white"
-              }`}
+              key={option}
+              type="button"
+              aria-pressed={range === option}
+              onClick={() => setRange(option)}
+              className={
+                "rounded-md px-3 py-1.5 text-[10px] font-semibold uppercase transition " +
+                (range === option ? "bg-[#a594ff] text-[#111]" : "text-[#888] hover:text-white")
+              }
             >
-              {item}
+              {option}
             </button>
           ))}
         </div>
       </div>
 
-      <div className="mt-5 flex flex-wrap gap-x-5 gap-y-3 text-[10px] text-[#999]">
-        <span className="flex items-center gap-2">
-          <span className="h-2 w-2 rounded-full bg-[#a594ff]" />
-          Best after fees
-        </span>
-        <span className="flex items-center gap-2">
-          <span className="h-2 w-2 rounded-full bg-[#777]" />
-          Live providers · worst to best
-        </span>
-        <span className="flex items-center gap-2">
-          <span className="h-2 w-2 rounded-full bg-[#d5b36b]" />
-          P2P
-        </span>
-        <span className="text-[#666]">Official off</span>
-      </div>
-
-      <div className="mt-5 overflow-hidden">
-        <svg
-          viewBox={`0 0 ${width} ${height}`}
-          className="h-auto w-full"
-          role="img"
-          aria-label="Illustrative rate history chart"
-        >
-          {[1350, 1360, 1370, 1380, 1390].map((value) => (
-            <g key={value}>
-              <line
-                x1={left}
-                x2={width - right}
-                y1={y(value)}
-                y2={y(value)}
-                stroke="#303030"
-                strokeDasharray="3 5"
+      {isPending && (
+        <p role="status" className="mt-8 text-sm text-[#999]">
+          Loading rate history...
+        </p>
+      )}
+      {isError && (
+        <p role="alert" className="mt-8 text-sm text-[#d6a36c]">
+          {error instanceof ApiError ? error.message : "Could not load rate history."}
+        </p>
+      )}
+      {data?.points.length === 0 && (
+        <p className="mt-8 rounded-lg border border-[#303030] px-4 py-10 text-center text-sm text-[#999]">
+          No rate history available
+        </p>
+      )}
+      {data && data.points.length > 0 && points.length === 0 && (
+        <p role="alert" className="mt-8 text-sm text-[#d6a36c]">
+          Rate history is available, but its point format could not be displayed.
+        </p>
+      )}
+      {points.length > 0 && (
+        <>
+          <div className="mt-6 overflow-hidden">
+            <svg
+              viewBox={"0 0 " + width + " " + height}
+              className="h-auto w-full"
+              role="img"
+              aria-label="USDC to NGN rate history"
+            >
+              {Array.from({ length: 5 }, (_, index) => min + ((max - min) * index) / 4).map((value) => (
+                <g key={value}>
+                  <line
+                    x1={left}
+                    x2={width - right}
+                    y1={y(value)}
+                    y2={y(value)}
+                    stroke="#303030"
+                    strokeDasharray="3 5"
+                  />
+                  <text x="0" y={y(value) + 4} fill="#777" fontSize="11">
+                    {value.toFixed(2)}
+                  </text>
+                </g>
+              ))}
+              <polyline
+                points={line}
+                fill="none"
+                stroke="#a594ff"
+                strokeWidth="2.5"
+                strokeLinejoin="round"
+                strokeLinecap="round"
               />
-              <text x="0" y={y(value) + 4} fill="#777" fontSize="11">
-                {value}
-              </text>
-            </g>
-          ))}
-
-          <polygon points={bandPoints} fill="#a594ff" opacity="0.10" />
-
-          <polyline points={p2pLine} fill="none" stroke="#d5b36b" strokeWidth="1.5" strokeDasharray="5 5" />
-
-          <polyline points={worstLine} fill="none" stroke="#777" strokeWidth="1.5" />
-
-          <polyline
-            points={bestLine}
-            fill="none"
-            stroke="#a594ff"
-            strokeWidth="2.5"
-            strokeLinejoin="round"
-            strokeLinecap="round"
-          />
-
-          {snapshots.map((point, index) => (
-            <circle key={point.time} cx={x(index)} cy={y(point.best)} r="3" fill="#a594ff" />
-          ))}
-
-          {snapshots.map((point, index) => (
-            <text key={point.time} x={x(index)} y={height - 8} textAnchor="middle" fill="#777" fontSize="10">
-              {point.time}
-            </text>
-          ))}
-        </svg>
-      </div>
-
-      <div className="mt-4 grid grid-cols-3 gap-3 border-t border-[#303030] pt-4">
-        <Metric label="24h low" value="₦1,369.40" detail="At 17:00" />
-        <Metric label="24h high" value="₦1,378.20" detail="At 07:00" />
-        <Metric label="Provider band" value="1.3%" detail="Worst to best" />
-      </div>
-
-      <p className="mt-4 text-[10px] text-[#666]">
-        {period} preview data only. Historical snapshots are not yet connected to the API. Stale and paused
-        providers are excluded.
-      </p>
+              {points.map((point, index) => (
+                <circle key={point.time} cx={x(index)} cy={y(point.rate)} r="3" fill="#a594ff" />
+              ))}
+              {[0, Math.floor((points.length - 1) / 2), points.length - 1]
+                .filter((index, position, indices) => indices.indexOf(index) === position)
+                .map((index) => (
+                  <text key={index} x={x(index)} y={height - 8} textAnchor="middle" fill="#777" fontSize="10">
+                    {historyLabel(points[index].time, range)}
+                  </text>
+                ))}
+            </svg>
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-3 border-t border-[#303030] pt-4">
+            <Metric label="Period low" value={formatNaira(low)} />
+            <Metric label="Period high" value={formatNaira(high)} />
+          </div>
+        </>
+      )}
     </Panel>
   );
 }
@@ -559,7 +543,7 @@ function ConversionPanel() {
 
       <div className="mt-6 flex flex-wrap gap-3">
         <Link
-          href="/docs"
+          href="/#developers"
           className="rounded-lg bg-[#a594ff] px-4 py-3 text-xs font-semibold text-[#111] transition hover:bg-[#b5a8ff]"
         >
           Get this rate via API
@@ -769,7 +753,7 @@ export function RatesPageClient() {
             title="Rate history"
             description="Best after-fee rates and provider spread across the selected period."
           />
-          {RATE_HISTORY_READY ? <RateChart snapshots={MOCK_SNAPSHOTS} /> : <RateHistoryComingSoon />}
+          <RateChart />
         </div>
 
         {/* Provider table */}

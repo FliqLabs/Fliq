@@ -4,6 +4,11 @@ export type OrderId = string;
 export const ORDER_STATES = ["registered", "executed", "released"] as const;
 export type OrderState = (typeof ORDER_STATES)[number];
 
+// The contract's verified transfer track. "executed" covers both executing and dispatched; only dispatched means
+// the USDC left the vault, and the contract refuses paying_out and settled before it.
+export const TRANSFER_STATES = ["registered", "executing", "dispatched", "transfer_failed", "released"] as const;
+export type TransferState = (typeof TRANSFER_STATES)[number];
+
 export const RECEIPT_STATUSES = [
   "routing",
   "with_provider",
@@ -64,6 +69,7 @@ export type RegisterOrderInput = {
 
 export type VaultReceipt = RegisterOrderInput & {
   state: OrderState;
+  transferState: TransferState;
   status: ReceiptStatus | null;
   refs: ReceiptRefs;
   recreditedAmount: bigint;

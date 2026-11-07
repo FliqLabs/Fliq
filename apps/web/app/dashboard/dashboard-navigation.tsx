@@ -53,7 +53,12 @@ export function DashboardNavigation() {
               </Link>
             );
           })}
-          <span className="whitespace-nowrap px-3 py-2.5 text-sm text-zinc-400">Docs</span>
+          <Link
+            href="/#developers"
+            className="whitespace-nowrap rounded-lg px-3 py-2.5 text-sm text-zinc-500 hover:bg-zinc-50"
+          >
+            Docs
+          </Link>
           {account.isSuccess && (
             <button
               type="button"

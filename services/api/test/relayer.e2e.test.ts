@@ -12,7 +12,7 @@ import { DEFAULT_VELOCITY } from "../apps/api/src/payouts.js";
 import { delegateSender } from "../apps/api/src/relay.js";
 import { sandboxAdapters } from "../apps/api/src/sandbox.js";
 import { buildRelayerApp } from "../apps/relayer/src/app.js";
-import { createRelayerClient, MemoryRelayStore, publicKeyOf, type RelayerClient } from "../packages/chains/near/index.js";
+import { createRelayerClient, MemoryRelayStore, publicKeyOf, RelayerClientError, type RelayerClient } from "../packages/chains/near/index.js";
 import { FakeNearRpc, newUser, RELAYER, relayerKeys, ROOT, signDelegate, USDC, VAULT } from "../packages/chains/near/near.fixtures.js";
 import { MockVault } from "../packages/chains/vault/index.js";
 import { Secret } from "../packages/config/index.js";
@@ -51,12 +51,18 @@ describe.skipIf(!enabled)("creating NEAR accounts and relaying calls through the
     provision: { rpc, store: new MemoryRelayStore(), root: { accountId: ROOT, privateKey: rootKey.toString() }, fundingYocto: 0n, storageContracts: [USDC, VAULT] },
   });
 
-  const trouble = { pendingOnce: false, down: false };
+  const trouble = { pendingOnce: false, down: false, slowOnce: false };
   let real: RelayerClient;
   const relayer: RelayerClient = {
     relay: (signed) => real.relay(signed),
     relayStatus: (hash) => real.relayStatus(hash),
+    health: () => real.health(),
     async provisionAccount(accountId, publicKey) {
+      if (trouble.slowOnce) {
+        trouble.slowOnce = false;
+        await real.provisionAccount(accountId, publicKey);
+        throw new RelayerClientError(0, "relayer_timeout", "the relayer did not answer in time");
+      }
       if (trouble.down) return createRelayerClient({ url: "http://127.0.0.1:1", authToken: TOKEN }).provisionAccount(accountId, publicKey);
       if (trouble.pendingOnce) {
         trouble.pendingOnce = false;
@@ -148,6 +154,17 @@ describe.skipIf(!enabled)("creating NEAR accounts and relaying calls through the
     const second = await claim(headers, `p-${suffix}`, payload);
     expect(second.statusCode, second.body).toBe(201);
     expect(second.json().near_account).toBe(user.accountId);
+  });
+
+  it("answers 202 when the relayer is too slow, and the retry links the account it made meanwhile", async () => {
+    const headers = await signIn("slow");
+    const user = newUser(`slow${suffix}.${ROOT}`);
+    trouble.slowOnce = true;
+    const first = await claim(headers, `s-${suffix}`, { name: `slow${suffix}`, public_key: user.publicKey });
+    expect(first.statusCode).toBe(202);
+    const again = await claim(headers, `s-${suffix}`, { name: `slow${suffix}`, public_key: user.publicKey });
+    expect(again.statusCode).toBe(201);
+    expect(again.json().near_account).toBe(`slow${suffix}.${ROOT}`);
   });
 
   it("refuses a name whose NEAR account another key already controls, and says when the relayer is down", async () => {

@@ -20,6 +20,7 @@ import { sandboxAdapters } from "./sandbox.js";
 import { startHealthChecks, type Probe } from "./status.js";
 import { createWebhookHandler } from "./webhooks.js";
 import { startWebhookDelivery } from "./webhook-delivery.js";
+import { startVaultSync } from "./vault-sync.js";
 import { usageRecorder } from "./usage.js";
 import { httpsTransport } from "../../../packages/webhooks/transport.js";
 
@@ -122,6 +123,14 @@ const relayerUrl = process.env.RELAYER_URL?.trim();
 const relayerToken = process.env.RELAYER_AUTH_TOKEN?.trim();
 if (relayerUrl && !relayerToken) console.warn("RELAYER_URL is set without RELAYER_AUTH_TOKEN: names are claimed without NEAR accounts.");
 const relayer = relayerUrl && relayerToken ? createRelayerClient({ url: relayerUrl, authToken: relayerToken }) : undefined;
+// On Render's free plan a service sleeps after 15 minutes without requests and takes about a minute to wake, longer
+// than a name claim waits. Pinging it while the API is up keeps it awake.
+const RELAYER_KEEPALIVE_MS = 10 * 60 * 1000;
+if (relayer) {
+  const ping = () => relayer.health().catch((error: Error) => console.warn(`relayer health check failed: ${error.message}`));
+  void ping();
+  setInterval(ping, RELAYER_KEEPALIVE_MS).unref();
+}
 const provisioner = relayer
   ? new RelayerProvisioner(relayer, config.vaultAccount)
   : new MockProvisioner(config.vaultAccount, mockVault ? (account) => mockVault.registerStorage(account) : undefined);
@@ -153,6 +162,10 @@ await app.listen({ port: config.port, host: "0.0.0.0" });
 startHealthChecks(unit, probes, Number(process.env.HEALTH_CHECK_INTERVAL_MS ?? 60_000));
 startRateSampler(rateBoard, Number(process.env.RATE_SAMPLE_INTERVAL_MS ?? 60_000));
 startDepositWatch(unit, deposits, Number(process.env.DEPOSIT_WATCH_INTERVAL_MS ?? 10_000));
+startVaultSync(
+  { unit, vault, now: () => new Date(), log: (message) => app.log.warn(message) },
+  Number(process.env.VAULT_SYNC_INTERVAL_MS ?? 15_000),
+);
 startWebhookDelivery(
   { unit, config, transport: httpsTransport(), now: () => new Date() },
   Number(process.env.WEBHOOK_POLL_INTERVAL_MS ?? 2_000),

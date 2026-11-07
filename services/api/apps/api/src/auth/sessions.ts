@@ -1,6 +1,8 @@
 import type { User } from "@prisma/client";
 import { newId } from "../../../../packages/db/src/ids.js";
 import type { Config } from "../config.js";
+import { formatTokenAmount } from "../dashboard.js";
+import { DEFAULT_VELOCITY } from "../payouts.js";
 import type { Db } from "../db.js";
 import { accepted, rejected, unauthorized, type Outcome } from "../errors.js";
 import { ACCESS_TTL_SECONDS, REFRESH_TTL_SECONDS, hashToken, newOpaqueToken, signAccessToken } from "./tokens.js";
@@ -13,6 +15,9 @@ export function toUserView(user: User) {
     photo_url: user.photoUrl,
     occupation: user.occupation,
     vault: user.vaultAccount,
+    home_currency: user.homeCurrency,
+    daily_limit: { amount: formatTokenAmount(DEFAULT_VELOCITY.maxTokenUnitsPerDay), currency: "USD" },
+    verified: user.nearAccount !== null,
   };
 }
 

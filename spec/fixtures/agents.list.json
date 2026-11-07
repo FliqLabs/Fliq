@@ -1,0 +1,52 @@
+{
+  "agents": [
+    {
+      "agent_id": "claude-frank.fliq.near",
+      "name": "Claude",
+      "public_key": "ed25519:5FjQ8mT3vXk2NcR7yLpW9sBdH4uZaE6gKoJt1qMi9kQ",
+      "state": "active",
+      "daily_cap": {
+        "amount": "150000",
+        "currency": "NGN"
+      },
+      "per_payout_cap": {
+        "amount": "50000",
+        "currency": "NGN"
+      },
+      "currencies": [
+        "NGN"
+      ],
+      "saved_accounts_only": true,
+      "spent_today": {
+        "amount": "30000",
+        "currency": "NGN"
+      },
+      "connected_at": "2026-10-28T09:00:00Z",
+      "expires_at": "2027-10-28T09:00:00Z"
+    },
+    {
+      "agent_id": "payroll-bot-frank.fliq.near",
+      "name": "Payroll bot",
+      "public_key": "ed25519:8HkR2tLwP5nVb3XcM7qJzY4sDg6uFa9eKoT1rNi2mPq",
+      "state": "active",
+      "daily_cap": {
+        "amount": "40000",
+        "currency": "KES"
+      },
+      "per_payout_cap": {
+        "amount": "10000",
+        "currency": "KES"
+      },
+      "currencies": [
+        "KES"
+      ],
+      "saved_accounts_only": true,
+      "spent_today": {
+        "amount": "0",
+        "currency": "KES"
+      },
+      "connected_at": "2026-10-27T09:00:00Z",
+      "expires_at": "2027-10-27T09:00:00Z"
+    }
+  ]
+}

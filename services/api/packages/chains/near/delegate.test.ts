@@ -71,7 +71,25 @@ describe("verifySignedDelegate", () => {
   });
 });
 
+const STORAGE = 5_000_000_000_000_000_000_000n;
+const AGENT = (over: Record<string, unknown>) => ({
+  public_key: "ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp",
+  agent_id: "agent-1.ada.testnet",
+  cooldown_ns: "0",
+  expiry_ns: "3600000000000",
+  ...over,
+});
+
 describe("checkPolicy", () => {
+  it.each([
+    ["without its one yoctoNEAR", { methodName: "transfer", deposit: 0n, args: { to_account: "tobi.fliq.testnet", amount: "1" } }],
+    ["with an extra argument", { methodName: "transfer", deposit: 1n, args: { to_account: "tobi.fliq.testnet", amount: "1", memo: "x" } }],
+    ["of nothing", { methodName: "transfer", deposit: 1n, args: { to_account: "tobi.fliq.testnet", amount: "0" } }],
+  ])("refuses a transfer %s", async (_, spec) => {
+    const delegate = verifySignedDelegate((await signDelegate(ada, spec)).base64);
+    expect(() => checkPolicy(policy, delegate)).toThrow(PolicyError);
+  });
+
   it.each([
     ["a vault payout", { methodName: "payout", args: PAYOUT_ARGS }],
     [
@@ -83,22 +101,23 @@ describe("checkPolicy", () => {
       "an agent policy",
       {
         methodName: "set_agent",
-        args: {
-          agent_id: "agent-1.ada.testnet",
-          per_payout_cap: "50000000",
-          daily_cap: "100000000",
-          corridors: ["NG-NGN-bank"],
-        },
+        deposit: STORAGE,
+        args: AGENT({ per_payout_cap: "50000000", daily_cap: "100000000", corridors: ["NG-NGN-bank"] }),
       },
     ],
     [
       "an agent policy for any corridor",
-      {
-        methodName: "set_agent",
-        args: { agent_id: "agent-1.ada.testnet", per_payout_cap: "1", daily_cap: "1", corridors: null },
-      },
+      { methodName: "set_agent", deposit: 1n, args: AGENT({ per_payout_cap: "1", daily_cap: "1", corridors: null }) },
     ],
-    ["an agent removal", { methodName: "remove_agent", args: { agent_id: "agent-1.ada.testnet" } }],
+    [
+      "an agent policy that leaves corridors out",
+      { methodName: "set_agent", deposit: 1n, args: AGENT({ per_payout_cap: "1", daily_cap: "1" }) },
+    ],
+    ["an agent removal", { methodName: "remove_agent", deposit: 1n, args: { agent_id: "agent-1.ada.testnet" } }],
+    [
+      "a transfer to another fliq user",
+      { methodName: "transfer", deposit: 1n, args: { to_account: "tobi.fliq.testnet", amount: "25000000" } },
+    ],
     [
       "a USDC top-up into the vault",
       {
@@ -136,26 +155,34 @@ describe("checkPolicy", () => {
     ],
     [
       "an agent with a zero cap",
-      {
-        methodName: "set_agent",
-        args: { agent_id: "agent-1.ada.testnet", per_payout_cap: "0", daily_cap: "1", corridors: null },
-      },
+      { methodName: "set_agent", deposit: 1n, args: AGENT({ per_payout_cap: "0", daily_cap: "1", corridors: null }) },
     ],
     [
-      "an agent without corridors",
-      {
-        methodName: "set_agent",
-        args: { agent_id: "agent-1.ada.testnet", per_payout_cap: "1", daily_cap: "1" },
-      },
+      "an agent whose per-payout cap is above its daily cap",
+      { methodName: "set_agent", deposit: 1n, args: AGENT({ per_payout_cap: "2", daily_cap: "1" }) },
     ],
     [
       "an agent with an empty corridor list",
-      {
-        methodName: "set_agent",
-        args: { agent_id: "agent-1.ada.testnet", per_payout_cap: "1", daily_cap: "1", corridors: [] },
-      },
+      { methodName: "set_agent", deposit: 1n, args: AGENT({ per_payout_cap: "1", daily_cap: "1", corridors: [] }) },
     ],
-    ["an agent id that is not an account", { methodName: "remove_agent", args: { agent_id: "Agent One" } }],
+    [
+      "an agent without its key",
+      { methodName: "set_agent", deposit: 1n, args: { ...AGENT({ per_payout_cap: "1", daily_cap: "1" }), public_key: undefined } },
+    ],
+    [
+      "an agent with a negative expiry",
+      { methodName: "set_agent", deposit: 1n, args: AGENT({ per_payout_cap: "1", daily_cap: "1", expiry_ns: "-1" }) },
+    ],
+    [
+      "an agent policy with no deposit, which the vault refuses",
+      { methodName: "set_agent", args: AGENT({ per_payout_cap: "1", daily_cap: "1" }) },
+    ],
+    [
+      "an agent policy attaching more than its storage could cost",
+      { methodName: "set_agent", deposit: 10n ** 22n + 1n, args: AGENT({ per_payout_cap: "1", daily_cap: "1" }) },
+    ],
+    ["an agent removal without the one yocto", { methodName: "remove_agent", args: { agent_id: "agent-1.ada.testnet" } }],
+    ["an agent id that is not an account", { methodName: "remove_agent", deposit: 1n, args: { agent_id: "Agent One" } }],
     [
       "USDC sent anywhere but the vault",
       {

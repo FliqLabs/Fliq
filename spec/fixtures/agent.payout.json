@@ -1,0 +1,53 @@
+{
+  "payout": {
+    "payout_id": "po_9c2f71aa",
+    "state": "awaiting_deposit",
+    "account_name": "DARA OKONKWO",
+    "account": {
+      "bank": "058",
+      "number": "0123456789"
+    },
+    "amount": "50.00",
+    "receive": 68816,
+    "currency": "ngn",
+    "rate": 1376.32,
+    "fees": {
+      "provider": 25000,
+      "network": 9400,
+      "total": 34400
+    },
+    "provider": "paycrest",
+    "deposit": {
+      "chain": "near",
+      "address": "fliq-vault.testnet",
+      "amount": "50.00"
+    },
+    "provider_order": null,
+    "vault_receipt": null,
+    "bank_reference": null,
+    "seconds": null,
+    "history": [
+      {
+        "state": "awaiting_deposit",
+        "at": "2026-10-29T13:02:10Z"
+      }
+    ],
+    "agent": {
+      "agent_id": "claude-frank.fliq.near",
+      "name": "Claude"
+    }
+  },
+  "sign": {
+    "kind": "function_call",
+    "receiver_id": "fliq-vault.testnet",
+    "method_name": "payout",
+    "args": {
+      "order_id": "po_9c2f71aa",
+      "amount": "50000000",
+      "deposit_address": "fliq-vault.testnet"
+    },
+    "gas": "80000000000000",
+    "deposit": "0",
+    "public_key": null
+  }
+}
