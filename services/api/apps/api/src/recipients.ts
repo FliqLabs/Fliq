@@ -5,7 +5,8 @@ import type { Country, ProviderAdapter } from "../../../packages/providers/types
 import type { Config } from "./config.js";
 import type { Db, Unit } from "./db.js";
 import { ApiError, invalidRequest, notFound } from "./errors.js";
-import { COUNTRY_CODE, INSTITUTIONS, institutionName, logoKeyFor } from "./institutions.js";
+import { institutionsIn } from "../../../packages/providers/institutions/translate.js";
+import { COUNTRY_CODE, FEATURED_CODES, institutionName, logoKeyFor } from "./institutions.js";
 
 export interface AccountLookup {
   bank: string;
@@ -27,18 +28,19 @@ function countryOf(code: string | undefined): Country {
   return country;
 }
 
+// Table institutions come first in the table's order, then any a provider lists that the table does not know.
 export async function listInstitutions(adapters: readonly ProviderAdapter[], countryParam: string | undefined) {
   const country = countryOf(countryParam);
   const lower = country.toLowerCase();
-  const items = new Map<string, { code: string; name: string; type: string; country: string; logo_key: string | null }>();
   const fromProviders = await Promise.all(adapters.map((adapter) => adapter.institutions(country).catch(() => [])));
-  for (const institution of fromProviders.flat()) {
-    items.set(institution.code, { code: institution.code, name: institution.name, type: institution.type, country: lower, logo_key: logoKeyFor(institution.code) });
-  }
-  for (const seed of INSTITUTIONS.filter((item) => item.country === lower)) {
-    items.set(seed.code, { code: seed.code, name: seed.name, type: seed.kind, country: lower, logo_key: seed.logoKey });
-  }
-  return { items: [...items.values()] };
+  const offered = new Map(fromProviders.flat().map((institution) => [institution.code, institution]));
+  const featured = institutionsIn(country).filter((entry) => FEATURED_CODES.includes(entry.code));
+  for (const entry of featured) if (!offered.has(entry.code)) offered.set(entry.code, { code: entry.code, name: entry.name, type: entry.type });
+  const rank = new Map(institutionsIn(country).map((entry, index) => [entry.code, index]));
+  const items = [...offered.values()]
+    .sort((a, b) => (rank.get(a.code) ?? Infinity) - (rank.get(b.code) ?? Infinity) || a.name.localeCompare(b.name))
+    .map((institution) => ({ code: institution.code, name: institutionName(institution.code), type: institution.type, country: lower, logo_key: logoKeyFor(institution.code) }));
+  return { items };
 }
 
 // Paycrest answers "OK" instead of a name for banks it cannot look up. Then the sender supplies the name

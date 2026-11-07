@@ -1,6 +1,7 @@
 import { createBitnobAdapter } from "./bitnob/bitnob";
 import { createBushaAdapter } from "./busha/busha";
 import { createFonbnkAdapter } from "./fonbnk/fonbnk";
+import { withInstitutionCodes } from "./institutions/translate";
 import { createPaycrestAdapter } from "./paycrest/paycrest";
 import type { AdapterDeps, ProviderAdapter } from "./types";
 
@@ -109,5 +110,5 @@ export function enabledAdapters(env: Env, deps: AdapterDeps): ProviderAdapter[] 
     );
   }
 
-  return adapters;
+  return adapters.map((adapter) => withInstitutionCodes(adapter));
 }
