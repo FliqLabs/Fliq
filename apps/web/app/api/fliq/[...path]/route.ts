@@ -7,6 +7,7 @@ const REFRESH_MAX_AGE = 30 * 24 * 60 * 60;
 const NO_STORE = { "Cache-Control": "no-store" };
 
 const publicRoutes = new Set([
+  "GET status",
   "POST auth/passkeys/register/options",
   "POST auth/passkeys/register/verify",
   "POST auth/passkeys/login/options",
