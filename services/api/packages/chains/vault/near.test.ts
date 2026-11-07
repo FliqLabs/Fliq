@@ -187,6 +187,7 @@ describe("the deployed vault through NEAR RPC", () => {
       expiresAtNs: 1_761_742_930_000_000_000n,
       corridor: "NG-NGN-bank",
       state: "executed",
+      transferState: "dispatched",
       status: "paying_out",
       refs: { provider: "paycrest", providerOrder: "pc_8c9d1a4b10" },
       recreditedAmount: 0n,

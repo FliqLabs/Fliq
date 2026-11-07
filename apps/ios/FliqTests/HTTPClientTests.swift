@@ -139,6 +139,32 @@ final class HTTPClientTests: XCTestCase {
         XCTAssertEqual(StubProtocol.requests.count, HTTPClient.claimAttempts)
     }
 
+    @MainActor
+    func testAClaimTheChainCannotFinishIsNotCalledTaken() async throws {
+        StubProtocol.respond { _ in
+            (503, Data(#"{"error":{"code":"chain_unavailable","message":"Your NEAR account could not be created right now."}}"#.utf8))
+        }
+        let flow = try await claimingFlow()
+
+        let claimed = await flow.claim()
+
+        XCTAssertFalse(claimed)
+        XCTAssertEqual(flow.status, .unreachable)
+        XCTAssertEqual(flow.suggestions, [])
+    }
+
+    @MainActor
+    func testANameTakenInTheMeantimeOffersOthers() async throws {
+        StubProtocol.respond { _ in (409, Data(#"{"error":{"code":"conflict","message":"That name is taken."}}"#.utf8)) }
+        let flow = try await claimingFlow()
+
+        let claimed = await flow.claim()
+
+        XCTAssertFalse(claimed)
+        XCTAssertEqual(flow.status, .taken)
+        XCTAssertFalse(flow.suggestions.isEmpty)
+    }
+
     func testBase64URLRoundTrips() {
         let bytes = Data([0xfb, 0xff, 0x00, 0x10])
         XCTAssertEqual(bytes.base64URL, "-_8AEA")
@@ -153,6 +179,16 @@ final class HTTPClientTests: XCTestCase {
         XCTAssertNil(SignInFlow.token(in: "https://fliq.cash/auth/verify"))
     }
 
+    @MainActor
+    private func claimingFlow() async throws -> OnboardingFlow {
+        let flow = OnboardingFlow(api: makeClient(), names: FixtureNameDirectory(), isLive: true, keys: FixedKeys())
+        flow.nameText = "frank"
+        // Wait out the debounced check that setting nameText starts, as the claim button does.
+        while flow.status == .checking { try await Task.sleep(for: .milliseconds(50)) }
+        XCTAssertEqual(flow.status, .available)
+        return flow
+    }
+
     private func makeClient(sessions: SessionVault = SessionVault(keychain: nil)) -> HTTPClient {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [StubProtocol.self]
@@ -163,6 +199,10 @@ final class HTTPClientTests: XCTestCase {
             session: URLSession(configuration: configuration)
         )
     }
+}
+
+private struct FixedKeys: DeviceKeys {
+    func publicKey() throws -> String { "ed25519:11111111111111111111111111111111" }
 }
 
 private extension Data {

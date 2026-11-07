@@ -69,13 +69,15 @@ export async function verifyAccount(adapters: readonly ProviderAdapter[], lookup
   throw new ApiError(404, "account_not_found", "The bank could not find that account.");
 }
 
-function view(config: Config, recipient: { id: string; institutionCode: string; accountCipher: Uint8Array; nameCipher: Uint8Array; createdAt: Date }) {
+function view(config: Config, recipient: { id: string; institutionCode: string; accountCipher: Uint8Array; nameCipher: Uint8Array; createdAt: Date; own: boolean; isDefault: boolean }) {
   return {
     recipient_id: recipient.id,
     account_name: decrypt(recipient.nameCipher, config.dataKey),
     bank: { code: recipient.institutionCode, name: institutionName(recipient.institutionCode), logo_key: logoKeyFor(recipient.institutionCode) },
     account_last4: decrypt(recipient.accountCipher, config.dataKey).slice(-4),
     created_at: recipient.createdAt.toISOString(),
+    own: recipient.own,
+    default: recipient.isDefault,
   };
 }
 
@@ -105,11 +107,24 @@ export async function saveRecipient(unit: Unit, deps: RecipientDeps, userId: str
 }
 
 export async function listRecipients(tx: Db, config: Config, userId: string) {
-  const rows = await tx.recipient.findMany({ where: { userId, savedAt: { not: null }, deletedAt: null }, orderBy: { savedAt: "desc" } });
+  const rows = await tx.recipient.findMany({ where: { userId, savedAt: { not: null }, deletedAt: null }, orderBy: [{ own: "desc" }, { savedAt: "desc" }] });
   return { items: rows.map((row) => view(config, row)) };
 }
 
+// Only one default: setting it clears the previous one. The user's own accounts are listed first.
+export async function updateRecipient(tx: Db, config: Config, userId: string, recipientId: string, input: { own?: boolean; default?: boolean }) {
+  const recipient = await tx.recipient.findFirst({ where: { id: recipientId, userId, savedAt: { not: null }, deletedAt: null } });
+  if (!recipient) throw notFound("No such saved recipient.");
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`recipient:${userId}`}, 0))`;
+  if (input.default === true) await tx.recipient.updateMany({ where: { userId, isDefault: true, id: { not: recipientId } }, data: { isDefault: false } });
+  const updated = await tx.recipient.update({
+    where: { id: recipientId },
+    data: { ...(input.own === undefined ? {} : { own: input.own }), ...(input.default === undefined ? {} : { isDefault: input.default }) },
+  });
+  return view(config, updated);
+}
+
 export async function deleteRecipient(tx: Db, userId: string, recipientId: string): Promise<void> {
-  const removed = await tx.recipient.updateMany({ where: { id: recipientId, userId, savedAt: { not: null }, deletedAt: null }, data: { deletedAt: new Date() } });
+  const removed = await tx.recipient.updateMany({ where: { id: recipientId, userId, savedAt: { not: null }, deletedAt: null }, data: { deletedAt: new Date(), isDefault: false } });
   if (removed.count === 0) throw notFound("No such saved recipient.");
 }

@@ -46,10 +46,13 @@ export class RelayerProvisioner implements NearProvisioner {
       return { status: result.status === "pending" ? "pending" : "created", nearAccount: result.account_id, vault: this.vaultAccount };
     } catch (error) {
       if (!(error instanceof RelayerClientError)) throw error;
-      if (error.code === "in_progress") return { status: "pending", nearAccount: fullName, vault: this.vaultAccount };
+      // A relayer that is still waking up, or still waiting for the chain, may finish creating the account after we
+      // stop waiting. Answering pending lets the app retry, and the retry links the account the relayer made.
+      if (error.code === "in_progress" || error.code === "relayer_timeout") return { status: "pending", nearAccount: fullName, vault: this.vaultAccount };
       if (error.code === "taken") throw conflict("That name is taken.");
       if (error.code === "invalid_key") throw invalidRequest("public_key must be ed25519:<base58>.");
       if (error.code === "invalid_name") throw invalidRequest("Name is invalid.");
+      console.error(`relayer could not create ${fullName}: ${error.status} ${error.code} ${error.message}`);
       throw new ApiError(503, "chain_unavailable", "Your NEAR account could not be created right now. Try again in a moment.");
     }
   }

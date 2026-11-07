@@ -126,6 +126,7 @@ export async function payoutView(tx: Db, config: Config, payoutId: string) {
     bank_reference: bankReference(payout.events),
     seconds: settledAt && depositAt ? Math.round((settledAt.getTime() - depositAt.getTime()) / 1000) : null,
     history: payout.events.map((event) => ({ state: event.toState, at: event.createdAt.toISOString() })),
+    agent: payout.agentId ? { agent_id: payout.agentId, name: (await tx.agent.findUnique({ where: { id: payout.agentId }, select: { name: true } }))?.name ?? payout.agentId } : null,
     ...recoveryView(payout, bankReference(payout.events)),
   };
 }
@@ -138,7 +139,7 @@ export async function getPayout(unit: Unit, config: Config, userId: string, payo
   });
 }
 
-export async function createPayout(unit: Unit, deps: PayoutDeps, userId: string, key: string | undefined, input: PayoutInput): Promise<Reply> {
+export async function createPayout(unit: Unit, deps: PayoutDeps, userId: string, key: string | undefined, input: PayoutInput, options: { agentId?: string } = {}): Promise<Reply> {
   if (!key) throw new ApiError(400, "idempotency_key_required", "Idempotency-Key header is required.");
   if (!ACCOUNT_NUMBER.test(input.account.number)) throw invalidRequest("account.number must be 6 to 20 digits.");
   const requestHash = hashOf(input);
@@ -236,6 +237,7 @@ export async function createPayout(unit: Unit, deps: PayoutDeps, userId: string,
         currency: quote.currency,
         rate: quote.rate,
         retryOfId: input.retry_of ?? null,
+        agentId: options.agentId ?? null,
       },
     });
     await tx.payoutEvent.create({ data: { id: newId("pev"), payoutId, fromState: null, toState: "created", version: 1, cause: "created" } });

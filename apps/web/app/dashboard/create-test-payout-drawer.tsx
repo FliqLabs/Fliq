@@ -1,6 +1,9 @@
 "use client";
 
-import { useState, type RefObject } from "react";
+import { useEffect, useRef, useState, type FormEvent, type RefObject } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { fliqApi, type Institution, type Quote, type VerifiedAccount } from "../lib/fliq-api";
+import type { Payout } from "./payout-model";
 
 type Props = { dialogRef: RefObject<HTMLDialogElement | null> };
 type Corridor = "ngn" | "kes";
@@ -10,6 +13,102 @@ export function CreateTestPayoutDrawer({ dialogRef }: Props) {
   const [corridor, setCorridor] = useState<Corridor>("ngn");
   const [bank, setBank] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
+  const [accountName, setAccountName] = useState("");
+  const [clientReference, setClientReference] = useState("");
+  const [quote, setQuote] = useState<{ value: Quote; key: string; expiresAt: number }>();
+  const [verified, setVerified] = useState<{ value: VerifiedAccount; key: string }>();
+  const [now, setNow] = useState(0);
+  const idempotencyKey = useRef<string | null>(null);
+  const queryClient = useQueryClient();
+
+  const country = corridor === "ngn" ? "ng" : "ke";
+  const payoutType = corridor === "ngn" ? "bank" : "mobile_money";
+  const quoteKey = `${amount}:${corridor}`;
+  const accountKey = `${country}:${bank}:${accountNumber}:${accountName.trim()}`;
+  const currentQuote = quote?.key === quoteKey && quote.expiresAt > now ? quote.value : null;
+  const currentAccount = verified?.key === accountKey ? verified.value : null;
+  const institutions = useQuery({
+    queryKey: ["institutions", country],
+    queryFn: () => fliqApi<{ items: Institution[] }>(`institutions?country=${country}`),
+  });
+  const options = institutions.data?.items.filter((item) => item.type === payoutType) ?? [];
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    idempotencyKey.current = null;
+  }, [quoteKey, accountKey, clientReference]);
+
+  const requestQuote = useMutation({
+    mutationFn: (input: { amount: string; corridor: Corridor }) =>
+      fliqApi<Quote>("quotes", {
+        method: "POST",
+        body: JSON.stringify({
+          token: "usdc",
+          currency: input.corridor,
+          amount: input.amount,
+          payout_type: input.corridor === "ngn" ? "bank" : "mobile_money",
+        }),
+      }),
+    onSuccess: (value, input) => {
+      const receivedAt = Date.now();
+      setNow(receivedAt);
+      setQuote({
+        value,
+        key: `${input.amount}:${input.corridor}`,
+        expiresAt: receivedAt + value.expires_in * 1000,
+      });
+    },
+  });
+  const verifyAccount = useMutation({
+    mutationFn: (input: { bank: string; number: string; country: string; account_name?: string }) =>
+      fliqApi<VerifiedAccount>("accounts/verify", { method: "POST", body: JSON.stringify(input) }),
+    onSuccess: (value, input) =>
+      setVerified({
+        value,
+        key: `${input.country}:${input.bank}:${input.number}:${input.account_name ?? ""}`,
+      }),
+  });
+  const submitPayout = useMutation({
+    mutationFn: (input: { quoteId: string; name: string }) =>
+      fliqApi<Payout>("payouts", {
+        method: "POST",
+        headers: { "Idempotency-Key": (idempotencyKey.current ??= crypto.randomUUID()) },
+        body: JSON.stringify({
+          quote_id: input.quoteId,
+          account: { bank, number: accountNumber },
+          account_name: input.name,
+          ...(clientReference.trim() ? { client_reference: clientReference.trim() } : {}),
+        }),
+      }),
+    onSuccess: () => {
+      idempotencyKey.current = null;
+      queryClient.invalidateQueries({ queryKey: ["payouts"] });
+      queryClient.invalidateQueries({ queryKey: ["onboarding"] });
+      dialogRef.current?.close();
+    },
+  });
+
+  const validAmount = /^\d+(?:\.\d{1,6})?$/.test(amount) && Number(amount) > 0;
+  const validAccount = Boolean(bank) && /^\d{6,20}$/.test(accountNumber);
+  const canSubmit = currentQuote?.provider === "mock" && Boolean(currentAccount) && !submitPayout.isPending;
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!canSubmit || !currentQuote || !currentAccount) return;
+    submitPayout.mutate({ quoteId: currentQuote.quote_id, name: currentAccount.account_name });
+  }
+
+  function changeCorridor(value: Corridor) {
+    idempotencyKey.current = null;
+    setCorridor(value);
+    setBank("");
+    setAccountNumber("");
+    setAccountName("");
+  }
 
   return (
     <dialog
@@ -37,7 +136,7 @@ export function CreateTestPayoutDrawer({ dialogRef }: Props) {
           </button>
         </div>
 
-        <form className="flex min-h-0 flex-1 flex-col" onSubmit={(event) => event.preventDefault()}>
+        <form className="flex min-h-0 flex-1 flex-col" onSubmit={handleSubmit}>
           <div className="flex-1 space-y-5 overflow-y-auto p-5">
             <label className="block text-xs font-semibold">
               Amount
@@ -55,9 +154,40 @@ export function CreateTestPayoutDrawer({ dialogRef }: Props) {
                 <span className="rounded-full bg-zinc-100 px-2 py-1 text-[10px]">USDC</span>
               </span>
             </label>
-            <p className="text-xs text-zinc-500">
-              The live quote and provider will appear after the quote API is connected.
-            </p>
+            <button
+              type="button"
+              disabled={!validAmount || requestQuote.isPending}
+              onClick={() => requestQuote.mutate({ amount, corridor })}
+              className="rounded-lg border border-zinc-200 px-3 py-2 text-xs font-semibold disabled:opacity-50"
+            >
+              {requestQuote.isPending ? "Getting quote…" : "Get quote"}
+            </button>
+            {requestQuote.isError && (
+              <p role="alert" className="text-xs text-red-600">
+                {requestQuote.error.message}
+              </p>
+            )}
+            {currentQuote && (
+              <div className="rounded-lg bg-zinc-50 p-3 text-xs">
+                <p className="font-semibold">
+                  Recipient gets{" "}
+                  {new Intl.NumberFormat("en-NG", {
+                    style: "currency",
+                    currency: corridor.toUpperCase(),
+                    maximumFractionDigits: 0,
+                  }).format(currentQuote.receive)}
+                </p>
+                <p className="mt-1 text-zinc-500">
+                  Provider: {currentQuote.provider} · Rate: {currentQuote.rate.toLocaleString("en-NG")}
+                </p>
+                <p className="mt-1 text-zinc-500">
+                  Expires in {Math.max(0, Math.ceil((quote!.expiresAt - now) / 1000))}s
+                </p>
+              </div>
+            )}
+            {quote && !currentQuote && (
+              <p className="text-xs text-amber-700">Get a fresh quote before sending.</p>
+            )}
 
             <fieldset>
               <legend className="text-xs font-semibold">Corridor</legend>
@@ -66,27 +196,33 @@ export function CreateTestPayoutDrawer({ dialogRef }: Props) {
                   value="ngn"
                   label="🇳🇬 NGN bank"
                   selected={corridor === "ngn"}
-                  onChange={setCorridor}
+                  onChange={changeCorridor}
                 />
                 <CorridorOption
                   value="kes"
                   label="🇰🇪 KES M-Pesa"
                   selected={corridor === "kes"}
-                  onChange={setCorridor}
+                  onChange={changeCorridor}
                 />
               </div>
             </fieldset>
 
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="block text-xs font-semibold">
-                {corridor === "ngn" ? "Bank code" : "Provider code"}
-                <input
-                  type="text"
+                {corridor === "ngn" ? "Bank" : "Provider"}
+                <select
                   value={bank}
                   onChange={(event) => setBank(event.target.value)}
-                  placeholder="Enter code"
+                  disabled={institutions.isPending || institutions.isError}
                   className="mt-2 h-11 w-full rounded-lg border border-zinc-200 px-3 font-normal outline-none focus:border-zinc-500"
-                />
+                >
+                  <option value="">Select {corridor === "ngn" ? "bank" : "provider"}</option>
+                  {options.map((item) => (
+                    <option key={item.code} value={item.code}>
+                      {item.name}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label className="block text-xs font-semibold">
                 Account number
@@ -99,28 +235,99 @@ export function CreateTestPayoutDrawer({ dialogRef }: Props) {
                 />
               </label>
             </div>
-            <div className="rounded-lg bg-zinc-50 p-3 text-xs text-zinc-500">
-              Account verification will show the recipient name here before anything moves.
-            </div>
+            {institutions.isError && (
+              <p role="alert" className="text-xs text-red-600">
+                {institutions.error.message}
+              </p>
+            )}
+            <label className="block text-xs font-semibold">
+              Recipient name
+              <input
+                value={accountName}
+                onChange={(event) => setAccountName(event.target.value)}
+                placeholder="If the bank cannot return a name"
+                className="mt-2 h-11 w-full rounded-lg border border-zinc-200 px-3 font-normal outline-none focus:border-zinc-500"
+              />
+            </label>
+            <button
+              type="button"
+              disabled={!validAccount || verifyAccount.isPending}
+              onClick={() =>
+                verifyAccount.mutate({
+                  bank,
+                  number: accountNumber,
+                  country,
+                  ...(accountName.trim() ? { account_name: accountName.trim() } : {}),
+                })
+              }
+              className="rounded-lg border border-zinc-200 px-3 py-2 text-xs font-semibold disabled:opacity-50"
+            >
+              {verifyAccount.isPending ? "Checking account…" : "Verify account"}
+            </button>
+            {verifyAccount.isError && (
+              <p role="alert" className="text-xs text-red-600">
+                {verifyAccount.error.message}
+              </p>
+            )}
+            {currentAccount && (
+              <div className="rounded-lg bg-zinc-50 p-3 text-xs">
+                <p className="font-semibold">{currentAccount.account_name}</p>
+                <p className="mt-1 text-zinc-500">
+                  {currentAccount.name_verified
+                    ? "Name verified by provider"
+                    : "Name supplied by you; provider could not verify it"}
+                </p>
+              </div>
+            )}
             <details className="border-t border-zinc-100 pt-4 text-xs text-zinc-500">
-              <summary className="cursor-pointer">Advanced: reference, idempotency key, metadata</summary>
-              <p className="mt-3">These options become available when payout submission is connected.</p>
+              <summary className="cursor-pointer">Advanced: reference</summary>
+              <label className="mt-3 block">
+                Client reference (optional)
+                <input
+                  value={clientReference}
+                  onChange={(event) => setClientReference(event.target.value)}
+                  className="mt-2 h-10 w-full rounded-lg border border-zinc-200 px-3 outline-none focus:border-zinc-500"
+                />
+              </label>
             </details>
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
                 The same request, as code
               </p>
-              <pre className="mt-2 overflow-x-auto rounded-lg bg-zinc-950 p-4 text-xs leading-5 text-zinc-300">{`POST /payouts\n{\n  "quote_id": "<quote from API>",\n  "account": { "bank": "${bank}", "number": "${accountNumber}" }\n}`}</pre>
+              <pre className="mt-2 overflow-x-auto rounded-lg bg-zinc-950 p-4 text-xs leading-5 text-zinc-300">
+                {JSON.stringify(
+                  {
+                    quote_id: currentQuote?.quote_id ?? "<get a quote>",
+                    account: { bank, number: accountNumber },
+                  },
+                  null,
+                  2,
+                )}
+              </pre>
             </div>
           </div>
-          <div className="flex items-center justify-between gap-4 border-t border-zinc-200 p-5">
-            <p className="text-xs text-zinc-500">Quote and payout submission are coming soon.</p>
+          <div className="border-t border-zinc-200 p-5">
+            {currentQuote && currentQuote.provider !== "mock" && (
+              <p className="mb-3 text-xs text-amber-700">
+                This quote uses {currentQuote.provider}. Test payouts require the mock provider.
+              </p>
+            )}
+            {submitPayout.isError && (
+              <p role="alert" className="mb-3 text-xs text-red-600">
+                {submitPayout.error.message}
+              </p>
+            )}
+            {submitPayout.isSuccess && (
+              <p role="status" className="mb-3 text-xs text-emerald-700">
+                Test payout created. It is now in your payouts list.
+              </p>
+            )}
             <button
               type="submit"
-              disabled
-              className="shrink-0 rounded-lg bg-zinc-950 px-4 py-3 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={!canSubmit}
+              className="w-full rounded-lg bg-zinc-950 px-4 py-3 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Send test payout
+              {submitPayout.isPending ? "Sending test payout…" : "Send test payout"}
             </button>
           </div>
         </form>

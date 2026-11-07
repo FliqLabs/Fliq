@@ -2,6 +2,25 @@ import type { FastifyRequest } from "fastify";
 import { checkName, claimName, type ClaimInput, type NearProvisioner } from "./accounts.js";
 import type { RelayerClient } from "../../../packages/chains/near/index.js";
 import { getRelay, relayDelegate } from "./relay.js";
+import { listActivity, listNotifications, parseFilter } from "./activity.js";
+import { connectAgent, listAgents, revokeAgent, updateAgentLimits, type AgentInput, type AgentLimits } from "./agents.js";
+import { publicReceipt } from "./receipts.js";
+import { agentRecipients, agentSelf, createAgentPayout, getAgentPayout, quoteForAgent, type AgentPayoutInput } from "./agent-payouts.js";
+import { cancelRequest, createRequest, getRequest, listRequests, payRequestDeposit, publicRequest, requestDeposit, type RequestInput } from "./requests.js";
+import {
+  checkHomeCurrency,
+  deviceName,
+  listPasskeys,
+  listSessions,
+  notificationSettings,
+  registerPushToken,
+  rememberDevice,
+  revokeSession,
+  saveNotificationSettings,
+  setup,
+  type NotificationSettings,
+} from "./settings.js";
+import { verifyAccessToken } from "./auth/tokens.js";
 import type { Handler } from "./app.js";
 import { createEmailLink, verifyEmailLink, type EmailSender } from "./auth/email-links.js";
 import { finishLogin, finishRegistration, startLogin, startRegistration } from "./auth/passkeys.js";
@@ -28,7 +47,7 @@ import type { VaultClient } from "../../../packages/chains/vault/index.js";
 import { lookupPerson, recentPeople } from "./people.js";
 import { DEFAULT_STATUS_CONFIG, statusReport, type Probe, type StatusConfig } from "./status.js";
 import { vaultBalance } from "./vault.js";
-import { deleteRecipient, listInstitutions, listRecipients, saveRecipient, verifyAccount, type AccountLookup } from "./recipients.js";
+import { deleteRecipient, listInstitutions, listRecipients, saveRecipient, updateRecipient, verifyAccount, type AccountLookup } from "./recipients.js";
 import { bankReference, createPayout, getPayout, type PayoutDeps, type PayoutInput } from "./payouts.js";
 import { openClaim, quoteRetry } from "./recovery.js";
 import { createRateBoard, type RateBoard } from "./rate-board.js";
@@ -90,6 +109,19 @@ export function createHandlers({
   webhookResolve,
 }: HandlerDeps): Record<string, Handler> {
   const rates = createRates(quotes);
+  const agentDeps = { config, vault, provisioner, rate: rates, now };
+  const agentPayoutDeps = { config, vault, quotes, payouts: { ...payouts, quotes } };
+  // Set by the agent signature check: the owner's user and the agent that signed.
+  const agentOf = (request: FastifyRequest) => {
+    const caller = auth(request);
+    return { ownerId: caller.userId, agentId: caller.agentId as string };
+  };
+  // The security screen names each signed-in device, so the name is kept with the session family a sign-in opens.
+  const signedIn = async <T extends { access_token: string }>(request: FastifyRequest, session: T): Promise<T> => {
+    const claims = verifyAccessToken(session.access_token, config.accessSecret, Math.floor(Date.now() / 1000));
+    if (claims) await unit((tx) => rememberDevice(tx, claims.sub, claims.fam, deviceName(request)));
+    return session;
+  };
   const callerIn = async (tx: Db, request: FastifyRequest): Promise<Caller> => ({
     userId: auth(request).userId,
     workspaceId: (await currentWorkspace(tx, auth(request).userId)).id,
@@ -120,12 +152,12 @@ export function createHandlers({
     startPasskeyRegistration: async () => ({ status: 200, body: await unit((tx) => startRegistration(tx, config)) }),
     finishPasskeyRegistration: async (request) => {
       const { challenge_id, credential } = body<{ challenge_id: string; credential: unknown }>(request);
-      return { status: 201, body: settle(await unit((tx) => finishRegistration(tx, config, challenge_id, credential))) };
+      return { status: 201, body: await signedIn(request, settle(await unit((tx) => finishRegistration(tx, config, challenge_id, credential)))) };
     },
     startPasskeyLogin: async () => ({ status: 200, body: await unit((tx) => startLogin(tx, config)) }),
     finishPasskeyLogin: async (request) => {
       const { challenge_id, credential } = body<{ challenge_id: string; credential: unknown }>(request);
-      return { status: 200, body: settle(await unit((tx) => finishLogin(tx, config, challenge_id, credential))) };
+      return { status: 200, body: await signedIn(request, settle(await unit((tx) => finishLogin(tx, config, challenge_id, credential)))) };
     },
 
     sendEmailLink: async (request) => {
@@ -136,7 +168,7 @@ export function createHandlers({
     },
     verifyEmailLink: async (request) => ({
       status: 200,
-      body: await unit((tx) => verifyEmailLink(tx, config, body<{ token: string }>(request).token)),
+      body: await signedIn(request, await unit((tx) => verifyEmailLink(tx, config, body<{ token: string }>(request).token))),
     }),
     refreshSession: async (request) => ({
       status: 200,
@@ -152,14 +184,16 @@ export function createHandlers({
       body: await unit(async (tx) => toUserView(await tx.user.findUniqueOrThrow({ where: { id: auth(request).userId } }))),
     }),
     updateMe: async (request) => {
-      const { display_name, occupation, photo_url } = body<{
+      const { display_name, occupation, photo_url, home_currency } = body<{
         display_name?: string;
         occupation?: string | null;
         photo_url?: string | null;
+        home_currency?: string;
       }>(request);
       requireHttpsUrl(photo_url);
+      checkHomeCurrency(home_currency);
       const user = await unit((tx) =>
-        tx.user.update({ where: { id: auth(request).userId }, data: { displayName: display_name?.trim(), occupation, photoUrl: photo_url } }),
+        tx.user.update({ where: { id: auth(request).userId }, data: { displayName: display_name?.trim(), occupation, photoUrl: photo_url, homeCurrency: home_currency } }),
       );
       return { status: 200, body: toUserView(user) };
     },
@@ -169,7 +203,7 @@ export function createHandlers({
     }),
     claimName: (request) =>
       claimName(unit, config, provisioner, auth(request).userId, request.headers["idempotency-key"] as string | undefined, body<ClaimInput>(request)),
-    relay: (request) => relayDelegate(unit, relayer, auth(request).userId, body<{ signed_delegate: string }>(request).signed_delegate),
+    relay: (request) => relayDelegate(unit, relayer, auth(request).userId, body<{ signed_delegate: string }>(request).signed_delegate, config.vaultAccount),
     getRelay: (request) => getRelay(unit, relayer, auth(request).userId, (request.params as { delegateHash: string }).delegateHash),
 
     getCurrentWorkspace: async (request) => ({
@@ -297,6 +331,10 @@ export function createHandlers({
     verifyAccountName: async (request) => ({ status: 200, body: await verifyAccount(quotes.adapters, body<AccountLookup>(request)) }),
     saveRecipient: (request) => saveRecipient(unit, { config, adapters: quotes.adapters }, auth(request).userId, body<AccountLookup>(request)),
     listRecipients: async (request) => ({ status: 200, body: await unit((tx) => listRecipients(tx, config, auth(request).userId)) }),
+    updateRecipient: async (request) => ({
+      status: 200,
+      body: await unit((tx) => updateRecipient(tx, config, auth(request).userId, (request.params as { recipientId: string }).recipientId, body<{ own?: boolean; default?: boolean }>(request))),
+    }),
     deleteRecipient: async (request) => {
       await unit((tx) => deleteRecipient(tx, auth(request).userId, (request.params as { recipientId: string }).recipientId));
       return { status: 204, body: undefined };
@@ -310,6 +348,78 @@ export function createHandlers({
     }),
 
     getVaultBalance: async (request) => ({ status: 200, body: await vaultBalance(unit, vault, auth(request).userId) }),
+
+    listActivity: async (request) => {
+      const { filter, limit, cursor } = request.query as { filter?: string; limit?: string; cursor?: string };
+      return { status: 200, body: await unit((tx) => listActivity(tx, config, auth(request).userId, parseFilter(filter), parseLimit(limit), cursor)) };
+    },
+    listNotifications: async (request) => ({
+      status: 200,
+      body: await unit((tx) => listNotifications(tx, config, auth(request).userId, parseLimit((request.query as { limit?: string }).limit))),
+    }),
+    registerPushToken: async (request) => {
+      const { token, platform } = body<{ token: string; platform: string }>(request);
+      await unit((tx) => registerPushToken(tx, auth(request).userId, token, platform));
+      return { status: 204, body: undefined };
+    },
+
+    listAgents: async (request) => ({ status: 200, body: await listAgents(unit, agentDeps, auth(request).userId) }),
+    getAgentSelf: async (request) => ({ status: 200, body: await agentSelf(unit, vault, agentOf(request).agentId) }),
+    listAgentRecipients: async (request) => ({ status: 200, body: await agentRecipients(unit, config, agentOf(request).ownerId) }),
+    quoteForAgent: async (request) => ({
+      status: 200,
+      body: await quoteForAgent(unit, quotes, agentOf(request).ownerId, body<{ currency: QuoteInput["currency"]; amount: string; mode?: "send" | "receive" }>(request)),
+    }),
+    createAgentPayout: (request) =>
+      createAgentPayout(unit, agentPayoutDeps, agentOf(request).agentId, request.headers["idempotency-key"] as string | undefined, body<AgentPayoutInput>(request)),
+    getAgentPayout: async (request) => ({
+      status: 200,
+      body: await getAgentPayout(unit, config, agentOf(request).agentId, (request.params as { payoutId: string }).payoutId),
+    }),
+    relayForAgent: (request) =>
+      relayDelegate(unit, relayer, agentOf(request).ownerId, body<{ signed_delegate: string }>(request).signed_delegate, config.vaultAccount, agentOf(request).agentId),
+    connectAgent: async (request) => ({ status: 201, body: await connectAgent(unit, agentDeps, auth(request).userId, body<AgentInput>(request)) }),
+    updateAgentLimits: async (request) => ({
+      status: 200,
+      body: await updateAgentLimits(unit, agentDeps, auth(request).userId, (request.params as { agentId: string }).agentId, body<AgentLimits>(request)),
+    }),
+    revokeAgent: async (request) => ({ status: 200, body: await revokeAgent(unit, agentDeps, auth(request).userId, (request.params as { agentId: string }).agentId) }),
+
+    listRequests: async (request) => ({ status: 200, body: await unit((tx) => listRequests(tx, config, auth(request).userId)) }),
+    createRequest: (request) =>
+      withIdempotency(unit, auth(request).userId, request, async (tx) => ({ status: 201, body: await createRequest(tx, config, auth(request).userId, body<RequestInput>(request)) })),
+    getRequest: async (request) => ({ status: 200, body: await unit((tx) => getRequest(tx, config, auth(request).userId, (request.params as { requestId: string }).requestId)) }),
+    cancelRequest: async (request) => ({ status: 200, body: await unit((tx) => cancelRequest(tx, config, auth(request).userId, (request.params as { requestId: string }).requestId)) }),
+    getPublicRequest: async (request) => {
+      const { name, code } = request.params as { name: string; code: string };
+      return { status: 200, body: await publicRequest(unit, config, deposits, name, code) };
+    },
+    payRequestDeposit: async (request) => {
+      const { name, code } = request.params as { name: string; code: string };
+      return { status: 201, body: await payRequestDeposit(unit, config, deposits, name, code, body<{ token: DepositToken; chain: DepositChain }>(request)) };
+    },
+    getRequestDeposit: async (request) => {
+      const { name, code, depositId } = request.params as { name: string; code: string; depositId: string };
+      return { status: 200, body: await requestDeposit(unit, config, deposits, name, code, depositId) };
+    },
+    getPublicReceipt: async (request) => ({
+      status: 200,
+      headers: { "cache-control": "public, max-age=30" },
+      body: await unit((tx) => publicReceipt(tx, config, (request.params as { payoutId: string }).payoutId)),
+    }),
+
+    listSessions: async (request) => ({ status: 200, body: await unit((tx) => listSessions(tx, auth(request).userId, auth(request).familyId, now())) }),
+    revokeSession: async (request) => {
+      await unit((tx) => revokeSession(tx, auth(request).userId, (request.params as { sessionId: string }).sessionId));
+      return { status: 204, body: undefined };
+    },
+    listPasskeys: async (request) => ({ status: 200, body: await unit((tx) => listPasskeys(tx, auth(request).userId)) }),
+    getNotificationSettings: async (request) => ({ status: 200, body: await unit((tx) => notificationSettings(tx, auth(request).userId)) }),
+    updateNotificationSettings: async (request) => ({
+      status: 200,
+      body: await unit((tx) => saveNotificationSettings(tx, auth(request).userId, body<NotificationSettings>(request))),
+    }),
+    getSetup: async (request) => ({ status: 200, body: await unit((tx) => setup(tx, auth(request).userId)) }),
     listDepositSources: async (request) => ({ status: 200, body: await deposits.sources(unit, auth(request).userId) }),
     estimateDeposit: async (request) => {
       const { token, chain, amount } = request.query as { token?: string; chain?: string; amount?: string };
