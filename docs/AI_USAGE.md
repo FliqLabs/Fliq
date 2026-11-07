@@ -37,6 +37,7 @@ The NEAR HACKATHON rules require listing AI-generated code. Add a row whenever a
 | 2026-11-06 | `contracts/vault/src/{lib.rs,errors.rs}`, `contracts/vault/docs`, `contracts/vault/README.md` | Codex | Vault-account-only migration from the initialized pre-policy contract layout with state-preservation regression coverage and deployment guidance |
 | 2026-11-07 | `contracts/vault/src/policies.rs`, `contracts/vault/tests/contract.rs`, `contracts/vault/docs` | Claude Code | Key agent policies by owner and agent account, remove the agent transfer path, charge policy storage to the owner, settle payouts started before the upgrade, add agent events |
 | 2026-11-07 | `apps/web/app/rates/ngn`, `apps/web/app/api/fliq/[...path]/route.ts` | Claude Code | Proxy the public USDC to NGN rate, match the Rate type to the spec, show a calm coming-soon state until the rates API ships, hide the rate history chart, fix brand and domain copy |
+| 2026-11-07 | `services/api/apps/api/src/{rate-limit.ts,app.ts,webhook-delivery.ts,webhook-endpoints.ts}`, `services/api/packages/webhooks/{transport.ts,destination.ts}`, `services/api/test`, `services/api/packages/webhooks/*.test.ts` | Claude Code | At Frank's direction: unproven API keys stay in the IP rate-limit bucket, webhook attempts get a total deadline and count signing failures, 6to4 and Teredo are blocked, rotation keeps one previous secret, plus tests |
 
 The iOS app (`apps/ios`) is built with Claude Code, directed and reviewed by Frank. Each iOS PR adds its rows to this table.
 

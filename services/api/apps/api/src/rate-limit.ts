@@ -96,13 +96,48 @@ interface Identity {
   key: string;
 }
 
-function identify(request: FastifyRequest, accessSecret: string): Identity {
+const PROVEN_KEY_LIMIT = 10_000;
+const PROVEN_KEY_TTL_MS = 10 * 60_000;
+
+// API keys that passed authentication recently, by hash. Only these get their own bucket: an unproven
+// "rt_" token stays in the caller's IP bucket, so sending a fresh random key on each request cannot dodge
+// the anonymous limit or buy a database lookup per request. Kept per process and bounded, so a valid key
+// spends one IP token on each instance before it moves to its own bucket. A key revoked while proven
+// keeps its bucket until the entry expires, and is still refused by authentication.
+export class ProvenKeys {
+  private readonly seen = new Map<string, number>();
+
+  constructor(private readonly now: () => number = Date.now) {}
+
+  add(token: string): void {
+    const hash = keyHash(token);
+    this.seen.delete(hash);
+    this.seen.set(hash, this.now() + PROVEN_KEY_TTL_MS);
+    if (this.seen.size > PROVEN_KEY_LIMIT) this.seen.delete(this.seen.keys().next().value as string);
+  }
+
+  has(token: string): boolean {
+    const hash = keyHash(token);
+    const until = this.seen.get(hash);
+    if (until === undefined) return false;
+    if (until > this.now()) return true;
+    this.seen.delete(hash);
+    return false;
+  }
+}
+
+// Keyed by the key's hash, never the key itself, because bucket names are visible to anyone reading Redis.
+const keyHash = (token: string) => sha256Hex(token).slice(0, 32);
+
+function identify(request: FastifyRequest, accessSecret: string, provenKeys: ProvenKeys): Identity {
+  const anonymous = { policy: POLICIES.anonymous, key: `ip:${request.ip}` };
   if (request.url.startsWith("/v1/auth/")) return { policy: POLICIES.auth, key: `ip:${request.ip}` };
   const token = request.headers.authorization?.startsWith("Bearer ") ? request.headers.authorization.slice(7) : null;
-  // Keyed by the key's hash, never the key itself, because bucket names are visible to anyone reading Redis.
-  if (token?.startsWith("rt_")) return { policy: POLICIES.apiKey, key: `key:${sha256Hex(token).slice(0, 32)}` };
+  if (token?.startsWith("rt_")) {
+    return provenKeys.has(token) ? { policy: POLICIES.apiKey, key: `key:${keyHash(token)}` } : anonymous;
+  }
   const claims = token ? verifyAccessToken(token, accessSecret, Math.floor(Date.now() / 1000)) : null;
-  return claims ? { policy: POLICIES.signedIn, key: `user:${claims.sub}` } : { policy: POLICIES.anonymous, key: `ip:${request.ip}` };
+  return claims ? { policy: POLICIES.signedIn, key: `user:${claims.sub}` } : anonymous;
 }
 
 function setHeaders(reply: FastifyReply, decision: Decision) {
@@ -112,9 +147,9 @@ function setHeaders(reply: FastifyReply, decision: Decision) {
 }
 
 // A broken limiter must not take the API down, so it fails open and logs.
-export function rateLimitHook(limiter: Limiter, accessSecret: string) {
+export function rateLimitHook(limiter: Limiter, accessSecret: string, provenKeys: ProvenKeys) {
   return async (request: FastifyRequest, reply: FastifyReply) => {
-    const { policy, key } = identify(request, accessSecret);
+    const { policy, key } = identify(request, accessSecret, provenKeys);
     const decision = await limiter.take(key, policy).catch((error: Error) => {
       request.log.error({ err: { message: error.message } }, "rate limiter unavailable");
       return null;
