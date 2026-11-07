@@ -4,6 +4,9 @@ struct WelcomeView: View {
     let onStart: () -> Void
     let onExistingAccount: () -> Void
     var onSkip: (() -> Void)? = nil
+    var isWorking = false
+    var message: String?
+    var onEmail: (() -> Void)?
 
     private static let accent = LinearGradient(
         colors: [Color(hex: 0x7B61FF), Color(hex: 0xB39BFF)],
@@ -31,7 +34,11 @@ struct WelcomeView: View {
             VStack(spacing: 22) {
                 Button(action: onStart) {
                     HStack(spacing: 12) {
-                        icon("IconPasskey")
+                        if isWorking {
+                            ProgressView().tint(.black)
+                        } else {
+                            icon("IconPasskey")
+                        }
                         Text("Continue with passkey")
                     }
                     .frame(maxWidth: .infinity)
@@ -42,6 +49,7 @@ struct WelcomeView: View {
                     }
                 }
                 .buttonStyle(WelcomeButtonStyle())
+                .disabled(isWorking)
                 Button(action: onExistingAccount) {
                     HStack(spacing: 10) {
                         icon("IconDownload")
@@ -50,6 +58,18 @@ struct WelcomeView: View {
                     .font(.system(size: 17, weight: .medium))
                 }
                 .foregroundStyle(Theme.textPrimary)
+                .disabled(isWorking)
+                if let message {
+                    Text(message)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Theme.danger)
+                        .multilineTextAlignment(.center)
+                }
+                if let onEmail {
+                    Button("Use email instead", action: onEmail)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color(hex: 0x8E8E8E))
+                }
             }
             .padding(.bottom, 36)
         }

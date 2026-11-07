@@ -34,8 +34,15 @@ struct PasskeyOptions: Codable, Sendable, Equatable {
             let name: String
         }
 
+        /// Sent only when registering: the new account's handle, base64url like the challenge.
+        struct Person: Codable, Sendable, Equatable {
+            let id: String
+            let name: String
+        }
+
         let challenge: String
         let rp: RelyingParty?
+        let user: Person?
         let timeout: Int?
     }
 
