@@ -15,6 +15,8 @@ Testnet runs NEAR protocol 88. Build both deployment artifacts with Rust 1.95.0 
 
 The outputs are `contracts/vault/target/near/fliq_vault.wasm` and `contracts/mock_usdc/target/near/fliq_mock_usdc.wasm`. The near-workspaces sandbox must use a binary with protocol 88 support; run the integration test separately with `make test-sandbox`.
 
+Order expiry values are nanosecond timestamps computed as `current_block_timestamp_ns + margin_ns`, where the margin is positive and no greater than the configured maximum horizon (24 hours by default).
+
 The release artifacts recorded for this branch are:
 
 | Artifact | Size | SHA-256 |

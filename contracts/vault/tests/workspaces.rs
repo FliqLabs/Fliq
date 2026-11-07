@@ -9,6 +9,21 @@ const MOCK_USDC_WASM: &[u8] = include_bytes!("../../mock_usdc/target/near/fliq_m
 const USDC_UNIT: u128 = 1_000_000;
 const STORAGE_DEPOSIT: u128 = 10_000_000_000_000_000_000_000;
 const TOKEN_STORAGE_DEPOSIT: u128 = 1_000_000_000_000_000_000_000;
+const HOUR_NS: u64 = 60 * 60 * 1_000_000_000;
+const MINUTE_NS: u64 = 60 * 1_000_000_000;
+
+async fn expiry_ns(
+    worker: &Worker<near_workspaces::network::Sandbox>,
+    margin_ns: u64,
+) -> Result<String> {
+    Ok(worker
+        .view_block()
+        .await?
+        .timestamp()
+        .checked_add(margin_ns)
+        .context("sandbox timestamp overflow")?
+        .to_string())
+}
 
 async fn call(
     account: &Account,
@@ -47,12 +62,14 @@ async fn view_json<T: DeserializeOwned>(
 }
 
 async fn register_order(
+    worker: &Worker<near_workspaces::network::Sandbox>,
     registration: &Account,
     vault: &Contract,
     order_id: &str,
     payer: &Account,
     deposit_address: &Account,
     amount: u128,
+    margin_ns: u64,
 ) -> Result<()> {
     call(
         registration,
@@ -63,7 +80,7 @@ async fn register_order(
             "payer": payer.id(),
             "deposit_address": deposit_address.id(),
             "amount": amount.to_string(),
-            "expires_at_ns": "9999999999999999999",
+            "expires_at_ns": expiry_ns(worker, margin_ns).await?,
             "corridor": "NG-NGN-bank"
         }),
         0,
@@ -148,6 +165,15 @@ async fn payout_cases_run_in_a_local_sandbox() -> Result<()> {
         .await?
         .into_result()?;
     }
+    call(
+        &owner,
+        mock.id(),
+        "storage_deposit",
+        json!({ "account_id": vault.id(), "registration_only": true }),
+        TOKEN_STORAGE_DEPOSIT,
+    )
+    .await?
+    .into_result()?;
 
     call(
         &owner,
@@ -174,26 +200,30 @@ async fn payout_cases_run_in_a_local_sandbox() -> Result<()> {
     .into_result()?;
 
     register_order(
+        &worker,
         &registration,
         &vault,
         "po_payer",
         &payer,
         &recipient,
         50 * USDC_UNIT,
+        HOUR_NS,
     )
     .await?;
     register_order(
+        &worker,
         &registration,
         &vault,
         "po_agent",
         &payer,
         &recipient,
         20 * USDC_UNIT,
+        HOUR_NS,
     )
     .await?;
 
     call(
-        &owner,
+        &payer,
         vault.id(),
         "set_agent",
         json!({
@@ -268,12 +298,14 @@ async fn payout_cases_run_in_a_local_sandbox() -> Result<()> {
     .await?
     .into_result()?;
     register_order(
+        &worker,
         &registration,
         &vault,
         "po_failed",
         &payer,
         &recipient,
         10 * USDC_UNIT,
+        HOUR_NS,
     )
     .await?;
     call(
@@ -336,12 +368,48 @@ async fn payout_cases_run_in_a_local_sandbox() -> Result<()> {
     .into_result()?;
 
     register_order(
+        &worker,
+        &registration,
+        &vault,
+        "po_expired",
+        &payer,
+        &recipient,
+        USDC_UNIT,
+        MINUTE_NS,
+    )
+    .await?;
+    worker.fast_forward(7_200).await?;
+    expect_failure(
+        &payer,
+        vault.id(),
+        "payout",
+        json!({
+            "order_id": "po_expired",
+            "amount": USDC_UNIT.to_string(),
+            "deposit_address": recipient.id()
+        }),
+        0,
+    )
+    .await?;
+    call(
+        &registration,
+        vault.id(),
+        "release_order",
+        json!({ "order_id": "po_expired" }),
+        0,
+    )
+    .await?
+    .into_result()?;
+
+    register_order(
+        &worker,
         &registration,
         &vault,
         "po_release",
         &payer,
         &recipient,
         5 * USDC_UNIT,
+        HOUR_NS,
     )
     .await?;
     call(

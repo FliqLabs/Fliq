@@ -38,7 +38,7 @@ Hosted-agent key removal should accompany `remove_agent`, but the on-chain revok
 
 ## Verification
 
-The current local result is 41 vault unit tests and 66 contract/integration tests passing with `--features testing`. Strict clippy and rustfmt checks pass. The near-workspaces smoke harness remains ignored by default and requires a supported local NEAR sandbox platform.
+The near-workspaces integration test is not ignored, uses the official `target/near` release artifacts, and requires a protocol-88-capable sandbox. Order expiry values in the test are computed as `current_block_timestamp_ns + margin_ns`, with a positive margin within the configured maximum horizon (24 hours by default).
 
 Policy coverage includes:
 
