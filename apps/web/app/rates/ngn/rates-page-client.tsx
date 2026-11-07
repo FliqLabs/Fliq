@@ -10,9 +10,12 @@ import { fliqApi, ApiError } from "../../lib/fliq-api";
 
 /* -------------------------------------------------------
    TYPES
-   Replace these mock data types with API response types
-   when the corresponding backend endpoints are available.
+   ReferenceRate and Rate mirror components["schemas"] in
+   spec/ts/openapi.ts (GET /rates/{token}/{currency}).
+   Keep them in step with the spec.
 ------------------------------------------------------- */
+
+type ProviderId = "paycrest" | "busha" | "fonbnk" | "bitnob" | "transfi" | "mock";
 
 type ReferenceRate = {
   source: string;
@@ -22,9 +25,10 @@ type ReferenceRate = {
 type Rate = {
   token: string;
   currency: string;
+  /** Local currency per 1 token, after fees */
   rate: number;
   rate_before_fees: number;
-  provider: string;
+  provider: ProviderId;
   providers_quoting: number;
   spread: number;
   official: ReferenceRate;
@@ -63,15 +67,13 @@ type Corridor = {
    They are NOT live provider quotes or historical data.
 ------------------------------------------------------- */
 
+/* Shown while the rate history endpoint does not exist in the API spec. */
+const RATE_HISTORY_READY = false;
+
+/* Text for values the live rate has not filled in yet. */
+const EMPTY = "-";
+
 const DESIGN_PREVIEW = {
-  mainRate: 1376.32,
-  officialRate: 1348.01,
-  p2pRate: 1381.85,
-  providerRate: 1383.2,
-  change24h: 0.42,
-  providersQuoting: 3,
-  spread: 1.3,
-  fetchedAt: "14:02:13 WAT",
   conversion: {
     amount: 50,
     providerRate: 1383.2,
@@ -117,7 +119,7 @@ const MOCK_PROVIDERS: Provider[] = [
     name: "Bitnob",
     description: "Pre-funded float · sandbox only",
     quoteRate: null,
-    fee: "—",
+    fee: "n/a",
     effectiveRate: null,
     status: "Paused",
     updated: "27 Oct",
@@ -197,6 +199,17 @@ function providerName(value: string) {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
+function formatNairaOrEmpty(value: number | undefined) {
+  return value === undefined ? EMPTY : formatNaira(value);
+}
+
+/* The rates endpoint is in the spec but not live yet: a 404 or an
+   unreachable API means "coming soon", not a broken page. */
+function isRateUnavailable(error: unknown) {
+  if (!(error instanceof ApiError)) return true;
+  return error.status === 404 || error.status >= 500;
+}
+
 function relativeDifference(rate: number, reference: number) {
   if (!reference) return null;
   return ((rate - reference) / reference) * 100;
@@ -205,8 +218,7 @@ function relativeDifference(rate: number, reference: number) {
 function differenceLabel(value: number | null) {
   if (value === null) return "Unavailable";
 
-  const direction =
-    value > 0 ? "above" : value < 0 ? "below" : "level with";
+  const direction = value > 0 ? "above" : value < 0 ? "below" : "level with";
 
   return `${Math.abs(value).toFixed(2)}% ${direction}`;
 }
@@ -216,11 +228,7 @@ function differenceLabel(value: number | null) {
 ------------------------------------------------------- */
 
 function Eyebrow({ children }: { children: React.ReactNode }) {
-  return (
-    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#999]">
-      {children}
-    </p>
-  );
+  return <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#999]">{children}</p>;
 }
 
 function SectionHeading({
@@ -235,12 +243,8 @@ function SectionHeading({
   return (
     <div className="mb-5">
       <Eyebrow>{eyebrow}</Eyebrow>
-      <h2 className="mt-2 text-lg font-semibold tracking-tight text-white sm:text-xl">
-        {title}
-      </h2>
-      {description && (
-        <p className="mt-2 text-sm text-[#858585]">{description}</p>
-      )}
+      <h2 className="mt-2 text-lg font-semibold tracking-tight text-white sm:text-xl">{title}</h2>
+      {description && <p className="mt-2 text-sm text-[#858585]">{description}</p>}
     </div>
   );
 }
@@ -253,37 +257,17 @@ function PreviewLabel() {
   );
 }
 
-function Panel({
-  children,
-  className = "",
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
+function Panel({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
-    <section
-      className={`rounded-xl border border-[#303030] bg-[#141414] ${className}`}
-    >
-      {children}
-    </section>
+    <section className={`rounded-xl border border-[#303030] bg-[#141414] ${className}`}>{children}</section>
   );
 }
 
-function Metric({
-  label,
-  value,
-  detail,
-}: {
-  label: string;
-  value: string;
-  detail?: string;
-}) {
+function Metric({ label, value, detail }: { label: string; value: string; detail?: string }) {
   return (
     <div>
       <p className="text-xs text-[#858585]">{label}</p>
-      <p className="mt-2 text-lg font-semibold tabular-nums text-white">
-        {value}
-      </p>
+      <p className="mt-2 text-lg font-semibold tabular-nums text-white">{value}</p>
       {detail && <p className="mt-1 text-xs text-[#777]">{detail}</p>}
     </div>
   );
@@ -291,16 +275,25 @@ function Metric({
 
 /* -------------------------------------------------------
    CHART
-   Replace MOCK_SNAPSHOTS with a historical-rate endpoint.
-   Suggested future endpoint:
-   GET /rates/usdc/ngn/history?period=24h
+   Uses MOCK_SNAPSHOTS. There is no rate history endpoint in
+   spec/openapi.yaml yet, so the chart stays hidden behind
+   RATE_HISTORY_READY until the spec and API add one.
 ------------------------------------------------------- */
 
-function RateChart({
-  snapshots,
-}: {
-  snapshots: Snapshot[];
-}) {
+function RateHistoryComingSoon() {
+  return (
+    <Panel className="p-5 sm:p-7">
+      <Eyebrow>Rate history</Eyebrow>
+      <h3 className="mt-2 text-sm font-semibold text-white">Coming soon</h3>
+      <p className="mt-2 text-sm text-[#858585]">
+        A chart of the best after-fee rate over 24 hours, 7 days and 30 days will appear here once fliq
+        records rate history.
+      </p>
+    </Panel>
+  );
+}
+
+function RateChart({ snapshots }: { snapshots: Snapshot[] }) {
   const [period, setPeriod] = useState("24H");
 
   const width = 760;
@@ -313,32 +306,22 @@ function RateChart({
   const min = 1350;
   const max = 1390;
 
-  const x = (index: number) =>
-    left +
-    (index / Math.max(snapshots.length - 1, 1)) * (width - left - right);
+  const x = (index: number) => left + (index / Math.max(snapshots.length - 1, 1)) * (width - left - right);
 
-  const y = (value: number) =>
-    top + ((max - value) / (max - min)) * (height - top - bottom);
+  const y = (value: number) => top + ((max - value) / (max - min)) * (height - top - bottom);
 
-  const bestLine = snapshots
-    .map((point, index) => `${x(index)},${y(point.best)}`)
-    .join(" ");
+  const bestLine = snapshots.map((point, index) => `${x(index)},${y(point.best)}`).join(" ");
 
-  const worstLine = snapshots
-    .map((point, index) => `${x(index)},${y(point.worst)}`)
-    .join(" ");
+  const worstLine = snapshots.map((point, index) => `${x(index)},${y(point.worst)}`).join(" ");
 
-  const p2pLine = snapshots
-    .map((point, index) => `${x(index)},${y(point.p2p)}`)
-    .join(" ");
+  const p2pLine = snapshots.map((point, index) => `${x(index)},${y(point.p2p)}`).join(" ");
 
   const bandPoints = [
     ...snapshots.map((point, index) => `${x(index)},${y(point.worst)}`),
-    ...snapshots
-      .map(
-        (point, index) =>
-          `${x(snapshots.length - 1 - index)},${y(snapshots[snapshots.length - 1 - index].best)}`,
-      ),
+    ...snapshots.map(
+      (point, index) =>
+        `${x(snapshots.length - 1 - index)},${y(snapshots[snapshots.length - 1 - index].best)}`,
+    ),
   ].join(" ");
 
   return (
@@ -346,9 +329,7 @@ function RateChart({
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <Eyebrow>Rate history</Eyebrow>
-          <h3 className="mt-2 text-sm font-semibold text-white">
-            Best after-fee rate over time
-          </h3>
+          <h3 className="mt-2 text-sm font-semibold text-white">Best after-fee rate over time</h3>
         </div>
 
         <div className="flex rounded-lg border border-[#303030] p-1">
@@ -357,9 +338,7 @@ function RateChart({
               key={item}
               onClick={() => setPeriod(item)}
               className={`rounded-md px-3 py-1.5 text-[10px] font-semibold transition ${
-                period === item
-                  ? "bg-[#a594ff] text-[#111]"
-                  : "text-[#888] hover:text-white"
+                period === item ? "bg-[#a594ff] text-[#111]" : "text-[#888] hover:text-white"
               }`}
             >
               {item}
@@ -401,12 +380,7 @@ function RateChart({
                 stroke="#303030"
                 strokeDasharray="3 5"
               />
-              <text
-                x="0"
-                y={y(value) + 4}
-                fill="#777"
-                fontSize="11"
-              >
+              <text x="0" y={y(value) + 4} fill="#777" fontSize="11">
                 {value}
               </text>
             </g>
@@ -414,20 +388,9 @@ function RateChart({
 
           <polygon points={bandPoints} fill="#a594ff" opacity="0.10" />
 
-          <polyline
-            points={p2pLine}
-            fill="none"
-            stroke="#d5b36b"
-            strokeWidth="1.5"
-            strokeDasharray="5 5"
-          />
+          <polyline points={p2pLine} fill="none" stroke="#d5b36b" strokeWidth="1.5" strokeDasharray="5 5" />
 
-          <polyline
-            points={worstLine}
-            fill="none"
-            stroke="#777"
-            strokeWidth="1.5"
-          />
+          <polyline points={worstLine} fill="none" stroke="#777" strokeWidth="1.5" />
 
           <polyline
             points={bestLine}
@@ -439,24 +402,11 @@ function RateChart({
           />
 
           {snapshots.map((point, index) => (
-            <circle
-              key={point.time}
-              cx={x(index)}
-              cy={y(point.best)}
-              r="3"
-              fill="#a594ff"
-            />
+            <circle key={point.time} cx={x(index)} cy={y(point.best)} r="3" fill="#a594ff" />
           ))}
 
           {snapshots.map((point, index) => (
-            <text
-              key={point.time}
-              x={x(index)}
-              y={height - 8}
-              textAnchor="middle"
-              fill="#777"
-              fontSize="10"
-            >
+            <text key={point.time} x={x(index)} y={height - 8} textAnchor="middle" fill="#777" fontSize="10">
               {point.time}
             </text>
           ))}
@@ -470,8 +420,8 @@ function RateChart({
       </div>
 
       <p className="mt-4 text-[10px] text-[#666]">
-        {period} preview data only. Historical snapshots are not yet connected
-        to the API. Stale and paused providers are excluded.
+        {period} preview data only. Historical snapshots are not yet connected to the API. Stale and paused
+        providers are excluded.
       </p>
     </Panel>
   );
@@ -482,19 +432,13 @@ function RateChart({
    Replace MOCK_PROVIDERS with a provider quotes endpoint.
 ------------------------------------------------------- */
 
-function ProviderTable({
-  providers,
-}: {
-  providers: Provider[];
-}) {
+function ProviderTable({ providers }: { providers: Provider[] }) {
   return (
     <Panel className="overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-3 p-5 sm:p-6">
         <div>
           <Eyebrow>Market comparison</Eyebrow>
-          <h3 className="mt-2 text-base font-semibold text-white">
-            Who&apos;s quoting right now
-          </h3>
+          <h3 className="mt-2 text-base font-semibold text-white">Who&apos;s quoting right now</h3>
         </div>
         <PreviewLabel />
       </div>
@@ -514,38 +458,23 @@ function ProviderTable({
 
           <tbody>
             {providers.map((provider) => (
-              <tr
-                key={provider.name}
-                className="border-b border-[#292929] last:border-0"
-              >
+              <tr key={provider.name} className="border-b border-[#292929] last:border-0">
                 <td className="px-5 py-5">
-                  <p className="text-sm font-semibold text-white">
-                    {provider.name}
-                  </p>
-                  <p className="mt-1 text-[10px] text-[#777]">
-                    {provider.description}
-                  </p>
+                  <p className="text-sm font-semibold text-white">{provider.name}</p>
+                  <p className="mt-1 text-[10px] text-[#777]">{provider.description}</p>
                   {provider.note && (
-                    <p className="mt-1 text-[9px] font-semibold text-[#a594ff]">
-                      {provider.note}
-                    </p>
+                    <p className="mt-1 text-[9px] font-semibold text-[#a594ff]">{provider.note}</p>
                   )}
                 </td>
 
                 <td className="px-4 py-5 text-xs tabular-nums text-[#ccc]">
-                  {provider.quoteRate === null
-                    ? "—"
-                    : formatNaira(provider.quoteRate)}
+                  {provider.quoteRate === null ? EMPTY : formatNaira(provider.quoteRate)}
                 </td>
 
-                <td className="px-4 py-5 text-xs text-[#ccc]">
-                  {provider.fee}
-                </td>
+                <td className="px-4 py-5 text-xs text-[#ccc]">{provider.fee}</td>
 
                 <td className="px-4 py-5 text-xs font-semibold tabular-nums text-white">
-                  {provider.effectiveRate === null
-                    ? "—"
-                    : formatNaira(provider.effectiveRate)}
+                  {provider.effectiveRate === null ? EMPTY : formatNaira(provider.effectiveRate)}
                 </td>
 
                 <td className="px-4 py-5">
@@ -562,9 +491,7 @@ function ProviderTable({
                   </span>
                 </td>
 
-                <td className="px-4 py-5 text-xs text-[#888]">
-                  {provider.updated}
-                </td>
+                <td className="px-4 py-5 text-xs text-[#888]">{provider.updated}</td>
               </tr>
             ))}
           </tbody>
@@ -572,8 +499,7 @@ function ProviderTable({
       </div>
 
       <p className="p-5 text-[10px] text-[#666]">
-        Provider rows are Figma reference values for layout integration.
-        They are not verified live quotes.
+        Provider rows are Figma reference values for layout integration. They are not verified live quotes.
       </p>
     </Panel>
   );
@@ -592,9 +518,7 @@ function ConversionPanel() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <Eyebrow>Example conversion</Eyebrow>
-          <h3 className="mt-2 text-lg font-semibold text-white">
-            What $50 becomes
-          </h3>
+          <h3 className="mt-2 text-lg font-semibold text-white">What $50 becomes</h3>
         </div>
         <PreviewLabel />
       </div>
@@ -606,26 +530,18 @@ function ConversionPanel() {
 
       <div className="mt-7 space-y-4 border-t border-[#303030] pt-5">
         <div className="flex justify-between gap-4 text-sm">
-          <span className="text-[#888]">
-            ${conversion.amount} at provider rate
-          </span>
-          <span className="tabular-nums text-white">
-            {formatNaira(conversion.gross)}
-          </span>
+          <span className="text-[#888]">${conversion.amount} at provider rate</span>
+          <span className="tabular-nums text-white">{formatNaira(conversion.gross)}</span>
         </div>
 
         <div className="flex justify-between gap-4 text-sm">
           <span className="text-[#888]">Paycrest fee</span>
-          <span className="tabular-nums text-white">
-            −{formatNaira(conversion.providerFee)}
-          </span>
+          <span className="tabular-nums text-white">−{formatNaira(conversion.providerFee)}</span>
         </div>
 
         <div className="flex justify-between gap-4 text-sm">
           <span className="text-[#888]">Network fee · Solana</span>
-          <span className="tabular-nums text-white">
-            −{formatNaira(conversion.networkFee)}
-          </span>
+          <span className="tabular-nums text-white">−{formatNaira(conversion.networkFee)}</span>
         </div>
 
         <div className="flex justify-between gap-4 border-t border-[#303030] pt-4 text-sm">
@@ -637,8 +553,8 @@ function ConversionPanel() {
       </div>
 
       <p className="mt-5 text-xs leading-6 text-[#888]">
-        Equivalent to ₦1,376.32 per $1 after fees. Fliq&apos;s share is included
-        in the displayed fee breakdown.
+        Equivalent to ₦1,376.32 per $1 after fees. fliq&apos;s share is included in the displayed fee
+        breakdown.
       </p>
 
       <div className="mt-6 flex flex-wrap gap-3">
@@ -650,16 +566,14 @@ function ConversionPanel() {
         </Link>
 
         <button
-          onClick={() =>
-            navigator.clipboard?.writeText("https://fliq.money/rates/ngn")
-          }
+          onClick={() => navigator.clipboard?.writeText("https://fliq.cash/rates/ngn")}
           className="rounded-lg border border-[#383838] px-4 py-3 text-xs text-white hover:bg-white/5"
         >
           Copy link
         </button>
 
         <a
-          href="https://twitter.com/intent/tweet?text=Compare%20USDC%20to%20NGN%20rates%20on%20Fliq"
+          href="https://twitter.com/intent/tweet?text=Compare%20USDC%20to%20NGN%20rates%20on%20fliq"
           target="_blank"
           rel="noreferrer"
           className="rounded-lg border border-[#383838] px-4 py-3 text-xs text-white hover:bg-white/5"
@@ -687,18 +601,25 @@ export function RatesPageClient() {
     queryKey: ["public-rate", "usdc", "ngn"],
     queryFn: () => fliqApi<Rate>("rates/usdc/ngn"),
     staleTime: 10_000,
-    refetchInterval: 10_000,
-    retry: 1,
+    refetchInterval: (query) => (query.state.status === "error" ? 60_000 : 10_000),
+    retry: (failureCount, err) => !isRateUnavailable(err) && failureCount < 1,
   });
 
-  const liveRate = rate?.rate ?? DESIGN_PREVIEW.mainRate;
-  const officialRate = rate?.official?.rate ?? DESIGN_PREVIEW.officialRate;
-  const p2pRate = rate?.p2p?.rate ?? DESIGN_PREVIEW.p2pRate;
+  const liveRate = rate?.rate;
+  const officialRate = rate?.official.rate;
+  const p2pRate = rate?.p2p.rate;
 
-  const officialDifference = relativeDifference(liveRate, officialRate);
-  const p2pDifference = relativeDifference(liveRate, p2pRate);
+  const officialDifference = rate ? relativeDifference(rate.rate, rate.official.rate) : null;
+  const p2pDifference = rate ? relativeDifference(rate.rate, rate.p2p.rate) : null;
 
-  const isPreview = !rate;
+  const comingSoon = !rate && isError && isRateUnavailable(error);
+  const statusLine = rate
+    ? `via ${providerName(rate.provider)}`
+    : isPending
+      ? "Loading the live rate"
+      : comingSoon
+        ? "Live rates are coming soon"
+        : "Live rate unavailable right now";
 
   return (
     <div className="min-h-screen bg-[#0b0b0b] text-white">
@@ -721,17 +642,15 @@ export function RatesPageClient() {
         {/* Heading */}
         <div className="mb-8 flex flex-wrap items-end justify-between gap-5">
           <div>
-            <Eyebrow>Fliq rates / Nigeria</Eyebrow>
-            <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-[42px]">
-              USDC to NGN bank
-            </h1>
+            <Eyebrow>fliq rates / Nigeria</Eyebrow>
+            <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-[42px]">USDC to NGN bank</h1>
             <p className="mt-3 text-sm text-[#999]">
               You receive, after fees. Compare the best available payout route.
             </p>
           </div>
 
           <div className="text-xs text-[#777]">
-            <p>fliq.money/rates/ngn</p>
+            <p>fliq.cash/rates/ngn</p>
             <p className="mt-1">NGN · Nigerian naira</p>
           </div>
         </div>
@@ -742,26 +661,27 @@ export function RatesPageClient() {
             <div>
               <div className="flex flex-wrap items-center gap-3">
                 <Eyebrow>Best rate after fees · 1 USDC</Eyebrow>
-                {isPreview && <PreviewLabel />}
               </div>
 
               <h2 className="mt-4 text-4xl font-semibold tracking-tight sm:text-6xl">
-                {formatNaira(liveRate)}
+                {liveRate === undefined ? (
+                  <span className="text-[#555]">{comingSoon ? "Coming soon" : EMPTY}</span>
+                ) : (
+                  formatNaira(liveRate)
+                )}
               </h2>
 
-              <p className="mt-3 text-sm text-[#999]">
-                {rate
-                  ? `via ${providerName(rate.provider)}`
-                  : "Figma reference rate · live value unavailable"}
-              </p>
+              <p className="mt-3 text-sm text-[#999]">{statusLine}</p>
             </div>
 
             <div className="min-w-[125px] rounded-xl border border-[#303030] p-4">
               <Eyebrow>24h change</Eyebrow>
-              <p className="mt-2 text-xl font-semibold text-[#70d6a3]">
-                {rate
-                  ? `${rate.change_24h >= 0 ? "+" : ""}${(rate.change_24h * 100).toFixed(2)}%`
-                  : `+${DESIGN_PREVIEW.change24h.toFixed(2)}%`}
+              <p
+                className={`mt-2 text-xl font-semibold ${
+                  !rate ? "text-[#777]" : rate.change_24h < 0 ? "text-[#e48a8a]" : "text-[#70d6a3]"
+                }`}
+              >
+                {rate ? `${rate.change_24h >= 0 ? "+" : ""}${(rate.change_24h * 100).toFixed(2)}%` : EMPTY}
               </p>
             </div>
           </div>
@@ -769,51 +689,46 @@ export function RatesPageClient() {
           <div className="mt-8 grid grid-cols-2 gap-6 border-t border-[#303030] pt-6 sm:grid-cols-4">
             <Metric
               label="Official CBN NFEM close"
-              value={formatNaira(officialRate)}
-              detail={
-                isPreview ? "Design reference" : rate?.official.source
-              }
+              value={formatNairaOrEmpty(officialRate)}
+              detail={rate?.official.source}
             />
 
             <Metric
               label="P2P Bybit USDT/NGN median"
-              value={formatNaira(p2pRate)}
-              detail={isPreview ? "Design reference" : rate?.p2p.source}
+              value={formatNairaOrEmpty(p2pRate)}
+              detail={rate?.p2p.source}
             />
 
             <Metric
               label="Providers quoting"
-              value={String(rate?.providers_quoting ?? DESIGN_PREVIEW.providersQuoting)}
+              value={rate ? String(rate.providers_quoting) : EMPTY}
               detail="Provider count"
             />
 
             <Metric
               label="Last updated"
-              value={
-                rate
-                  ? formatTime(rate.fetched_at)
-                  : DESIGN_PREVIEW.fetchedAt
-              }
+              value={rate ? formatTime(rate.fetched_at) : EMPTY}
               detail="Lagos time"
             />
           </div>
 
           <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-[#303030] pt-4">
             <p className="text-[10px] text-[#777]">
-              {isPreview
-                ? "Live rate unavailable. Showing Figma reference values."
+              {!rate
+                ? comingSoon
+                  ? "The public rates API is not live yet. This page fills in on its own once it is."
+                  : isPending
+                    ? "Fetching the best after-fee rate."
+                    : "We could not load the live rate. It will retry on its own."
                 : `Automatically refreshed every 10 seconds · Updated ${formatTime(new Date(dataUpdatedAt).toISOString())}`}
             </p>
 
-            <button
-              onClick={() => refetch()}
-              className="text-xs text-[#a594ff] hover:text-white"
-            >
+            <button onClick={() => refetch()} className="text-xs text-[#a594ff] hover:text-white">
               Refresh rate ↗
             </button>
           </div>
 
-          {isError && (
+          {isError && !comingSoon && (
             <p className="mt-3 text-xs text-[#d6a36c]">
               {error instanceof ApiError
                 ? error.message
@@ -826,29 +741,23 @@ export function RatesPageClient() {
         <div className="mb-12 grid gap-4 sm:grid-cols-2">
           <Panel className="p-5 sm:p-6">
             <Eyebrow>Official reference</Eyebrow>
-            <h3 className="mt-3 text-sm font-semibold text-white">
-              CBN NFEM close
-            </h3>
-            <p className="mt-4 text-2xl font-semibold tabular-nums">
-              {formatNaira(officialRate)}
-            </p>
+            <h3 className="mt-3 text-sm font-semibold text-white">CBN NFEM close</h3>
+            <p className="mt-4 text-2xl font-semibold tabular-nums">{formatNairaOrEmpty(officialRate)}</p>
             <p className="mt-2 text-xs text-[#888]">
-              Fliq&apos;s rate is {differenceLabel(officialDifference)} this
-              reference.
+              {rate
+                ? `fliq's rate is ${differenceLabel(officialDifference)} this reference.`
+                : "Shown next to fliq's rate once live rates are on."}
             </p>
           </Panel>
 
           <Panel className="p-5 sm:p-6">
             <Eyebrow>P2P reference</Eyebrow>
-            <h3 className="mt-3 text-sm font-semibold text-white">
-              Bybit USDT/NGN median
-            </h3>
-            <p className="mt-4 text-2xl font-semibold tabular-nums">
-              {formatNaira(p2pRate)}
-            </p>
+            <h3 className="mt-3 text-sm font-semibold text-white">Bybit USDT/NGN median</h3>
+            <p className="mt-4 text-2xl font-semibold tabular-nums">{formatNairaOrEmpty(p2pRate)}</p>
             <p className="mt-2 text-xs text-[#888]">
-              Fliq&apos;s rate is {differenceLabel(p2pDifference)} this
-              reference.
+              {rate
+                ? `fliq's rate is ${differenceLabel(p2pDifference)} this reference.`
+                : "Shown next to fliq's rate once live rates are on."}
             </p>
           </Panel>
         </div>
@@ -860,7 +769,7 @@ export function RatesPageClient() {
             title="Rate history"
             description="Best after-fee rates and provider spread across the selected period."
           />
-          <RateChart snapshots={MOCK_SNAPSHOTS} />
+          {RATE_HISTORY_READY ? <RateChart snapshots={MOCK_SNAPSHOTS} /> : <RateHistoryComingSoon />}
         </div>
 
         {/* Provider table */}
@@ -882,12 +791,9 @@ export function RatesPageClient() {
         <div className="mb-12 grid gap-5 lg:grid-cols-[1fr_1.1fr]">
           <div>
             <Eyebrow>For developers</Eyebrow>
-            <h2 className="mt-3 text-xl font-semibold">
-              One endpoint. One rate.
-            </h2>
+            <h2 className="mt-3 text-xl font-semibold">One endpoint. One rate.</h2>
             <p className="mt-3 max-w-md text-sm leading-7 text-[#888]">
-              Retrieve the current USDC to NGN rate, provider and reference
-              rates through the public Fliq API.
+              Retrieve the current USDC to NGN rate, provider and reference rates through the public fliq API.
             </p>
             <p className="mt-5 inline-flex rounded-lg border border-[#303030] px-3 py-2 font-mono text-xs text-[#c5b8ff]">
               GET /v1/rates/usdc/ngn
@@ -896,9 +802,7 @@ export function RatesPageClient() {
 
           <Panel className="overflow-hidden">
             <div className="flex items-center justify-between border-b border-[#303030] px-5 py-4">
-              <span className="text-xs font-semibold text-white">
-                Example response
-              </span>
+              <span className="text-xs font-semibold text-white">Example response</span>
               <PreviewLabel />
             </div>
             <pre className="overflow-x-auto p-5 text-xs leading-6 text-[#b9b0d8]">
@@ -918,15 +822,9 @@ export function RatesPageClient() {
           <div className="grid gap-3 md:grid-cols-3">
             {MOCK_CORRIDORS.map((corridor) => (
               <Panel key={corridor.pair} className="p-5">
-                <p className="text-sm font-semibold text-white">
-                  {corridor.pair}
-                </p>
-                <p className="mt-4 text-xl font-semibold tabular-nums">
-                  {corridor.rate}
-                </p>
-                <p className="mt-2 text-xs text-[#777]">
-                  {corridor.provider}
-                </p>
+                <p className="text-sm font-semibold text-white">{corridor.pair}</p>
+                <p className="mt-4 text-xl font-semibold tabular-nums">{corridor.rate}</p>
+                <p className="mt-2 text-xs text-[#777]">{corridor.provider}</p>
               </Panel>
             ))}
           </div>
@@ -935,11 +833,9 @@ export function RatesPageClient() {
         {/* Disclaimer */}
         <div className="border-t border-[#303030] pt-6">
           <p className="max-w-3xl text-[10px] leading-6 text-[#777]">
-            Rates are quotes from licensed providers, polled every 10 seconds.
-            Not financial advice. Official reference published by FMDQ. P2P
-            reference is a median of public ads. Chart, provider comparison,
-            conversion and related corridor values are Figma design previews
-            until connected to verified API data.
+            Rates are quotes from licensed providers, polled every 10 seconds. Not financial advice. Official
+            reference published by FMDQ. P2P reference is a median of public ads. Provider comparison,
+            conversion and related corridor values are design previews until connected to verified API data.
           </p>
         </div>
       </main>
