@@ -24,7 +24,10 @@ export type IdPrefix =
   | "obx"
   | "tmr"
   | "dlq"
-  | "ine";
+  | "ine"
+  | "dep"
+  | "clm"
+  | "rs";
 
 function encodeBase32(value: bigint, length: number): string {
   let out = "";

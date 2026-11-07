@@ -1,0 +1,11 @@
+{
+  "token": "usdc",
+  "currency": "ngn",
+  "range": "24h",
+  "interval_seconds": 900,
+  "points": [
+    { "at": "2026-10-29T12:30:00Z", "best": 1375.9, "worst": 1357.8, "p2p": null },
+    { "at": "2026-10-29T12:45:00Z", "best": 1376.1, "worst": 1358.1, "p2p": null },
+    { "at": "2026-10-29T13:00:00Z", "best": 1376.32, "worst": 1358.4, "p2p": null }
+  ]
+}

@@ -1,6 +1,5 @@
 export type AccountId = string;
 export type OrderId = string;
-export type PublicKey = string;
 
 export const ORDER_STATES = ["registered", "executed", "released"] as const;
 export type OrderState = (typeof ORDER_STATES)[number];
@@ -30,7 +29,8 @@ export const STATUS_TRANSITIONS: Readonly<Record<ReceiptStatus | "none", readonl
   routing: ["with_provider", "paying_out", "settled", "refunding", "failed"],
   with_provider: ["paying_out", "settled", "refunding", "failed"],
   paying_out: ["settled", "refunding", "failed"],
-  refunding: ["refunded", "failed"],
+  // refunded is reached only through recredit, so a receipt never says refunded unless the money came back.
+  refunding: ["failed"],
   settled: [],
   refunded: [],
   failed: [],
@@ -38,6 +38,12 @@ export const STATUS_TRANSITIONS: Readonly<Record<ReceiptStatus | "none", readonl
 
 export function canSetStatus(from: ReceiptStatus | null, to: ReceiptStatus): boolean {
   return STATUS_TRANSITIONS[from ?? "none"].includes(to);
+}
+
+export const MAX_REF_BYTES = 128;
+
+export function isValidRef(value: string): boolean {
+  return value.length <= MAX_REF_BYTES && /^[\x21-\x7e]+$/.test(value);
 }
 
 export type ReceiptRefs = {
@@ -91,6 +97,10 @@ export const VAULT_ERROR_CODES = [
   "ALREADY_RECREDITED",
   "RECREDIT_EXCEEDS_ORDER",
   "RECREDIT_EXCEEDS_UNATTRIBUTED",
+  "INVALID_REF",
+  "REF_IMMUTABLE",
+  "AGENT_NOT_FOUND",
+  "AGENT_TAKEN",
 ] as const;
 export type VaultErrorCode = (typeof VAULT_ERROR_CODES)[number];
 
@@ -131,5 +141,5 @@ export interface VaultClient {
   releaseOrder(orderId: OrderId): Promise<VaultTx>;
   getReceipt(orderId: OrderId): Promise<VaultReceipt | null>;
   getBalance(accountId: AccountId): Promise<VaultBalance>;
-  getPolicy(publicKey: PublicKey): Promise<AgentPolicy | null>;
+  getAgent(agentId: AccountId): Promise<AgentPolicy | null>;
 }

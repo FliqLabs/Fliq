@@ -103,12 +103,21 @@ describe("parseVaultEvents", () => {
         payer: "ada.testnet",
         depositAddress: "0xabc",
         amount: 1n,
-        publicKey: "ed25519:abc",
+        executor: "agent-1.ada.testnet",
       },
       { event: "order_released", orderId: "po_1", payer: "ada.testnet", amount: 1n },
       { event: "status_set", orderId: "po_1", status: "refunded", refs: { refundTx: "0xdef" } },
       { event: "recredited", orderId: "po_1", payer: "ada.testnet", amount: 1n },
       { event: "deposited", accountId: "ada.testnet", senderId: "intents.near", amount: 2n ** 128n - 1n },
+      {
+        event: "agent_set",
+        owner: "ada.testnet",
+        agentId: "agent-1.ada.testnet",
+        perPayoutCap: 1n,
+        dailyCap: 2n,
+        corridors: ["NG-NGN-bank"],
+      },
+      { event: "agent_removed", owner: "ada.testnet", agentId: "agent-1.ada.testnet" },
     ];
     for (const event of events) expect(parseVaultEvents(formatVaultEvent(event))).toEqual([event]);
   });
@@ -124,7 +133,8 @@ describe("receipt status transitions", () => {
   it("only moves forward", () => {
     expect(canSetStatus("paying_out", "settled")).toBe(true);
     expect(canSetStatus("paying_out", "routing")).toBe(false);
-    expect(canSetStatus("refunding", "refunded")).toBe(true);
+    expect(canSetStatus("refunding", "refunded")).toBe(false);
+    expect(canSetStatus("refunding", "failed")).toBe(true);
     expect(canSetStatus("refunding", "settled")).toBe(false);
   });
 

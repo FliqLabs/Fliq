@@ -80,7 +80,7 @@ describe.skipIf(!enabled)("paying a bank account from the vault through NEAR Int
     releaseOrder: (orderId) => vault.releaseOrder(orderId),
     getReceipt: (orderId) => vault.getReceipt(orderId),
     getBalance: (accountId) => vault.getBalance(accountId),
-    getPolicy: (publicKey) => vault.getPolicy(publicKey),
+    getAgent: (agentId) => vault.getAgent(agentId),
   };
 
   let app: ReturnType<typeof buildApp>;

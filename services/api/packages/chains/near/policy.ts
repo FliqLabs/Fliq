@@ -4,6 +4,9 @@ const TGAS = 1_000_000_000_000n;
 export const MAX_GAS_PER_CALL = 100n * TGAS;
 const MAX_ARGS_BYTES = 2_048;
 const ONE_YOCTO = 1n;
+const POSITIVE_INTEGER = /^[1-9]\d*$/;
+const NEAR_ACCOUNT = /^(?=.{2,64}$)(([a-z\d]+[-_])*[a-z\d]+\.)*([a-z\d]+[-_])*[a-z\d]+$/;
+const CORRIDOR = /^[A-Z]{2}-[A-Z]{3}-[a-z_]+$/;
 
 export type RelayPolicy = { vaultContractId: string; usdcContractId: string };
 
@@ -34,12 +37,44 @@ function rules(policy: RelayPolicy): Map<string, Map<string, Rule>> {
         throw new PolicyError("deposit_address must be a NEAR account id");
     },
   };
+  const setAgent: Rule = {
+    deposit: 0n,
+    checkArgs: (args) => {
+      const keys = ["agent_id", "per_payout_cap", "daily_cap", "corridors"];
+      exactKeys(args, keys, ["agent_id", "per_payout_cap", "daily_cap"]);
+      agentId(args.agent_id);
+      for (const cap of ["per_payout_cap", "daily_cap"]) {
+        if (!POSITIVE_INTEGER.test(String(args[cap])))
+          throw new PolicyError(`${cap} must be a positive integer string`);
+      }
+      const corridors = args.corridors;
+      if (
+        corridors !== null &&
+        !(
+          Array.isArray(corridors) &&
+          corridors.length > 0 &&
+          corridors.every((c) => typeof c === "string" && CORRIDOR.test(c))
+        )
+      ) {
+        throw new PolicyError("corridors must be null or a non-empty list of corridors");
+      }
+    },
+  };
+  const removeAgent: Rule = {
+    deposit: 0n,
+    checkArgs: (args) => {
+      exactKeys(args, ["agent_id"], ["agent_id"]);
+      agentId(args.agent_id);
+    },
+  };
   return new Map([
     [
       policy.vaultContractId,
       new Map([
         ["payout", payout],
         ["release_order", orderOnly],
+        ["set_agent", setAgent],
+        ["remove_agent", removeAgent],
       ]),
     ],
     [
@@ -53,7 +88,7 @@ function rules(policy: RelayPolicy): Map<string, Map<string, Rule>> {
               exactKeys(args, ["receiver_id", "amount", "msg"], ["receiver_id", "amount", "msg"]);
               if (args.receiver_id !== policy.vaultContractId)
                 throw new PolicyError("USDC may only be sent to the vault");
-              if (!/^[1-9]\d*$/.test(String(args.amount)))
+              if (!POSITIVE_INTEGER.test(String(args.amount)))
                 throw new PolicyError("amount must be a positive integer string");
               if (args.msg !== "")
                 throw new PolicyError("a top-up from NEAR credits the sender, so msg must be empty");
@@ -99,6 +134,11 @@ function jsonArgs(bytes: Uint8Array): Record<string, unknown> {
 function isPositiveAmount(value: unknown): boolean {
   if (typeof value === "number") return Number.isSafeInteger(value) && value > 0;
   return typeof value === "string" && /^[1-9]\d*$/.test(value);
+}
+
+function agentId(value: unknown): void {
+  if (typeof value !== "string" || !NEAR_ACCOUNT.test(value))
+    throw new PolicyError("agent_id must be a NEAR account id");
 }
 
 function exactKeys(args: Record<string, unknown>, allowed: string[], required: string[]): void {

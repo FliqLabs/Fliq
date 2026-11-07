@@ -28,8 +28,51 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Best after-fee rate for a corridor */
+        /**
+         * Best after-fee rate for a corridor
+         * @description Prices a 100 token payout through every eligible provider and returns the best route's rate. The official, p2p and change_24h reference fields are present only when a market source is connected.
+         */
         get: operations["getRate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rates/{token}/{currency}/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every provider's rate, fee and status for a corridor
+         * @description Prices the same 100 token payout as GET /rates/{token}/{currency} through every provider, best first. A stale provider did not answer this time and shows its last sampled rate; a paused one is held back by its circuit breaker.
+         */
+        get: operations["getRateBoard"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rates/{token}/{currency}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Best and worst after-fee rates over time, for the rate chart
+         * @description Built from a sample of every provider taken once a minute and kept 90 days. Points are 15 minutes apart for 24h, an hour for 7d and 4 hours for 30d. A period with no sample has no point.
+         */
+        get: operations["getRateHistory"];
         put?: never;
         post?: never;
         delete?: never;
@@ -191,6 +234,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/deposits/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The tokens and chains the vault can be topped up from
+         * @description Every source the app shows, in display order. A source that is not available right now is still listed, with available false. A direct source is the user's own NEAR account: there is nothing to reserve, so it carries the address and POST /deposits refuses it.
+         */
+        get: operations["listDepositSources"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/deposits/estimate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What a top-up of about this amount lands as, and how long it takes
+         * @description Nothing is reserved. Use it while the user types the amount.
+         */
+        get: operations["estimateDeposit"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/deposits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reserve a deposit address for one top-up
+         * @description The address takes any amount from minimum up and lands it in the vault as USDC. It is watched until reserved_until. A deposit below minimum, or one that cannot be completed, is refunded to the user's NEAR account, so nothing sent is lost.
+         */
+        post: operations["createDeposit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/deposits/{depositId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Where a top-up is
+         * @description Poll every few seconds while the app shows it. Each step carries the time it was seen.
+         */
+        get: operations["getDeposit"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/people/recent": {
         parameters: {
             query?: never;
@@ -291,6 +414,46 @@ export interface paths {
         get: operations["getPayout"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/payouts/{payoutId}/retry-quote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Quote the same payout again without the provider that could not pay it
+         * @description For a refunded, failed or expired payout. Same amount, currency and source; the provider that failed is left out. Pay it with POST /payouts, passing this quote_id and retry_of.
+         */
+        post: operations["quoteRetry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/payouts/{payoutId}/claims": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Tell support a settled payout has not reached the account
+         * @description Opens one claim per payout; asking again returns the open claim. Support chases the bank with the bank reference. A credit that never lands is reversed by the bank rail and refunded.
+         */
+        post: operations["openPayoutClaim"];
         delete?: never;
         options?: never;
         head?: never;
@@ -566,6 +729,60 @@ export interface components {
         ProviderId: "paycrest" | "busha" | "fonbnk" | "bitnob" | "transfi" | "mock";
         /** @enum {string} */
         ProviderStatus: "live" | "stale" | "paused";
+        ProviderRate: {
+            provider: components["schemas"]["ProviderId"];
+            status: components["schemas"]["ProviderStatus"];
+            /** @description Local currency per 1 token after every fee. For a stale provider, its last sampled rate. */
+            rate: number | null;
+            rate_before_fees: number | null;
+            /** @description Every fee on the reference amount, in local currency */
+            fee: number | null;
+            /** @description fee as a share of the amount before fees, in percent */
+            fee_percent: number | null;
+            /** @description Local currency the reference amount lands as, whole units */
+            receive: number | null;
+            eta_seconds: number | null;
+            on_time_percent: number | null;
+            /**
+             * Format: date-time
+             * @description When this provider's figures were priced. Null for a paused provider never sampled.
+             */
+            updated_at: string | null;
+            /** @enum {string|null} */
+            not_offered_reason: "breaker_open" | "half_open_over_limit" | "timeout" | "error" | null;
+        };
+        RateBoard: {
+            token: string;
+            currency: string;
+            /** @description The reference amount priced, in the token */
+            amount: string;
+            best: components["schemas"]["ProviderId"] | null;
+            /** Format: date-time */
+            fetched_at: string;
+            /** @description Live providers best first, then stale, then paused */
+            providers: components["schemas"]["ProviderRate"][];
+        };
+        RatePoint: {
+            /**
+             * Format: date-time
+             * @description Start of the period
+             */
+            at: string;
+            /** @description The best provider's after-fee rate, averaged over the period */
+            best: number;
+            /** @description The worst quoting provider's after-fee rate, averaged over the period */
+            worst: number;
+            /** @description Present only when a market source is connected */
+            p2p: number | null;
+        };
+        RateHistory: {
+            token: string;
+            currency: string;
+            /** @enum {string} */
+            range: "24h" | "7d" | "30d";
+            interval_seconds: number;
+            points: components["schemas"]["RatePoint"][];
+        };
         ReferenceRate: {
             source: string;
             rate: number;
@@ -579,9 +796,9 @@ export interface components {
             provider: components["schemas"]["ProviderId"];
             providers_quoting: number;
             spread: number;
-            official: components["schemas"]["ReferenceRate"];
-            p2p: components["schemas"]["ReferenceRate"];
-            change_24h: number;
+            official?: components["schemas"]["ReferenceRate"];
+            p2p?: components["schemas"]["ReferenceRate"];
+            change_24h?: number;
             /** Format: date-time */
             fetched_at: string;
         };
@@ -676,6 +893,8 @@ export interface components {
             refund_address?: string;
             /** @description Only needed when the bank cannot return a name for the account. */
             account_name?: string;
+            /** @description The refunded, failed or expired payout this one tries again, quoted with POST /payouts/{payoutId}/retry-quote. */
+            retry_of?: string;
         };
         /** @enum {string} */
         PayoutState: "created" | "provider_timeout" | "awaiting_recon" | "awaiting_deposit" | "deposit_seen" | "routing" | "with_provider" | "paying_out" | "settled" | "refunding" | "refunded" | "expired" | "failed" | "refused" | "not_received";
@@ -706,6 +925,55 @@ export interface components {
             bank_reference?: string | null;
             seconds?: number | null;
             history: components["schemas"]["StateChange"][];
+            failure?: components["schemas"]["PayoutFailure"] | null;
+            refund?: components["schemas"]["PayoutRefund"] | null;
+            /** @description The sender name the recipient's bank alert shows. Null until the provider's is confirmed. */
+            settlement_name?: string | null;
+            /** @description The payout this one tried again */
+            retry_of?: string | null;
+            /** @description The latest payout that tried this one again */
+            retried_by?: string | null;
+            claim?: components["schemas"]["PayoutClaim"] | null;
+        };
+        /** @description Why a payout did not settle. Providers do not say why a bank credit failed, so stage is where it stopped. */
+        PayoutFailure: {
+            /**
+             * @description deposit: nothing was sent in time. routing: NEAR Intents could not deliver to the provider. provider: the provider did not start the payout. bank: the provider could not credit the account.
+             * @enum {string}
+             */
+            stage: "deposit" | "routing" | "provider" | "bank";
+            /** @description The provider's failure code, when it gave one */
+            code: string | null;
+            /** Format: date-time */
+            at: string;
+        };
+        PayoutRefund: {
+            /** @description USDC returned, as a decimal string */
+            amount: string;
+            /**
+             * @description vault when the payout was paid from the vault, otherwise the refund address
+             * @enum {string}
+             */
+            to: "vault" | "sender";
+            /** Format: date-time */
+            at: string;
+            /** @description The refund transaction, when the provider reported one */
+            tx: string | null;
+        };
+        PayoutClaim: {
+            claim_id: string;
+            payout_id: string;
+            /** @enum {string} */
+            state: "open" | "resolved";
+            /** @description What the recipient gives their bank, for NGN the NIP session id */
+            bank_reference: string | null;
+            /** Format: date-time */
+            opened_at: string;
+            /**
+             * Format: date-time
+             * @description When a credit that never landed is due to be reversed by the bank rail, 24 hours after settlement
+             */
+            reversal_after: string;
         };
         Refusal: {
             error: components["schemas"]["ErrorBody"];
@@ -933,6 +1201,98 @@ export interface components {
             /** @description False when the ledger mirror disagrees with the chain */
             in_sync: boolean;
         };
+        /** @enum {string} */
+        DepositTokenId: "usdc" | "usdt" | "btc";
+        /** @enum {string} */
+        DepositChainId: "base" | "solana" | "tron" | "arbitrum" | "ethereum" | "polygon" | "bitcoin" | "near";
+        DepositSource: {
+            token: components["schemas"]["DepositTokenId"];
+            chain: components["schemas"]["DepositChainId"];
+            /**
+             * @description The heading the app lists the source under
+             * @enum {string}
+             */
+            group: "dollars" | "bitcoin" | "near";
+            /** @description Smallest top-up, in the source token */
+            minimum: string;
+            /** @description Typical time from sending to landing in the vault */
+            eta_seconds: number;
+            /** @description True for the user's own NEAR account, which needs no address reserved */
+            direct: boolean;
+            /** @description False when NEAR Intents does not offer this source right now */
+            available: boolean;
+            /** @description For a direct source, the account to send to. Null for the others; reserve one with POST /deposits. */
+            address: string | null;
+        };
+        DepositSourceList: {
+            sources: components["schemas"]["DepositSource"][];
+        };
+        DepositEstimate: {
+            token: components["schemas"]["DepositTokenId"];
+            chain: components["schemas"]["DepositChainId"];
+            /** @description What the user said they will send, in the source token */
+            amount: string;
+            /** @description Smallest amount the address will take, in the source token */
+            minimum: string;
+            /** @description NEAR Intents and network fees, in US dollars */
+            fee: string;
+            /** @description USDC the vault receives for amount */
+            lands: string;
+            eta_seconds: number;
+        };
+        DepositRequest: {
+            token: components["schemas"]["DepositTokenId"];
+            chain: components["schemas"]["DepositChainId"];
+            /** @description About how much the user will send, in the source token. Any amount from minimum up is taken. */
+            amount: string;
+        };
+        /**
+         * @description waiting: nothing has arrived. seen: the transfer is on the source chain. underpaid: less than minimum arrived; more can be sent until reserved_until, after that it is refunded. bridging: moving to NEAR. landed: in the vault. refunded: returned to the user's NEAR account. expired: nothing arrived in time. failed: NEAR Intents could not complete it and support has been told.
+         * @enum {string}
+         */
+        DepositState: "waiting" | "seen" | "underpaid" | "bridging" | "landed" | "refunded" | "expired" | "failed";
+        VaultDeposit: {
+            deposit_id: string;
+            state: components["schemas"]["DepositState"];
+            token: components["schemas"]["DepositTokenId"];
+            chain: components["schemas"]["DepositChainId"];
+            /** @description Where to send, on chain only */
+            address: string;
+            /** @description Must go with the transfer when the chain needs one */
+            memo: string | null;
+            /** @description What the user said they would send, in the source token */
+            amount: string;
+            /** @description Smallest amount the address takes, in the source token */
+            minimum: string;
+            /** @description Estimated fees for amount, in US dollars */
+            fee: string;
+            /** @description Estimated USDC for amount. Once landed, the landed field is the real figure. */
+            lands: string;
+            eta_seconds: number;
+            /**
+             * Format: date-time
+             * @description The address is watched until then
+             */
+            reserved_until: string;
+            /** @description What arrived on the source chain, in the source token */
+            received: string | null;
+            /** @description USDC credited to the vault */
+            landed: string | null;
+            /** @description What was returned to the user's NEAR account, in the source token */
+            refunded: string | null;
+            /** Format: date-time */
+            seen_at: string | null;
+            /** Format: date-time */
+            bridging_at: string | null;
+            /** Format: date-time */
+            landed_at: string | null;
+            /** @description From seen to landed */
+            seconds: number | null;
+            /** @description The transfer's hash on the source chain */
+            origin_tx: string | null;
+            /** Format: date-time */
+            created_at: string;
+        };
         Person: {
             near_account: string;
             display_name: string | null;
@@ -1005,6 +1365,8 @@ export interface components {
     };
     parameters: {
         IdempotencyKey: string;
+        DepositToken: components["schemas"]["DepositTokenId"];
+        DepositChain: components["schemas"]["DepositChainId"];
         Token: "usdc" | "usdt";
         Currency: "ngn" | "kes" | "ghs" | "idr" | "php";
     };
@@ -1055,6 +1417,58 @@ export interface operations {
                     "application/json": components["schemas"]["Rate"];
                 };
             };
+            400: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+        };
+    };
+    getRateBoard: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: components["parameters"]["Token"];
+                currency: components["parameters"]["Currency"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description All providers for the corridor, cached for 10 seconds */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RateBoard"];
+                };
+            };
+            400: components["responses"]["Error"];
+        };
+    };
+    getRateHistory: {
+        parameters: {
+            query?: {
+                range?: "24h" | "7d" | "30d";
+            };
+            header?: never;
+            path: {
+                token: components["parameters"]["Token"];
+                currency: components["parameters"]["Currency"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Points oldest first, cached for 60 seconds */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RateHistory"];
+                };
+            };
+            400: components["responses"]["Error"];
         };
     };
     createQuote: {
@@ -1283,6 +1697,106 @@ export interface operations {
             404: components["responses"]["Error"];
         };
     };
+    listDepositSources: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sources in display order */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DepositSourceList"];
+                };
+            };
+            404: components["responses"]["Error"];
+        };
+    };
+    estimateDeposit: {
+        parameters: {
+            query: {
+                token: components["parameters"]["DepositToken"];
+                chain: components["parameters"]["DepositChain"];
+                /** @description Amount of the source token, as a decimal string */
+                amount: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The estimate */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DepositEstimate"];
+                };
+            };
+            400: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    createDeposit: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DepositRequest"];
+            };
+        };
+        responses: {
+            /** @description Address reserved, waiting for the transfer */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultDeposit"];
+                };
+            };
+            400: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    getDeposit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                depositId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The top-up */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultDeposit"];
+                };
+            };
+            404: components["responses"]["Error"];
+        };
+    };
     listRecentPeople: {
         parameters: {
             query?: never;
@@ -1459,6 +1973,66 @@ export interface operations {
                 };
             };
             404: components["responses"]["Error"];
+        };
+    };
+    quoteRetry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                payoutId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A fresh quote. routes[0] is the next best provider. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Quote"];
+                };
+            };
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+        };
+    };
+    openPayoutClaim: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                payoutId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A claim was already open; this is it */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayoutClaim"];
+                };
+            };
+            /** @description Claim opened */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayoutClaim"];
+                };
+            };
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
         };
     };
     startPasskeyRegistration: {

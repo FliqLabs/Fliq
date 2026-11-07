@@ -38,6 +38,8 @@ Allowlist (exactly one call per delegate, at most 100 Tgas, at most 2 KB of argu
 | Receiver | Method | Arguments | Deposit |
 | --- | --- | --- | --- |
 | `VAULT_CONTRACT_ID` | `payout`, `release_order` | `{ "order_id": "<1..64 chars>" }` | 0 |
+| `VAULT_CONTRACT_ID` | `set_agent` | `{ "agent_id": "<NEAR account>", "per_payout_cap": "<positive integer>", "daily_cap": "<positive integer>", "corridors": null \| ["NG-NGN-bank", ...] }` | 0 |
+| `VAULT_CONTRACT_ID` | `remove_agent` | `{ "agent_id": "<NEAR account>" }` | 0 |
 | `USDC_CONTRACT_ID` | `ft_transfer_call` | `{ "receiver_id": VAULT_CONTRACT_ID, "amount": "<positive integer>", "msg": "" }` | 1 yoctoNEAR |
 
 Response `200` (`succeeded` or `failed`) or `202` (`pending`: the outcome is not known yet; poll the lookup below). A repeat of the same delegate returns the same body and is never paid for twice. `failed` means the transaction ran and a call inside it failed; `failures` says why.

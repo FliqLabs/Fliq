@@ -80,6 +80,26 @@ describe("checkPolicy", () => {
     ],
     ["a vault order release", { methodName: "release_order", args: { order_id: "po_1" } }],
     [
+      "an agent policy",
+      {
+        methodName: "set_agent",
+        args: {
+          agent_id: "agent-1.ada.testnet",
+          per_payout_cap: "50000000",
+          daily_cap: "100000000",
+          corridors: ["NG-NGN-bank"],
+        },
+      },
+    ],
+    [
+      "an agent policy for any corridor",
+      {
+        methodName: "set_agent",
+        args: { agent_id: "agent-1.ada.testnet", per_payout_cap: "1", daily_cap: "1", corridors: null },
+      },
+    ],
+    ["an agent removal", { methodName: "remove_agent", args: { agent_id: "agent-1.ada.testnet" } }],
+    [
       "a USDC top-up into the vault",
       {
         receiverId: USDC,
@@ -113,6 +133,28 @@ describe("checkPolicy", () => {
       "a destination that is not an account id",
       { args: { ...PAYOUT_ARGS, deposit_address: "Not An Account" } },
     ],
+    [
+      "an agent with a zero cap",
+      {
+        methodName: "set_agent",
+        args: { agent_id: "agent-1.ada.testnet", per_payout_cap: "0", daily_cap: "1", corridors: null },
+      },
+    ],
+    [
+      "an agent without corridors",
+      {
+        methodName: "set_agent",
+        args: { agent_id: "agent-1.ada.testnet", per_payout_cap: "1", daily_cap: "1" },
+      },
+    ],
+    [
+      "an agent with an empty corridor list",
+      {
+        methodName: "set_agent",
+        args: { agent_id: "agent-1.ada.testnet", per_payout_cap: "1", daily_cap: "1", corridors: [] },
+      },
+    ],
+    ["an agent id that is not an account", { methodName: "remove_agent", args: { agent_id: "Agent One" } }],
     [
       "USDC sent anywhere but the vault",
       {

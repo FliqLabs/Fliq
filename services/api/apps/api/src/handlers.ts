@@ -17,13 +17,17 @@ import {
   workspaceView,
 } from "./dashboard.js";
 import { requireHttpsUrl, settle } from "./errors.js";
+import { createDeposits, type DepositChain, type DepositInput, type Deposits, type DepositToken } from "./deposits.js";
 import { withIdempotency } from "./idempotency.js";
 import type { VaultClient } from "../../../packages/chains/vault/index.js";
 import { lookupPerson, recentPeople } from "./people.js";
 import { DEFAULT_STATUS_CONFIG, statusReport, type Probe, type StatusConfig } from "./status.js";
 import { vaultBalance } from "./vault.js";
 import { deleteRecipient, listInstitutions, listRecipients, saveRecipient, verifyAccount, type AccountLookup } from "./recipients.js";
-import { createPayout, getPayout, type PayoutDeps, type PayoutInput } from "./payouts.js";
+import { bankReference, createPayout, getPayout, type PayoutDeps, type PayoutInput } from "./payouts.js";
+import { openClaim, quoteRetry } from "./recovery.js";
+import { createRateBoard, type RateBoard } from "./rate-board.js";
+import { createRates } from "./rates.js";
 import { requestQuote, type QuoteDeps, type QuoteInput } from "./quotes.js";
 import { createWorkspace } from "./workspaces.js";
 
@@ -36,14 +40,42 @@ export interface HandlerDeps {
   payouts: Omit<PayoutDeps, "quotes">;
   vault: VaultClient;
   status?: { probes: readonly Probe[]; config?: StatusConfig };
+  deposits?: Deposits;
+  rateBoard?: RateBoard;
   now?: () => Date;
 }
 
 const body = <T>(request: FastifyRequest) => request.body as T;
 const auth = (request: FastifyRequest) => request.auth as NonNullable<FastifyRequest["auth"]>;
 
-export function createHandlers({ config, unit, email, provisioner, quotes, payouts, vault, status = { probes: [] }, now = () => new Date() }: HandlerDeps): Record<string, Handler> {
+export function createHandlers({
+  config,
+  unit,
+  email,
+  provisioner,
+  quotes,
+  payouts,
+  vault,
+  status = { probes: [] },
+  deposits = createDeposits({ client: undefined, vaultAccount: config.vaultAccount, usdcContract: "", slippageBps: 0 }),
+  rateBoard = createRateBoard(quotes, unit),
+  now = () => new Date(),
+}: HandlerDeps): Record<string, Handler> {
+  const rates = createRates(quotes);
   return {
+    getRate: async (request) => {
+      const { token, currency } = request.params as { token: string; currency: string };
+      return { status: 200, body: await rates(token, currency), headers: { "cache-control": "public, max-age=10" } };
+    },
+    getRateBoard: async (request) => {
+      const { token, currency } = request.params as { token: string; currency: string };
+      return { status: 200, body: await rateBoard.board(token, currency), headers: { "cache-control": "public, max-age=10" } };
+    },
+    getRateHistory: async (request) => {
+      const { token, currency } = request.params as { token: string; currency: string };
+      const { range } = request.query as { range?: string };
+      return { status: 200, body: await rateBoard.history(token, currency, range), headers: { "cache-control": "public, max-age=60" } };
+    },
     getHealth: async () => ({ status: 200, body: { status: "ok", version: "0.1.0" } }),
 
     startPasskeyRegistration: async () => ({ status: 200, body: await unit((tx) => startRegistration(tx, config)) }),
@@ -135,6 +167,15 @@ export function createHandlers({ config, unit, email, provisioner, quotes, payou
       body: await getPayout(unit, config, auth(request).userId, (request.params as { payoutId: string }).payoutId),
     }),
 
+    quoteRetry: async (request) => ({
+      status: 200,
+      body: await quoteRetry(unit, quotes, auth(request).userId, (request.params as { payoutId: string }).payoutId),
+    }),
+    openPayoutClaim: (request) =>
+      withIdempotency(unit, auth(request).userId, request, (tx) =>
+        openClaim(tx, auth(request).userId, (request.params as { payoutId: string }).payoutId, bankReference),
+      ),
+
     listInstitutions: async (request) => ({
       status: 200,
       body: await listInstitutions(quotes.adapters, (request.query as { country?: string }).country),
@@ -155,6 +196,21 @@ export function createHandlers({ config, unit, email, provisioner, quotes, payou
     }),
 
     getVaultBalance: async (request) => ({ status: 200, body: await vaultBalance(unit, vault, auth(request).userId) }),
+    listDepositSources: async (request) => ({ status: 200, body: await deposits.sources(unit, auth(request).userId) }),
+    estimateDeposit: async (request) => {
+      const { token, chain, amount } = request.query as { token?: string; chain?: string; amount?: string };
+      const input = { token: token as DepositToken, chain: chain as DepositChain, amount: amount ?? "" };
+      return { status: 200, body: await deposits.estimate(unit, auth(request).userId, input) };
+    },
+    createDeposit: (request) =>
+      withIdempotency(unit, auth(request).userId, request, async (tx) => ({
+        status: 201,
+        body: await deposits.create(tx, auth(request).userId, body<DepositInput>(request)),
+      })),
+    getDeposit: async (request) => ({
+      status: 200,
+      body: await deposits.get(unit, auth(request).userId, (request.params as { depositId: string }).depositId),
+    }),
     lookupPerson: async (request) => ({
       status: 200,
       body: await unit((tx) => lookupPerson(tx, config, (request.params as { name: string }).name)),

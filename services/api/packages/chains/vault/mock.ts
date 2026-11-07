@@ -1,11 +1,11 @@
 import { formatVaultEvent, type VaultEvent } from "./events";
 import {
   canSetStatus,
+  isValidRef,
   VaultError,
   type AccountId,
   type AgentPolicy,
   type OrderId,
-  type PublicKey,
   type ReceiptRefs,
   type ReceiptStatus,
   type RegisterOrderInput,
@@ -25,21 +25,19 @@ export type MockVaultOptions = {
   maxOrderTtlNs?: bigint;
 };
 
-export type Caller = { accountId: AccountId; publicKey: PublicKey };
-
 export type IncomingTransfer = { predecessor: AccountId; senderId: AccountId; amount: bigint; msg: string };
 
-type PolicyRule = Omit<AgentPolicy, "spentToday">;
+export type AgentRule = Omit<AgentPolicy, "owner" | "spentToday">;
 
 // In-memory model of the vault as proposed in INTERFACE.md, for local runs and tests until a testnet
-// deployment exists. Parts marked PROPOSED in that document are not in the real contract yet.
+// deployment exists. Most of it is not in the real contract yet.
 export class MockVault implements VaultClient {
   readonly events: VaultEvent[] = [];
   readonly #options: Required<MockVaultOptions>;
   readonly #storage = new Set<AccountId>();
   readonly #balances = new Map<AccountId, { available: bigint; reserved: bigint }>();
   readonly #orders = new Map<OrderId, VaultReceipt>();
-  readonly #policies = new Map<PublicKey, PolicyRule>();
+  readonly #agents = new Map<AccountId, AgentRule & { owner: AccountId }>();
   readonly #spent = new Map<string, bigint>();
   #tokenBalance = 0n;
   #txCount = 0;
@@ -83,9 +81,9 @@ export class MockVault implements VaultClient {
     return { available, reserved, total: available + reserved };
   }
 
-  async getPolicy(publicKey: PublicKey): Promise<AgentPolicy | null> {
-    const rule = this.#policies.get(publicKey);
-    return rule ? { ...rule, spentToday: this.#spentToday(publicKey) } : null;
+  async getAgent(agentId: AccountId): Promise<AgentPolicy | null> {
+    const agent = this.#agents.get(agentId);
+    return agent ? { ...agent, spentToday: this.#spentToday(agentId) } : null;
   }
 
   logs(): string[] {
@@ -96,8 +94,20 @@ export class MockVault implements VaultClient {
     this.#storage.add(accountId);
   }
 
-  setPolicy(publicKey: PublicKey, rule: PolicyRule): void {
-    this.#policies.set(publicKey, rule);
+  setAgent(owner: AccountId, agentId: AccountId, rule: AgentRule): VaultTx {
+    if (rule.perPayoutCap <= 0n || rule.dailyCap <= 0n) throw new VaultError("INVALID_AMOUNT");
+    const existing = this.#agents.get(agentId);
+    if (existing && existing.owner !== owner) throw new VaultError("AGENT_TAKEN");
+    this.#agents.set(agentId, { ...rule, owner });
+    this.events.push({ event: "agent_set", owner, agentId, ...rule });
+    return this.#tx();
+  }
+
+  removeAgent(owner: AccountId, agentId: AccountId): VaultTx {
+    if (this.#agents.get(agentId)?.owner !== owner) throw new VaultError("AGENT_NOT_FOUND");
+    this.#agents.delete(agentId);
+    this.events.push({ event: "agent_removed", owner, agentId });
+    return this.#tx();
   }
 
   // ft_on_transfer: returns the amount handed back to the sender, as NEP-141 does.
@@ -123,12 +133,14 @@ export class MockVault implements VaultClient {
     return this.#tokenBalance - credited;
   }
 
-  payout(caller: Caller, orderId: OrderId): VaultTx {
+  // predecessor is the only caller identity a relayed call carries: NEP-366 leaves the relayer's key as signer.
+  payout(predecessor: AccountId, orderId: OrderId): VaultTx {
     const order = this.#order(orderId);
-    if (caller.accountId !== order.payer) throw new VaultError("UNAUTHORIZED");
+    const agent = predecessor === order.payer ? null : this.#agents.get(predecessor);
+    if (agent === undefined || (agent && agent.owner !== order.payer)) throw new VaultError("UNAUTHORIZED");
     if (order.state !== "registered") throw new VaultError("ORDER_NOT_REGISTERED");
     if (this.#options.now() >= order.expiresAtNs) throw new VaultError("ORDER_EXPIRED");
-    this.#enforcePolicy(caller, order);
+    if (agent) this.#enforcePolicy(predecessor, agent, order);
 
     const balance = this.#balance(order.payer);
     this.#balances.set(order.payer, { ...balance, reserved: balance.reserved - order.amount });
@@ -140,7 +152,7 @@ export class MockVault implements VaultClient {
       payer: order.payer,
       depositAddress: order.depositAddress,
       amount: order.amount,
-      publicKey: caller.publicKey,
+      executor: predecessor,
     });
     return this.#tx();
   }
@@ -194,6 +206,11 @@ export class MockVault implements VaultClient {
     if (order.state !== "executed" || !canSetStatus(order.status, status)) {
       throw new VaultError("INVALID_TRANSITION");
     }
+    for (const [key, value] of Object.entries(refs) as [keyof ReceiptRefs, string | undefined][]) {
+      if (value === undefined) continue;
+      if (!isValidRef(value)) throw new VaultError("INVALID_REF");
+      if (order.refs[key] !== undefined && order.refs[key] !== value) throw new VaultError("REF_IMMUTABLE");
+    }
     order.status = status;
     order.refs = { ...order.refs, ...refs };
     this.events.push({ event: "status_set", orderId, status, refs });
@@ -203,10 +220,10 @@ export class MockVault implements VaultClient {
   #recredit(predecessor: AccountId, orderId: OrderId, amount: bigint): VaultTx {
     this.#requireRegistrar(predecessor);
     const order = this.#order(orderId);
-    if (order.state !== "executed" || (order.status !== "refunding" && order.status !== "refunded")) {
+    if (order.recreditedAmount > 0n) throw new VaultError("ALREADY_RECREDITED");
+    if (order.state !== "executed" || order.status !== "refunding") {
       throw new VaultError("NOT_REFUNDABLE");
     }
-    if (order.recreditedAmount > 0n) throw new VaultError("ALREADY_RECREDITED");
     if (amount <= 0n) throw new VaultError("INVALID_AMOUNT");
     if (amount > order.amount) throw new VaultError("RECREDIT_EXCEEDS_ORDER");
     if (amount > this.unattributed()) throw new VaultError("RECREDIT_EXCEEDS_UNATTRIBUTED");
@@ -214,31 +231,26 @@ export class MockVault implements VaultClient {
     const balance = this.#balance(order.payer);
     this.#balances.set(order.payer, { ...balance, available: balance.available + amount });
     order.recreditedAmount = amount;
+    order.status = "refunded";
     this.events.push({ event: "recredited", orderId, payer: order.payer, amount });
-    if (order.status !== "refunded") {
-      order.status = "refunded";
-      this.events.push({ event: "status_set", orderId, status: "refunded", refs: {} });
-    }
+    this.events.push({ event: "status_set", orderId, status: "refunded", refs: {} });
     return this.#tx();
   }
 
-  #enforcePolicy(caller: Caller, order: VaultReceipt): void {
-    const rule = this.#policies.get(caller.publicKey);
-    if (!rule) return;
-    if (rule.owner !== caller.accountId) throw new VaultError("UNAUTHORIZED");
+  #enforcePolicy(agentId: AccountId, rule: AgentRule, order: VaultReceipt): void {
     if (rule.corridors && !rule.corridors.includes(order.corridor)) throw new VaultError("POLICY_CORRIDOR");
     if (order.amount > rule.perPayoutCap) throw new VaultError("POLICY_PER_PAYOUT_CAP");
-    const spent = this.#spentToday(caller.publicKey);
+    const spent = this.#spentToday(agentId);
     if (spent + order.amount > rule.dailyCap) throw new VaultError("POLICY_DAILY_CAP");
-    this.#spent.set(this.#dayKey(caller.publicKey), spent + order.amount);
+    this.#spent.set(this.#dayKey(agentId), spent + order.amount);
   }
 
-  #spentToday(publicKey: PublicKey): bigint {
-    return this.#spent.get(this.#dayKey(publicKey)) ?? 0n;
+  #spentToday(agentId: AccountId): bigint {
+    return this.#spent.get(this.#dayKey(agentId)) ?? 0n;
   }
 
-  #dayKey(publicKey: PublicKey): string {
-    return `${publicKey}:${this.#options.now() / NS_PER_DAY}`;
+  #dayKey(agentId: AccountId): string {
+    return `${agentId}:${this.#options.now() / NS_PER_DAY}`;
   }
 
   #requireRegistrar(predecessor: AccountId): void {

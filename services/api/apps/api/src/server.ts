@@ -1,4 +1,3 @@
-import { Redis } from "ioredis";
 import { createOneClickClient } from "../../../packages/chains/oneclick/index.js";
 import { MockVault } from "../../../packages/chains/vault/index.js";
 import { DEFAULT_ROUTING_CONFIG, NO_SIGNALS } from "../../../packages/domain/routing.js";
@@ -9,10 +8,13 @@ import { buildApp } from "./app.js";
 import { createEmailSender } from "./auth/email-links.js";
 import { loadConfig } from "./config.js";
 import { createDatabase, unitOf } from "./db.js";
+import { createDeposits, startDepositWatch } from "./deposits.js";
 import { createHandlers } from "./handlers.js";
 import { OneClickHops } from "./hop.js";
 import { DEFAULT_DEADLINE_MARGIN_MS, DEFAULT_GUARD_BPS, DEFAULT_VELOCITY } from "./payouts.js";
+import { createRateBoard, startRateSampler } from "./rate-board.js";
 import { createLimiter } from "./rate-limit.js";
+import { connectRedis, withReconnect } from "./redis.js";
 import { sandboxAdapters } from "./sandbox.js";
 import { startHealthChecks, type Probe } from "./status.js";
 import { createWebhookHandler } from "./webhooks.js";
@@ -27,9 +29,10 @@ const configured = enabledAdapters(process.env, {
 const adapters = configured.length > 0 ? configured : sandboxAdapters();
 
 // Until a testnet deployment exists, the vault is Ladipeo's in-memory model.
+const usdcContract = process.env.USDC_CONTRACT_ID ?? "usdc.test.near";
 const vault = new MockVault({
   registrar: process.env.NEAR_REGISTRATION_ACCOUNT_ID ?? "registrar.test.near",
-  usdc: process.env.USDC_CONTRACT_ID ?? "usdc.test.near",
+  usdc: usdcContract,
   now: () => BigInt(Date.now()) * 1_000_000n,
 });
 
@@ -47,20 +50,36 @@ const hops = oneClick
   : undefined;
 
 const ok = { result: "ok" } as const;
-const redis = process.env.REDIS_URL ? new Redis(process.env.REDIS_URL, { maxRetriesPerRequest: 1, enableOfflineQueue: false }) : undefined;
+const redis = process.env.REDIS_URL ? connectRedis(process.env.REDIS_URL) : undefined;
 const probes: Probe[] = [
-  { id: "api", name: "API", kind: "service", run: async () => ok },
+  // The time to get back onto the event loop is the latency, so a blocked process reads as degraded.
+  { id: "api", name: "API", kind: "service", run: () => new Promise<typeof ok>((resolve) => setImmediate(() => resolve(ok))) },
   { id: "database", name: "Database", kind: "service", run: async () => (await unit((tx) => tx.$queryRaw`SELECT 1`), ok) },
-  ...(redis ? [{ id: "redis", name: "Redis", kind: "service" as const, run: async () => ((await redis.ping()) === "PONG" ? ok : { result: "down" as const }) }] : []),
+  ...(redis ? [{ id: "redis", name: "Redis", kind: "service" as const, run: async () => ((await withReconnect(redis, () => redis.ping())) === "PONG" ? ok : { result: "down" as const }) }] : []),
   ...(oneClick ? [{ id: "near_intents", name: "NEAR Intents", kind: "service" as const, run: async () => ((await oneClick.tokens()).length > 0 ? ok : { result: "down" as const }) }] : []),
-  { id: "vault", name: "Vault", kind: "service", run: async () => (await vault.getBalance("registrar.test.near"), ok) },
-  ...adapters.map((adapter) => ({
+  // Only configured providers: the sandbox provider always reports healthy, which says nothing. No vault probe until MockVault is replaced.
+  ...configured.map((adapter) => ({
     id: adapter.id,
     name: adapter.id.charAt(0).toUpperCase() + adapter.id.slice(1),
     kind: "provider" as const,
     run: async () => ((await adapter.health()).healthy ? ok : { result: "down" as const }),
   })),
 ];
+
+const deposits = createDeposits({
+  client: oneClick,
+  vaultAccount: config.vaultAccount,
+  usdcContract,
+  slippageBps: Number(process.env.ONECLICK_DEPOSIT_SLIPPAGE_BPS ?? 200),
+  // The MockVault stands in for the chain, so it is handed the ft_transfer_call 1Click makes to the real vault.
+  onLanded: ({ account, units, message }) => {
+    const returned = vault.ftOnTransfer({ predecessor: usdcContract, senderId: "intents.near", amount: units, msg: message });
+    if (returned > 0n) console.error("[deposits] vault refused a top-up", account);
+  },
+});
+
+const quoteDeps = { adapters, ...(hops ? { hop: hops } : {}), routing: DEFAULT_ROUTING_CONFIG, signals: NO_SIGNALS, now: () => new Date() };
+const rateBoard = createRateBoard(quoteDeps, unit);
 
 const handlers = createHandlers({
   config,
@@ -69,7 +88,9 @@ const handlers = createHandlers({
   provisioner: new MockProvisioner(config.vaultAccount, (account) => vault.registerStorage(account)),
   vault,
   status: { probes },
-  quotes: { adapters, ...(hops ? { hop: hops } : {}), routing: DEFAULT_ROUTING_CONFIG, signals: NO_SIGNALS, now: () => new Date() },
+  deposits,
+  rateBoard,
+  quotes: quoteDeps,
   payouts: {
     config,
     adapters,
@@ -83,3 +104,5 @@ const app = buildApp({ config, unit, handlers, logger: true, limiter: createLimi
   webhooks: createWebhookHandler({ unit, adapters, dataKey: config.dataKey }) });
 await app.listen({ port: config.port, host: "0.0.0.0" });
 startHealthChecks(unit, probes, Number(process.env.HEALTH_CHECK_INTERVAL_MS ?? 60_000));
+startRateSampler(rateBoard, Number(process.env.RATE_SAMPLE_INTERVAL_MS ?? 60_000));
+startDepositWatch(unit, deposits, Number(process.env.DEPOSIT_WATCH_INTERVAL_MS ?? 10_000));

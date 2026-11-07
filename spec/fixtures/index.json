@@ -25,5 +25,13 @@
   "vault.balance.json": "VaultBalance",
   "person.tobi.json": "Person",
   "people.recent.json": "RecentPeopleList",
-  "status.report.json": "StatusReport"
+  "status.report.json": "StatusReport",
+  "deposit.sources.json": "DepositSourceList",
+  "deposit.estimate.json": "DepositEstimate",
+  "deposit.waiting.json": "VaultDeposit",
+  "deposit.landed.json": "VaultDeposit",
+  "payout.refunded.json": "Payout",
+  "payout.claim.json": "PayoutClaim",
+  "rates.board.usdc-ngn.json": "RateBoard",
+  "rates.history.usdc-ngn-24h.json": "RateHistory"
 }

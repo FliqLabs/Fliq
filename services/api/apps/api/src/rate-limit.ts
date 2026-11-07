@@ -2,6 +2,7 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 import { Redis } from "ioredis";
 import { verifyAccessToken } from "./auth/tokens.js";
 import { ApiError } from "./errors.js";
+import { connectRedis, withReconnect } from "./redis.js";
 
 export interface Policy {
   name: string;
@@ -76,7 +77,7 @@ export class RedisLimiter implements Limiter {
   constructor(private readonly redis: Redis) {}
 
   async take(key: string, policy: Policy): Promise<Decision> {
-    const tokens = await this.redis.eval(TAKE_SCRIPT, 1, `rl:${policy.name}:${key}`, policy.capacity, policy.refillPerSecond);
+    const tokens = await withReconnect(this.redis, () => this.redis.eval(TAKE_SCRIPT, 1, `rl:${policy.name}:${key}`, policy.capacity, policy.refillPerSecond));
     return decide(Number(tokens), policy);
   }
 }
@@ -86,7 +87,7 @@ export function createLimiter(redisUrl: string | undefined): Limiter {
     console.warn("REDIS_URL is not set: rate limits are kept in this process only.");
     return new MemoryLimiter();
   }
-  return new RedisLimiter(new Redis(redisUrl, { maxRetriesPerRequest: 1, enableOfflineQueue: false }));
+  return new RedisLimiter(connectRedis(redisUrl));
 }
 
 interface Identity {

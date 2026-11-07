@@ -1,4 +1,4 @@
-import { RECEIPT_STATUSES, type ReceiptRefs, type ReceiptStatus } from "./types";
+import { isValidRef, RECEIPT_STATUSES, type ReceiptRefs, type ReceiptStatus } from "./types";
 
 export const VAULT_EVENT_STANDARD = "fliq_vault";
 export const VAULT_EVENT_VERSION = "1.0.0";
@@ -8,7 +8,7 @@ const U64_MAX = 2n ** 64n - 1n;
 const U128_MAX = 2n ** 128n - 1n;
 const REF_KEYS = ["provider", "provider_order", "bank_reference", "refund_tx"] as const;
 
-type FieldKind = "text" | "u64" | "u128" | "status" | "refs";
+type FieldKind = "text" | "u64" | "u128" | "status" | "refs" | "corridors";
 
 const EVENT_FIELDS = {
   order_registered: {
@@ -24,12 +24,20 @@ const EVENT_FIELDS = {
     payer: "text",
     deposit_address: "text",
     amount: "u128",
-    public_key: "text",
+    executor: "text",
   },
   order_released: { order_id: "text", payer: "text", amount: "u128" },
   status_set: { order_id: "text", status: "status", refs: "refs" },
   recredited: { order_id: "text", payer: "text", amount: "u128" },
   deposited: { account_id: "text", sender_id: "text", amount: "u128" },
+  agent_set: {
+    owner: "text",
+    agent_id: "text",
+    per_payout_cap: "u128",
+    daily_cap: "u128",
+    corridors: "corridors",
+  },
+  agent_removed: { owner: "text", agent_id: "text" },
 } as const satisfies Record<string, Record<string, FieldKind>>;
 
 export type VaultEventName = keyof typeof EVENT_FIELDS;
@@ -50,12 +58,21 @@ export type VaultEvent =
       payer: string;
       depositAddress: string;
       amount: bigint;
-      publicKey: string;
+      executor: string;
     }
   | { event: "order_released"; orderId: string; payer: string; amount: bigint }
   | { event: "status_set"; orderId: string; status: ReceiptStatus; refs: ReceiptRefs }
   | { event: "recredited"; orderId: string; payer: string; amount: bigint }
-  | { event: "deposited"; accountId: string; senderId: string; amount: bigint };
+  | { event: "deposited"; accountId: string; senderId: string; amount: bigint }
+  | {
+      event: "agent_set";
+      owner: string;
+      agentId: string;
+      perPayoutCap: bigint;
+      dailyCap: bigint;
+      corridors: readonly string[] | null;
+    }
+  | { event: "agent_removed"; owner: string; agentId: string };
 
 export class VaultEventError extends Error {
   constructor(problem: string) {
@@ -131,6 +148,8 @@ function fromWire(kind: FieldKind, value: unknown, path: string): unknown {
       return value;
     case "refs":
       return refsFromWire(value, path);
+    case "corridors":
+      return corridorsFromWire(value, path);
   }
 }
 
@@ -157,11 +176,20 @@ function refsFromWire(value: unknown, path: string): ReceiptRefs {
   for (const [key, ref] of Object.entries(value)) {
     if (!REF_KEYS.includes(key as (typeof REF_KEYS)[number]))
       throw new VaultEventError(`${path}.${key} is not allowed`);
-    if (typeof ref !== "string" || ref === "")
-      throw new VaultEventError(`${path}.${key} must be a non-empty string`);
+    if (typeof ref !== "string" || !isValidRef(ref))
+      throw new VaultEventError(`${path}.${key} must be printable ASCII of 1 to 128 bytes`);
     refs[camel(key)] = ref;
   }
   return refs;
+}
+
+// null means the agent may pay into any corridor.
+function corridorsFromWire(value: unknown, path: string): readonly string[] | null {
+  if (value === null) return null;
+  if (!Array.isArray(value) || value.some((corridor) => typeof corridor !== "string" || corridor === "")) {
+    throw new VaultEventError(`${path} must be null or a list of corridors`);
+  }
+  return value as string[];
 }
 
 function parseJson(text: string): unknown {
