@@ -3,7 +3,7 @@ import Link from "next/link";
 import { siteContainer } from "./site-container";
 
 const navigation = [
-  { label: "Rates", href: "/#rates" },
+  { label: "Rates", href: "/rates/ngn" },
   { label: "Docs", href: "/#developers" },
   { label: "Trust", href: "/#trust" },
   { label: "Sandbox", href: "/#sandbox" },
