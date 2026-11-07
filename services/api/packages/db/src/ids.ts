@@ -32,7 +32,10 @@ export type IdPrefix =
   | "whe"
   | "whd"
   | "wha"
-  | "evt";
+  | "evt"
+  | "req"
+  | "ref"
+  | "ntf";
 
 function encodeBase32(value: bigint, length: number): string {
   let out = "";

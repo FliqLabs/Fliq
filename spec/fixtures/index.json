@@ -45,5 +45,20 @@
   "usage.week.json": "Usage",
   "payouts.filtered.json": "PayoutList",
   "name.claim-pending.json": "ClaimPending",
-  "relay.failed.json": "RelayResult"
+  "relay.failed.json": "RelayResult",
+  "activity.list.json": "ActivityList",
+  "activity.empty.json": "ActivityList",
+  "notifications.list.json": "NotificationList",
+  "agents.list.json": "AgentList",
+  "agent.connect.json": "AgentChange",
+  "request.created.json": "PaymentRequest",
+  "request.paid.json": "PaymentRequest",
+  "request.public.json": "PublicRequest",
+  "receipt.public.json": "PublicReceipt",
+  "sessions.list.json": "DeviceSessionList",
+  "passkeys.list.json": "PasskeyList",
+  "notification-settings.json": "NotificationSettings",
+  "setup.halfway.json": "Setup",
+  "agent.payout.json": "AgentPayout",
+  "agent.self.json": "AgentSelf"
 }

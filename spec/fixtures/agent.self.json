@@ -1,0 +1,21 @@
+{
+  "agent_id": "claude-frank.fliq.near",
+  "owner": "frank.fliq.near",
+  "name": "Claude",
+  "state": "active",
+  "daily_cap": {
+    "amount": "150000",
+    "currency": "NGN"
+  },
+  "per_payout_cap": {
+    "amount": "50000",
+    "currency": "NGN"
+  },
+  "currencies": [
+    "NGN"
+  ],
+  "saved_accounts_only": true,
+  "spent_today_usd": "21.80",
+  "remaining_today_usd": "87.19",
+  "per_payout_usd": "36.33"
+}

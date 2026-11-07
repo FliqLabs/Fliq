@@ -9,6 +9,8 @@ export interface Operation {
   openapiPath: string;
   fastifyPath: string;
   isPublic: boolean;
+  // Signed by an agent's own key instead of a user's session or an API key.
+  isAgent: boolean;
   bodySchema: Json | undefined;
 }
 
@@ -52,6 +54,7 @@ export function operations(spec: Json): Operation[] {
         openapiPath,
         fastifyPath: `/v1${openapiPath.replace(/\{(\w+)\}/g, ":$1")}`,
         isPublic: Array.isArray(operation.security) && operation.security.length === 0,
+        isAgent: Array.isArray(operation.security) && operation.security.some((scheme: Json) => "agentSignature" in scheme),
         bodySchema: body ? (closeObjects(resolve(body, spec.components)) as Json) : undefined,
       });
     }
