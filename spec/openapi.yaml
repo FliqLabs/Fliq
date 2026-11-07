@@ -760,7 +760,71 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/User"
+        "202":
+          description: The NEAR account is still being created. Send the same request again with the same Idempotency-Key; it finishes the job without creating a second account.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClaimPending"
+        "400":
+          $ref: "#/components/responses/Error"
         "409":
+          $ref: "#/components/responses/Error"
+  /relays:
+    post:
+      operationId: relay
+      summary: Relay a payout or deposit the user signed on their device, with fliq paying the gas
+      description: The app signs a NEP-366 delegate action with the device key and the API forwards it to the relayer unchanged. Allowed calls are the vault's payout and release_order, and ft_transfer_call of USDC into the vault. A repeat of the same delegate returns the same body and is never paid for twice.
+      tags: [payouts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RelayRequest"
+      responses:
+        "200":
+          description: The transaction ran. `failed` means a call inside it failed; `failures` says why.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RelayResult"
+        "202":
+          description: The outcome is not known yet. Poll GET /relays/{delegateHash}.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RelayResult"
+        "400":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/Error"
+        "503":
+          $ref: "#/components/responses/Error"
+  /relays/{delegateHash}:
+    get:
+      operationId: getRelay
+      summary: The result of a relayed delegate, refreshed from the chain while it is pending
+      tags: [payouts]
+      parameters:
+        - name: delegateHash
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^[0-9a-f]{64}$"
+      responses:
+        "200":
+          description: The stored result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RelayResult"
+        "404":
           $ref: "#/components/responses/Error"
   /workspaces:
     post:
@@ -1645,6 +1709,48 @@ components:
         name:
           type: string
           description: The label before .fliq.near
+        public_key:
+          type: string
+          pattern: "^ed25519:[1-9A-HJ-NP-Za-km-z]{43,44}$"
+          description: The device's NEAR key, generated and kept on the phone. It becomes the only full-access key of the new account, so only that device can move the user's money. A passkey cannot be this key, because passkeys are P-256 and NEAR keys are ed25519.
+    ClaimPending:
+      type: object
+      required: [status, near_account]
+      properties:
+        status:
+          type: string
+          enum: [pending]
+        near_account:
+          type: string
+    RelayRequest:
+      type: object
+      required: [signed_delegate]
+      additionalProperties: false
+      properties:
+        signed_delegate:
+          type: string
+          format: byte
+          maxLength: 8192
+          description: Base64 Borsh SignedDelegate, signed by the device key over sha256(NEP-461 prefix and borsh(DelegateAction))
+    RelayResult:
+      type: object
+      required: [status, delegate_hash, sender_id, receiver_id]
+      properties:
+        status:
+          type: string
+          enum: [succeeded, failed, pending]
+        tx_hash:
+          type: [string, "null"]
+        delegate_hash:
+          type: string
+        sender_id:
+          type: string
+        receiver_id:
+          type: string
+        failures:
+          type: array
+          items:
+            type: string
     ProfileUpdate:
       type: object
       properties:
