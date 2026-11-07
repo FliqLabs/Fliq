@@ -39,6 +39,7 @@ The NEAR HACKATHON rules require listing AI-generated code. Add a row whenever a
 | 2026-11-07 | `contracts/mock_usdc/src/lib.rs`, `contracts/vault/tests/workspaces.rs`, `contracts/vault/src/{lib.rs,types.rs}`, `contracts/vault/tests/contract.rs`, `contracts/vault/docs/BACKEND_ALIGNMENT.md` | Codex | NEP-141 mock USDC behavior and tests, release-WASM sandbox coverage, receipt compatibility mapping, backend alignment review, and integration validation |
 | 2026-11-07 | `Makefile`, `contracts/vault/README.md`, `contracts/vault/tests/workspaces.rs`, `contracts/vault/docs/BUILD.md` | Codex | Official cargo-near build commands and artifact record, separate sandbox target, and protocol-88 build documentation |
 | 2026-11-07 | `contracts/vault/src`, `contracts/vault/tests/contract.rs`, `contracts/vault/docs`, `contracts/mock_usdc`, `contracts/vault/handoff`, `contracts/vault/scripts` | Codex | Fresh-deployment cleanup, terminal failed-payout accounting, nullable receipt compatibility fields, policy/event fixes, backend alignment, mock-token transfer-call support, deployment preparation and handoff |
+| 2026-11-07 | `apps/web/app/rates/ngn`, `apps/web/app/api/fliq/[...path]/route.ts` | Claude Code | Proxy the public USDC to NGN rate, match the Rate type to the spec, show a calm coming-soon state until the rates API ships, hide the rate history chart, fix brand and domain copy |
 
 The iOS app (`apps/ios`) is built with Claude Code, directed and reviewed by Frank. Each iOS PR adds its rows to this table.
 
