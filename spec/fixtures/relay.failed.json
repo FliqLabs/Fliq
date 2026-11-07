@@ -1,0 +1,10 @@
+{
+  "status": "failed",
+  "tx_hash": "5erVLWza9yXZnDm3hM8uPGdj5ASgcqScCskRgyqWXiht",
+  "delegate_hash": "9b29f77af1c147b5fcda5a29287e448b62a108280ba4c85c084f26dfa1dc6387",
+  "sender_id": "relaycheck1.fliq.testnet",
+  "receiver_id": "fliq-vault.testnet",
+  "failures": [
+    "{\"ActionError\":{\"index\":0,\"kind\":{\"AccountDoesNotExist\":{\"account_id\":\"fliq-vault.testnet\"}}}}"
+  ]
+}

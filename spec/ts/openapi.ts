@@ -525,6 +525,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/relays": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Relay a payout or deposit the user signed on their device, with fliq paying the gas
+         * @description The app signs a NEP-366 delegate action with the device key and the API forwards it to the relayer unchanged. Allowed calls are the vault's payout and release_order, and ft_transfer_call of USDC into the vault. A repeat of the same delegate returns the same body and is never paid for twice.
+         */
+        post: operations["relay"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/relays/{delegateHash}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The result of a relayed delegate, refreshed from the chain while it is pending */
+        get: operations["getRelay"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/workspaces": {
         parameters: {
             query?: never;
@@ -1024,6 +1061,29 @@ export interface components {
         ClaimNameRequest: {
             /** @description The label before .fliq.near */
             name: string;
+            /** @description The device's NEAR key, generated and kept on the phone. It becomes the only full-access key of the new account, so only that device can move the user's money. A passkey cannot be this key, because passkeys are P-256 and NEAR keys are ed25519. */
+            public_key?: string;
+        };
+        ClaimPending: {
+            /** @enum {string} */
+            status: "pending";
+            near_account: string;
+        };
+        RelayRequest: {
+            /**
+             * Format: byte
+             * @description Base64 Borsh SignedDelegate, signed by the device key over sha256(NEP-461 prefix and borsh(DelegateAction))
+             */
+            signed_delegate: string;
+        };
+        RelayResult: {
+            /** @enum {string} */
+            status: "succeeded" | "failed" | "pending";
+            tx_hash?: string | null;
+            delegate_hash: string;
+            sender_id: string;
+            receiver_id: string;
+            failures?: string[];
         };
         ProfileUpdate: {
             /**
@@ -2266,7 +2326,78 @@ export interface operations {
                     "application/json": components["schemas"]["User"];
                 };
             };
+            /** @description The NEAR account is still being created. Send the same request again with the same Idempotency-Key; it finishes the job without creating a second account. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaimPending"];
+                };
+            };
+            400: components["responses"]["Error"];
             409: components["responses"]["Error"];
+        };
+    };
+    relay: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RelayRequest"];
+            };
+        };
+        responses: {
+            /** @description The transaction ran. `failed` means a call inside it failed; `failures` says why. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelayResult"];
+                };
+            };
+            /** @description The outcome is not known yet. Poll GET /relays/{delegateHash}. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelayResult"];
+                };
+            };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    getRelay: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                delegateHash: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The stored result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelayResult"];
+                };
+            };
+            404: components["responses"]["Error"];
         };
     };
     createWorkspace: {
