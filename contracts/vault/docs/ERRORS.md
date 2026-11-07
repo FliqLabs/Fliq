@@ -59,3 +59,7 @@ Every contract-owned panic uses the exact `fliq_vault: CODE` form.
 | POLICY_COOLDOWN | The agent is attempting another payout too soon. |
 | POLICY_PENDING_EXISTS | The order already has pending policy spend. |
 | POLICY_ARITHMETIC | Policy spend accounting would overflow or underflow. |
+
+## Dapper to convert
+
+`vault.rs` currently reports typed vault failures that `integration.rs` maps to the contract-owned codes above. Its remaining internal panic strings are not changed in this run; Dapper must convert direct strings to the exact `fliq_vault: CODE` format before release.

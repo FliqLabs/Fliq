@@ -26,7 +26,7 @@ These rules are PROPOSED and require backend approval:
 - The backend verifies the refund transaction before the registration account calls `recredit(order_id, amount)`.
 - The contract queries `ft_balance_of` on the approved USDC contract, caps the credit at the committed outflow and unattributed token balance, and records both the order credit and refund transaction as single-use.
 - A partial refund is allowed, but each order has at most one recredit. Only a successful callback changes the receipt status to `refunded`.
-- Failed transfers and `resolve_stuck_payout(..., false)` return to `Registered`, keep their reservation for retry, and create no refund record.
+- Failed transfers and `resolve_stuck_payout(..., false)` release the reservation, enter terminal `TransferFailed`, and create no refund record.
 
 ## Agent policy behavior
 
@@ -46,3 +46,8 @@ These rules are PROPOSED and require backend approval:
 - How is corridor encoded?
 - The registration account is stored once at initialization; key rotation happens on that account.
 - Agent policy identity and daily-limit accounting are implemented as described above.
+## Proposed policy identity and failure semantics
+
+- **PROPOSED:** Agent policies are keyed by `(owner, agent account)`. An agent is a distinct NEAR account because a relayed NEP-366 call reports the relayer's key as the signer. The app and backend must never place an agent key on the user's own account: calls from the user's account are treated as the user. The contract cannot see which function-call key signed the transaction.
+- **PROPOSED:** A failed payout refunds that payout's daily policy spend but retains the cooldown timestamp. This prevents a failed transfer from consuming the daily allowance while preventing immediate retry abuse.
+- **PROPOSED:** A failed payout releases the Dapper reservation and enters terminal `TransferFailed`; it cannot be retried or released again. A stale callback is a no-op.

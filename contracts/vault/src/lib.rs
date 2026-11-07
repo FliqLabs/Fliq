@@ -166,7 +166,7 @@ impl Contract {
         payer: AccountId,
         deposit_address: AccountId,
         amount: U128,
-        expiry: near_sdk::json_types::U64,
+        expires_at_ns: near_sdk::json_types::U64,
         corridor: String,
     ) {
         require!(
@@ -177,9 +177,9 @@ impl Contract {
         require!(!self.orders.contains_key(&order_id), errors::ORDER_EXISTS);
         validate_deposit_address(deposit_address.as_ref());
         let current_time = now();
-        require!(expiry.0 > current_time, errors::INVALID_EXPIRY);
+        require!(expires_at_ns.0 > current_time, errors::INVALID_EXPIRY);
         require!(
-            expiry.0 - current_time <= self.config.max_expiry.0,
+            expires_at_ns.0 - current_time <= self.config.max_expiry.0,
             errors::INVALID_EXPIRY
         );
         integration::reserve_for_order(&mut self.vault, &order_id, &payer, amount.0);
@@ -188,7 +188,7 @@ impl Contract {
             payer: payer.clone(),
             deposit_address: deposit_address.clone(),
             amount,
-            expiry,
+            expiry: expires_at_ns,
             corridor: corridor.clone(),
             transfer_state: TransferState::Registered,
             created_at: now().into(),
@@ -211,7 +211,7 @@ impl Contract {
             payer,
             deposit_address,
             amount,
-            expires_at_ns: expiry.0.to_string(),
+            expires_at_ns: expires_at_ns.0.to_string(),
             corridor,
         }
         .emit();
@@ -308,21 +308,33 @@ impl Contract {
         .emit();
     }
 
-    pub fn get_receipt(&self, order_id: String) -> ReceiptView {
-        match self.receipts.get(&order_id) {
-            Some(receipt) => ReceiptView {
-                order_id: receipt.order_id,
-                order: receipt.order.clone(),
-                transfer_state: receipt.transfer_state.clone(),
-                expired: receipt.transfer_state == TransferState::Registered
-                    && orders::is_expired(receipt.order.expiry, now()),
-                executing_since: receipt.order.executing_since,
-                backend_status: receipt.backend_status,
-                refs: receipt.refs,
-                last_updated: receipt.last_updated,
-            },
-            None => env::panic_str(errors::RECEIPT_NOT_FOUND),
-        }
+    pub fn get_receipt(&self, order_id: String) -> Option<ReceiptView> {
+        self.receipts.get(&order_id).map(|receipt| ReceiptView {
+            order_id: receipt.order_id,
+            payer: receipt.order.payer.clone(),
+            deposit_address: receipt.order.deposit_address.clone(),
+            amount: receipt.order.amount,
+            expires_at_ns: receipt.order.expiry,
+            corridor: receipt.order.corridor.clone(),
+            state: match &receipt.transfer_state {
+                TransferState::Registered => "registered",
+                TransferState::Executing => "executing",
+                TransferState::Dispatched => "dispatched",
+                TransferState::TransferFailed => "transfer_failed",
+                TransferState::Released => "released",
+            }
+            .to_owned(),
+            status: Some(receipt.backend_status.clone()),
+            recredited_amount: U128(self.vault.recredited_amount(&order_id)),
+            order: receipt.order.clone(),
+            transfer_state: receipt.transfer_state.clone(),
+            expired: receipt.transfer_state == TransferState::Registered
+                && orders::is_expired(receipt.order.expiry, now()),
+            executing_since: receipt.order.executing_since,
+            backend_status: receipt.backend_status,
+            refs: receipt.refs,
+            last_updated: receipt.last_updated,
+        })
     }
 
     #[cfg(all(feature = "testing", debug_assertions))]

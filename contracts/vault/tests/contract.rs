@@ -99,7 +99,10 @@ fn register_storage(contract: &mut Contract, account: AccountId) {
 
 #[cfg(feature = "testing")]
 fn payout(contract: &mut Contract, order_id: &str) -> near_sdk::Promise {
-    let order = contract.get_receipt(order_id.to_owned()).order;
+    let order = contract
+        .get_receipt(order_id.to_owned())
+        .expect("receipt")
+        .order;
     contract.payout(order_id.to_owned(), order.amount, order.deposit_address)
 }
 
@@ -663,7 +666,7 @@ fn every_valid_transition_passes() {
     let valid = [
         (TransferState::Registered, TransferState::Executing),
         (TransferState::Executing, TransferState::Dispatched),
-        (TransferState::Executing, TransferState::Registered),
+        (TransferState::Executing, TransferState::TransferFailed),
     ];
     for (from, to) in valid {
         assert!(transition(&mut order(from), to).is_ok());
@@ -684,7 +687,7 @@ fn every_other_transition_fails() {
                 (&from, &to),
                 (TransferState::Registered, TransferState::Executing)
                     | (TransferState::Executing, TransferState::Dispatched)
-                    | (TransferState::Executing, TransferState::Registered)
+                    | (TransferState::Executing, TransferState::TransferFailed)
             );
             assert_eq!(transition(&mut order(from.clone()), to).is_ok(), valid);
         }
@@ -734,7 +737,9 @@ fn registration_account_can_register() {
         U64(NOW + 3_600_000_000_000),
         "USDC-NGN".to_string(),
     );
-    let receipt = contract.get_receipt("order-1".to_string());
+    let receipt = contract
+        .get_receipt("order-1".to_string())
+        .expect("receipt");
     assert_eq!(receipt.order_id, "order-1");
     assert_eq!(receipt.transfer_state, TransferState::Registered);
 }
@@ -750,7 +755,10 @@ fn registration_account_can_release_registered_order_and_restore_balance() {
     assert_eq!(contract.get_balance(accounts(3)).available, U128(10));
     assert_eq!(contract.get_balance(accounts(3)).reserved, U128(0));
     assert_eq!(
-        contract.get_receipt("release-1".to_owned()).transfer_state,
+        contract
+            .get_receipt("release-1".to_owned())
+            .expect("receipt")
+            .transfer_state,
         TransferState::Released
     );
     assert!(
@@ -798,7 +806,9 @@ fn unauthorized_release_fails_and_released_order_cannot_be_reused() {
     set_caller(accounts(3), NOW);
     assert!(
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let receipt = contract.get_receipt("release-2".to_owned());
+            let receipt = contract
+                .get_receipt("release-2".to_owned())
+                .expect("receipt");
             let _ = contract.payout(
                 "release-2".to_owned(),
                 receipt.order.amount,
@@ -909,7 +919,9 @@ fn registered_order_fields_cannot_be_changed() {
         U64(NOW + 3_600_000_000_000),
         "USDC-NGN".to_string(),
     );
-    let receipt_before = contract.get_receipt("order-1".to_string());
+    let receipt_before = contract
+        .get_receipt("order-1".to_string())
+        .expect("receipt");
     assert_eq!(receipt_before.transfer_state, TransferState::Registered);
     assert!(
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -924,19 +936,16 @@ fn registered_order_fields_cannot_be_changed() {
         }))
         .is_err()
     );
-    let receipt_after = contract.get_receipt("order-1".to_string());
+    let receipt_after = contract
+        .get_receipt("order-1".to_string())
+        .expect("receipt");
     assert_eq!(receipt_after, receipt_before);
 }
 
 #[test]
-fn unknown_receipt_fails_clearly() {
+fn unknown_receipt_returns_null() {
     let contract = contract();
-    assert!(
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            contract.get_receipt("missing".to_string());
-        }))
-        .is_err()
-    );
+    assert!(contract.get_receipt("missing".to_string()).is_none());
 }
 
 #[test]
@@ -953,7 +962,9 @@ fn registration_event_contains_order_fields() {
         U64(NOW + 3_600_000_000_000),
         "USDC-NGN".to_string(),
     );
-    let receipt = contract.get_receipt("order-1".to_string());
+    let receipt = contract
+        .get_receipt("order-1".to_string())
+        .expect("receipt");
     assert_eq!(
         near_sdk::serde_json::to_string(&receipt.order.amount).unwrap(),
         "\"10\""
@@ -1007,7 +1018,10 @@ fn status_follows_branching_edges_for_refused_and_not_received() {
     set_caller(accounts(1), NOW);
     refused.set_status("order-1".to_string(), "refused".to_string(), refs("ref-1"));
     assert_eq!(
-        refused.get_receipt("order-1".to_string()).backend_status,
+        refused
+            .get_receipt("order-1".to_string())
+            .expect("receipt")
+            .backend_status,
         "refused"
     );
     assert!(
@@ -1034,6 +1048,7 @@ fn status_follows_branching_edges_for_refused_and_not_received() {
     assert_eq!(
         not_received
             .get_receipt("order-2".to_string())
+            .expect("receipt")
             .backend_status,
         "not_received"
     );
@@ -1064,9 +1079,16 @@ fn status_replay_is_a_no_op() {
     register_status_order(&mut contract);
     set_caller(accounts(1), NOW);
     contract.set_status("order-1".to_string(), "routing".to_string(), refs("ref-1"));
-    let before = contract.get_receipt("order-1".to_string());
+    let before = contract
+        .get_receipt("order-1".to_string())
+        .expect("receipt");
     contract.set_status("order-1".to_string(), "routing".to_string(), refs("ref-1"));
-    assert_eq!(contract.get_receipt("order-1".to_string()), before);
+    assert_eq!(
+        contract
+            .get_receipt("order-1".to_string())
+            .expect("receipt"),
+        before
+    );
 }
 
 #[test]
@@ -1108,7 +1130,9 @@ fn receipt_shows_order_and_both_status_tracks() {
     register_status_order(&mut contract);
     set_caller(accounts(1), NOW);
     contract.set_status("order-1".to_string(), "routing".to_string(), refs("ref-1"));
-    let receipt = contract.get_receipt("order-1".to_string());
+    let receipt = contract
+        .get_receipt("order-1".to_string())
+        .expect("receipt");
     assert_eq!(receipt.order.amount, U128(10));
     assert_eq!(receipt.order.deposit_address, accounts(4));
     assert_eq!(receipt.transfer_state, TransferState::Registered);
@@ -1124,7 +1148,9 @@ fn status_does_not_change_transfer_state_or_balance() {
     let before_balance = contract.get_balance(accounts(3));
     set_caller(accounts(1), NOW);
     contract.set_status("order-1".to_string(), "routing".to_string(), refs("ref-1"));
-    let receipt = contract.get_receipt("order-1".to_string());
+    let receipt = contract
+        .get_receipt("order-1".to_string())
+        .expect("receipt");
     let after_balance = contract.get_balance(accounts(3));
     assert_eq!(receipt.transfer_state, TransferState::Registered);
     assert_eq!(before_balance, after_balance);
@@ -1194,12 +1220,15 @@ fn two_orders_cannot_reserve_more_than_the_balance() {
         near_sdk::PromiseResult::Failed,
     );
     contract.on_payout_complete("order-1".to_string());
-    assert_eq!(contract.get_balance(accounts(3)).available, U128(4));
-    assert_eq!(contract.get_balance(accounts(3)).reserved, U128(6));
-    set_caller(accounts(1), NOW);
-    contract.release_order("order-1".to_string());
     assert_eq!(contract.get_balance(accounts(3)).available, U128(10));
     assert_eq!(contract.get_balance(accounts(3)).reserved, U128(0));
+    set_caller(accounts(1), NOW);
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            contract.release_order("order-1".to_string());
+        }))
+        .is_err()
+    );
 }
 
 #[cfg(feature = "testing")]
@@ -1244,10 +1273,16 @@ fn payout_keeps_stored_destination_and_amount() {
     let mut contract = contract();
     contract.credit_for_testing(accounts(3), 10);
     register_named_order(&mut contract, "order-1", accounts(3), 10);
-    let before = contract.get_receipt("order-1".to_string()).order;
+    let before = contract
+        .get_receipt("order-1".to_string())
+        .expect("receipt")
+        .order;
     set_caller(accounts(3), NOW);
     let _promise = payout(&mut contract, "order-1");
-    let during = contract.get_receipt("order-1".to_string()).order;
+    let during = contract
+        .get_receipt("order-1".to_string())
+        .expect("receipt")
+        .order;
     assert_eq!(during.amount, before.amount);
     assert_eq!(during.deposit_address, before.deposit_address);
     assert_eq!(during.order_id, before.order_id);
@@ -1363,7 +1398,10 @@ fn real_payout_then_refund_recredits_once_and_marks_refunded() {
     assert_eq!(contract.get_balance(accounts(3)).available, U128(100));
     assert_eq!(contract.get_balance(accounts(3)).total, U128(100));
     assert_eq!(
-        contract.get_receipt("order-1".to_string()).backend_status,
+        contract
+            .get_receipt("order-1".to_string())
+            .expect("receipt")
+            .backend_status,
         "refunded"
     );
     assert!(
@@ -1555,8 +1593,12 @@ fn failed_transfer_and_stuck_resolution_restore_once_without_refund() {
     let _promise = payout(&mut contract, "order-1");
     set_caller(accounts(0), NOW + 10);
     contract.resolve_stuck_payout("order-1".to_string(), false);
-    assert_eq!(contract.get_balance(accounts(3)).available, U128(90));
-    assert_eq!(contract.get_balance(accounts(3)).reserved, U128(10));
+    assert_eq!(
+        order_transfer_state(&contract, "order-1"),
+        Some(TransferState::TransferFailed)
+    );
+    assert_eq!(contract.get_balance(accounts(3)).available, U128(100));
+    assert_eq!(contract.get_balance(accounts(3)).reserved, U128(0));
     set_caller(accounts(1), NOW + 10);
     assert!(
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -1564,7 +1606,7 @@ fn failed_transfer_and_stuck_resolution_restore_once_without_refund() {
         }))
         .is_err()
     );
-    assert_eq!(contract.get_balance(accounts(3)).available, U128(90));
+    assert_eq!(contract.get_balance(accounts(3)).available, U128(100));
 }
 
 #[cfg(feature = "testing")]
@@ -1613,10 +1655,10 @@ fn stuck_payout_requires_owner_timeout_and_executing_state() {
     contract.resolve_stuck_payout("order-1".to_string(), false);
     assert_eq!(
         order_transfer_state(&contract, "order-1"),
-        Some(TransferState::Registered)
+        Some(TransferState::TransferFailed)
     );
-    assert_eq!(contract.get_balance(accounts(3)).available, U128(90));
-    assert_eq!(contract.get_balance(accounts(3)).reserved, U128(10));
+    assert_eq!(contract.get_balance(accounts(3)).available, U128(100));
+    assert_eq!(contract.get_balance(accounts(3)).reserved, U128(0));
 }
 
 #[cfg(feature = "testing")]
@@ -1693,7 +1735,7 @@ fn random_sequence_preserves_balance_and_single_send_invariants() {
             2 if !order_ids.is_empty() => {
                 let index = (seed as usize) % order_ids.len();
                 let order_id = order_ids[index].clone();
-                let receipt = contract.get_receipt(order_id.clone());
+                let receipt = contract.get_receipt(order_id.clone()).expect("receipt");
                 if order_transfer_state(&contract, &order_id) == Some(TransferState::Registered) {
                     let amount = receipt.order.amount.0;
                     let available = contract.get_balance(payer.clone()).available.0;
@@ -1780,7 +1822,9 @@ fn paying_out_and_settled_are_accepted_after_dispatched() {
         refs("ref-1"),
     );
     contract.set_status("order-1".to_string(), "settled".to_string(), refs("ref-1"));
-    let receipt = contract.get_receipt("order-1".to_string());
+    let receipt = contract
+        .get_receipt("order-1".to_string())
+        .expect("receipt");
     assert_eq!(receipt.transfer_state, TransferState::Dispatched);
     assert_eq!(receipt.backend_status, "settled");
 }
@@ -1810,7 +1854,10 @@ fn happy_path_reserves_and_commits_once() {
     assert_eq!(settled.available, U128(90));
     assert_eq!(settled.reserved, U128(0));
     assert_eq!(
-        contract.get_receipt("order-1".to_string()).transfer_state,
+        contract
+            .get_receipt("order-1".to_string())
+            .expect("receipt")
+            .transfer_state,
         TransferState::Dispatched
     );
 }
@@ -1839,7 +1886,10 @@ fn second_payout_and_same_block_duplicate_fail() {
     );
     contract.on_payout_complete("order-1".to_string());
     assert_eq!(
-        contract.get_receipt("order-1".to_string()).transfer_state,
+        contract
+            .get_receipt("order-1".to_string())
+            .expect("receipt")
+            .transfer_state,
         TransferState::Dispatched
     );
 }
@@ -1902,11 +1952,14 @@ fn failed_transfer_keeps_reservation_and_allows_retry() {
     );
     contract.on_payout_complete("order-1".to_string());
     let balance = contract.get_balance(accounts(3));
-    assert_eq!(balance.available, U128(90));
-    assert_eq!(balance.reserved, U128(10));
+    assert_eq!(balance.available, U128(100));
+    assert_eq!(balance.reserved, U128(0));
     assert_eq!(
-        contract.get_receipt("order-1".to_string()).transfer_state,
-        TransferState::Registered
+        contract
+            .get_receipt("order-1".to_string())
+            .expect("receipt")
+            .transfer_state,
+        TransferState::TransferFailed
     );
 }
 
@@ -1945,7 +1998,10 @@ fn outsider_callback_and_stale_callback_change_nothing() {
     contract.on_payout_complete("order-1".to_string());
     contract.on_payout_complete("order-1".to_string());
     assert_eq!(
-        contract.get_receipt("order-1".to_string()).transfer_state,
+        contract
+            .get_receipt("order-1".to_string())
+            .expect("receipt")
+            .transfer_state,
         TransferState::Dispatched
     );
     assert_eq!(contract.get_balance(accounts(3)).reserved, U128(0));

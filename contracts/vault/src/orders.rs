@@ -163,7 +163,7 @@ pub fn transition(order: &mut PayoutOrder, next: TransferState) -> Result<(), St
         (&order.transfer_state, &next),
         (TransferState::Registered, TransferState::Executing)
             | (TransferState::Executing, TransferState::Dispatched)
-            | (TransferState::Executing, TransferState::Registered)
+            | (TransferState::Executing, TransferState::TransferFailed)
     );
     if allowed {
         order.transfer_state = next;
@@ -401,8 +401,9 @@ fn finalize_payout(contract: &mut Contract, order_id: String, successful: bool) 
         integration::settle_pending(contract, &order_id);
         order.transfer_state = TransferState::Dispatched;
     } else {
+        integration::release_reservation(&mut contract.vault, &order_id);
         integration::release_pending(contract, &order_id);
-        order.transfer_state = TransferState::Registered;
+        order.transfer_state = TransferState::TransferFailed;
     }
     order.executing_since = None;
     contract.orders.insert(&order_id, &order);
