@@ -46,6 +46,8 @@
 	<string>fliq uses the camera only when you take a profile photo.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>fliq asks for Face ID before any money leaves your vault.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>fliq connects to a fliq server on this network during development.</string>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>
