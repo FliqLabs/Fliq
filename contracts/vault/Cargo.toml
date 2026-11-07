@@ -12,6 +12,8 @@ crate-type = ["cdylib", "rlib"]
 [features]
 default = []
 testing = []
+# Runs tests/workspaces.rs, which embeds the release WASMs from `make build-contract`.
+sandbox = []
 
 [dependencies]
 borsh = "1"

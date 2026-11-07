@@ -1,3 +1,5 @@
+#![cfg(feature = "sandbox")]
+
 use anyhow::{Context, Result};
 use near_sdk::serde::de::DeserializeOwned;
 use near_workspaces::types::{AccountId, Gas, NearToken};

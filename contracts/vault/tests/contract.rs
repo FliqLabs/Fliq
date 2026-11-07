@@ -1604,6 +1604,12 @@ fn failed_transfer_and_stuck_resolution_restore_once_without_refund() {
         order_transfer_state(&contract, "order-1"),
         Some(TransferState::TransferFailed)
     );
+    assert_eq!(
+        contract
+            .get_receipt("order-1".to_string())
+            .map(|receipt| receipt.state),
+        Some("released".to_string())
+    );
     assert_eq!(contract.get_balance(accounts(3)).available, U128(100));
     assert_eq!(contract.get_balance(accounts(3)).reserved, U128(0));
     set_caller(accounts(1), NOW + 10);

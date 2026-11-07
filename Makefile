@@ -45,7 +45,7 @@ build-contract:
 	cd contracts/mock_usdc && cargo near build non-reproducible-wasm --no-abi
 
 test-sandbox: build-contract
-	cd contracts/vault && cargo test --test workspaces
+	cd contracts/vault && cargo test --features sandbox --test workspaces
 
 ios:
 	cd apps/ios && xcodegen generate

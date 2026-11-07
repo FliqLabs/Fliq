@@ -318,10 +318,9 @@ impl Contract {
             corridor: receipt.order.corridor.clone(),
             state: match &receipt.transfer_state {
                 TransferState::Registered => "registered",
-                TransferState::Executing
-                | TransferState::Dispatched
-                | TransferState::TransferFailed => "executed",
-                TransferState::Released => "released",
+                TransferState::Executing | TransferState::Dispatched => "executed",
+                // A failed transfer returned the reservation to the payer, so nothing left.
+                TransferState::TransferFailed | TransferState::Released => "released",
             }
             .to_owned(),
             status: match receipt.backend_status.as_str() {
