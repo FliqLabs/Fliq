@@ -37,6 +37,8 @@
 	<string>$(FLIQ_API_KEY)</string>
 	<key>FliqDataSource</key>
 	<string>$(FLIQ_DATA_SOURCE)</string>
+	<key>FliqNameSuffix</key>
+	<string>$(FLIQ_NAME_SUFFIX)</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>

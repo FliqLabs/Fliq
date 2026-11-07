@@ -1,8 +1,9 @@
 import Foundation
 
-/// A fliq name: the `frank` in `frank.fliq.near`, a NEAR sub-account the user is paid by.
+/// A fliq name: the `frank` in `frank.fliqaccount.testnet`, a NEAR sub-account the user is paid by.
 struct FliqName: Hashable, Sendable {
-    static let suffix = ".fliq.near"
+    /// The API's NEAR root account, from the build settings. Fixture builds use `.fliq.near` like the fixtures.
+    static let suffix = (Bundle.main.object(forInfoDictionaryKey: "FliqNameSuffix") as? String).flatMap { $0.isEmpty ? nil : $0 } ?? ".fliq.near"
     static let maxLength = 32
 
     let value: String

@@ -46,7 +46,7 @@ final class ClaimWithDeviceKeyTests: XCTestCase {
 
         let claimed = await flow.claim()
         XCTAssertTrue(claimed)
-        XCTAssertEqual(flow.claimed, "frank.fliq.near")
+        XCTAssertEqual(flow.claimed, "frank" + FliqName.suffix)
     }
 
     func testNoDeviceKeyMeansNoClaim() async throws {
