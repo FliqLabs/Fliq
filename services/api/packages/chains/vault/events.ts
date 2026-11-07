@@ -24,20 +24,25 @@ const EVENT_FIELDS = {
     payer: "text",
     deposit_address: "text",
     amount: "u128",
-    executor: "text",
+    public_key: "text",
   },
   order_released: { order_id: "text", payer: "text", amount: "u128" },
   status_set: { order_id: "text", status: "status", refs: "refs" },
   recredited: { order_id: "text", payer: "text", amount: "u128" },
   deposited: { account_id: "text", sender_id: "text", amount: "u128" },
+  transferred: { from: "text", to: "text", amount: "u128" },
   agent_set: {
     owner: "text",
+    public_key: "text",
     agent_id: "text",
     per_payout_cap: "u128",
     daily_cap: "u128",
     corridors: "corridors",
+    cooldown_ns: "u64",
+    expiry_ns: "u64",
   },
-  agent_removed: { owner: "text", agent_id: "text" },
+  agent_revoked: { owner: "text", agent_id: "text", public_key: "text" },
+  agent_spend: { owner: "text", agent_id: "text", order_id: "text", amount: "u128" },
 } as const satisfies Record<string, Record<string, FieldKind>>;
 
 export type VaultEventName = keyof typeof EVENT_FIELDS;
@@ -58,21 +63,26 @@ export type VaultEvent =
       payer: string;
       depositAddress: string;
       amount: bigint;
-      executor: string;
+      publicKey: string;
     }
   | { event: "order_released"; orderId: string; payer: string; amount: bigint }
   | { event: "status_set"; orderId: string; status: ReceiptStatus; refs: ReceiptRefs }
   | { event: "recredited"; orderId: string; payer: string; amount: bigint }
   | { event: "deposited"; accountId: string; senderId: string; amount: bigint }
+  | { event: "transferred"; from: string; to: string; amount: bigint }
   | {
       event: "agent_set";
       owner: string;
+      publicKey: string;
       agentId: string;
       perPayoutCap: bigint;
       dailyCap: bigint;
       corridors: readonly string[] | null;
+      cooldownNs: bigint;
+      expiryNs: bigint;
     }
-  | { event: "agent_removed"; owner: string; agentId: string };
+  | { event: "agent_revoked"; owner: string; agentId: string; publicKey: string }
+  | { event: "agent_spend"; owner: string; agentId: string; orderId: string; amount: bigint };
 
 export class VaultEventError extends Error {
   constructor(problem: string) {

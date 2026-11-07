@@ -3,6 +3,7 @@ import { functionCallActions, publicKeyOf, signTransaction, type SigningKey } fr
 import {
   ORDER_STATES,
   RECEIPT_STATUSES,
+  TRANSFER_STATES,
   VaultError,
   type AccountId,
   type AgentPolicy,
@@ -11,6 +12,7 @@ import {
   type ReceiptRefs,
   type ReceiptStatus,
   type RegisterOrderInput,
+  type TransferState,
   type VaultBalance,
   type VaultClient,
   type VaultReceipt,
@@ -71,6 +73,9 @@ export function parseReceipt(value: unknown): VaultReceipt | null {
   const state = receipt.state as OrderState;
   if (!ORDER_STATES.includes(state))
     throw new VaultCallError("get_receipt", `unknown state ${String(receipt.state)}`);
+  const transferState = receipt.transfer_state as TransferState;
+  if (!TRANSFER_STATES.includes(transferState))
+    throw new VaultCallError("get_receipt", `unknown transfer_state ${String(receipt.transfer_state)}`);
   const status = RECEIPT_STATUSES.includes(receipt.status as ReceiptStatus)
     ? (receipt.status as ReceiptStatus)
     : null;
@@ -82,6 +87,7 @@ export function parseReceipt(value: unknown): VaultReceipt | null {
     expiresAtNs: u128(receipt.expires_at_ns, "expires_at_ns"),
     corridor: String(receipt.corridor),
     state,
+    transferState,
     status,
     refs: refsIn(receipt.refs),
     recreditedAmount: u128(receipt.recredited_amount, "recredited_amount"),
