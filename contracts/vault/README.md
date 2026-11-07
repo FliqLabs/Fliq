@@ -4,6 +4,24 @@ The fliq USDC vault on NEAR: per-user balances, approved payout orders executed 
 
 The plan, method names and responsibilities are in the contract team guide (FLIQ Smart Contract Team Guide, 30 Oct 2026). The crate pins its Rust toolchain in `rust-toolchain.toml`.
 
+## Release build and sandbox
+
+Testnet runs NEAR protocol 88. Build both deployment artifacts with Rust 1.95.0 from the pinned toolchain:
+
+```sh
+(cd contracts/vault && cargo near build non-reproducible-wasm --no-abi)
+(cd contracts/mock_usdc && cargo near build non-reproducible-wasm --no-abi)
+```
+
+The outputs are `contracts/vault/target/near/fliq_vault.wasm` and `contracts/mock_usdc/target/near/fliq_mock_usdc.wasm`. The near-workspaces sandbox must use a binary with protocol 88 support; run the integration test separately with `make test-sandbox`.
+
+The release artifacts recorded for this branch are:
+
+| Artifact | Size | SHA-256 |
+| --- | ---: | --- |
+| `fliq_vault.wasm` | 259320 bytes | `dcde0eb1bd1f15a7945d52e2d34c4eace20663960e9c23fa8590d2240610a40f` |
+| `fliq_mock_usdc.wasm` | 162235 bytes | `6e14b97569bdeb389a59f84efc8fe97a2c7826356a9f30854f03ee9126759cce` |
+
 ## Vault and policy integration
 
 Accounts must call `storage_deposit` before depositing USDC. The vault accepts `ft_transfer_call` only from its configured USDC contract. An empty message credits the NEP-141 `sender_id`; the strict `{"top_up":{"account_id":"<account>"}}` message credits that registered account. Malformed messages, unknown fields and unregistered beneficiaries return the full token amount. Accepted deposits emit the provisional `fliq_vault` `deposited` event consumed by the backend adapter.
@@ -31,6 +49,12 @@ This release targets a fresh testnet deployment. Deploy the Wasm and call the pr
 
 ```
 make test-contract
+```
+
+The sandbox integration test is intentionally separate from `make test-contract`:
+
+```sh
+make test-sandbox
 ```
 
 ## sQuiDbOb side

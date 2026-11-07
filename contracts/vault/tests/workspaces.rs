@@ -4,10 +4,8 @@ use near_workspaces::types::{AccountId, Gas, NearToken};
 use near_workspaces::{Account, Contract, Worker};
 use serde_json::json;
 
-const VAULT_WASM: &[u8] =
-    include_bytes!("../target/wasm32-unknown-unknown/release/fliq_vault.wasm");
-const MOCK_USDC_WASM: &[u8] =
-    include_bytes!("../../mock_usdc/target/wasm32-unknown-unknown/release/fliq_mock_usdc.wasm");
+const VAULT_WASM: &[u8] = include_bytes!("../target/near/fliq_vault.wasm");
+const MOCK_USDC_WASM: &[u8] = include_bytes!("../../mock_usdc/target/near/fliq_mock_usdc.wasm");
 const USDC_UNIT: u128 = 1_000_000;
 const STORAGE_DEPOSIT: u128 = 10_000_000_000_000_000_000_000;
 const TOKEN_STORAGE_DEPOSIT: u128 = 1_000_000_000_000_000_000_000;
