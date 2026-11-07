@@ -318,13 +318,17 @@ impl Contract {
             corridor: receipt.order.corridor.clone(),
             state: match &receipt.transfer_state {
                 TransferState::Registered => "registered",
-                TransferState::Executing => "executing",
-                TransferState::Dispatched => "dispatched",
-                TransferState::TransferFailed => "transfer_failed",
+                TransferState::Executing
+                | TransferState::Dispatched
+                | TransferState::TransferFailed => "executed",
                 TransferState::Released => "released",
             }
             .to_owned(),
-            status: Some(receipt.backend_status.clone()),
+            status: match receipt.backend_status.as_str() {
+                "routing" | "with_provider" | "paying_out" | "settled" | "refunding"
+                | "refunded" | "failed" => Some(receipt.backend_status.clone()),
+                _ => None,
+            },
             recredited_amount: U128(self.vault.recredited_amount(&order_id)),
             order: receipt.order.clone(),
             transfer_state: receipt.transfer_state.clone(),

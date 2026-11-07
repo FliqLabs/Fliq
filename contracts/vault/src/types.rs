@@ -97,7 +97,7 @@ pub struct BalanceView {
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(crate = "near_sdk::serde")]
+#[serde(crate = "near_sdk::serde", rename_all = "snake_case")]
 pub enum TransferState {
     Registered,
     Executing,

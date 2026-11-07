@@ -1140,9 +1140,11 @@ fn receipt_shows_order_and_both_status_tracks() {
         .expect("receipt");
     assert_eq!(receipt.order.amount, U128(10));
     assert_eq!(receipt.order.deposit_address, accounts(4));
+    assert_eq!(receipt.state, "registered");
     assert_eq!(receipt.transfer_state, TransferState::Registered);
     assert_eq!(receipt.order.transfer_state, TransferState::Registered);
     assert_eq!(receipt.backend_status, "routing");
+    assert_eq!(receipt.status.as_deref(), Some("routing"));
     assert_eq!(receipt.refs, refs("ref-1"));
 }
 
