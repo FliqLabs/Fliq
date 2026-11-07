@@ -1,0 +1,38 @@
+# Backend / contract alignment
+
+Compared with the contract code on this branch and the latest backend on `origin/main` (fetched 7 November 2026). Backend files were read only; no backend file was changed.
+
+| Item | Backend sends or expects | Contract today | Result | Contract action / confirmer |
+| --- | --- | --- | --- | --- |
+| `register_order` | `services/api/packages/chains/vault/types.ts:RegisterOrderInput`: `orderId,payer,depositAddress,amount,expiresAtNs,corridor`; JSON `order_id,payer,deposit_address,amount,expires_at_ns,corridor` | `contracts/vault/src/lib.rs:163-218`, same order and names after `expires_at_ns` fix | MATCH | Backend lead confirms |
+| `payout` | Latest relayer policy requires `order_id,amount,deposit_address`; the checked-in vault interface is stale and still says `{order_id}` | `contracts/vault/src/lib.rs:221-232`, `orders.rs:245-321`, three arguments and exact amount/address checks | MATCH | Backend lead must reconcile the stale interface document |
+| `set_status` | `types.ts` uses `orderId,status,refs` with snake-case wire fields | `lib.rs:234`, `orders.rs:180-218`; registration account only and write-once refs | MATCH | Backend lead confirms transition table |
+| `release_order` | `types.ts` exposes it; relayer policy allows it with `order_id` and zero deposit | `lib.rs:239-262`; registration account or owner, Registered only, terminal Released | MATCH | Contract lead confirms payer-before-expiry policy is intentionally stricter than old proposal |
+| `recredit` | `types.ts` calls `recredit(orderId, amount)`; old interface expects the same | `lib.rs:272-285`; two args, registration account only, balance callback | MATCH | Dapper/backend confirm refund evidence flow |
+| `get_receipt` missing order | Backend type is nullable | `lib.rs:311-326` now returns `Option<ReceiptView>` and serializes missing as `null` | MATCH | Backend watcher confirms nested receipt shape |
+| `get_balance` | `{available,reserved,total}` bigint values | `lib.rs:109-111`, `vault.rs:BalanceView`; JSON U128 strings | MATCH | Backend lead confirms |
+| Amount format | `types.ts` uses bigint; event parser requires unsigned decimal strings | Public U128 boundaries and event U128 values in `lib.rs`, `types.rs`, `receipts.rs` | MATCH | Backend lead confirms no JSON numbers |
+| `order_id` / `po_` ID | Latest backend fixtures and NEAR fixtures use the payout ID form `po_...`; the vault interface says this is the payout id | `orders.rs:validate_order` accepts up to 64 chars and does not add/remove `po_` | MATCH | Backend lead confirms this remains the canonical mapping |
+| Expiry | `expiresAtNs` bigint; vault interface says nanoseconds | `types.rs:now()` uses block timestamp nanoseconds; `register_order` bounds U64 | MATCH | Backend lead confirms nanoseconds |
+| Corridors | Example `NG-NGN-bank` in vault interface and fixtures | `orders.rs` stores exact string; policy corridors exact-match ASCII list | MATCH | Backend/provider lead confirms canonical values |
+| Deposit address | Relayer validates a NEAR account string; backend registers it | `orders.rs:validate_deposit_address`; payout requires exact registered address | MATCH | Backend lead confirms recipient allowlist remains backend-only |
+| Transfer states | Backend type expects `registered/executed/released`; the contract needs a separate verified transfer track for callbacks and recovery | `ReceiptView.state` now exposes `registered/executed/released`; `transfer_state` remains the verified internal track and serializes as snake case | CONTRACT ADAPTER ADDED | Backend watcher confirms it reads `state` for the legacy order state and `transfer_state` only when it supports the verified track |
+| Status names/transitions | `types.ts` has routing, with_provider, paying_out, settled, refunding, refunded, failed | `orders.rs:status_successors`; includes created/awaiting/timeout branches and gates paying_out/settled on Dispatched | UNKNOWN | Backend lead confirms the expanded status graph |
+| Refs | Backend wire keys `provider,provider_order,bank_reference,refund_tx` | `types.rs:ReceiptRefs`, `orders.rs:validate_refs`; same snake-case keys, write-once | MATCH | Backend lead confirms |
+| Receipt shape | Backend expects the flat receipt fields and nullable status/recredited amount; the contract also needs verified nested fields | `ReceiptView` returns flat fields, `recredited_amount`, nullable compatible `status`, and the additional verified fields | CONTRACT ADAPTER ADDED | Backend lead confirms the exact fields it decodes and ignores the additional verified fields |
+| Event envelope | Backend parser requires `EVENT_JSON`, `fliq_vault`, `1.0.0`, exact fields | `receipts.rs` emits that envelope for contract-owned events; Dapper vault event code remains separate | MATCH / UNKNOWN | Backend confirms policy events and Dapper conversion |
+| Event watcher fields | Parser currently knows order_registered, payout_executed, order_released, status_set, recredited, deposited | Contract also emits transferred, agent_set, agent_revoked, agent_spend | UNKNOWN | Backend lead approves or ignores the additional event names |
+| Errors | Backend maps `fliq_vault: CODE`; the interface list and current contract names are not identical | `errors.rs` uses the exact prefix but includes contract-specific names such as `INVALID_STATE`, `AMOUNT_MISMATCH`, and `DESTINATION_MISMATCH` | UNKNOWN | Backend lead and contract owners confirm the frozen error-code mapping before aliases or renames |
+| Relayer allowlist and gas | `near/policy.ts`: payout has three args, 0 deposit; gas 1-100 Tgas; contract needs at least 50 Tgas | `orders.rs:292-298` requires at least 50 Tgas and uses 30 transfer + 20 callback | MATCH | Relayer lead confirms max and method allowlist |
+| Top-up message | Vault interface and Dapper integration use `{"top_up":{"account_id":"..."}}`; latest relayer policy allows only empty `msg` | `lib.rs` accepts empty sender credit and strict `top_up` beneficiary messages | UNKNOWN | Dapper and relayer lead confirm the production message and refund destination semantics |
+| Registration signer | Backend interface says registration account calls register/status/recredit/release | `lib.rs` checks immutable `registration_account`; vault account must call private `new` | MATCH | Deployment owner confirms account IDs |
+| Refunds | Backend verifies refund tx and calls recredit once | `orders.rs:331-388` requires Dispatched, refunding, write-once `refund_tx`, real USDC backing | MATCH | Backend refund watcher confirms |
+| Testnet accounts | Backend fixtures contain example IDs, but no approved deployment record is present | `Config` stores owner, registration and approved USDC only | UNKNOWN | Deployment operator supplies final vault, USDC and registration IDs |
+| Storage | Backend does not send an order storage deposit and the interface asks who funds persistent receipts | `register_order` is funded by the vault account's storage balance; orders and receipts are retained | UNKNOWN | Contract owners and backend lead confirm the funding/retention policy |
+
+## Questions requiring confirmation
+
+1. Will the backend permanently use its `po_...` payout ID as the vault `order_id`?
+2. Should the backend consume only the compatibility `state` (`registered|executed|released`), or also adopt the verified `transfer_state` values?
+3. Which exact event fields should the watcher parse for `agent_set`, `agent_revoked`, and `agent_spend`?
+4. Does Dapper use the strict top-up message or empty-message sender credit, where do returned tokens land, and which registration/USDC/vault testnet account IDs are final?

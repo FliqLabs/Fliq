@@ -7,16 +7,15 @@ Branch: `Ariya-Agent-Permissions`
 | Method or area | Owner module | Behavior |
 | --- | --- | --- |
 | `new`, `get_config` | `lib.rs` | Stores immutable owner, registration account and approved USDC token plus expiry and stuck-payout limits. Initialization is vault-account-only and one-time. |
-| `migrate` | `lib.rs` | Vault-account-only upgrade from the pre-policy state layout; preserves all existing vault and payout state and initializes empty policy maps. |
 | `register_order` | `orders.rs`, `vault.rs` | Registration-account-only immutable order creation with immediate balance reservation. |
 | `payout` | `orders.rs`, `policies.rs`, `vault.rs` | Requires exact registered amount and destination, authorizes the payer or an agent account with an active policy from that payer, counts pending policy spend, changes state before sending USDC, and resolves through a private callback. |
 | `set_agent` | `policies.rs` | With a deposit covering storage, creates or updates the (owner, agent account) policy: per-payout cap, daily cap, optional exact corridors, cooldown and expiry, without resetting same-day spend. Emits `agent_set`. |
 | `remove_agent(agent_id)` | `policies.rs` | With exactly 1 yoctoNEAR, revokes the caller's policy for that agent. Emits `agent_revoked`. |
 | `get_policy(owner, agent_id)` | `policies.rs` | Returns owner, agent, public key label, caps, current-day spend, corridors, cooldown, expiry, last payout time and the revoked flag. |
 | Policy lifecycle | `policies.rs`, `integration.rs` | Counts pending plus successful spend, releases same-day spend after failed transfers, retains successful spend, rolls daily buckets, and makes parallel-limit bypass fail. |
-| `on_payout_complete`, `resolve_stuck_payout` | `orders.rs` | Commits a confirmed transfer or returns the order to retryable `Registered`; policy pending state follows the same outcome. |
+| `on_payout_complete`, `resolve_stuck_payout` | `orders.rs` | Commits a confirmed transfer or releases the reservation and enters terminal `TransferFailed`; policy pending state follows the same outcome. |
 | `release_order` | `lib.rs`, `vault.rs` | Registration account or contract owner restores a reservation and moves a never-executed order to terminal `Released`. |
-| `set_status`, `get_receipt` | `orders.rs`, `receipts.rs` | Keeps authenticated backend status separate from verified NEAR transfer state. |
+| `set_status`, `get_receipt` | `orders.rs`, `receipts.rs` | Keeps authenticated backend status separate from verified NEAR transfer state; missing receipts return `null`. |
 | `recredit` | `orders.rs`, `vault.rs` | Requires write-once refund evidence and real unattributed USDC backing before exactly-once recredit. |
 | `ft_on_transfer`, `get_balance`, `transfer` | `vault.rs`, `lib.rs`, `policies.rs` | Handles approved-USDC deposits, isolated available/reserved balances and registered internal transfers; agent transfers debit the policy owner and enforce policy spend limits. |
 
@@ -39,7 +38,7 @@ Hosted-agent key removal should accompany `remove_agent`, but the on-chain revok
 
 ## Verification
 
-The current local result is 41 vault unit tests and 66 contract/integration tests passing with `--features testing`. Strict clippy and rustfmt checks pass. The near-workspaces smoke harness remains ignored by default and requires a supported local NEAR sandbox platform.
+The near-workspaces integration test is not ignored, uses the official `target/near` release artifacts, and requires a protocol-88-capable sandbox. Order expiry values in the test are computed as `current_block_timestamp_ns + margin_ns`, with a positive margin within the configured maximum horizon (24 hours by default).
 
 Policy coverage includes:
 
@@ -56,7 +55,7 @@ Policy coverage includes:
 
 ## Deployment migration
 
-An already-initialized vault running the pre-policy layout must deploy this Wasm and invoke private `migrate()` as the vault account before any ordinary method call. The migration preserves the existing ledger, configuration, orders, receipts, refund evidence and payout-key collections and creates the three policy collections. It rejects calls from any predecessor other than the vault account and rejects unsupported stored layouts. A new testnet vault should call `new` instead and needs no migration.
+This release targets a fresh testnet vault. Deploy the Wasm and call the private `new(owner, registration_account, approved_usdc_token_contract)` initializer from the vault account itself. There is no migration path in this release.
 
 ## Backend alignment
 
