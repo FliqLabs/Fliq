@@ -69,4 +69,4 @@ The NEAR HACKATHON rules require listing AI-generated code. Add a row whenever a
 | 2026-11-08 | `apps/ios`: `Domain/Rate.swift` optional reference rates, `LiveRatesSheet` rows, `LiveResponseTests` rate check | Claude Code | The app reads a live rate without `official`, `p2p` or `change_24h`, which the spec marks optional, so Home shows the rate instead of "Rate unavailable" |
 
 The iOS app (`apps/ios`) is built with Claude Code, directed and reviewed by Frank. Each iOS PR adds its rows to this table.
-
+| 2026-11-08 | `services/api`: `apps/api/src/payouts.ts` account check errors, `test/payouts.e2e.test.ts`, `tsconfig.json` include list, `packages/providers/enabled.ts` TransFi block | Claude Code | A payout whose bank lookup fails answers 422 instead of 500; the tsconfig merge leftover that stopped typecheck and tests is fixed; the TransFi adapter block lost in the #101 merge is restored from its own commit |
