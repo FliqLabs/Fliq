@@ -453,7 +453,7 @@ async fn payout_cases_run_in_a_local_sandbox() -> Result<()> {
         ("recredit", json!({}), 0),
         (
             "transfer",
-            json!({ "to_account": recipient.id(), "amount": "1" }),
+            json!({ "to_account": recipient.id(), "amount": "1", "request_id": null }),
             1,
         ),
         (

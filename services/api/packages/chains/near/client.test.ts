@@ -52,4 +52,18 @@ describe("createRelayerClient", () => {
     expect(error).toMatchObject({ status: 0, code: "relayer_unreachable" });
     expect(error.message).not.toContain("relayer-token-value");
   });
+
+  it("tells a relayer that is too slow apart from one that cannot be reached", async () => {
+    const client = createRelayerClient({
+      url: "https://relayer.example",
+      authToken: "relayer-token-value",
+      fetch: (async () => {
+        throw new DOMException("The operation was aborted due to timeout", "TimeoutError");
+      }) as unknown as typeof fetch,
+    });
+    const error = (await client
+      .provisionAccount("ada.fliq.testnet", "ed25519:x")
+      .catch((e: unknown) => e)) as RelayerClientError;
+    expect(error).toMatchObject({ status: 0, code: "relayer_timeout" });
+  });
 });

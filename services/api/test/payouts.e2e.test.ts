@@ -20,6 +20,9 @@ const enabled = /@(localhost|127\.0\.0\.1)[:/]/.test(process.env.DATABASE_URL ??
 const NOW = new Date("2026-11-05T10:00:00Z");
 const ACCOUNT = { bank: "058", number: "0123456789" };
 const UNNAMED = { bank: "058", number: "0000000002" };
+// Banks that time out, and ones that answer with something the adapter cannot read.
+const SLOW_BANK = "0000000003";
+const BROKEN_BANK = "0000000004";
 
 describe.skipIf(!enabled)("payout creation against a real database", () => {
   if (!enabled) {
@@ -41,8 +44,11 @@ describe.skipIf(!enabled)("payout creation against a real database", () => {
   const adapter: ProviderAdapter = {
     ...base,
     // The bank answers "OK" with no name for this account, as Paycrest does for banks it cannot look up.
-    verifyAccount: async (check) =>
-      check.accountNumber === UNNAMED.number ? { found: true, accountName: null } : base.verifyAccount(check),
+    verifyAccount: async (check) => {
+      if (check.accountNumber === SLOW_BANK) throw new ProviderError("mock", "verifyAccount", "timeout", "no answer");
+      if (check.accountNumber === BROKEN_BANK) throw new ProviderError("mock", "verifyAccount", "invalid_response", "bad body");
+      return check.accountNumber === UNNAMED.number ? { found: true, accountName: null } : base.verifyAccount(check);
+    },
     async createOrder(request: CreateOrderRequest) {
       const committedLedgerEntries = await probe.journalEntry.count({ where: { payoutId: request.payoutId, postingType: "ORDER_COMMITTED" } });
       orderCalls.push({ payoutId: request.payoutId, committedLedgerEntries });
@@ -217,6 +223,13 @@ describe.skipIf(!enabled)("payout creation against a real database", () => {
     expect(unknown.statusCode).toBe(422);
     expect(unknown.json().error.code).toBe("account_not_found");
     expect((await pay(app, frank.access, `k-${suffix}-bad`, body(await quote(frank.access), { account: { bank: "058", number: "12ab" } }))).statusCode).toBe(400);
+
+    const slow = await pay(app, frank.access, `k-${suffix}-slow`, body(await quote(frank.access), { account: { bank: "058", number: SLOW_BANK } }));
+    expect(slow.statusCode).toBe(422);
+    expect(slow.json().error.code).toBe("route_unavailable");
+    const broken = await pay(app, frank.access, `k-${suffix}-broken`, body(await quote(frank.access), { account: { bank: "058", number: BROKEN_BANK } }));
+    expect(broken.statusCode).toBe(422);
+    expect(broken.json().error.code).toBe("account_not_found");
     expect((await pay(app, frank.access, `k-${suffix}-norefund`, { quote_id: await quote(frank.access), account: ACCOUNT })).statusCode).toBe(400);
   }, 120_000);
 

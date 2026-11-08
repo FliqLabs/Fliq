@@ -8,7 +8,7 @@ final class OnboardingTests: XCTestCase {
     }
 
     func testNameRules() {
-        XCTAssertEqual(FliqName("Frank")?.account, "frank.fliq.near")
+        XCTAssertEqual(FliqName("Frank")?.account, "frank" + FliqName.suffix)
         XCTAssertEqual(FliqName("dara-o")?.value, "dara-o")
         for bad in ["a", "-frank", "frank-", "fr--ank", "frank.near", "frånk", "f rank", String(repeating: "a", count: 33)] {
             XCTAssertNil(FliqName(bad), bad)
@@ -23,6 +23,20 @@ final class OnboardingTests: XCTestCase {
         await flow.resolve(try XCTUnwrap(flow.name))
         XCTAssertEqual(flow.status, .available)
         XCTAssertTrue(flow.canClaim)
+    }
+
+    func testACancelledCheckLeavesTheAnswerAlone() async throws {
+        let flow = OnboardingFlow(api: FixtureClient(), names: CancellableDirectory())
+        flow.nameText = "olien"
+        let name = try XCTUnwrap(flow.name)
+        await flow.resolve(name)
+        XCTAssertEqual(flow.status, .available)
+
+        let cancelled = Task { await flow.resolve(name) }
+        cancelled.cancel()
+        await cancelled.value
+
+        XCTAssertEqual(flow.status, .available)
     }
 
     func testTakenNameOffersFreeAlternatives() async throws {
@@ -54,10 +68,18 @@ final class OnboardingTests: XCTestCase {
         let relaunched = ProfileStore(defaults: defaults)
 
         XCTAssertTrue(relaunched.isOnboarded)
-        XCTAssertEqual(relaunched.name, "frank.fliq.near")
+        XCTAssertEqual(relaunched.name, "frank" + FliqName.suffix)
         XCTAssertEqual(relaunched.displayName, "Frank")
 
         relaunched.signOut()
         XCTAssertFalse(ProfileStore(defaults: defaults).isOnboarded)
+    }
+}
+
+/// Fails the way URLSession does when the check's task is cancelled by the next keystroke.
+private struct CancellableDirectory: NameDirectory {
+    func isAvailable(_ name: FliqName) async throws -> Bool {
+        if Task.isCancelled { throw URLError(.cancelled) }
+        return true
     }
 }

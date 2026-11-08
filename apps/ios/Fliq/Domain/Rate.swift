@@ -36,9 +36,9 @@ struct Rate: Codable, Sendable, Equatable {
     let provider: ProviderID
     let providersQuoting: Int
     let spread: Double
-    let official: ReferenceRate
-    let p2p: ReferenceRate
-    let change24h: Double
+    let official: ReferenceRate?
+    let p2p: ReferenceRate?
+    let change24h: Double?
     let fetchedAt: Date
 
     // convertFromSnakeCase turns "change_24h" into "change24H", so that key is spelled out.

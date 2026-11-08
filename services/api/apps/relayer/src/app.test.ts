@@ -169,6 +169,20 @@ describe("relayer HTTP", () => {
     ).toBe(400);
   });
 
+  it("tops up the owner for an agent's storage deposit once, with 201 then 200", async () => {
+    rpc.addAccount("claude-ada.fliq.testnet");
+    rpc.setAmount(ada.accountId, 0n);
+    const body = { account_id: ada.accountId, agent_id: "claude-ada.fliq.testnet" };
+    const funded = await post("/v1/accounts/agent-deposit", body);
+    expect(funded.statusCode).toBe(201);
+    expect(funded.json()).toMatchObject({ status: "funded", account_id: ada.accountId, agent_id: body.agent_id });
+    const again = await post("/v1/accounts/agent-deposit", body);
+    expect(again.statusCode).toBe(200);
+    expect(again.json()).toMatchObject({ status: "already_funded", yocto: "0", tx_hash: null });
+    expect(rpc.sent.filter((tx) => tx.actionKinds.includes("transfer"))).toHaveLength(1);
+    expect((await post("/v1/accounts/agent-deposit", { ...body, extra: 1 })).statusCode).toBe(400);
+  });
+
   it("reports balances against the 5 NEAR target without exposing keys", async () => {
     const response = await app.inject({ method: "GET", url: "/v1/status", headers: auth });
     expect(response.json()).toMatchObject({

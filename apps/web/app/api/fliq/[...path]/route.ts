@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const API_BASE = process.env.FLIQ_API_BASE_URL ?? "https://fliq-yclq.onrender.com/v1";
+const API_BASE = process.env.FLIQ_API_BASE_URL ?? "https://api-production-54e10.up.railway.app/v1";
 const ACCESS_COOKIE = "fliq_access";
 const REFRESH_COOKIE = "fliq_refresh";
 const REFRESH_MAX_AGE = 30 * 24 * 60 * 60;
 const NO_STORE = { "Cache-Control": "no-store" };
 
 const publicRoutes = new Set([
+  "GET status",
   "POST auth/passkeys/register/options",
   "POST auth/passkeys/register/verify",
   "POST auth/passkeys/login/options",
@@ -15,6 +16,10 @@ const publicRoutes = new Set([
   "POST auth/email-links/verify",
   "GET institutions",
   "GET rates/usdc/ngn",
+<<<<<<< HEAD
+=======
+  "GET rates/usdc/ngn/providers",
+>>>>>>> e7629305f69dfa7aac4d42157c5e2a507f146902
   "GET rates/usdc/ngn/history",
 ]);
 

@@ -12,7 +12,8 @@ import {
 
 export const DEFAULT_TIMEOUT_MS: Record<OneClickOperation, number> = {
   tokens: 10_000,
-  quote: 1_500,
+  // Measured 2 to 17 seconds for real mainnet quotes.
+  quote: 20_000,
   submitDeposit: 10_000,
   status: 5_000,
 };

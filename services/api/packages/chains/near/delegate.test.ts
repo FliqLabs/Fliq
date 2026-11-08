@@ -82,6 +82,15 @@ const AGENT = (over: Record<string, unknown>) => ({
 
 describe("checkPolicy", () => {
   it.each([
+    ["without its one yoctoNEAR", { methodName: "transfer", deposit: 0n, args: { to_account: "tobi.fliq.testnet", amount: "1" } }],
+    ["with an extra argument", { methodName: "transfer", deposit: 1n, args: { to_account: "tobi.fliq.testnet", amount: "1", memo: "x" } }],
+    ["of nothing", { methodName: "transfer", deposit: 1n, args: { to_account: "tobi.fliq.testnet", amount: "0" } }],
+  ])("refuses a transfer %s", async (_, spec) => {
+    const delegate = verifySignedDelegate((await signDelegate(ada, spec)).base64);
+    expect(() => checkPolicy(policy, delegate)).toThrow(PolicyError);
+  });
+
+  it.each([
     ["a vault payout", { methodName: "payout", args: PAYOUT_ARGS }],
     [
       "a vault payout with a numeric amount",
@@ -105,6 +114,10 @@ describe("checkPolicy", () => {
       { methodName: "set_agent", deposit: 1n, args: AGENT({ per_payout_cap: "1", daily_cap: "1" }) },
     ],
     ["an agent removal", { methodName: "remove_agent", deposit: 1n, args: { agent_id: "agent-1.ada.testnet" } }],
+    [
+      "a transfer to another fliq user",
+      { methodName: "transfer", deposit: 1n, args: { to_account: "tobi.fliq.testnet", amount: "25000000" } },
+    ],
     [
       "a USDC top-up into the vault",
       {

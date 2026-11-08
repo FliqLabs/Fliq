@@ -12,7 +12,7 @@ import { DEFAULT_VELOCITY } from "../apps/api/src/payouts.js";
 import { delegateSender } from "../apps/api/src/relay.js";
 import { sandboxAdapters } from "../apps/api/src/sandbox.js";
 import { buildRelayerApp } from "../apps/relayer/src/app.js";
-import { createRelayerClient, MemoryRelayStore, publicKeyOf, type RelayerClient } from "../packages/chains/near/index.js";
+import { createRelayerClient, MemoryRelayStore, publicKeyOf, RelayerClientError, type RelayerClient } from "../packages/chains/near/index.js";
 import { FakeNearRpc, newUser, RELAYER, relayerKeys, ROOT, signDelegate, USDC, VAULT } from "../packages/chains/near/near.fixtures.js";
 import { MockVault } from "../packages/chains/vault/index.js";
 import { Secret } from "../packages/config/index.js";
@@ -31,7 +31,7 @@ describe.skipIf(!enabled)("creating NEAR accounts and relaying calls through the
   const database = createDatabase();
   const unit = unitOf(database);
   // The relayer's account creator is fliq.testnet, so names are claimed under it.
-  const config = { ...loadConfig(), nearRootAccount: ROOT, vaultAccount: VAULT };
+  const config = { ...loadConfig(), nearRootAccount: ROOT, vaultAccount: VAULT, usdcContract: USDC };
   const links: string[] = [];
   const sender: EmailSender = { sendSignInLink: async (_to, link) => void links.push(link) };
   const suffix = randomBytes(3).toString("hex");
@@ -51,12 +51,19 @@ describe.skipIf(!enabled)("creating NEAR accounts and relaying calls through the
     provision: { rpc, store: new MemoryRelayStore(), root: { accountId: ROOT, privateKey: rootKey.toString() }, fundingYocto: 0n, storageContracts: [USDC, VAULT] },
   });
 
-  const trouble = { pendingOnce: false, down: false };
+  const trouble = { pendingOnce: false, down: false, slowOnce: false };
   let real: RelayerClient;
   const relayer: RelayerClient = {
     relay: (signed) => real.relay(signed),
     relayStatus: (hash) => real.relayStatus(hash),
+    health: () => real.health(),
+    fundAgentDeposit: (accountId, agentId) => real.fundAgentDeposit(accountId, agentId),
     async provisionAccount(accountId, publicKey) {
+      if (trouble.slowOnce) {
+        trouble.slowOnce = false;
+        await real.provisionAccount(accountId, publicKey);
+        throw new RelayerClientError(0, "relayer_timeout", "the relayer did not answer in time");
+      }
       if (trouble.down) return createRelayerClient({ url: "http://127.0.0.1:1", authToken: TOKEN }).provisionAccount(accountId, publicKey);
       if (trouble.pendingOnce) {
         trouble.pendingOnce = false;
@@ -94,6 +101,8 @@ describe.skipIf(!enabled)("creating NEAR accounts and relaying calls through the
     await database.$transaction(async (tx) => {
       const users = await tx.user.findMany({ where: { email: { in: emails } }, select: { id: true } });
       const ids = users.map((user) => user.id);
+      await tx.$executeRaw`DELETE FROM core.agents WHERE user_id = ANY(${ids}::text[])`;
+      await tx.$executeRaw`DELETE FROM core.vault_deposits WHERE user_id = ANY(${ids}::text[])`;
       await tx.$executeRaw`DELETE FROM developer.idempotency_records WHERE scope = ANY(${ids}::text[])`;
       await tx.$executeRaw`DELETE FROM auth.sessions WHERE user_id = ANY(${ids}::text[])`;
       await tx.$executeRaw`DELETE FROM auth.users WHERE id = ANY(${ids}::text[])`;
@@ -127,6 +136,27 @@ describe.skipIf(!enabled)("creating NEAR accounts and relaying calls through the
     expect(replay.json()).toEqual(claimed.json());
   });
 
+  it("tops the owner up once so they can attach set_agent's deposit, however often the agent is connected", async () => {
+    const headers = await signIn("agent");
+    const user = newUser(`agent${suffix}.${ROOT}`);
+    expect((await claim(headers, `a-${suffix}`, { name: `agent${suffix}`, public_key: user.publicKey })).statusCode).toBe(201);
+    // A fresh account on chain holds 1 yoctoNEAR; the fake chain starts accounts rich.
+    rpc.setAmount(user.accountId, 1n);
+    const input = { name: "Claude", public_key: newUser("agent key").publicKey, daily_cap: { amount: "150000", currency: "NGN" }, per_payout_cap: { amount: "50000", currency: "NGN" }, currencies: ["NGN"], saved_accounts_only: true };
+    const connect = () => app.inject({ method: "POST", url: "/v1/agents", payload: input, headers: { ...headers, "idempotency-key": randomBytes(8).toString("hex") } });
+    const toOwner = () => rpc.sent.filter((tx) => tx.receiverId === user.accountId && tx.actionKinds.join() === "transfer");
+
+    const first = await connect();
+    expect(first.statusCode, first.body).toBe(201);
+    expect(toOwner()).toHaveLength(1);
+    expect(toOwner()[0]).toMatchObject({ signerId: ROOT });
+    const owner = await rpc.account(user.accountId);
+    expect(owner!.amount - BigInt(owner!.storageUsage) * 10n ** 19n).toBeGreaterThanOrEqual(BigInt(first.json().steps[0].deposit));
+
+    expect((await connect()).statusCode).toBe(201);
+    expect(toOwner()).toHaveLength(1);
+  });
+
   it("asks for the key, and refuses one that is not ed25519", async () => {
     const headers = await signIn("nokey");
     expect((await claim(headers, `n-${suffix}`, { name: `nokey${suffix}` })).statusCode).toBe(400);
@@ -148,6 +178,17 @@ describe.skipIf(!enabled)("creating NEAR accounts and relaying calls through the
     const second = await claim(headers, `p-${suffix}`, payload);
     expect(second.statusCode, second.body).toBe(201);
     expect(second.json().near_account).toBe(user.accountId);
+  });
+
+  it("answers 202 when the relayer is too slow, and the retry links the account it made meanwhile", async () => {
+    const headers = await signIn("slow");
+    const user = newUser(`slow${suffix}.${ROOT}`);
+    trouble.slowOnce = true;
+    const first = await claim(headers, `s-${suffix}`, { name: `slow${suffix}`, public_key: user.publicKey });
+    expect(first.statusCode).toBe(202);
+    const again = await claim(headers, `s-${suffix}`, { name: `slow${suffix}`, public_key: user.publicKey });
+    expect(again.statusCode).toBe(201);
+    expect(again.json().near_account).toBe(`slow${suffix}.${ROOT}`);
   });
 
   it("refuses a name whose NEAR account another key already controls, and says when the relayer is down", async () => {
@@ -190,6 +231,28 @@ describe.skipIf(!enabled)("creating NEAR accounts and relaying calls through the
     const refused = await app.inject({ method: "POST", url: "/v1/relays", payload: { signed_delegate: someoneElse.base64 }, headers });
     expect(refused.statusCode).toBe(403);
     expect((await app.inject({ method: "POST", url: "/v1/relays", payload: { signed_delegate: "bm90IGEgZGVsZWdhdGU=" }, headers })).statusCode).toBe(400);
+  });
+
+  it("shows USDC the user adds from their own NEAR account in Activity, once however often it is relayed", async () => {
+    const headers = await signIn("topup");
+    const user = newUser(`topup${suffix}.${ROOT}`);
+    expect((await claim(headers, `t-${suffix}`, { name: `topup${suffix}`, public_key: user.publicKey })).statusCode).toBe(201);
+
+    const topUp = await signDelegate(user, {
+      receiverId: USDC,
+      methodName: "ft_transfer_call",
+      args: { receiver_id: VAULT, amount: "20000000", msg: "" },
+      deposit: 1n,
+    });
+    const relayed = await app.inject({ method: "POST", url: "/v1/relays", payload: { signed_delegate: topUp.base64 }, headers });
+    expect(relayed.statusCode, relayed.body).toBe(200);
+    expect(relayed.json().status).toBe("succeeded");
+    await app.inject({ method: "POST", url: "/v1/relays", payload: { signed_delegate: topUp.base64 }, headers });
+
+    const activity = (await app.inject({ method: "GET", url: "/v1/activity", headers })).json();
+    const deposits = activity.items.filter((item: { kind: string }) => item.kind === "deposit");
+    expect(deposits).toHaveLength(1);
+    expect(deposits[0]).toMatchObject({ status: "received", usd: "20.00", token: "20 USDC", party: { name: "Received from NEAR" } });
   });
 
   it("passes the relayer's own refusals through, such as a call outside its allowlist", async () => {

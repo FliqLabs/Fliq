@@ -4,7 +4,8 @@ import { isFamilyActive } from "./auth/sessions.js";
 import { verifyAccessToken } from "./auth/tokens.js";
 import type { Config } from "./config.js";
 import type { Unit } from "./db.js";
-import { ApiError, forbidden, unauthorized } from "./errors.js";
+import { authenticateAgent } from "./agent-auth.js";
+import { ApiError, forbidden, invalidRequest, unauthorized } from "./errors.js";
 import type { Reply } from "./idempotency.js";
 import { authenticateKey, keyEnvironmentOf } from "./keys.js";
 import { loadSpec, operations } from "./openapi.js";
@@ -17,6 +18,8 @@ export interface AuthContext {
   // Empty for an API key: keys only reach KEY_OPERATIONS, none of which touch sessions.
   familyId: string;
   keyId?: string;
+  // Set when an agent signed the request; userId is then its owner.
+  agentId?: string;
 }
 
 // The developer API. Keys never reach sign-in, profile, workspace or key management, which need a person.
@@ -36,6 +39,7 @@ export const KEY_OPERATIONS: ReadonlySet<string> = new Set([
 declare module "fastify" {
   interface FastifyRequest {
     auth?: AuthContext;
+    rawBody?: string;
   }
 }
 
@@ -124,20 +128,53 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     request.auth = { userId: claims.sub, familyId: claims.fam };
   };
 
-  for (const operation of operations(loadSpec())) {
-    const handler = deps.handlers[operation.operationId];
-    if (!handler) continue;
-    app.route({
+  const header = (request: FastifyRequest, name: string) => {
+    const value = request.headers[name];
+    return typeof value === "string" ? value : undefined;
+  };
+  const requireAgent = async (request: FastifyRequest) => {
+    const agent = await deps.unit((tx) =>
+      authenticateAgent(
+        tx,
+        { agent: header(request, "x-fliq-agent"), timestamp: header(request, "x-fliq-timestamp"), signature: header(request, "x-fliq-signature") },
+        request.method,
+        request.url,
+        request.rawBody ?? "",
+        Math.floor(Date.now() / 1000),
+      ),
+    );
+    request.auth = { userId: agent.userId, familyId: "", agentId: agent.id };
+  };
+
+  const all = operations(loadSpec()).filter((operation) => deps.handlers[operation.operationId]);
+  const route = (scope: FastifyInstance, operation: (typeof all)[number]) => {
+    const handler = deps.handlers[operation.operationId] as Handler;
+    scope.route({
       method: operation.method.toUpperCase() as "GET",
       url: operation.fastifyPath,
       schema: operation.bodySchema ? { body: operation.bodySchema } : {},
-      preHandler: operation.isPublic ? [] : [requireCaller(operation.operationId)],
+      preHandler: operation.isPublic ? [] : [operation.isAgent ? requireAgent : requireCaller(operation.operationId)],
       handler: async (request, reply) => {
         const result = await handler(request);
         return reply.status(result.status).headers(result.headers ?? {}).send(result.body);
       },
     });
-  }
+  };
+  for (const operation of all.filter((candidate) => !candidate.isAgent)) route(app, operation);
+  // An agent signs the exact bytes it sent, so its routes keep the raw body; every other route parses as usual.
+  app.register(async (scope) => {
+    scope.addContentTypeParser("application/json", { parseAs: "string" }, (request, rawBody, done) => {
+      const text = rawBody as string;
+      request.rawBody = text;
+      if (text === "") return done(null, undefined);
+      try {
+        done(null, JSON.parse(text));
+      } catch {
+        done(invalidRequest("The body is not valid JSON."), undefined);
+      }
+    });
+    for (const operation of all.filter((candidate) => candidate.isAgent)) route(scope, operation);
+  });
 
   const receiveWebhook = deps.webhooks;
   if (receiveWebhook) {

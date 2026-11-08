@@ -51,6 +51,11 @@ export class FakeNearRpc implements NearRpc {
     });
   }
 
+  setAmount(accountId: string, amount: bigint): void {
+    const account = this.#accounts.get(accountId);
+    if (account) this.#accounts.set(accountId, { ...account, amount });
+  }
+
   addKey(
     accountId: string,
     publicKey: string,
@@ -111,6 +116,11 @@ export class FakeNearRpc implements NearRpc {
     if (tx.actionKinds.includes("createAccount") && added) {
       this.addAccount(tx.receiverId);
       this.addKey(tx.receiverId, publicKeyText(added.publicKey));
+    }
+    const transfer = tx.raw.transaction.actions.find((action) => action.transfer)?.transfer;
+    const receiver = this.#accounts.get(tx.receiverId);
+    if (transfer && receiver && !tx.actionKinds.includes("createAccount")) {
+      this.#accounts.set(tx.receiverId, { ...receiver, amount: receiver.amount + transfer.deposit });
     }
     const call = tx.raw.transaction.actions.find((action) => action.functionCall)?.functionCall;
     if (call?.methodName === "storage_deposit") {

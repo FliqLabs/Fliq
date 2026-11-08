@@ -8,6 +8,12 @@ import Security
 protocol DeviceKeys: Sendable {
     /// The public half as NEAR writes it, `ed25519:<base58>`. The key is made on first use.
     func publicKey() throws -> String
+    /// Asks for Face ID or the passcode, then signs with the private half.
+    func sign(_ message: Data, reason: String) throws -> Data
+}
+
+extension DeviceKeys {
+    func sign(_ message: Data, reason: String) throws -> Data { throw KeychainError(status: errSecUnimplemented) }
 }
 
 struct KeychainDeviceKeys: DeviceKeys {
@@ -62,6 +68,27 @@ enum NEARKey {
     }
 
     private static let alphabet = Array("123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz")
+
+    /// The raw 32 bytes of an `ed25519:<base58>` key.
+    static func decode(_ encoded: String) -> Data? {
+        guard encoded.hasPrefix("ed25519:") else { return nil }
+        var bytes: [UInt8] = []
+        for character in encoded.dropFirst("ed25519:".count) {
+            guard var carry = alphabet.firstIndex(of: character) else { return nil }
+            for index in bytes.indices {
+                carry += Int(bytes[index]) * 58
+                bytes[index] = UInt8(carry & 0xFF)
+                carry >>= 8
+            }
+            while carry > 0 {
+                bytes.append(UInt8(carry & 0xFF))
+                carry >>= 8
+            }
+        }
+        let zeros = encoded.dropFirst("ed25519:".count).prefix { $0 == "1" }.count
+        let raw = Data(repeating: 0, count: zeros) + Data(bytes.reversed())
+        return raw.count == 32 ? raw : nil
+    }
 
     static func base58(_ bytes: Data) -> String {
         var digits: [Int] = []

@@ -7,7 +7,11 @@ const navigation = [
   { label: "Docs", href: "/#developers", visibility: "sm:inline" },
   { label: "Agents", href: "/#agents", visibility: "sm:inline" },
   { label: "Pricing", href: "/pricing", visibility: "inline" },
+<<<<<<< HEAD
   { label: "Status", href: "/#trust", visibility: "lg:inline" },
+=======
+  { label: "Status", href: "/status", visibility: "lg:inline" },
+>>>>>>> e7629305f69dfa7aac4d42157c5e2a507f146902
   { label: "Sign in", href: "/sign-in", visibility: "sm:inline" },
 ];
 

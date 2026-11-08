@@ -5,19 +5,35 @@ import XCTest
 final class PayFlowTests: XCTestCase {
     private func makeFlow() -> PayFlow { PayFlow(api: FixtureClient()) }
 
-    func testKeypadBuildsAValidAmount() {
+    func testTypedAmountBecomesAValidAmount() {
         let flow = makeFlow()
-        for key in ["0", "5", "0", ".", "0", "0", "9", "⌫"] { flow.tapKey(key) }
-
-        XCTAssertEqual(flow.amountText, "50.0", "The 9 is refused as a third decimal, then one 0 is deleted")
+        XCTAssertEqual(flow.enterAmount("50.0"), "50.0")
         XCTAssertEqual(flow.amount?.baseUnits, 50_000_000)
     }
 
-    func testKeypadRejectsASecondDotAndAThirdDecimal() {
-        let flow = makeFlow()
-        for key in [".", "5", ".", "2", "5", "7"] { flow.tapKey(key) }
+    func testAmountTypingKeepsOneSeparatorAndTwoDecimals() {
+        XCTAssertEqual(AmountTyping.clean("0.52", previous: ""), "0.52")
+        XCTAssertEqual(AmountTyping.clean("0.527", previous: "0.52"), "0.52", "A third decimal is refused")
+        XCTAssertEqual(AmountTyping.clean("5.2.", previous: "5.2"), "5.2", "A second separator is refused")
+        XCTAssertEqual(AmountTyping.clean(".", previous: ""), "0.")
+    }
 
-        XCTAssertEqual(flow.amountText, "0.52")
+    func testAmountTypingDropsLeadingZeros() {
+        XCTAssertEqual(AmountTyping.clean("05", previous: "0"), "5")
+        XCTAssertEqual(AmountTyping.clean("00", previous: "0"), "0")
+        XCTAssertEqual(AmountTyping.clean("0", previous: ""), "0")
+        XCTAssertEqual(AmountTyping.clean("00.5", previous: "0.5"), "0.5")
+    }
+
+    func testAmountTypingAcceptsACommaAndIgnoresOtherCharacters() {
+        XCTAssertEqual(AmountTyping.clean("12,5", previous: "12"), "12.5")
+        XCTAssertEqual(AmountTyping.clean("$1 2a", previous: ""), "12")
+        XCTAssertEqual(AmountTyping.clean("", previous: "5"), "")
+    }
+
+    func testAmountTypingCapsTheLength() {
+        XCTAssertEqual(AmountTyping.clean("123456789", previous: "12345678"), "123456789")
+        XCTAssertEqual(AmountTyping.clean("1234567890", previous: "123456789"), "123456789")
     }
 
     func testAccountIsVerifiedOnlyWhenComplete() async {
@@ -36,7 +52,7 @@ final class PayFlowTests: XCTestCase {
 
     func testQuoteShowsTheServerReceiveAndTheRouteAdvantage() async throws {
         let flow = makeFlow()
-        for key in ["5", "0"] { flow.tapKey(key) }
+        flow.enterAmount("50")
 
         let quoted = await flow.fetchQuote()
         let quote = try XCTUnwrap(flow.quote)
@@ -56,7 +72,7 @@ final class PayFlowTests: XCTestCase {
 
     func testSendNeedsAVerifiedAccountThenTracksToSettled() async {
         let flow = makeFlow()
-        flow.tapKey("5")
+        flow.enterAmount("5")
         _ = await flow.fetchQuote()
         let sentWithoutAccount = await flow.send()
         XCTAssertFalse(sentWithoutAccount)

@@ -32,9 +32,17 @@ These rules are PROPOSED and require backend approval:
 
 - Policies are keyed by (owner, agent account). The public key is a label for the backend. Naming an account as your agent never affects that account's own funds or anyone else's policy for it.
 - `set_agent` creates or updates caps, optional exact-match corridors, cooldown and expiry without resetting same-day spend, charges the policy storage to the owner and refunds the rest of the deposit. `remove_agent` marks the policy revoked and keeps it. A deposit is required for both, so an ordinary function-call key cannot change agent permissions.
+- New user accounts are funded with approximately 0.02 NEAR by the account provisioner. This covers one maximum-size policy, tested at no more than 0.01 NEAR, 1 yocto calls and ordinary gas without making the vault subsidize unrelated accounts.
 - Daily spend includes pending and successful payouts. Parallel attempts therefore cannot race past the limit. A failed transfer releases its same-day amount; a successful payout remains counted even if it is later refunded.
 - Cooldown starts when a payout is authorized and remains in force after a failed transfer. Daily buckets use NEAR block timestamp nanoseconds and UTC-sized 24-hour intervals.
-- Direct payer calls do not require an agent policy. Agent payout calls require the policy owner to equal the registered order payer. Agent-initiated vault transfers debit the policy owner and enforce the same per-action cap, daily cap, cooldown, expiry and revocation rules; corridor validation applies only to payouts because a vault transfer has no corridor.
+- Direct payer calls do not require an agent policy. Agent payout calls require the policy owner to equal the registered order payer. Agent accounts cannot transfer the owner's balance; `transfer` always debits its predecessor's own vault balance.
+
+## Backend-requested behavior
+
+- `transfer` accepts an optional public `request_id` made only of ASCII letters, digits, `-` and `_`, at most 64 bytes. The identifier remains visible in the transaction arguments while the frozen `transferred` event stays unchanged.
+- The owner and immutable registration account may resolve stuck payouts after the timeout. Operational alerts go to both operators, and the caller verifies the approved-USDC transaction before resolving.
+- Cash-out on arrival uses a deliberately scoped agent policy held by fliq; the vault does not add a second standing-permission type in this release.
+- Account recovery is not a vault permission. A recovery key or social-recovery account design must be approved and implemented at the NEAR account layer before the recovery-contact screen can claim to restore access.
 
 ## Other OPEN contract questions
 

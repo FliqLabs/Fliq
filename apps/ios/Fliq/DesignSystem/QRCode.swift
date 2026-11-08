@@ -1,10 +1,12 @@
 import CoreImage.CIFilterBuiltins
 import SwiftUI
 
-/// A scannable QR code drawn as dots, with the deposit arrow in a white disc at the centre.
+/// A scannable QR code drawn as dots, with a mark in a white disc at the centre.
 /// The three finder squares stay square because round finders scan badly on older cameras.
-struct QRCode: View {
+struct QRCode<Center: View>: View {
     let text: String
+    var color: Color = .black
+    @ViewBuilder var center: () -> Center
 
     var body: some View {
         if let matrix = QRMatrix(text: text) {
@@ -14,7 +16,7 @@ struct QRCode: View {
                     for column in 0..<matrix.count where matrix[row, column] && !matrix.isFinder(row, column) {
                         let dot = CGRect(x: CGFloat(column) * cell, y: CGFloat(row) * cell, width: cell, height: cell)
                             .insetBy(dx: cell * 0.08, dy: cell * 0.08)
-                        context.fill(Path(ellipseIn: dot), with: .color(.black))
+                        context.fill(Path(ellipseIn: dot), with: .color(color))
                     }
                 }
                 for origin in matrix.finderOrigins {
@@ -22,13 +24,7 @@ struct QRCode: View {
                 }
             }
             .aspectRatio(1, contentMode: .fit)
-            .overlay {
-                Image(systemName: "arrow.up.right")
-                    .font(.system(size: 20, weight: .medium))
-                    .foregroundStyle(.black)
-                    .frame(width: 44, height: 44)
-                    .background(.white, in: Circle())
-            }
+            .overlay { center() }
             .accessibilityElement()
             .accessibilityLabel("QR code of the deposit address")
         }
@@ -38,10 +34,10 @@ struct QRCode: View {
         let outer = CGRect(x: CGFloat(origin.column) * cell, y: CGFloat(origin.row) * cell, width: cell * 7, height: cell * 7)
         context.stroke(
             Path(roundedRect: outer.insetBy(dx: cell / 2, dy: cell / 2), cornerRadius: cell * 1.6),
-            with: .color(.black),
+            with: .color(color),
             lineWidth: cell
         )
-        context.fill(Path(roundedRect: outer.insetBy(dx: cell * 2, dy: cell * 2), cornerRadius: cell * 0.9), with: .color(.black))
+        context.fill(Path(roundedRect: outer.insetBy(dx: cell * 2, dy: cell * 2), cornerRadius: cell * 0.9), with: .color(color))
     }
 }
 

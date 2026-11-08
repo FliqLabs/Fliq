@@ -20,6 +20,7 @@ export type ErrorCode =
   | "idempotency_mismatch"
   | "rate_limited"
   | "chain_unavailable"
+  | "agent_limit"
   | "internal";
 
 export class ApiError extends Error {

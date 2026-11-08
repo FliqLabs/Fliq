@@ -12,7 +12,7 @@ import { formatTokenAmount } from "./dashboard.js";
 import type { Db, Unit } from "./db.js";
 import { ApiError, conflict, invalidRequest, notFound } from "./errors.js";
 import { hashOf, type Reply } from "./idempotency.js";
-import { INSTITUTIONS } from "./institutions.js";
+import { institutionType } from "./institutions.js";
 import type { OneClickHops } from "./hop.js";
 import { COUNTRY, developerIdFor, requestQuote, reviveHop, reviveProviderQuote, type QuoteDeps, type QuoteInput } from "./quotes.js";
 import { resolveName } from "./recipients.js";
@@ -126,6 +126,7 @@ export async function payoutView(tx: Db, config: Config, payoutId: string) {
     bank_reference: bankReference(payout.events),
     seconds: settledAt && depositAt ? Math.round((settledAt.getTime() - depositAt.getTime()) / 1000) : null,
     history: payout.events.map((event) => ({ state: event.toState, at: event.createdAt.toISOString() })),
+    agent: payout.agentId ? { agent_id: payout.agentId, name: (await tx.agent.findUnique({ where: { id: payout.agentId }, select: { name: true } }))?.name ?? payout.agentId } : null,
     ...recoveryView(payout, bankReference(payout.events)),
   };
 }
@@ -138,7 +139,7 @@ export async function getPayout(unit: Unit, config: Config, userId: string, payo
   });
 }
 
-export async function createPayout(unit: Unit, deps: PayoutDeps, userId: string, key: string | undefined, input: PayoutInput): Promise<Reply> {
+export async function createPayout(unit: Unit, deps: PayoutDeps, userId: string, key: string | undefined, input: PayoutInput, options: { agentId?: string } = {}): Promise<Reply> {
   if (!key) throw new ApiError(400, "idempotency_key_required", "Idempotency-Key header is required.");
   if (!ACCOUNT_NUMBER.test(input.account.number)) throw invalidRequest("account.number must be 6 to 20 digits.");
   const requestHash = hashOf(input);
@@ -165,7 +166,13 @@ export async function createPayout(unit: Unit, deps: PayoutDeps, userId: string,
   const adapter = deps.adapters.find((candidate) => candidate.id === prepared.route.provider);
   if (!adapter) throw new ApiError(422, "no_route", "That provider is not available right now.");
   const country = COUNTRY[prepared.quote.currency as keyof typeof COUNTRY];
-  const verification = await adapter.verifyAccount({ institutionCode: input.account.bank, accountNumber: input.account.number, country });
+  const verification = await adapter.verifyAccount({ institutionCode: input.account.bank, accountNumber: input.account.number, country }).catch((error: unknown) => {
+    if (!(error instanceof ProviderError)) throw error;
+    if (error.kind === "not_supported") throw new ApiError(422, "route_unavailable", "The provider on this route cannot check or pay this account.");
+    // A bank that does not answer in time is not a missing account: nothing has moved, so the payer can simply retry.
+    if (error.transient) throw new ApiError(422, "route_unavailable", "The bank did not answer in time. Nothing moved; try again in a moment.");
+    throw new ApiError(422, "account_not_found", "The bank could not find that account.");
+  });
   if (!verification.found) throw new ApiError(422, "account_not_found", "The bank could not find that account.");
   const accountName = resolveName(verification.accountName, input.account_name).name;
 
@@ -233,6 +240,7 @@ export async function createPayout(unit: Unit, deps: PayoutDeps, userId: string,
         currency: quote.currency,
         rate: quote.rate,
         retryOfId: input.retry_of ?? null,
+        agentId: options.agentId ?? null,
       },
     });
     await tx.payoutEvent.create({ data: { id: newId("pev"), payoutId, fromState: null, toState: "created", version: 1, cause: "created" } });
@@ -252,8 +260,7 @@ export async function createPayout(unit: Unit, deps: PayoutDeps, userId: string,
 
   // Phase two: the provider call, only after the commitment is durable.
   const { payoutId, providerQuote } = committed;
-  const institution = INSTITUTIONS.find((item) => item.code === input.account.bank);
-  const corridor = { country, currency: prepared.quote.currency.toUpperCase() as FiatCurrency, payoutType: institution?.kind ?? ("bank" as const) };
+  const corridor = { country, currency: prepared.quote.currency.toUpperCase() as FiatCurrency, payoutType: institutionType(input.account.bank) };
   const asset = prepared.quote.tokenSymbol as Asset;
 
   const opened = await openOrder({

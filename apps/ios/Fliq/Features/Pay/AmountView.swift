@@ -3,32 +3,13 @@ import SwiftUI
 struct AmountView: View {
     let flow: PayFlow
     @Environment(AppEnvironment.self) private var environment
+    @FocusState private var amountFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
             Spacer()
-            VStack(spacing: 10) {
-                Text("They receive")
-                    .font(.system(size: 14))
-                    .foregroundStyle(Theme.textSecondary)
-                HeroAmount(symbol: Currency.ngn.symbol, value: (flow.estimatedReceive ?? 0).formatted())
-                Label {
-                    Text("You send \(Text("$" + (flow.amountText.isEmpty ? "0" : flow.amountText)).foregroundStyle(Theme.textPrimary).fontWeight(.medium))")
-                } icon: {
-                    Image(systemName: "arrow.up.arrow.down")
-                }
-                .font(.system(size: 14))
-                .foregroundStyle(Theme.textSecondary)
-                .padding(.horizontal, 14)
-                .frame(height: 36)
-                .fliqGlass(Capsule(), interactive: true)
-
-                if let rate = flow.rate {
-                    Text("$1 = \(Money.rate(rate.rate, rate.currency))")
-                        .font(.system(size: 13))
-                        .foregroundStyle(Theme.textSecondary)
-                        .padding(.top, 6)
-                }
+            AmountInput(text: flow.amountText, onType: flow.enterAmount, isFocused: $amountFocused) {
+                amount
             }
             Spacer()
 
@@ -49,14 +30,39 @@ struct AmountView: View {
             .buttonStyle(PrimaryButtonStyle())
             .disabled((flow.amount ?? .zero) <= .zero || flow.isQuoting)
             .padding(.bottom, 12)
-
-            Keypad(onKey: flow.tapKey)
         }
         .fliqScreen()
         .toolbar {
             ToolbarItem(placement: .principal) { recipientChip }
         }
         .task { await flow.loadRate() }
+        .onAppear { amountFocused = true }
+    }
+
+    private var amount: some View {
+        VStack(spacing: 10) {
+            Text("They receive")
+                .font(.system(size: 14))
+                .foregroundStyle(Theme.textSecondary)
+            HeroAmount(symbol: flow.currency.symbol, value: (flow.estimatedReceive ?? 0).formatted())
+            Label {
+                Text("You send \(Text("$" + (flow.amountText.isEmpty ? "0" : flow.amountText)).foregroundStyle(Theme.textPrimary).fontWeight(.medium))")
+            } icon: {
+                Image(systemName: "arrow.up.arrow.down")
+            }
+            .font(.system(size: 14))
+            .foregroundStyle(Theme.textSecondary)
+            .padding(.horizontal, 14)
+            .frame(height: 36)
+            .fliqGlass(Capsule(), interactive: true)
+
+            if let rate = flow.rate {
+                Text("$1 = \(Money.rate(rate.rate, rate.currency))")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.textSecondary)
+                    .padding(.top, 6)
+            }
+        }
     }
 
     @ViewBuilder

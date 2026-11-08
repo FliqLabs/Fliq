@@ -34,7 +34,7 @@ const configured = enabledAdapters(process.env, {
 const adapters = configured.length > 0 ? configured : sandboxAdapters();
 
 // The deployed vault when an RPC and the registration key are set; otherwise Ladipeo's in-memory model for local runs.
-const usdcContract = process.env.USDC_CONTRACT_ID ?? "usdc.test.near";
+const usdcContract = config.usdcContract;
 const registrationAccount = process.env.NEAR_REGISTRATION_ACCOUNT_ID ?? "registrar.test.near";
 const registrationKey = process.env.NEAR_REGISTRATION_PRIVATE_KEY?.trim();
 const nearRpcUrl = process.env.NEAR_RPC_URL?.trim();
@@ -76,7 +76,9 @@ const hops = oneClick
   ? new OneClickHops({
       client: oneClick,
       slippageBps: Number(process.env.ONECLICK_SLIPPAGE_BPS ?? 50),
-      pricingRefundTo: config.vaultAccount,
+      // 1Click is mainnet only and answers a testnet refundTo with 400 "Internal server error". Dry quotes never take
+      // funds, so any mainnet account prices correctly.
+      pricingRefundTo: process.env.ONECLICK_PRICING_REFUND_TO ?? "intents.near",
       pricingRecipient: process.env.ONECLICK_PRICING_RECIPIENT ?? "0x0000000000000000000000000000000000000001",
     })
   : undefined;
@@ -123,6 +125,14 @@ const relayerUrl = process.env.RELAYER_URL?.trim();
 const relayerToken = process.env.RELAYER_AUTH_TOKEN?.trim();
 if (relayerUrl && !relayerToken) console.warn("RELAYER_URL is set without RELAYER_AUTH_TOKEN: names are claimed without NEAR accounts.");
 const relayer = relayerUrl && relayerToken ? createRelayerClient({ url: relayerUrl, authToken: relayerToken }) : undefined;
+// On Render's free plan a service sleeps after 15 minutes without requests and takes about a minute to wake, longer
+// than a name claim waits. Pinging it while the API is up keeps it awake.
+const RELAYER_KEEPALIVE_MS = 10 * 60 * 1000;
+if (relayer) {
+  const ping = () => relayer.health().catch((error: Error) => console.warn(`relayer health check failed: ${error.message}`));
+  void ping();
+  setInterval(ping, RELAYER_KEEPALIVE_MS).unref();
+}
 const provisioner = relayer
   ? new RelayerProvisioner(relayer, config.vaultAccount)
   : new MockProvisioner(config.vaultAccount, mockVault ? (account) => mockVault.registerStorage(account) : undefined);

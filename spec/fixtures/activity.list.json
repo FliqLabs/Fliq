@@ -1,0 +1,152 @@
+{
+  "items": [
+    {
+      "activity_id": "act_po_9c2f71aa",
+      "kind": "payout",
+      "status": "paid",
+      "at": "2026-10-29T13:02:32Z",
+      "party": {
+        "name": "DARA OKONKWO",
+        "near_account": null,
+        "institution": "058",
+        "account_last4": "6789",
+        "photo_url": null
+      },
+      "provider": "paycrest",
+      "agent": null,
+      "local": {
+        "amount": "68816",
+        "currency": "NGN"
+      },
+      "usd": "50.00",
+      "token": null,
+      "seconds": 21,
+      "reason": null,
+      "ref_id": "po_9c2f71aa"
+    },
+    {
+      "activity_id": "act_ref_01jbd9a2c4e6g8j0k2m4p6r8s0",
+      "kind": "refused",
+      "status": "refused",
+      "at": "2026-10-29T12:41:00Z",
+      "party": {
+        "name": "DARA OKONKWO",
+        "near_account": null,
+        "institution": "058",
+        "account_last4": "6789",
+        "photo_url": null
+      },
+      "provider": null,
+      "agent": {
+        "agent_id": "claude-frank.fliq.near",
+        "name": "Claude"
+      },
+      "local": {
+        "amount": "500000",
+        "currency": "NGN"
+      },
+      "usd": null,
+      "token": null,
+      "seconds": null,
+      "reason": "over_daily_cap",
+      "ref_id": "ref_01jbd9a2c4e6g8j0k2m4p6r8s0"
+    },
+    {
+      "activity_id": "act_po_5d18e2b7",
+      "kind": "payout",
+      "status": "paid",
+      "at": "2026-10-29T12:40:20Z",
+      "party": {
+        "name": "DARA OKONKWO",
+        "near_account": null,
+        "institution": "044",
+        "account_last4": "6789",
+        "photo_url": null
+      },
+      "provider": "paycrest",
+      "agent": {
+        "agent_id": "claude-frank.fliq.near",
+        "name": "Claude"
+      },
+      "local": {
+        "amount": "30000",
+        "currency": "NGN"
+      },
+      "usd": "21.80",
+      "token": null,
+      "seconds": 20,
+      "reason": null,
+      "ref_id": "po_5d18e2b7"
+    },
+    {
+      "activity_id": "act_dep_01jbd2m5k8w3qf7v9x2c4n6h8t",
+      "kind": "deposit",
+      "status": "received",
+      "at": "2026-10-29T08:12:14Z",
+      "party": {
+        "name": "Received from Solana",
+        "near_account": null,
+        "institution": null,
+        "account_last4": null,
+        "photo_url": null
+      },
+      "provider": null,
+      "agent": null,
+      "local": null,
+      "usd": "199.98",
+      "token": "200 USDC",
+      "seconds": 34,
+      "reason": null,
+      "ref_id": "dep_01jbd2m5k8w3qf7v9x2c4n6h8t"
+    },
+    {
+      "activity_id": "act_po_4e81b0d3",
+      "kind": "payout",
+      "status": "refunded",
+      "at": "2026-10-28T17:21:59Z",
+      "party": {
+        "name": "DARA OKONKWO",
+        "near_account": null,
+        "institution": "058",
+        "account_last4": "6789",
+        "photo_url": null
+      },
+      "provider": "paycrest",
+      "agent": null,
+      "local": {
+        "amount": "68816",
+        "currency": "NGN"
+      },
+      "usd": "50.00",
+      "token": null,
+      "seconds": null,
+      "reason": "provider_failed",
+      "ref_id": "po_4e81b0d3"
+    },
+    {
+      "activity_id": "act_po_7a2c91f0",
+      "kind": "payout",
+      "status": "paid",
+      "at": "2026-10-28T10:05:38Z",
+      "party": {
+        "name": "Wanjiru K.",
+        "near_account": null,
+        "institution": "MPESA",
+        "account_last4": "412",
+        "photo_url": null
+      },
+      "provider": "busha",
+      "agent": null,
+      "local": {
+        "amount": "6450",
+        "currency": "KES"
+      },
+      "usd": "49.90",
+      "token": null,
+      "seconds": 38,
+      "reason": null,
+      "ref_id": "po_7a2c91f0"
+    }
+  ],
+  "next_cursor": null
+}

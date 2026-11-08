@@ -1,8 +1,21 @@
+// api: the app calls FLIQ_API_BASE_URL, the testnet API on Render.
 // fixtures: the app reads spec/fixtures from its bundle, no server needed.
-// api: the app calls FLIQ_API_BASE_URL. Run `make dev-mock` first for localhost.
-FLIQ_DATA_SOURCE = fixtures
-FLIQ_API_BASE_URL = http:/$()/localhost:4000/v1
-FLIQ_API_KEY = rt_test_7Kp2demo00c9Qe
+// For `make dev-mock`, set FLIQ_API_BASE_URL = http:/$()/localhost:4000/v1 and FLIQ_API_KEY = rt_test_7Kp2demo00c9Qe in Debug.xcconfig.local.
+FLIQ_DATA_SOURCE = api
+FLIQ_API_BASE_URL = https:/$()/api-production-54e10.up.railway.app/v1
+FLIQ_API_KEY =
+// Reads the device key's nonce and the latest block before a fliq-to-fliq payment is signed.
+FLIQ_NEAR_RPC_URL = https:/$()/rpc.testnet.near.org
+
+// Names are sub-accounts of the API's NEAR_ROOT_ACCOUNT. The fixtures use fliq.near.
+FLIQ_NAME_SUFFIX_api = .fliqaccount.testnet
+FLIQ_NAME_SUFFIX_fixtures = .fliq.near
+FLIQ_NAME_SUFFIX = $(FLIQ_NAME_SUFFIX_$(FLIQ_DATA_SOURCE))
+
+// Names are sub-accounts of the API's NEAR_ROOT_ACCOUNT. The fixtures use fliq.near.
+FLIQ_NAME_SUFFIX_api = .fliqaccount.testnet
+FLIQ_NAME_SUFFIX_fixtures = .fliq.near
+FLIQ_NAME_SUFFIX = $(FLIQ_NAME_SUFFIX_$(FLIQ_DATA_SOURCE))
 
 // Set to ?mode=developer to read fliq.cash's apple-app-site-association directly instead of through Apple's CDN.
 // That needs Settings > Developer > Associated Domains Development on the device.

@@ -89,9 +89,9 @@ struct FixtureClient: FliqAPI {
         try load("user.new")
     }
 
-    func institutions() async throws -> [Institution] {
+    func institutions(in country: Country) async throws -> [Institution] {
         let list: InstitutionList = try load("institutions.ng")
-        return list.items
+        return country == .ng ? list.items : []
     }
 
     func vaultBalance() async throws -> VaultBalance {
@@ -108,6 +108,32 @@ struct FixtureClient: FliqAPI {
 
     func person(named name: String) async throws -> Person {
         try load("person.tobi")
+    }
+
+    func relay(signedDelegate: String) async throws -> RelayResult {
+        try load("relay.failed")
+    }
+
+    func relayResult(hash: String) async throws -> RelayResult {
+        try load("relay.failed")
+    }
+
+    func passkeys() async throws -> PasskeyList {
+        try load("passkeys.list")
+    }
+
+    func deviceSessions() async throws -> DeviceSessionList {
+        try load("sessions.list")
+    }
+
+    func revokeSession(id: String) async throws {}
+
+    func createRequest(_ input: PaymentRequestInput, idempotencyKey: String) async throws -> PaymentRequest {
+        try load("request.created")
+    }
+
+    func request(id: String) async throws -> PaymentRequest {
+        try load("request.created")
     }
 
     func load<Value: Decodable>(_ name: String) throws -> Value {
