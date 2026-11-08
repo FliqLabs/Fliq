@@ -9,6 +9,7 @@ use near_sdk::json_types::U128;
 use near_sdk::{AccountId, Gas, NearToken, Promise, env, require};
 
 pub const MAX_ORDER_ID_LENGTH: usize = 64;
+pub const MAX_REQUEST_ID_LENGTH: usize = 64;
 pub const MAX_CORRIDOR_LENGTH: usize = 32;
 pub const ERR_EMPTY_ORDER_ID: &str = errors::INVALID_ORDER_ID;
 pub const ERR_LONG_ORDER_ID: &str = errors::INVALID_ORDER_ID;
@@ -148,6 +149,19 @@ pub fn validate_order(order_id: &str, amount: Amount, corridor: &str) {
     require!(
         corridor.chars().count() <= MAX_CORRIDOR_LENGTH,
         ERR_LONG_CORRIDOR
+    );
+}
+
+pub fn validate_request_id(request_id: &str) {
+    require!(
+        !request_id.is_empty() && request_id.len() <= MAX_REQUEST_ID_LENGTH,
+        errors::INVALID_REFS
+    );
+    require!(
+        request_id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_')),
+        errors::INVALID_REFS
     );
 }
 
