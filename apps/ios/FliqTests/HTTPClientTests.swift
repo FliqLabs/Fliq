@@ -300,6 +300,47 @@ final class HTTPClientTests: XCTestCase {
         XCTAssertNotNil(paid.at)
     }
 
+    func testUSDCSentToTheNameIsReadFromTheChainAndMovedIntoTheVault() async throws {
+        let client = makeClient()
+        let usdc = "3e2210e1184b45b64c8a434c0a7e7b23cc04ea7eb7a6c3c32520d03d4afcb8af"
+        let relayed = Data(#"{"status":"succeeded","tx_hash":"tx","delegate_hash":"dh","sender_id":"frank.fliqaccount.testnet","receiver_id":"\#(usdc)"}"#.utf8)
+        StubProtocol.respond { request in
+            guard request.url?.host == "rpc.test" else {
+                return request.url?.path == "/v1/relays" ? (200, relayed) : (404, Data())
+            }
+            let body = try JSONSerialization.jsonObject(with: Data(reading: request.httpBodyStream!)) as? [String: Any]
+            let params = body?["params"] as? [String: String] ?? [:]
+            let view = { (json: String) in Data(#"{"result":{"result":\#(Array(json.utf8))}}"#.utf8) }
+            switch (body?["method"] as? String, params["method_name"]) {
+            case ("block", _): return (200, Data(#"{"result":{"header":{"height":1000}}}"#.utf8))
+            case (_, "get_config"): return (200, view(#"{"owner":"fliq-owner.testnet","approved_usdc_token_contract":"\#(usdc)"}"#))
+            case (_, "ft_balance_of"): return (200, view(#""20000000""#))
+            default: return (200, Data(#"{"result":{"nonce":41}}"#.utf8))
+            }
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [StubProtocol.self]
+        let rpc = NEARRPC(url: URL(string: "https://rpc.test")!, session: URLSession(configuration: configuration))
+        let topUp = RelayedWalletTopUp(
+            rpc: rpc,
+            relay: DelegateRelay(api: client, rpc: rpc, keys: AgentKeys(), pollInterval: .zero),
+            owner: { "frank.fliqaccount.testnet" },
+            vault: { "fliq-vault.testnet" }
+        )
+
+        let waiting = try await topUp.waiting()
+        _ = try await topUp.addToVault(waiting)
+
+        XCTAssertEqual(waiting, TokenAmount(baseUnits: 20_000_000))
+        let relay = try XCTUnwrap(StubProtocol.requests.first { $0.url?.path == "/v1/relays" })
+        let sent = try JSONSerialization.jsonObject(with: Data(reading: relay.httpBodyStream!)) as? [String: String]
+        let expected = DelegateAction.walletTopUp(
+            from: "frank.fliqaccount.testnet", units: 20_000_000, usdc: usdc, vault: "fliq-vault.testnet",
+            nonce: 42, blockHeight: 1000, publicKey: Data(count: 32)
+        )
+        XCTAssertEqual(sent?["signed_delegate"], expected.signed(with: AgentKeys.signature))
+    }
+
     func testAgentsStillLoadWhenActivityFails() async throws {
         let client = makeClient()
         StubProtocol.respond { request in

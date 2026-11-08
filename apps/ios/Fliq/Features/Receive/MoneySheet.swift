@@ -15,6 +15,7 @@ struct MoveMoneySheet: View {
 
     let name: String?
     let receive: ReceiveFlow
+    var inbox: WalletInbox?
     let makeRequest: () -> RequestFlow
     let onAccount: (VerifiedAccount) -> Void
     let onPerson: (String?) -> Void
@@ -28,6 +29,7 @@ struct MoveMoneySheet: View {
         startingAt start: [Step] = [],
         name: String?,
         receive: ReceiveFlow,
+        inbox: WalletInbox? = nil,
         makeRequest: @escaping () -> RequestFlow,
         onAccount: @escaping (VerifiedAccount) -> Void,
         onPerson: @escaping (String?) -> Void,
@@ -35,6 +37,7 @@ struct MoveMoneySheet: View {
     ) {
         self.name = name
         self.receive = receive
+        self.inbox = inbox
         self.makeRequest = makeRequest
         self.onAccount = onAccount
         self.onPerson = onPerson
@@ -74,7 +77,7 @@ struct MoveMoneySheet: View {
         case .recipient(let country, let method):
             RecipientFormView(country: country, method: method, onContinue: onNewAccount)
         case .fliqName:
-            FliqNameCardView(name: name ?? "").sheetToolbar { dismiss() }
+            FliqNameCardView(name: name ?? "", inbox: inbox).sheetToolbar { dismiss() }
         case .currencies:
             CurrencyListView(flow: receive) { token in
                 let networks = receive.networks(for: token)
@@ -329,6 +332,7 @@ private struct NetworkListView: View {
 /// The user's fliq name as a card to share: fliq users pay it instantly, and any NEAR wallet can send USDC to it.
 struct FliqNameCardView: View {
     let name: String
+    var inbox: WalletInbox?
     @State private var copied = false
 
     var body: some View {
@@ -359,6 +363,8 @@ struct FliqNameCardView: View {
 
             Spacer()
 
+            if let inbox { WalletArrivedCard(inbox: inbox).padding(.bottom, 12) }
+
             HStack(spacing: 10) {
                 Button {
                     UIPasteboard.general.string = name
@@ -379,6 +385,16 @@ struct FliqNameCardView: View {
         }
         .padding(.horizontal, 16)
         .sensoryFeedback(.success, trigger: copied)
+        .task { await watch() }
+    }
+
+    /// Money sent to the name shows up here while the screen is open, so it can be added straight away.
+    private func watch() async {
+        guard let inbox else { return }
+        while !Task.isCancelled {
+            await inbox.load()
+            try? await Task.sleep(for: .seconds(5))
+        }
     }
 }
 
