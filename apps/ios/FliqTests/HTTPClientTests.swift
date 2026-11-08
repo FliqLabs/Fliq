@@ -251,7 +251,9 @@ final class HTTPClientTests: XCTestCase {
 
     @MainActor
     private func claimingFlow() async throws -> OnboardingFlow {
-        let flow = OnboardingFlow(api: makeClient(), names: FixtureNameDirectory(), isLive: true, keys: FixedKeys())
+        var client = makeClient()
+        client.claimRetryDelay = .zero
+        let flow = OnboardingFlow(api: client, names: FixtureNameDirectory(), isLive: true, keys: FixedKeys())
         flow.nameText = "frank"
         // Wait out the debounced check that setting nameText starts, as the claim button does.
         while flow.status == .checking { try await Task.sleep(for: .milliseconds(50)) }
