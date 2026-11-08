@@ -50,33 +50,68 @@ final class WalletInbox {
     }
 }
 
-/// "$20.00 arrived on NEAR" with the button that adds it. Shows nothing while nothing is waiting.
+/// "$20 arrived on NEAR" as one row, styled like an in-progress payout: tapping it adds the money to the vault.
+/// Shows nothing while nothing is waiting.
 struct WalletArrivedCard: View {
     let inbox: WalletInbox
 
     var body: some View {
         if inbox.waiting > .zero {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 12) {
-                    NEARMark(size: 16).frame(width: 36, height: 36).background(Color.black, in: Circle())
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("$\(Money.dollars(inbox.waiting)) arrived on NEAR").font(.system(size: 16, weight: .semibold))
-                        Text("Add it to fliq to spend it").font(.system(size: 14)).foregroundStyle(Theme.textSecondary)
+            Button {
+                Task { await inbox.add() }
+            } label: {
+                HStack(spacing: 14) {
+                    MarkRing(spinning: inbox.isAdding)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("$\(Money.dollars(inbox.waiting)) arrived on NEAR")
+                            .font(.system(size: 17, weight: .medium))
+                            .foregroundStyle(Theme.textPrimary)
+                        Text(subtitle)
+                            .font(.system(size: 15))
+                            .foregroundStyle(inbox.errorMessage == nil ? Theme.textSecondary : Theme.warning)
+                            .lineLimit(2)
                     }
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Theme.textSecondary)
                 }
-                Button {
-                    Task { await inbox.add() }
-                } label: {
-                    if inbox.isAdding { ProgressView().tint(.black) } else { Text("Add to fliq") }
-                }
-                .buttonStyle(PrimaryButtonStyle(filled: true))
-                .disabled(inbox.isAdding)
-                if let message = inbox.errorMessage {
-                    Text(message).font(.system(size: 13)).foregroundStyle(Theme.warning)
-                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
+                .background(Theme.surface, in: RoundedRectangle(cornerRadius: 26))
+                .contentShape(RoundedRectangle(cornerRadius: 26))
             }
-            .padding(16)
-            .fliqGlass(RoundedRectangle(cornerRadius: 24))
+            .buttonStyle(.plain)
+            .disabled(inbox.isAdding)
+            .accessibilityHint("Adds it to your fliq balance")
         }
+    }
+
+    private var subtitle: String {
+        if inbox.isAdding { return "Adding to fliq" }
+        return inbox.errorMessage ?? "Tap to add to fliq"
+    }
+}
+
+/// The NEAR mark in a ring that turns dashed and spins while the money moves.
+private struct MarkRing: View {
+    let spinning: Bool
+    @State private var angle = 0.0
+
+    var body: some View {
+        NEARMark(size: 18)
+            .frame(width: 40, height: 40)
+            .background(Color.black, in: Circle())
+            .padding(5)
+            .overlay {
+                Circle()
+                    .strokeBorder(spinning ? Color.white : Theme.surfaceRaised, style: StrokeStyle(lineWidth: 2.5, dash: spinning ? [10, 8] : []))
+                    .rotationEffect(.degrees(angle))
+            }
+            .onChange(of: spinning, initial: true) { _, on in
+                angle = 0
+                guard on else { return }
+                withAnimation(.linear(duration: 2).repeatForever(autoreverses: false)) { angle = 360 }
+            }
     }
 }
