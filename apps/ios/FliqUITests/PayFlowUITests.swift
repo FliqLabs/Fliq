@@ -34,8 +34,8 @@ final class PayFlowUITests: XCTestCase {
 
         app.buttons["Continue"].tap()
         XCTAssertTrue(app.staticTexts["They receive"].waitForExistence(timeout: 3))
-        app.buttons["5"].tap()
-        app.buttons["0"].tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3), "The amount field opens the keyboard by itself")
+        app.typeText("50")
         snap("3-amount")
 
         app.buttons["Get quote"].tap()

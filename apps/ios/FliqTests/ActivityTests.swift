@@ -5,7 +5,7 @@ import XCTest
 final class ActivityTests: XCTestCase {
     private func pay(_ amount: String, api: FixtureClient, activity: ActivityStore) async -> PayFlow {
         let flow = PayFlow(api: api, activity: activity)
-        amount.forEach { flow.tapKey(String($0)) }
+        flow.enterAmount(amount)
         _ = await flow.fetchQuote()
         flow.recipient.number = "0123456789"
         await flow.recipient.verify()

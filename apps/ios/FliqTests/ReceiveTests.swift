@@ -105,7 +105,7 @@ final class ReceiveTests: XCTestCase {
     func testPayingDebitsAndARefundCreditsBack() async {
         let vault = VaultStore(balance: TokenAmount(baseUnits: 199_980_000))
         let flow = PayFlow(api: FixtureClient(), vault: vault)
-        "13".forEach { flow.tapKey(String($0)) }
+        flow.enterAmount("13")
         _ = await flow.fetchQuote()
         flow.recipient.number = "0123456789"
         await flow.recipient.verify()
@@ -119,7 +119,8 @@ final class ReceiveTests: XCTestCase {
 
     func testAmountTypingRules() {
         var text = ""
-        for key in ["0", "0", ".", "5", "5", "5", "⌫"] { text = AmountTyping.apply(key, to: text) }
-        XCTAssertEqual(text, "0.5")
+        for key in ["0", "0", ".", "5", "5", "5"] { text = AmountTyping.clean(text + key, previous: text) }
+        text = AmountTyping.clean(String(text.dropLast()), previous: text)
+        XCTAssertEqual(text, "0.5", "Typed one key at a time, then one backspace")
     }
 }

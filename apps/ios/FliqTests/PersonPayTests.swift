@@ -17,7 +17,7 @@ final class PersonPayTests: XCTestCase {
         let flow = flow()
         await flow.lookUp()
         XCTAssertEqual(flow.person?.displayName, "Tobi A.")
-        for key in ["2", "5"] { flow.tapKey(key) }
+        flow.enterAmount("25")
 
         let paid = await flow.pay()
 
@@ -29,7 +29,7 @@ final class PersonPayTests: XCTestCase {
     func testMoreThanTheVaultHoldsCannotBePaid() async {
         let flow = flow(balance: 10_000_000)
         await flow.lookUp()
-        for key in ["2", "5"] { flow.tapKey(key) }
+        flow.enterAmount("25")
 
         XCTAssertFalse(flow.canPay)
     }
@@ -37,7 +37,7 @@ final class PersonPayTests: XCTestCase {
     func testAVaultRefusalSaysWhyAndMovesNothing() async {
         let flow = flow(transfers: Refusing(reason: "Smart contract panicked: INSUFFICIENT_BALANCE"))
         await flow.lookUp()
-        flow.tapKey("5")
+        flow.enterAmount("5")
 
         let paid = await flow.pay()
 

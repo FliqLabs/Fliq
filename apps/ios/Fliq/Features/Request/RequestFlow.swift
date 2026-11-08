@@ -26,8 +26,10 @@ final class RequestFlow {
     var amount: TokenAmount? { TokenAmount(decimalString: amountText) }
     var canCreate: Bool { (amount ?? .zero) > .zero && !isCreating && request == nil }
 
-    func tapKey(_ key: String) {
-        amountText = AmountTyping.apply(key, to: amountText)
+    @discardableResult
+    func enterAmount(_ typed: String) -> String {
+        amountText = AmountTyping.clean(typed, previous: amountText)
+        return amountText
     }
 
     func create() async {
