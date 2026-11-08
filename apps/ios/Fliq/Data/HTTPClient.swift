@@ -88,7 +88,9 @@ struct HTTPClient: FliqAPI {
         let headers = ["Idempotency-Key": "claim-\(name.value)"]
         for attempt in 1...Self.claimAttempts {
             let (data, status) = try await exchange("POST", "me/name", body: body, headers: headers)
-            guard status == 202 || status == 503, attempt < Self.claimAttempts else { return try decode(data, status: status) }
+            let retry = status == 202 || status == 503
+            if status == 202, attempt == Self.claimAttempts { break }
+            guard retry, attempt < Self.claimAttempts else { return try decode(data, status: status) }
             try await Task.sleep(for: claimRetryDelay)
         }
         throw APIError.unexpected(status: 202)
@@ -156,6 +158,18 @@ struct HTTPClient: FliqAPI {
     ) async throws -> Response {
         let (data, status) = try await exchange(method, path, query: query, body: body, headers: headers)
         return try decode(data, status: status)
+    }
+
+    /// The body as sent, for answers that carry JSON the app must pass on byte for byte, such as call args to sign.
+    func sendRaw(
+        _ method: String,
+        _ path: String,
+        body: (any Encodable)? = nil,
+        headers: [String: String] = [:]
+    ) async throws -> Data {
+        let (data, status) = try await exchange(method, path, body: body, headers: headers)
+        if !(200..<300).contains(status) { let _: Empty = try decode(data, status: status) }
+        return data
     }
 
     private func decode<Response: Decodable>(_ data: Data, status: Int) throws -> Response {
