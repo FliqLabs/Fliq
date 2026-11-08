@@ -48,10 +48,13 @@ struct ChipLabel: View {
     var symbol: String?
     var color: Color = Theme.textPrimary
     var badge = false
+    var working = false
 
     var body: some View {
         HStack(spacing: 6) {
-            if let symbol {
+            if working {
+                ProgressView().controlSize(.small).tint(color)
+            } else if let symbol {
                 Image(systemName: symbol)
                     .symbolRenderingMode(badge ? .palette : .monochrome)
                     .foregroundStyle(badge ? Color.black : color, color)

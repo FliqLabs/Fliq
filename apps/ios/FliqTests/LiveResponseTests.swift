@@ -23,6 +23,7 @@ final class LiveResponseTests: XCTestCase {
         check("institutions", InstitutionList.self)
         check("recipients", RecipientList.self)
         check("people-recent", RecentPeopleList.self)
+        check("rate", Rate.self)
         check("quote", Quote.self)
         check("verify", VerifiedAccount.self)
         check("payout-created", Payout.self)

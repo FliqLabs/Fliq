@@ -5,6 +5,11 @@ FLIQ_DATA_SOURCE = api
 FLIQ_API_BASE_URL = https:/$()/fliq-yclq.onrender.com/v1
 FLIQ_API_KEY =
 
+// Names are sub-accounts of the API's NEAR_ROOT_ACCOUNT. The fixtures use fliq.near.
+FLIQ_NAME_SUFFIX_api = .fliqaccount.testnet
+FLIQ_NAME_SUFFIX_fixtures = .fliq.near
+FLIQ_NAME_SUFFIX = $(FLIQ_NAME_SUFFIX_$(FLIQ_DATA_SOURCE))
+
 // Set to ?mode=developer to read fliq.cash's apple-app-site-association directly instead of through Apple's CDN.
 // That needs Settings > Developer > Associated Domains Development on the device.
 FLIQ_ASSOCIATED_DOMAIN_MODE =
