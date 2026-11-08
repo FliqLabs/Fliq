@@ -11,7 +11,7 @@ struct AmountView: View {
                 Text("They receive")
                     .font(.system(size: 14))
                     .foregroundStyle(Theme.textSecondary)
-                HeroAmount(symbol: Currency.ngn.symbol, value: (flow.estimatedReceive ?? 0).formatted())
+                HeroAmount(symbol: flow.currency.symbol, value: (flow.estimatedReceive ?? 0).formatted())
                 Label {
                     Text("You send \(Text("$" + (flow.amountText.isEmpty ? "0" : flow.amountText)).foregroundStyle(Theme.textPrimary).fontWeight(.medium))")
                 } icon: {

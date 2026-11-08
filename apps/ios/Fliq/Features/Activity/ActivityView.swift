@@ -3,7 +3,6 @@ import SwiftUI
 struct ActivityView: View {
     let store: ActivityStore
     let onReceive: () -> Void
-    @Environment(AppEnvironment.self) private var environment
     @State private var filter = Filter.all
 
     enum Filter: String, CaseIterable {
@@ -12,6 +11,11 @@ struct ActivityView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            Text("Activity")
+                .font(.system(size: 26, weight: .bold))
+                .tracking(-0.52)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 20)
             HStack(spacing: 8) {
                 ForEach(Filter.allCases, id: \.self) { option in
                     Button(option.rawValue) { filter = option }
@@ -22,7 +26,8 @@ struct ActivityView: View {
                         .background(filter == option ? Color.white : Theme.field, in: Capsule())
                 }
             }
-            .padding(.top, 18)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 14)
 
             if shown.isEmpty {
                 empty
@@ -36,7 +41,7 @@ struct ActivityView: View {
                                 .padding(.top, 14)
                                 .padding(.horizontal, 2)
                             ForEach(day.entries) { entry in
-                                Button { environment.router.push(.receipt(payoutId: entry.id)) } label: {
+                                NavigationLink(value: AppRoute.receipt(payoutId: entry.id)) {
                                     ActivityRow(entry: entry)
                                 }
                             }
@@ -47,7 +52,6 @@ struct ActivityView: View {
                 .scrollIndicators(.hidden)
             }
         }
-        .fliqScreen("Activity")
     }
 
     private var empty: some View {

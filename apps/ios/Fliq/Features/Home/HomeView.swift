@@ -2,9 +2,6 @@ import SwiftUI
 
 struct HomeView: View {
     @State var model: HomeModel
-    var onSend: () -> Void = {}
-    var onActivity: () -> Void = {}
-    var onReceive: () -> Void = {}
     var onMenu: () -> Void = {}
 
     var body: some View {
@@ -13,9 +10,6 @@ struct HomeView: View {
             Spacer()
             balance
             Spacer()
-            ActionBar(items: actions)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 12)
         }
         .background(Theme.ground.ignoresSafeArea())
         .task { await model.load() }
@@ -91,15 +85,6 @@ struct HomeView: View {
                 .frame(width: 200, height: 32)
                 .padding(.top, 6)
         }
-    }
-
-    private var actions: [ActionBarItem] {
-        [
-            ActionBarItem(title: "Receive", symbol: "square.and.arrow.down", action: onReceive),
-            ActionBarItem(title: "Send", symbol: "paperplane", action: onSend),
-            ActionBarItem(title: "Request", symbol: "link", isEnabled: model.hasBalance) {},
-            ActionBarItem(title: "Activity", symbol: "clock.arrow.circlepath", action: onActivity),
-        ]
     }
 }
 

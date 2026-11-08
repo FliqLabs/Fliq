@@ -5,6 +5,5 @@
     "resolveJsonModule": true,
     "types": ["node"]
   },
-  "include": ["src", "test", "apps", "packages", "sdk", "mcp"]
-  "include": ["src", "test", "apps", "packages", "scripts"]
+  "include": ["src", "test", "apps", "packages", "scripts", "sdk", "mcp"]
 }

@@ -12,11 +12,20 @@ final class SettingsUITests: XCTestCase {
         app.launchArguments = ["--ui-testing", "--onboarded"]
         app.launch()
 
+        app.buttons["Transfer"].tap()
+        XCTAssertTrue(app.buttons["Send"].waitForExistence(timeout: 3))
         app.buttons["Send"].tap()
+        XCTAssertTrue(app.buttons["New recipient"].waitForExistence(timeout: 3))
+        app.buttons["New recipient"].tap()
+        XCTAssertTrue(app.buttons["NGN"].waitForExistence(timeout: 3))
+        app.buttons["NGN"].tap()
+        XCTAssertTrue(app.buttons["Bank transfer"].waitForExistence(timeout: 3))
+        app.buttons["Bank transfer"].tap()
         let number = app.textFields["Account number"]
         XCTAssertTrue(number.waitForExistence(timeout: 3))
+        number.tap()
         number.typeText("0123456789")
-        XCTAssertTrue(app.staticTexts["DARA OKONKWO"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "DARA OKONKWO")).firstMatch.waitForExistence(timeout: 3))
         app.buttons["Continue"].tap()
         app.buttons["5"].tap()
         app.buttons["Get quote"].tap()
