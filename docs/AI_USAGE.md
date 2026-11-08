@@ -79,4 +79,4 @@ The NEAR HACKATHON rules require listing AI-generated code. Add a row whenever a
 | 2026-11-08 | `apps/ios`: `Data/SessionVault.swift` (one shared renewal, renew before expiry, end handler), `Data/HTTPClient.swift` exchange and claim retry on 503, `AppEnvironment.signedOutByServer`, `HTTPClientTests` session race tests | Claude Code | Requests that meet a 401 together share one refresh instead of spending the refresh token twice, which made the API revoke the whole session; a refused session returns to sign-in |
 
 The iOS app (`apps/ios`) is built with Claude Code, directed and reviewed by Frank. Each iOS PR adds its rows to this table.
-
+| 2026-11-08 | `services/api`: `apps/api/src/payouts.ts` account check errors, `test/payouts.e2e.test.ts`, `tsconfig.json` include list, `packages/providers/enabled.ts` TransFi block | Claude Code | A payout whose bank lookup fails answers 422 instead of 500; the tsconfig merge leftover that stopped typecheck and tests is fixed; the TransFi adapter block lost in the #101 merge is restored from its own commit |
