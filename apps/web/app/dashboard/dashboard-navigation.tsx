@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { fliqApi, type User } from "../lib/fliq-api";
+import { fliqApi, type LiveAccess, type User, type Workspace } from "../lib/fliq-api";
 
 const links = [
   { label: "Payouts", href: "/dashboard" },
@@ -18,6 +18,16 @@ export function DashboardNavigation() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const account = useQuery({ queryKey: ["me"], queryFn: () => fliqApi<User>("me") });
+  const workspace = useQuery({
+    queryKey: ["workspace"],
+    queryFn: () => fliqApi<Workspace>("workspaces/current"),
+    enabled: account.isSuccess && Boolean(account.data.near_account),
+  });
+  const liveAccess = useQuery({
+    queryKey: ["live-access", workspace.data?.workspace_id],
+    queryFn: () => fliqApi<LiveAccess>("workspaces/current/live-access"),
+    enabled: workspace.isSuccess,
+  });
   const logout = useMutation({
     mutationFn: () => fliqApi<void>("auth/logout", { method: "POST" }),
     onSuccess: () => {
@@ -94,7 +104,7 @@ export function DashboardNavigation() {
       <header className="sticky top-0 z-30 flex min-h-16 items-center justify-between border-b border-zinc-200 bg-white px-6 lg:fixed lg:right-0 lg:left-[232px] lg:px-8">
         <p className="text-sm font-semibold">{title}</p>
         <span className="rounded-full bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700">
-          Sandbox
+          {liveAccess.data?.live_enabled ? "Live" : "Sandbox"}
         </span>
       </header>
     </>

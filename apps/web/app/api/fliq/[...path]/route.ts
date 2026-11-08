@@ -32,6 +32,13 @@ const protectedRoutes = new Set([
   "GET keys",
   "GET onboarding",
   "GET payouts",
+  "GET payouts/stats",
+  "GET payouts/export",
+  "GET usage",
+  "GET workspaces/current/live-access",
+  "GET webhook-endpoints",
+  "POST webhook-endpoints",
+  "GET webhook-deliveries",
   "POST quotes",
   "POST accounts/verify",
   "POST payouts",
@@ -52,6 +59,8 @@ function isAllowed(method: string, path: string) {
     publicRoutes.has(route) ||
     protectedRoutes.has(route) ||
     (method === "GET" && /^payouts\/[^/]+$/.test(path)) ||
+    (method === "GET" && /^webhook-deliveries\/[^/]+$/.test(path)) ||
+    (method === "POST" && /^webhook-deliveries\/[^/]+\/replay$/.test(path)) ||
     (method === "GET" && /^names\/[a-z0-9-]+$/.test(path))
   );
 }
@@ -150,9 +159,7 @@ async function handle(request: NextRequest, context: RouteContext) {
     return response;
   }
 
-  const query = ["payouts", "institutions", "rates/usdc/ngn/history"].includes(path)
-    ? request.nextUrl.search
-    : "";
+  const query = method === "GET" ? request.nextUrl.search : "";
   const idempotencyKey = request.headers.get("idempotency-key") ?? undefined;
   let result = await upstream(method, path, body, accessToken, query, idempotencyKey);
   if (result?.status === 401 && !isPublic(method, path) && path !== "auth/logout" && !session) {
@@ -171,6 +178,20 @@ async function handle(request: NextRequest, context: RouteContext) {
   if (result.status === 204) {
     const response = new NextResponse(null, { status: 204, headers: NO_STORE });
     clearSession(response);
+    return response;
+  }
+
+  if (path === "payouts/export" && result.ok) {
+    const response = new NextResponse(await result.text(), {
+      status: result.status,
+      headers: {
+        ...NO_STORE,
+        "Content-Type": result.headers.get("content-type") ?? "text/csv; charset=utf-8",
+        "Content-Disposition":
+          result.headers.get("content-disposition") ?? "attachment; filename=fliq-payouts.csv",
+      },
+    });
+    if (session) saveSession(response, request, session);
     return response;
   }
 

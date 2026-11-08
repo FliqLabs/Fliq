@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import type { WebhookEndpoint } from "../../lib/fliq-api";
 
 export type WebhookDelivery = {
   id: string;
@@ -14,12 +15,28 @@ export type WebhookDelivery = {
 
 type Props = {
   deliveries: WebhookDelivery[];
-  endpoint: string | null;
+  endpoints: WebhookEndpoint[];
+  onCreate?: (url: string) => Promise<string>;
   onReplay?: (deliveryId: string) => Promise<void>;
+  hasMore?: boolean;
+  loadingMore?: boolean;
+  onLoadMore?: () => void;
 };
 
-export function WebhooksDashboard({ deliveries, endpoint, onReplay }: Props) {
+export function WebhooksDashboard({
+  deliveries,
+  endpoints,
+  onCreate,
+  onReplay,
+  hasMore,
+  loadingMore,
+  onLoadMore,
+}: Props) {
   const [search, setSearch] = useState("");
+  const [url, setUrl] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState("");
+  const [createdSecret, setCreatedSecret] = useState("");
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [replayError, setReplayError] = useState<string | null>(null);
   const visibleDeliveries = deliveries.filter((delivery) =>
@@ -41,6 +58,22 @@ export function WebhooksDashboard({ deliveries, endpoint, onReplay }: Props) {
     }
   }
 
+  async function createEndpoint(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!onCreate) return;
+    setCreating(true);
+    setCreateError("");
+    setCreatedSecret("");
+    try {
+      setCreatedSecret(await onCreate(url.trim()));
+      setUrl("");
+    } catch (cause) {
+      setCreateError(cause instanceof Error ? cause.message : "Could not add endpoint.");
+    } finally {
+      setCreating(false);
+    }
+  }
+
   return (
     <main>
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -56,28 +89,50 @@ export function WebhooksDashboard({ deliveries, endpoint, onReplay }: Props) {
       >
         <div>
           <p className="text-xs font-semibold text-zinc-500">Endpoint URL</p>
-          <p className="mt-1 break-all text-sm font-medium">{endpoint ?? "No endpoint configured"}</p>
-          {!endpoint && (
-            <p className="mt-1 text-xs text-zinc-500">
-              Endpoint setup will be available when workspace settings are connected.
-            </p>
+          {endpoints.length === 0 ? (
+            <p className="mt-1 text-sm text-zinc-500">No endpoint configured</p>
+          ) : (
+            endpoints.map((endpoint) => (
+              <p key={endpoint.endpoint_id} className="mt-1 break-all text-sm font-medium">
+                {endpoint.url} <span className="text-xs font-normal text-zinc-500">({endpoint.status})</span>
+              </p>
+            ))
           )}
         </div>
-        <button
-          type="button"
-          disabled
-          className="rounded-lg border border-zinc-200 px-4 py-2.5 text-xs font-semibold text-zinc-400"
-        >
-          Add endpoint
-        </button>
+        <form onSubmit={createEndpoint} className="flex w-full flex-wrap gap-2 sm:w-auto">
+          <input
+            type="url"
+            required
+            placeholder="https://your-site.com/webhook"
+            value={url}
+            onChange={(event) => setUrl(event.target.value)}
+            className="min-w-0 flex-1 rounded-lg border border-zinc-200 px-3 py-2.5 text-xs sm:w-64"
+          />
+          <button
+            type="submit"
+            disabled={creating || !onCreate}
+            className="rounded-lg border border-zinc-200 px-4 py-2.5 text-xs font-semibold disabled:opacity-50"
+          >
+            {creating ? "Adding…" : "Add endpoint"}
+          </button>
+        </form>
       </section>
+      {createError && (
+        <p role="alert" className="mt-3 text-sm text-red-600">
+          {createError}
+        </p>
+      )}
+      {createdSecret && (
+        <div role="status" className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-xs">
+          <p className="font-semibold">Save this signing secret now. It is shown only once.</p>
+          <p className="mt-2 break-all font-mono">{createdSecret}</p>
+        </div>
+      )}
 
       <div className="mt-7 flex flex-wrap items-center justify-between gap-4">
         <div>
           <h2 className="text-sm font-semibold">Recent deliveries</h2>
-          <p className="mt-1 text-xs text-zinc-500">
-            Replay a delivery from its row when the webhook API is connected.
-          </p>
+          <p className="mt-1 text-xs text-zinc-500">Replay a delivery from its row.</p>
         </div>
         <label className="sr-only" htmlFor="webhook-search">
           Search deliveries
@@ -159,6 +214,16 @@ export function WebhooksDashboard({ deliveries, endpoint, onReplay }: Props) {
           </div>
         )}
       </section>
+      {hasMore && onLoadMore && (
+        <button
+          type="button"
+          disabled={loadingMore}
+          onClick={onLoadMore}
+          className="mt-4 rounded-lg border border-zinc-200 px-4 py-2.5 text-sm font-semibold disabled:opacity-50"
+        >
+          {loadingMore ? "Loading…" : "Load more deliveries"}
+        </button>
+      )}
     </main>
   );
 }

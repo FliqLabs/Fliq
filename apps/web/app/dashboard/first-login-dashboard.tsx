@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useState } from "react";
 import fliqMark from "../image/fliq image.png";
 import type { Onboarding } from "../lib/fliq-api";
+import { PayoutExportButton } from "./payout-export-button";
 
 type Props = { onCreatePayout: () => void; onboarding?: Onboarding };
 type ExampleLanguage = "curl" | "TypeScript";
@@ -104,13 +105,7 @@ export function FirstLoginDashboard({ onCreatePayout, onboarding }: Props) {
           className="h-10 w-full max-w-sm rounded-lg border border-zinc-200 px-4 text-sm placeholder:text-zinc-400 disabled:bg-zinc-50"
         />
         <div className="flex gap-2">
-          <button
-            type="button"
-            disabled
-            className="rounded-lg border border-zinc-200 px-4 py-2.5 text-xs font-semibold text-zinc-400"
-          >
-            Export CSV
-          </button>
+          <PayoutExportButton />
           <button
             type="button"
             onClick={onCreatePayout}

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRef, useState } from "react";
 import { CreateTestPayoutDrawer } from "./create-test-payout-drawer";
 import { FirstLoginDashboard } from "./first-login-dashboard";
+import { PayoutExportButton } from "./payout-export-button";
 import type { Onboarding } from "../lib/fliq-api";
 
 export type PayoutRow = {
@@ -27,13 +28,24 @@ export type DashboardSummary = {
 type Props = {
   payouts: PayoutRow[];
   summary: DashboardSummary;
+  summaryLoading?: boolean;
+  summaryError?: string;
   onboarding?: Onboarding;
   hasMore?: boolean;
   loadingMore?: boolean;
   onLoadMore?: () => void;
 };
 
-export function PayoutsDashboard({ payouts, summary, onboarding, hasMore, loadingMore, onLoadMore }: Props) {
+export function PayoutsDashboard({
+  payouts,
+  summary,
+  summaryLoading,
+  summaryError,
+  onboarding,
+  hasMore,
+  loadingMore,
+  onLoadMore,
+}: Props) {
   const [search, setSearch] = useState("");
   const drawerRef = useRef<HTMLDialogElement>(null);
   const visiblePayouts = payouts.filter((payout) =>
@@ -69,13 +81,7 @@ export function PayoutsDashboard({ payouts, summary, onboarding, hasMore, loadin
           className="h-10 w-full max-w-sm rounded-lg border border-zinc-200 px-4 text-sm outline-none placeholder:text-zinc-400 focus:border-zinc-500"
         />
         <div className="flex gap-2">
-          <button
-            type="button"
-            disabled
-            className="rounded-lg border border-zinc-200 px-4 py-2.5 text-xs font-semibold text-zinc-400"
-          >
-            Export CSV
-          </button>
+          <PayoutExportButton />
           <button
             type="button"
             onClick={openCreatePayout}
@@ -98,7 +104,12 @@ export function PayoutsDashboard({ payouts, summary, onboarding, hasMore, loadin
           value={summary.bestRate === null ? "—" : `₦${summary.bestRate.toFixed(2)}`}
         />
       </div>
-      <p className="mt-2 text-xs text-zinc-500">Summary metrics are not available yet.</p>
+      {summaryLoading && <p className="mt-2 text-xs text-zinc-500">Loading summary metrics…</p>}
+      {summaryError && (
+        <p role="alert" className="mt-2 text-xs text-red-600">
+          {summaryError}
+        </p>
+      )}
 
       <section aria-label="Payouts list" className="mt-4 overflow-hidden rounded-xl border border-zinc-200">
         <div className="hidden grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr] gap-4 border-b border-zinc-200 px-4 py-3 text-[11px] font-semibold uppercase text-zinc-500 md:grid">

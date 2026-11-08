@@ -4,11 +4,13 @@ import { useEffect, useRef, useState, type FormEvent, type RefObject } from "rea
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { fliqApi, type Institution, type Quote, type VerifiedAccount } from "../lib/fliq-api";
 import type { Payout } from "./payout-model";
+import { useRouter } from "next/navigation";
 
 type Props = { dialogRef: RefObject<HTMLDialogElement | null> };
 type Corridor = "ngn" | "kes";
 
 export function CreateTestPayoutDrawer({ dialogRef }: Props) {
+  const router = useRouter();
   const [amount, setAmount] = useState("");
   const [corridor, setCorridor] = useState<Corridor>("ngn");
   const [bank, setBank] = useState("");
@@ -84,11 +86,12 @@ export function CreateTestPayoutDrawer({ dialogRef }: Props) {
           ...(clientReference.trim() ? { client_reference: clientReference.trim() } : {}),
         }),
       }),
-    onSuccess: () => {
+    onSuccess: (payout) => {
       idempotencyKey.current = null;
       queryClient.invalidateQueries({ queryKey: ["payouts"] });
       queryClient.invalidateQueries({ queryKey: ["onboarding"] });
       dialogRef.current?.close();
+      router.push(`/dashboard/payouts/sent?payoutId=${encodeURIComponent(payout.payout_id)}`);
     },
   });
 

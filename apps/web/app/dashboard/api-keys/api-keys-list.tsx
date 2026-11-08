@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { ApiError, fliqApi, type User } from "../../lib/fliq-api";
+import { ApiError, fliqApi, type Usage, type User } from "../../lib/fliq-api";
 
 type KeyList = {
   items: { key_id: string; environment: "test" | "live"; masked: string; created_at: string }[];
@@ -14,6 +14,11 @@ export function ApiKeysList() {
     queryKey: ["keys"],
     queryFn: () => fliqApi<KeyList>("keys"),
     enabled: account.isSuccess,
+  });
+  const usage = useQuery({
+    queryKey: ["usage", 7],
+    queryFn: () => fliqApi<Usage>("usage?days=7"),
+    enabled: account.isSuccess && keys.isSuccess,
   });
 
   return (
@@ -74,6 +79,30 @@ export function ApiKeysList() {
             </div>
           )}
         </section>
+      )}
+      {usage.isSuccess && (
+        <section aria-label="API usage" className="mt-7 rounded-xl border border-zinc-200 p-5">
+          <h2 className="text-sm font-semibold">API usage · last 7 days</h2>
+          <dl className="mt-4 grid gap-4 text-sm sm:grid-cols-3">
+            <div>
+              <dt className="text-zinc-500">Requests</dt>
+              <dd className="mt-1 font-semibold">{usage.data.totals.requests}</dd>
+            </div>
+            <div>
+              <dt className="text-zinc-500">Failed</dt>
+              <dd className="mt-1 font-semibold">{usage.data.totals.failed}</dd>
+            </div>
+            <div>
+              <dt className="text-zinc-500">Payouts created</dt>
+              <dd className="mt-1 font-semibold">{usage.data.totals.payouts_created}</dd>
+            </div>
+          </dl>
+        </section>
+      )}
+      {usage.isError && (
+        <p role="alert" className="mt-4 text-sm text-red-600">
+          {usage.error.message}
+        </p>
       )}
     </main>
   );
