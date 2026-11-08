@@ -41,8 +41,7 @@ struct PayToView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-            searchField.padding(.top, 18)
+            searchField.padding(.top, 8)
             chips.padding(.top, 12)
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
@@ -59,6 +58,9 @@ struct PayToView: View {
         }
         .padding(.horizontal, 16)
         .overlay(alignment: .bottomTrailing) { newRecipient }
+        .navigationTitle("Pay to")
+        .navigationBarTitleDisplayMode(.inline)
+        .sheetToolbar { dismiss() }
         .task { people = (try? await environment.api.recentPeople().items) ?? [] }
         .confirmationDialog(
             "Remove \(removing?.accountName.localizedCapitalized ?? "this account")?",
@@ -74,22 +76,6 @@ struct PayToView: View {
     }
 
     // MARK: Top
-
-    private var header: some View {
-        HStack {
-            Text("Pay to").font(.system(size: 24, weight: .bold)).tracking(-0.4)
-            Spacer()
-            Button { dismiss() } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 14, weight: .bold))
-                    .frame(width: 34, height: 34)
-                    .background(Theme.surfaceRaised, in: Circle())
-            }
-            .accessibilityLabel("Close")
-        }
-        .foregroundStyle(Theme.textPrimary)
-        .padding(.top, 24)
-    }
 
     private var searchField: some View {
         HStack(spacing: 10) {

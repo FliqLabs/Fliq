@@ -1,41 +1,107 @@
 import SwiftUI
 import UIKit
 
-enum ReceiveStep: Hashable {
-    case fliqName, currencies, networks(token: String), address, arriving
-}
+/// Send, Receive and Request, as one sheet that moves forward in place and grows to full height after the menu.
+struct MoneySheet: View {
+    enum Start: Identifiable {
+        case menu, receive
 
-/// Receive, as one sheet over Home with its own steps: how, currency, network, address.
-struct ReceiveSheet: View {
-    let flow: ReceiveFlow
+        var id: Self { self }
+    }
+
+    enum Step: Hashable {
+        case payTo, receive, fliqName, currencies, networks(token: String), address, arriving, request
+    }
+
+    let start: Start
+    let makeReceive: () -> ReceiveFlow
+    let makeRequest: () -> RequestFlow
+    let onAccount: (VerifiedAccount) -> Void
+    let onPerson: (String?) -> Void
+    let onNewAccount: () -> Void
     @Environment(\.dismiss) private var dismiss
-    @State private var path: [ReceiveStep] = []
+    @State private var path: [Step] = []
+    @State private var receive: ReceiveFlow?
+    @State private var request: RequestFlow?
+    @State private var detent = PresentationDetent.large
+
+    static let menuHeight = PresentationDetent.height(470)
 
     var body: some View {
         NavigationStack(path: $path) {
-            ReceiveStartView(name: flow.name, onFliqName: { path.append(.fliqName) }, onWallet: { path.append(.currencies) })
-                .navigationDestination(for: ReceiveStep.self) { step in
-                    switch step {
-                    case .fliqName: FliqNameCardView(name: flow.name ?? "")
-                    case .currencies: CurrencyListView(flow: flow) { token in
-                        let networks = flow.networks(for: token)
-                        if networks.count == 1, let only = networks.first {
-                            reserve(only)
-                        } else {
-                            path.append(.networks(token: token))
-                        }
-                    }
-                    case .networks(let token): NetworkListView(flow: flow, token: token, onPick: reserve)
-                    case .address: DepositAddressView(flow: flow, onSeen: { path.append(.arriving) })
-                    case .arriving: ArrivingView(flow: flow, onDone: { dismiss() })
-                    }
-                }
+            root.navigationDestination(for: Step.self, destination: screen)
         }
         .tint(Theme.textPrimary)
-        .task { await flow.loadSources() }
+        .presentationDetents([Self.menuHeight, .large], selection: $detent)
+        .onAppear { detent = Self.menuHeight }
+        .onChange(of: path) { _, path in
+            withAnimation(.snappy) { detent = isChoosing(path) ? Self.menuHeight : .large }
+        }
     }
 
-    private func reserve(_ source: DepositSource) {
+    /// The menu and "How do you want to get paid?" are short choices, so the sheet stays low for them.
+    private func isChoosing(_ path: [Step]) -> Bool {
+        path.isEmpty || path == [.receive]
+    }
+
+    @ViewBuilder
+    private var root: some View {
+        switch start {
+        case .menu:
+            MoveMoneyMenu(
+                onSend: { path.append(.payTo) },
+                onReceive: { openReceive() },
+                onRequest: {
+                    request = makeRequest()
+                    path.append(.request)
+                }
+            )
+        case .receive:
+            receiveStart.task { if receive == nil { receive = makeReceive() } }
+        }
+    }
+
+    private var receiveStart: some View {
+        ReceiveStartView(name: receive?.name, onFliqName: { path.append(.fliqName) }, onWallet: { path.append(.currencies) })
+    }
+
+    private func openReceive() {
+        if receive == nil { receive = makeReceive() }
+        path.append(.receive)
+    }
+
+    @ViewBuilder
+    private func screen(_ step: Step) -> some View {
+        switch step {
+        case .payTo:
+            PayToView(onAccount: onAccount, onPerson: onPerson, onNew: onNewAccount)
+        case .request:
+            if let request { RequestView(flow: request) { dismiss() } }
+        case .receive:
+            receiveStart
+        default:
+            if let receive { receiveScreen(step, receive) }
+        }
+    }
+
+    @ViewBuilder
+    private func receiveScreen(_ step: Step, _ flow: ReceiveFlow) -> some View {
+        switch step {
+        case .fliqName: FliqNameCardView(name: flow.name ?? "")
+        case .currencies:
+            CurrencyListView(flow: flow) { token in
+                let networks = flow.networks(for: token)
+                if networks.count == 1, let only = networks.first { reserve(only, in: flow) } else { path.append(.networks(token: token)) }
+            }
+            .task { await flow.loadSources() }
+        case .networks(let token): NetworkListView(flow: flow, token: token) { reserve($0, in: flow) }
+        case .address: DepositAddressView(flow: flow) { if path.last != .arriving { path.append(.arriving) } }
+        case .arriving: ArrivingView(flow: flow) { dismiss() }
+        default: EmptyView()
+        }
+    }
+
+    private func reserve(_ source: DepositSource, in flow: ReceiveFlow) {
         Task { if await flow.reserve(source) { path.append(.address) } }
     }
 }
@@ -85,42 +151,59 @@ private struct ReceiveStartView: View {
 private struct CurrencyListView: View {
     let flow: ReceiveFlow
     let onPick: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 0) {
                 if let message = flow.errorMessage {
-                    Callout(text: message, symbol: "wifi.exclamationmark", tint: Theme.warning)
+                    Callout(text: message, symbol: "wifi.exclamationmark", tint: Theme.warning).padding(.top, 8)
                 }
                 if flow.isLoading && flow.sources.isEmpty {
-                    ProgressView().frame(maxWidth: .infinity).padding(.top, 40)
+                    ProgressView().frame(maxWidth: .infinity).padding(.top, 60)
                 }
                 ForEach(flow.currencies, id: \.group) { group in
                     Text(group.group.title)
-                        .font(.system(size: 15, weight: .medium))
+                        .font(.system(size: 20))
                         .foregroundStyle(Theme.textSecondary)
-                        .padding(.top, 16)
-                        .padding(.horizontal, 2)
-                    ForEach(group.tokens, id: \.self) { token in
-                        SheetRow(title: Self.name(of: token), detail: networksLine(token), action: { onPick(token) }) {
-                            TokenLogo(token: token.uppercased(), size: 40)
+                        .padding(.top, 28)
+                        .padding(.bottom, 14)
+                    VStack(spacing: 10) {
+                        ForEach(group.tokens, id: \.self) { token in
+                            Button { onPick(token) } label: { row(token) }
+                                .buttonStyle(.pressable(scale: 0.98))
+                                .disabled(flow.isReserving)
+                                .accessibilityIdentifier(Self.name(of: token))
                         }
-                        .disabled(flow.isReserving)
                     }
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 24)
+            .padding(.horizontal, 24)
+            .padding(.bottom, 32)
         }
         .scrollIndicators(.hidden)
-        .navigationTitle("Choose currency")
+        .navigationTitle("Choose currency to receive")
         .navigationBarTitleDisplayMode(.inline)
+        .sheetToolbar { dismiss() }
     }
 
-    private func networksLine(_ token: String) -> String {
-        let networks = flow.networks(for: token)
-        if networks.count == 1, let only = networks.first { return "on \(only.chain) · \(only.eta)" }
-        return "\(networks.count) networks"
+    private func row(_ token: String) -> some View {
+        HStack(spacing: 18) {
+            TokenLogo(token: token.uppercased(), size: 40)
+            Text(Self.name(of: token)).font(.system(size: 20))
+            Spacer()
+            if flow.isReserving, flow.source?.tokenId == token {
+                ProgressView()
+            } else {
+                Image(systemName: "chevron.right").font(.system(size: 15, weight: .medium)).foregroundStyle(Theme.textSecondary)
+            }
+        }
+        .foregroundStyle(Theme.textPrimary)
+        .padding(.leading, 14)
+        .padding(.trailing, 22)
+        .frame(height: 56)
+        .background(Color(hex: 0x222222), in: RoundedRectangle(cornerRadius: 16))
+        .contentShape(Rectangle())
     }
 
     static func name(of token: String) -> String {
@@ -139,69 +222,85 @@ private struct NetworkListView: View {
     let flow: ReceiveFlow
     let token: String
     let onPick: (DepositSource) -> Void
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                HStack {
+                HStack(alignment: .center) {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Receive \(token.uppercased())").font(.system(size: 30, weight: .bold)).tracking(-0.6)
+                        Text("Receive \(token.uppercased())")
+                            .font(.system(size: 36, weight: .medium))
+                            .tracking(-0.7)
                         Text(token == "btc" ? "Lands in your vault as dollars" : "1 \(token.uppercased()) ≈ $1.00")
-                            .font(.system(size: 16))
+                            .font(.system(size: 18))
                             .foregroundStyle(Theme.textSecondary)
                     }
                     Spacer()
-                    TokenLogo(token: token.uppercased(), size: 52)
+                    TokenLogo(token: token.uppercased(), size: 40)
                 }
-                .padding(.top, 8)
+                .padding(.top, 20)
 
-                Callout(text: "Your address depends on the coin and the network. Send on the network you pick here.", symbol: "exclamationmark.circle", tint: Theme.warning)
-                    .padding(.top, 20)
+                HStack(spacing: 18) {
+                    Image(systemName: "exclamationmark.circle").font(.system(size: 22)).foregroundStyle(Color(hex: 0xF5C542))
+                    Text("Your receiving address depends on the coin and network.")
+                        .font(.system(size: 17))
+                        .foregroundStyle(Theme.textPrimary)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 22)
+                .padding(.vertical, 18)
+                .background(Color(hex: 0x0E0E0E), in: RoundedRectangle(cornerRadius: 22))
+                .padding(.top, 26)
 
+                let networks = flow.networks(for: token)
                 VStack(spacing: 0) {
-                    let networks = flow.networks(for: token)
                     ForEach(Array(networks.enumerated()), id: \.element.id) { index, source in
-                        Button { onPick(source) } label: { row(source, isLast: index == networks.count - 1) }
+                        Button { onPick(source) } label: { row(source) }
                             .disabled(flow.reason(unavailable: source) != nil || flow.isReserving)
+                            .accessibilityIdentifier(source.chain)
+                        if index < networks.count - 1 {
+                            Rectangle().fill(Color(hex: 0x1A1A1A)).frame(height: 1.5)
+                        }
                     }
                 }
-                .fliqGlass(RoundedRectangle(cornerRadius: 24))
-                .padding(.top, 18)
+                .background(Color(hex: 0x262626), in: RoundedRectangle(cornerRadius: 26))
+                .overlay(RoundedRectangle(cornerRadius: 26).strokeBorder(Color.white.opacity(0.06)))
+                .padding(.top, 24)
             }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 24)
+            .padding(.horizontal, 24)
+            .padding(.bottom, 32)
         }
         .scrollIndicators(.hidden)
         .navigationTitle("Choose network")
         .navigationBarTitleDisplayMode(.inline)
+        .sheetToolbar { dismiss() }
     }
 
-    private func row(_ source: DepositSource, isLast: Bool) -> some View {
+    private func row(_ source: DepositSource) -> some View {
         let reason = flow.reason(unavailable: source)
-        return HStack(spacing: 14) {
-            ChainLogo(source: source, size: 40)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(source.isDirect ? "NEAR · your fliq name" : source.chain).font(.system(size: 17, weight: .medium))
-                Text(reason ?? (source.isDirect ? "\(source.eta) · from any NEAR wallet, no fee" : source.eta))
-                    .font(.system(size: 14))
+        return HStack(spacing: 18) {
+            ChainLogo(source: source, size: 32)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(source.isDirect ? "NEAR" : source.chain).font(.system(size: 20))
+                Text(reason ?? (source.isDirect ? "\(source.eta) · no fee" : source.eta))
+                    .font(.system(size: 17))
                     .foregroundStyle(reason == nil ? Theme.textSecondary : Theme.warning)
-                    .lineLimit(2)
+                    .lineLimit(1)
             }
             Spacer()
             if flow.isReserving && flow.source == source {
                 ProgressView()
             } else if reason == nil {
-                Image(systemName: "chevron.right").font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.textTertiary)
+                Image(systemName: "chevron.right").font(.system(size: 16, weight: .medium)).foregroundStyle(Theme.textSecondary)
             }
         }
         .foregroundStyle(Theme.textPrimary)
-        .opacity(reason == nil ? 1 : 0.55)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
+        .opacity(reason == nil ? 1 : 0.5)
+        .padding(.leading, 22)
+        .padding(.trailing, 24)
+        .frame(minHeight: 76)
         .contentShape(Rectangle())
-        .overlay(alignment: .bottom) {
-            if !isLast { Rectangle().fill(Color.white.opacity(0.07)).frame(height: 1).padding(.leading, 70) }
-        }
     }
 }
 
@@ -341,7 +440,7 @@ struct ChainLogo: View {
         Group {
             if source.group == .bitcoin {
                 TokenLogo(token: "BTC", size: size)
-            } else if let image = UIImage(named: "Chain\(source.chain)") {
+            } else if let image = UIImage(named: source.chainImage) {
                 Image(uiImage: image).resizable().scaledToFit().background(Color(hex: 0x111111))
             } else {
                 Text(source.chain.prefix(1))

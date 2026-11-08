@@ -1,33 +1,15 @@
 import SwiftUI
 
-enum HomeTab {
-    case balance, activity
-}
-
-struct HomeView<Activity: View>: View {
+struct HomeView: View {
     @State var model: HomeModel
-    @Binding var tab: HomeTab
-    var onMoveMoney: () -> Void = {}
     var onMenu: () -> Void = {}
-    /// Activity shows in place of the balance, so the action bar stays under it.
-    @ViewBuilder var activity: () -> Activity
 
     var body: some View {
         VStack(spacing: 0) {
             header
-            switch tab {
-            case .balance:
-                Spacer()
-                balance
-                Spacer()
-            case .activity:
-                activity()
-                    .padding(.horizontal, 16)
-                    .frame(maxHeight: .infinity, alignment: .top)
-            }
-            ActionBar(items: actions)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 12)
+            Spacer()
+            balance
+            Spacer()
         }
         .background(Theme.ground.ignoresSafeArea())
         .task { await model.load() }
@@ -43,8 +25,7 @@ struct HomeView<Activity: View>: View {
             }
             .accessibilityLabel("Profile")
             Spacer()
-            Button { tab = .balance } label: { Wordmark() }
-                .accessibilityLabel("fliq")
+            Wordmark()
             Spacer()
             Button(action: onMenu) {
                 Image(systemName: "line.3.horizontal.decrease")
@@ -105,14 +86,6 @@ struct HomeView<Activity: View>: View {
                 .padding(.top, 6)
         }
     }
-
-    private var actions: [ActionBarItem] {
-        [
-            ActionBarItem(title: "Home", symbol: "house", isSelected: tab == .balance) { tab = .balance },
-            ActionBarItem(title: "Send, receive or request", symbol: "arrow.up.arrow.down", isProminent: true, action: onMoveMoney),
-            ActionBarItem(title: "Activity", symbol: "clock.arrow.circlepath", isSelected: tab == .activity) { tab = .activity },
-        ]
-    }
 }
 
 private struct TrailingIconLabelStyle: LabelStyle {
@@ -125,7 +98,5 @@ private struct TrailingIconLabelStyle: LabelStyle {
 }
 
 #Preview {
-    HomeView(model: HomeModel(api: AppEnvironment.preview.api, vault: AppEnvironment.preview.vault), tab: .constant(.balance)) {
-        EmptyView()
-    }
+    HomeView(model: HomeModel(api: AppEnvironment.preview.api, vault: AppEnvironment.preview.vault))
 }

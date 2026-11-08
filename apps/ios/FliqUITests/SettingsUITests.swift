@@ -12,7 +12,7 @@ final class SettingsUITests: XCTestCase {
         app.launchArguments = ["--ui-testing", "--onboarded"]
         app.launch()
 
-        app.buttons["Send, receive or request"].tap()
+        app.buttons["Transfer"].tap()
         XCTAssertTrue(app.buttons["Send"].waitForExistence(timeout: 3))
         app.buttons["Send"].tap()
         XCTAssertTrue(app.buttons["New recipient"].waitForExistence(timeout: 3))

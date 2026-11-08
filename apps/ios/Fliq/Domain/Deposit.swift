@@ -30,6 +30,8 @@ struct DepositSource: Hashable, Sendable, Identifiable {
     var chain: String { Self.chainNames[chainId] ?? chainId.capitalized }
     var title: String { "\(token) on \(chain)" }
     var isDirect: Bool { group == .near }
+    /// The chain's image in the asset catalog: ChainSolana, ChainNEAR, ChainBnb.
+    var chainImage: String { "Chain" + (chainId == "near" ? "NEAR" : chainId.capitalized) }
 
     var eta: String {
         etaSeconds < 60 ? "~\(etaSeconds)s" : "~\(Int((Double(etaSeconds) / 60).rounded())) min"

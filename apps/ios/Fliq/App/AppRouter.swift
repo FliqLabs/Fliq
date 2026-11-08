@@ -8,7 +8,6 @@ enum AppRoute: Hashable {
     case paySending
     case payPaid
     case payRefunded
-    case request
     case agents
     case settings
     case settingsAccounts

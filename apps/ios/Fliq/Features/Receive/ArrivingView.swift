@@ -105,7 +105,7 @@ struct ArrivingView: View {
     }
 
     private func seenLogo(_ deposit: DepositAddress) -> String {
-        deposit.source.group == .bitcoin ? "TokenBTC" : "Chain\(deposit.source.chain)"
+        deposit.source.group == .bitcoin ? "TokenBTC" : deposit.source.chainImage
     }
 
     private var vaultDetail: String {

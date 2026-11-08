@@ -3,7 +3,6 @@ import SwiftUI
 struct ActivityView: View {
     let store: ActivityStore
     let onReceive: () -> Void
-    @Environment(AppEnvironment.self) private var environment
     @State private var filter = Filter.all
 
     enum Filter: String, CaseIterable {
@@ -42,7 +41,7 @@ struct ActivityView: View {
                                 .padding(.top, 14)
                                 .padding(.horizontal, 2)
                             ForEach(day.entries) { entry in
-                                Button { environment.router.push(.receipt(payoutId: entry.id)) } label: {
+                                NavigationLink(value: AppRoute.receipt(payoutId: entry.id)) {
                                     ActivityRow(entry: entry)
                                 }
                             }

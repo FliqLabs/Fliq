@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// What the middle of the action bar opens: send, receive or request, each leading to its own screen.
-struct MoveMoneySheet: View {
+/// The first page of the money sheet: send, receive or request.
+struct MoveMoneyMenu: View {
     let onSend: () -> Void
     let onReceive: () -> Void
     let onRequest: () -> Void
