@@ -61,15 +61,37 @@ final class ReceiveFlow {
         return deposit.landing(received)
     }
 
+    /// A free Render instance takes most of a minute to wake, so a first failure is tried once more before it shows.
     func loadSources() async {
         guard sources.isEmpty, !isLoading else { return }
         isLoading = true
         defer { isLoading = false }
-        do {
-            sources = try await api.sources()
-            errorMessage = nil
-        } catch {
-            errorMessage = "Couldn't load where you can receive from. Check your connection and try again."
+        for attempt in 1...2 {
+            do {
+                sources = try await api.sources()
+                errorMessage = nil
+                return
+            } catch {
+                errorMessage = Self.message(for: error)
+                if attempt == 1, !Task.isCancelled { try? await Task.sleep(for: retryDelay) }
+            }
+        }
+    }
+
+    var retryDelay: Duration = .seconds(2)
+
+    private static func message(for error: Error) -> String {
+        switch error {
+        case APIError.server(status: 401, _), APIError.unexpected(status: 401):
+            "Your session ended. Sign out in Settings and sign back in with your passkey."
+        case APIError.server(let status, let detail):
+            "The server said no (\(status)): \(detail.message)"
+        case let error as URLError where error.code == .timedOut:
+            "fliq's server is waking up. Try again in a moment."
+        case is URLError:
+            "No connection to fliq. Check your internet and try again."
+        default:
+            "Couldn't read where you can receive from. Try again."
         }
     }
 

@@ -39,6 +39,16 @@ struct MoneySheet: View {
         }
     }
 
+    /// Grows the sheet first, then moves on, so the next screen never shows squeezed into the short sheet.
+    private func go(_ step: Step) {
+        guard detent != .large, !isChoosing(path + [step]) else { return path.append(step) }
+        withAnimation(.snappy(duration: 0.28)) { detent = .large }
+        Task {
+            try? await Task.sleep(for: .milliseconds(280))
+            path.append(step)
+        }
+    }
+
     /// The menu and "How do you want to get paid?" are short choices, so the sheet stays low for them.
     private func isChoosing(_ path: [Step]) -> Bool {
         path.isEmpty || path == [.receive]
@@ -49,11 +59,11 @@ struct MoneySheet: View {
         switch start {
         case .menu:
             MoveMoneyMenu(
-                onSend: { path.append(.payTo) },
+                onSend: { go(.payTo) },
                 onReceive: { openReceive() },
                 onRequest: {
                     request = makeRequest()
-                    path.append(.request)
+                    go(.request)
                 }
             )
         case .receive:
@@ -62,12 +72,12 @@ struct MoneySheet: View {
     }
 
     private var receiveStart: some View {
-        ReceiveStartView(name: receive?.name, onFliqName: { path.append(.fliqName) }, onWallet: { path.append(.currencies) })
+        ReceiveStartView(name: receive?.name, onFliqName: { go(.fliqName) }, onWallet: { go(.currencies) })
     }
 
     private func openReceive() {
         if receive == nil { receive = makeReceive() }
-        path.append(.receive)
+        go(.receive)
     }
 
     @ViewBuilder
@@ -91,18 +101,18 @@ struct MoneySheet: View {
         case .currencies:
             CurrencyListView(flow: flow) { token in
                 let networks = flow.networks(for: token)
-                if networks.count == 1, let only = networks.first { reserve(only, in: flow) } else { path.append(.networks(token: token)) }
+                if networks.count == 1, let only = networks.first { reserve(only, in: flow) } else { go(.networks(token: token)) }
             }
             .task { await flow.loadSources() }
         case .networks(let token): NetworkListView(flow: flow, token: token) { reserve($0, in: flow) }
-        case .address: DepositAddressView(flow: flow) { if path.last != .arriving { path.append(.arriving) } }
+        case .address: DepositAddressView(flow: flow) { if path.last != .arriving { go(.arriving) } }
         case .arriving: ArrivingView(flow: flow) { dismiss() }
         default: EmptyView()
         }
     }
 
     private func reserve(_ source: DepositSource, in flow: ReceiveFlow) {
-        Task { if await flow.reserve(source) { path.append(.address) } }
+        Task { if await flow.reserve(source) { go(.address) } }
     }
 }
 
@@ -156,8 +166,11 @@ private struct CurrencyListView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                if let message = flow.errorMessage {
+                if let message = flow.errorMessage, flow.sources.isEmpty, !flow.isLoading {
                     Callout(text: message, symbol: "wifi.exclamationmark", tint: Theme.warning).padding(.top, 8)
+                    Button("Try again") { Task { await flow.loadSources() } }
+                        .buttonStyle(PrimaryButtonStyle())
+                        .padding(.top, 12)
                 }
                 if flow.isLoading && flow.sources.isEmpty {
                     ProgressView().frame(maxWidth: .infinity).padding(.top, 60)
