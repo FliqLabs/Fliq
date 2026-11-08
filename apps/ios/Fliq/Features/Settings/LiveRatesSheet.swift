@@ -20,10 +20,16 @@ struct LiveRatesSheet: View {
                 .padding(.top, 8)
 
                 VStack(spacing: 0) {
-                    DetailRow("Before fees", Money.rate(rate.rateBeforeFees, rate.currency))
-                    DetailRow("Official close", Money.rate(rate.official.rate, rate.currency))
-                    DetailRow("P2P median", Money.rate(rate.p2p.rate, rate.currency))
-                    DetailRow("Change today", (rate.change24h * 100).formatted(.number.precision(.fractionLength(2)).sign(strategy: .always())) + "%", isLast: true)
+                    DetailRow("Before fees", Money.rate(rate.rateBeforeFees, rate.currency), isLast: rate.official == nil && rate.p2p == nil && rate.change24h == nil)
+                    if let official = rate.official {
+                        DetailRow("Official close", Money.rate(official.rate, rate.currency), isLast: rate.p2p == nil && rate.change24h == nil)
+                    }
+                    if let p2p = rate.p2p {
+                        DetailRow("P2P median", Money.rate(p2p.rate, rate.currency), isLast: rate.change24h == nil)
+                    }
+                    if let change = rate.change24h {
+                        DetailRow("Change today", (change * 100).formatted(.number.precision(.fractionLength(2)).sign(strategy: .always())) + "%", isLast: true)
+                    }
                 }
                 .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16))
                 .padding(.top, 8)
