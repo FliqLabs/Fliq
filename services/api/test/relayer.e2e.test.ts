@@ -31,7 +31,7 @@ describe.skipIf(!enabled)("creating NEAR accounts and relaying calls through the
   const database = createDatabase();
   const unit = unitOf(database);
   // The relayer's account creator is fliq.testnet, so names are claimed under it.
-  const config = { ...loadConfig(), nearRootAccount: ROOT, vaultAccount: VAULT };
+  const config = { ...loadConfig(), nearRootAccount: ROOT, vaultAccount: VAULT, usdcContract: USDC };
   const links: string[] = [];
   const sender: EmailSender = { sendSignInLink: async (_to, link) => void links.push(link) };
   const suffix = randomBytes(3).toString("hex");
@@ -102,6 +102,7 @@ describe.skipIf(!enabled)("creating NEAR accounts and relaying calls through the
       const users = await tx.user.findMany({ where: { email: { in: emails } }, select: { id: true } });
       const ids = users.map((user) => user.id);
       await tx.$executeRaw`DELETE FROM core.agents WHERE user_id = ANY(${ids}::text[])`;
+      await tx.$executeRaw`DELETE FROM core.vault_deposits WHERE user_id = ANY(${ids}::text[])`;
       await tx.$executeRaw`DELETE FROM developer.idempotency_records WHERE scope = ANY(${ids}::text[])`;
       await tx.$executeRaw`DELETE FROM auth.sessions WHERE user_id = ANY(${ids}::text[])`;
       await tx.$executeRaw`DELETE FROM auth.users WHERE id = ANY(${ids}::text[])`;
@@ -230,6 +231,28 @@ describe.skipIf(!enabled)("creating NEAR accounts and relaying calls through the
     const refused = await app.inject({ method: "POST", url: "/v1/relays", payload: { signed_delegate: someoneElse.base64 }, headers });
     expect(refused.statusCode).toBe(403);
     expect((await app.inject({ method: "POST", url: "/v1/relays", payload: { signed_delegate: "bm90IGEgZGVsZWdhdGU=" }, headers })).statusCode).toBe(400);
+  });
+
+  it("shows USDC the user adds from their own NEAR account in Activity, once however often it is relayed", async () => {
+    const headers = await signIn("topup");
+    const user = newUser(`topup${suffix}.${ROOT}`);
+    expect((await claim(headers, `t-${suffix}`, { name: `topup${suffix}`, public_key: user.publicKey })).statusCode).toBe(201);
+
+    const topUp = await signDelegate(user, {
+      receiverId: USDC,
+      methodName: "ft_transfer_call",
+      args: { receiver_id: VAULT, amount: "20000000", msg: "" },
+      deposit: 1n,
+    });
+    const relayed = await app.inject({ method: "POST", url: "/v1/relays", payload: { signed_delegate: topUp.base64 }, headers });
+    expect(relayed.statusCode, relayed.body).toBe(200);
+    expect(relayed.json().status).toBe("succeeded");
+    await app.inject({ method: "POST", url: "/v1/relays", payload: { signed_delegate: topUp.base64 }, headers });
+
+    const activity = (await app.inject({ method: "GET", url: "/v1/activity", headers })).json();
+    const deposits = activity.items.filter((item: { kind: string }) => item.kind === "deposit");
+    expect(deposits).toHaveLength(1);
+    expect(deposits[0]).toMatchObject({ status: "received", usd: "20.00", token: "20 USDC", party: { name: "Received from NEAR" } });
   });
 
   it("passes the relayer's own refusals through, such as a call outside its allowlist", async () => {
