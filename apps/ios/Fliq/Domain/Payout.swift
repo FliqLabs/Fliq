@@ -5,7 +5,7 @@ struct Account: Codable, Sendable, Equatable {
     let number: String
 }
 
-struct VerifiedAccount: Codable, Sendable, Equatable {
+struct VerifiedAccount: Codable, Sendable, Hashable {
     let bank: String
     let number: String
     let accountName: String

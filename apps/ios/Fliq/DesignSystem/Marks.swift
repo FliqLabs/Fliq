@@ -35,9 +35,10 @@ struct CountryFlag: View {
 
     var body: some View {
         Text(country.flag)
-            .font(.system(size: size * 1.3))
+            .font(.system(size: size * 1.9))
             .frame(width: size, height: size)
             .clipShape(Circle())
+            .overlay(Circle().strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))
     }
 }
 
@@ -64,15 +65,22 @@ struct PersonAvatar: View {
     }
 
     private var initial: some View {
-        Text(String(name.prefix(1)).uppercased())
-            .font(.system(size: size * 0.4, weight: .semibold))
-            .foregroundStyle(.white)
+        Text(initials)
+            .font(.system(size: size * 0.34, weight: .semibold))
+            .foregroundStyle(tint)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(LinearGradient(colors: [tint, tint.opacity(0.45)], startPoint: .topLeading, endPoint: .bottomTrailing))
+            .background(tint.opacity(0.16))
+            .background(Theme.surfaceRaised)
     }
 
+    private var initials: String {
+        let words = name.split(whereSeparator: { $0 == " " || $0 == "." }).filter { $0.first?.isLetter == true }
+        return String(words.prefix(2).compactMap(\.first)).uppercased()
+    }
+
+    /// A soft tint picked from the name, so the same person always gets the same colour.
     private var tint: Color {
-        let palette: [Color] = [Color(hex: 0xB0703F), Color(hex: 0x3F5E9A), Color(hex: 0x3E7D66), Color(hex: 0x7A4F8C), Color(hex: 0x4A4A4A)]
+        let palette: [Color] = [Color(hex: 0xF2A36B), Color(hex: 0x8FB4FF), Color(hex: 0x6FD3A8), Color(hex: 0xC9A6FF), Color(hex: 0xF28B9B), Color(hex: 0xE8D27A)]
         let index = name.unicodeScalars.reduce(0) { ($0 + Int($1.value)) % palette.count }
         return palette[index]
     }
@@ -90,5 +98,19 @@ struct BadgedAvatar<Badge: View>: View {
                 .background(Circle().fill(Theme.surface).padding(-2))
                 .offset(x: 2, y: 2)
         }
+    }
+}
+
+/// The NEAR "N" in NEAR green, for fliq users and vault-to-vault payments.
+struct NEARMark: View {
+    var size: CGFloat = 14
+
+    var body: some View {
+        Image("NearLogo")
+            .resizable()
+            .renderingMode(.template)
+            .scaledToFit()
+            .frame(width: size, height: size)
+            .foregroundStyle(Color(hex: 0x00EC97))
     }
 }

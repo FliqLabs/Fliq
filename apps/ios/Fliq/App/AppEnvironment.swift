@@ -98,10 +98,19 @@ final class AppEnvironment {
         defaults.removePersistentDomain(forName: "ui-testing")
         let profile = ProfileStore(defaults: defaults)
         if arguments.contains("--onboarded") { profile.completeOnboarding(name: nil, displayName: nil) }
+        let accounts = AccountBook(keychain: nil)
+        if arguments.contains("--sample-recipients") { seedRecipients(accounts) }
         return AppEnvironment(
-            api: FixtureClient(bundle: bundle), profile: profile, accounts: AccountBook(keychain: nil),
+            api: FixtureClient(bundle: bundle), profile: profile, accounts: accounts,
             preferences: Preferences(defaults: defaults), biometrics: AlwaysApprove()
         )
+    }
+
+    /// The people on the App Design v5 Pay to screen, for screenshots of a full list.
+    private static func seedRecipients(_ accounts: AccountBook) {
+        accounts.setOwn(VerifiedAccount(bank: "058", number: "0123456789", accountName: "DARA OKONKWO", institution: "GTBank", country: .ng, logoKey: "gtbank"))
+        accounts.save(VerifiedAccount(bank: "999992", number: "8012343301", accountName: "EMEKA STUDIOS LTD", institution: "OPay", country: .ng, logoKey: "opay"))
+        accounts.save(VerifiedAccount(bank: "mpesa", number: "0712345412", accountName: "WANJIRU K.", institution: "M-Pesa", country: .ke, logoKey: "mpesa"))
     }
     #endif
 }

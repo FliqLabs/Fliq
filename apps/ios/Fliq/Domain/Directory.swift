@@ -63,7 +63,7 @@ struct Person: Codable, Sendable, Equatable {
     let memberSince: Date
 }
 
-struct RecentPerson: Codable, Sendable, Equatable, Identifiable {
+struct RecentPerson: Codable, Sendable, Hashable, Identifiable {
     let nearAccount: String
     let displayName: String?
     let photoUrl: String?
