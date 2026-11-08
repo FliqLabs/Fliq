@@ -51,7 +51,7 @@ Architecture diagrams: [docs/architecture.md](docs/architecture.md).
 
 - Baseline: the first commit is tagged `pre-hackathon`; the submission is tagged `hackathon-submission`. The hackathon work is the diff between them.
 - No existing product on another chain.
-- AI-generated code is listed in [docs/AI_USAGE.md](docs/AI_USAGE.md). The iOS app is built with Claude Code, directed and reviewed by Frank.
+- AI coding tools were used across the repo. The iOS app is built with Claude Code, directed and reviewed by Frank.
 
 ## Libraries
 
