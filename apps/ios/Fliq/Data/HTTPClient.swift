@@ -10,9 +10,11 @@ struct HTTPClient: FliqAPI {
     var session: URLSession = .shared
     /// Sent as `X-Device-Name`, so Devices and sessions can tell this phone from a browser.
     var deviceName = "iPhone"
-    /// How long to wait before asking again while the server is still creating the NEAR account.
+    /// How long to wait before asking again while the server is still creating the NEAR account. The wait grows
+    /// with each try, up to five times this, so the tries span about 90 seconds: a sleeping relayer takes about a
+    /// minute to wake.
     var claimRetryDelay: Duration = .seconds(2)
-    static let claimAttempts = 5
+    static let claimAttempts = 12
 
     func health() async throws -> Health {
         try await send("GET", "health")
@@ -91,7 +93,7 @@ struct HTTPClient: FliqAPI {
             let retry = status == 202 || status == 503
             if status == 202, attempt == Self.claimAttempts { break }
             guard retry, attempt < Self.claimAttempts else { return try decode(data, status: status) }
-            try await Task.sleep(for: claimRetryDelay)
+            try await Task.sleep(for: claimRetryDelay * min(attempt, 5))
         }
         throw APIError.unexpected(status: 202)
     }
