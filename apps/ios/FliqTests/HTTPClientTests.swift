@@ -49,10 +49,10 @@ final class HTTPClientTests: XCTestCase {
         XCTAssertFalse(needsSignIn)
     }
 
-    func testAnExpiredTokenIsRenewedOnceAndTheCallRetried() async throws {
+    func testARefusedTokenIsRenewedOnceAndTheCallRetried() async throws {
         let sessions = SessionVault(keychain: nil)
         let signedIn: Session = try fixtures.load("session.signed-in")
-        await sessions.store(Session(accessToken: "expired", expiresIn: 0, refreshToken: "rt_old", user: signedIn.user))
+        await sessions.store(Session(accessToken: "expired", expiresIn: 3600, refreshToken: "rt_old", user: signedIn.user))
         let client = makeClient(sessions: sessions)
         StubProtocol.respond { request in
             switch (request.url?.path, request.value(forHTTPHeaderField: "Authorization")) {
@@ -67,6 +67,62 @@ final class HTTPClientTests: XCTestCase {
         XCTAssertEqual(StubProtocol.requests.map(\.url?.path), ["/v1/me", "/v1/auth/refresh", "/v1/me"])
         let tokens = await sessions.tokens
         XCTAssertEqual(tokens?.accessToken, signedIn.accessToken)
+    }
+
+    func testATokenAboutToRunOutIsRenewedBeforeTheCall() async throws {
+        let sessions = SessionVault(keychain: nil)
+        let signedIn: Session = try fixtures.load("session.signed-in")
+        await sessions.store(Session(accessToken: "nearly-gone", expiresIn: 10, refreshToken: "rt_old", user: signedIn.user))
+        let client = makeClient(sessions: sessions)
+        StubProtocol.respond { request in
+            request.url?.path == "/v1/auth/refresh" ? (200, try fixtures.data("session.signed-in")) : (200, try fixtures.data("user.new"))
+        }
+
+        _ = try await client.me()
+
+        XCTAssertEqual(StubProtocol.requests.map(\.url?.path), ["/v1/auth/refresh", "/v1/me"])
+        XCTAssertEqual(StubProtocol.requests.last?.value(forHTTPHeaderField: "Authorization"), "Bearer \(signedIn.accessToken)")
+    }
+
+    /// The API revokes the whole session family when a refresh token is spent twice, so this once signed users out.
+    func testCallsRefusedTogetherShareOneRenewal() async throws {
+        let sessions = SessionVault(keychain: nil)
+        let signedIn: Session = try fixtures.load("session.signed-in")
+        await sessions.store(Session(accessToken: "stale", expiresIn: 3600, refreshToken: "rt_old", user: signedIn.user))
+        let client = makeClient(sessions: sessions)
+        StubProtocol.respond { request in
+            switch (request.url?.path, request.value(forHTTPHeaderField: "Authorization")) {
+            case ("/v1/auth/refresh", _):
+                let earlier = StubProtocol.requests.filter { $0.url?.path == "/v1/auth/refresh" }.count
+                return earlier == 1 ? (200, try fixtures.data("session.signed-in")) : (401, try fixtures.data("error.unauthorized"))
+            case (_, "Bearer stale"): return (401, try fixtures.data("error.unauthorized"))
+            default: return (200, try fixtures.data("user.new"))
+            }
+        }
+
+        async let first = client.me()
+        async let second = client.me()
+        async let third = client.me()
+        _ = try await [first, second, third]
+
+        XCTAssertEqual(StubProtocol.requests.filter { $0.url?.path == "/v1/auth/refresh" }.count, 1)
+        let needsSignIn = await client.needsSignIn
+        XCTAssertFalse(needsSignIn)
+    }
+
+    func testANetworkFailureWhileRenewingKeepsTheSession() async throws {
+        let sessions = SessionVault(keychain: nil)
+        let signedIn: Session = try fixtures.load("session.signed-in")
+        await sessions.store(Session(accessToken: "stale", expiresIn: 3600, refreshToken: "rt_old", user: signedIn.user))
+        let client = makeClient(sessions: sessions)
+        StubProtocol.respond { request in
+            request.url?.path == "/v1/auth/refresh" ? (503, Data()) : (401, try fixtures.data("error.unauthorized"))
+        }
+
+        _ = try? await client.me()
+
+        let needsSignIn = await client.needsSignIn
+        XCTAssertFalse(needsSignIn, "Only the API refusing the refresh token ends the session")
     }
 
     func testARefusedRefreshSignsOut() async throws {

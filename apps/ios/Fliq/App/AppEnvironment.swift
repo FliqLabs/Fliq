@@ -66,7 +66,13 @@ final class AppEnvironment {
             sender: { await profile.name },
             vault: { try? await api.me().vault }
         )
-        return AppEnvironment(api: api, isLive: true, profile: profile, deposits: HTTPDepositAPI(client: api), transfers: transfers)
+        let environment = AppEnvironment(api: api, isLive: true, profile: profile, deposits: HTTPDepositAPI(client: api), transfers: transfers)
+        Task {
+            await api.sessions.whenEnded {
+                Task { @MainActor in environment.signedOutByServer() }
+            }
+        }
+        return environment
     }
 
     static let preview = AppEnvironment(
@@ -81,6 +87,12 @@ final class AppEnvironment {
             let base = (info["FliqAPIBaseURL"] as? String).flatMap(URL.init(string:))
         else { return nil }
         return HTTPClient(baseURL: base, apiKey: info["FliqAPIKey"] as? String ?? "")
+    }
+
+    /// The API refused the session for good: back to sign-in, keeping this iPhone's saved accounts and its device key.
+    func signedOutByServer() {
+        router.reset()
+        profile.signOut()
     }
 
     /// Reads the balance from the API. On fixtures the vault mirrors this device's own top-ups and payouts.

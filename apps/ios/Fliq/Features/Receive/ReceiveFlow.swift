@@ -83,7 +83,7 @@ final class ReceiveFlow {
     private static func message(for error: Error) -> String {
         switch error {
         case APIError.server(status: 401, _), APIError.unexpected(status: 401):
-            "Your session ended. Sign out in Settings and sign back in with your passkey."
+            "Sign in again to continue."
         case APIError.server(let status, let detail):
             "The server said no (\(status)): \(detail.message)"
         case let error as URLError where error.code == .timedOut:

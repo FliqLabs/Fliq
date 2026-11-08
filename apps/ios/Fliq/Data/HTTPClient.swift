@@ -82,13 +82,14 @@ struct HTTPClient: FliqAPI {
     }
 
     /// A 202 means the account is still being created; the same request with the same key finishes it.
+    /// A 503 is usually the relayer waking up, and the same claim a moment later goes through.
     func claimName(_ name: FliqName, publicKey: String) async throws -> User {
         let body = ClaimNameRequest(name: name.value, publicKey: publicKey)
         let headers = ["Idempotency-Key": "claim-\(name.value)"]
         for attempt in 1...Self.claimAttempts {
             let (data, status) = try await exchange("POST", "me/name", body: body, headers: headers)
-            guard status == 202 else { return try decode(data, status: status) }
-            if attempt < Self.claimAttempts { try await Task.sleep(for: claimRetryDelay) }
+            guard status == 202 || status == 503, attempt < Self.claimAttempts else { return try decode(data, status: status) }
+            try await Task.sleep(for: claimRetryDelay)
         }
         throw APIError.unexpected(status: 202)
     }
@@ -173,7 +174,7 @@ struct HTTPClient: FliqAPI {
         return try decoder.decode(Response.self, from: data)
     }
 
-    /// One request, plus one retry with a renewed token when the access token was refused.
+    /// One request, renewing the access token first when it is about to run out, and once more after a 401.
     private func exchange(
         _ method: String,
         _ path: String,
@@ -181,22 +182,26 @@ struct HTTPClient: FliqAPI {
         body: (any Encodable)?,
         headers: [String: String]
     ) async throws -> (Data, Int) {
-        let tokens = await sessions.tokens
-        let first = try await perform(method, path, query: query, body: body, headers: headers, bearer: tokens?.accessToken ?? apiKey)
-        guard first.1 == 401, let tokens, !path.hasPrefix("auth/") else { return first }
-
-        guard let renewed = try await renew(tokens.refreshToken) else {
-            await sessions.clear()
-            return first
+        let signedIn = !path.hasPrefix("auth/")
+        var bearer = await sessions.tokens?.accessToken
+        if signedIn, await sessions.needsRenewal() {
+            bearer = await sessions.renewedToken(replacing: bearer, with: refresh) ?? bearer
         }
+        let first = try await perform(method, path, query: query, body: body, headers: headers, bearer: bearer ?? apiKey)
+        guard first.1 == 401, signedIn, bearer != nil else { return first }
+
+        guard let renewed = await sessions.renewedToken(replacing: bearer, with: refresh) else { return first }
         return try await perform(method, path, query: query, body: body, headers: headers, bearer: renewed)
     }
 
-    private func renew(_ refreshToken: String) async throws -> String? {
-        let (data, status) = try await perform("POST", "auth/refresh", body: ["refresh_token": refreshToken], headers: [:], bearer: nil)
-        guard status == 200, let renewed = try? FliqJSON.decoder().decode(Session.self, from: data) else { return nil }
-        await sessions.store(renewed)
-        return renewed.accessToken
+    /// Nil when the API refuses the refresh token; throws when it could not be reached or failed.
+    private var refresh: @Sendable (String) async throws -> Session? {
+        { refreshToken in
+            let (data, status) = try await perform("POST", "auth/refresh", body: ["refresh_token": refreshToken], headers: [:], bearer: nil)
+            if status == 401 || status == 403 { return nil }
+            guard status == 200 else { throw APIError.unexpected(status: status) }
+            return try FliqJSON.decoder().decode(Session.self, from: data)
+        }
     }
 
     private func perform(
