@@ -18,7 +18,6 @@ final class HomeModel {
     /// Send stays enabled at zero: the vault enforces caps and balance on chain either way.
     var balance: TokenAmount { vault.balance }
 
-    var hasBalance: Bool { balance > .zero }
 
     func load() async {
         do {

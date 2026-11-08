@@ -9,6 +9,7 @@ final class PayFlow {
     let recipient: AccountEntry
     var saveAccount = true
     var verified: VerifiedAccount? { recipient.verified }
+    var currency: Currency { recipient.country.currency }
 
     private(set) var amountText = ""
     private(set) var rate: Rate?
@@ -47,8 +48,8 @@ final class PayFlow {
     }
 
     func loadRate() async {
-        guard rate == nil else { return }
-        rate = try? await api.rate(.usdc, .ngn)
+        guard rate?.currency != currency else { return }
+        rate = try? await api.rate(.usdc, currency)
     }
 
     func tapKey(_ key: String) {
@@ -62,7 +63,7 @@ final class PayFlow {
         isQuoting = true
         defer { isQuoting = false }
         do {
-            let quote = try await api.quote(QuoteRequest(token: .usdc, currency: .ngn, amount: amount))
+            let quote = try await api.quote(QuoteRequest(token: .usdc, currency: currency, amount: amount))
             self.quote = quote
             quoteExpiresAt = .now.addingTimeInterval(TimeInterval(quote.expiresIn))
             errorMessage = nil

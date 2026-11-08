@@ -8,6 +8,8 @@ struct HTTPClient: FliqAPI {
     let apiKey: String
     var sessions = SessionVault()
     var session: URLSession = .shared
+    /// Sent as `X-Device-Name`, so Devices and sessions can tell this phone from a browser.
+    var deviceName = "iPhone"
     /// How long to wait before asking again while the server is still creating the NEAR account.
     var claimRetryDelay: Duration = .seconds(2)
     static let claimAttempts = 5
@@ -80,13 +82,14 @@ struct HTTPClient: FliqAPI {
     }
 
     /// A 202 means the account is still being created; the same request with the same key finishes it.
+    /// A 503 is usually the relayer waking up, and the same claim a moment later goes through.
     func claimName(_ name: FliqName, publicKey: String) async throws -> User {
         let body = ClaimNameRequest(name: name.value, publicKey: publicKey)
         let headers = ["Idempotency-Key": "claim-\(name.value)"]
         for attempt in 1...Self.claimAttempts {
             let (data, status) = try await exchange("POST", "me/name", body: body, headers: headers)
-            guard status == 202 else { return try decode(data, status: status) }
-            if attempt < Self.claimAttempts { try await Task.sleep(for: claimRetryDelay) }
+            guard status == 202 || status == 503, attempt < Self.claimAttempts else { return try decode(data, status: status) }
+            try await Task.sleep(for: claimRetryDelay)
         }
         throw APIError.unexpected(status: 202)
     }
@@ -95,8 +98,8 @@ struct HTTPClient: FliqAPI {
         try await send("PATCH", "me", body: ["display_name": displayName])
     }
 
-    func institutions() async throws -> [Institution] {
-        let list: InstitutionList = try await send("GET", "institutions")
+    func institutions(in country: Country) async throws -> [Institution] {
+        let list: InstitutionList = try await send("GET", "institutions", query: ["country": country.rawValue])
         return list.items
     }
 
@@ -116,13 +119,42 @@ struct HTTPClient: FliqAPI {
         try await send("GET", "people/\(name)")
     }
 
-    private func send<Response: Decodable>(
+    func relay(signedDelegate: String) async throws -> RelayResult {
+        try await send("POST", "relays", body: ["signed_delegate": signedDelegate])
+    }
+
+    func relayResult(hash: String) async throws -> RelayResult {
+        try await send("GET", "relays/\(hash)")
+    }
+
+    func passkeys() async throws -> PasskeyList {
+        try await send("GET", "passkeys")
+    }
+
+    func deviceSessions() async throws -> DeviceSessionList {
+        try await send("GET", "sessions")
+    }
+
+    func createRequest(_ input: PaymentRequestInput, idempotencyKey: String) async throws -> PaymentRequest {
+        try await send("POST", "requests", body: input, headers: ["Idempotency-Key": idempotencyKey])
+    }
+
+    func request(id: String) async throws -> PaymentRequest {
+        try await send("GET", "requests/\(id)")
+    }
+
+    func revokeSession(id: String) async throws {
+        let _: Empty = try await send("DELETE", "sessions/\(id)")
+    }
+
+    func send<Response: Decodable>(
         _ method: String,
         _ path: String,
+        query: [String: String] = [:],
         body: (any Encodable)? = nil,
         headers: [String: String] = [:]
     ) async throws -> Response {
-        let (data, status) = try await exchange(method, path, body: body, headers: headers)
+        let (data, status) = try await exchange(method, path, query: query, body: body, headers: headers)
         return try decode(data, status: status)
     }
 
@@ -142,41 +174,50 @@ struct HTTPClient: FliqAPI {
         return try decoder.decode(Response.self, from: data)
     }
 
-    /// One request, plus one retry with a renewed token when the access token was refused.
+    /// One request, renewing the access token first when it is about to run out, and once more after a 401.
     private func exchange(
         _ method: String,
         _ path: String,
+        query: [String: String] = [:],
         body: (any Encodable)?,
         headers: [String: String]
     ) async throws -> (Data, Int) {
-        let tokens = await sessions.tokens
-        let first = try await perform(method, path, body: body, headers: headers, bearer: tokens?.accessToken ?? apiKey)
-        guard first.1 == 401, let tokens, !path.hasPrefix("auth/") else { return first }
-
-        guard let renewed = try await renew(tokens.refreshToken) else {
-            await sessions.clear()
-            return first
+        let signedIn = !path.hasPrefix("auth/")
+        var bearer = await sessions.tokens?.accessToken
+        if signedIn, await sessions.needsRenewal() {
+            bearer = await sessions.renewedToken(replacing: bearer, with: refresh) ?? bearer
         }
-        return try await perform(method, path, body: body, headers: headers, bearer: renewed)
+        let first = try await perform(method, path, query: query, body: body, headers: headers, bearer: bearer ?? apiKey)
+        guard first.1 == 401, signedIn, bearer != nil else { return first }
+
+        guard let renewed = await sessions.renewedToken(replacing: bearer, with: refresh) else { return first }
+        return try await perform(method, path, query: query, body: body, headers: headers, bearer: renewed)
     }
 
-    private func renew(_ refreshToken: String) async throws -> String? {
-        let (data, status) = try await perform("POST", "auth/refresh", body: ["refresh_token": refreshToken], headers: [:], bearer: nil)
-        guard status == 200, let renewed = try? FliqJSON.decoder().decode(Session.self, from: data) else { return nil }
-        await sessions.store(renewed)
-        return renewed.accessToken
+    /// Nil when the API refuses the refresh token; throws when it could not be reached or failed.
+    private var refresh: @Sendable (String) async throws -> Session? {
+        { refreshToken in
+            let (data, status) = try await perform("POST", "auth/refresh", body: ["refresh_token": refreshToken], headers: [:], bearer: nil)
+            if status == 401 || status == 403 { return nil }
+            guard status == 200 else { throw APIError.unexpected(status: status) }
+            return try FliqJSON.decoder().decode(Session.self, from: data)
+        }
     }
 
     private func perform(
         _ method: String,
         _ path: String,
+        query: [String: String] = [:],
         body: (any Encodable)?,
         headers: [String: String],
         bearer: String?
     ) async throws -> (Data, Int) {
-        var request = URLRequest(url: baseURL.appending(path: path))
+        var url = baseURL.appending(path: path)
+        if !query.isEmpty { url.append(queryItems: query.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) }) }
+        var request = URLRequest(url: url)
         request.httpMethod = method
         if let bearer, !bearer.isEmpty { request.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization") }
+        request.setValue(deviceName, forHTTPHeaderField: "X-Device-Name")
         headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
         if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")

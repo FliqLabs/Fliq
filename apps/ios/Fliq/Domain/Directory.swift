@@ -10,7 +10,7 @@ struct Institution: Codable, Hashable, Sendable {
     let code: String
     let name: String
     var type: Kind = .bank
-    var country: String = "ng"
+    var country: Country = .ng
     var logoKey: String?
 
     /// Shown before `GET /institutions` answers, and when it can't be reached.
@@ -63,7 +63,7 @@ struct Person: Codable, Sendable, Equatable {
     let memberSince: Date
 }
 
-struct RecentPerson: Codable, Sendable, Equatable, Identifiable {
+struct RecentPerson: Codable, Sendable, Hashable, Identifiable {
     let nearAccount: String
     let displayName: String?
     let photoUrl: String?
@@ -75,4 +75,38 @@ struct RecentPerson: Codable, Sendable, Equatable, Identifiable {
 
 struct RecentPeopleList: Codable, Sendable, Equatable {
     let items: [RecentPerson]
+}
+
+/// A country fliq pays out in. The raw value is the API's `country` code.
+enum Country: String, Codable, CaseIterable, Sendable {
+    case ng, ke
+
+    var name: String {
+        switch self {
+        case .ng: "Nigeria"
+        case .ke: "Kenya"
+        }
+    }
+
+    var flag: String {
+        switch self {
+        case .ng: "🇳🇬"
+        case .ke: "🇰🇪"
+        }
+    }
+
+    var currency: Currency {
+        switch self {
+        case .ng: .ngn
+        case .ke: .kes
+        }
+    }
+
+    /// NUBAN numbers are exactly 10 digits. Kenyan bank accounts run longer, and M-Pesa takes a 10 digit phone number.
+    var numberLengths: ClosedRange<Int> {
+        switch self {
+        case .ng: 10...10
+        case .ke: 10...14
+        }
+    }
 }
