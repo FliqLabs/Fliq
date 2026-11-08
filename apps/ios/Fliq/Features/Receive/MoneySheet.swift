@@ -1,118 +1,116 @@
 import SwiftUI
 import UIKit
 
-/// Send, Receive and Request, as one sheet that moves forward in place and grows to full height after the menu.
-struct MoneySheet: View {
-    enum Start: Identifiable {
-        case menu, receive
-
-        var id: Self { self }
-    }
-
+/// Transfer as one sheet: every step slides in place, nothing closes and reopens. Short choices keep the card
+/// short; full screens open full height and can be dragged down to half, where they still scroll.
+struct MoveMoneySheet: View {
     enum Step: Hashable {
-        case payTo, receive, fliqName, currencies, networks(token: String), address, arriving, request
+        case receive, request, payTo, fliqName, currencies, networks(token: String), address, arriving
     }
 
-    let start: Start
-    let makeReceive: () -> ReceiveFlow
+    static let menuHeight = PresentationDetent.height(470)
+    /// Amount, note, cash-out switch, button and keypad, with nothing cut off.
+    static let requestHeight = PresentationDetent.height(720)
+
+    let name: String?
+    let receive: ReceiveFlow
     let makeRequest: () -> RequestFlow
     let onAccount: (VerifiedAccount) -> Void
     let onPerson: (String?) -> Void
     let onNewAccount: () -> Void
     @Environment(\.dismiss) private var dismiss
-    @State private var path: [Step] = []
-    @State private var receive: ReceiveFlow?
+    @State private var path: [Step]
     @State private var request: RequestFlow?
-    @State private var detent = PresentationDetent.large
+    @State private var detent: PresentationDetent
 
-    static let menuHeight = PresentationDetent.height(470)
+    init(
+        startingAt start: [Step] = [],
+        name: String?,
+        receive: ReceiveFlow,
+        makeRequest: @escaping () -> RequestFlow,
+        onAccount: @escaping (VerifiedAccount) -> Void,
+        onPerson: @escaping (String?) -> Void,
+        onNewAccount: @escaping () -> Void
+    ) {
+        self.name = name
+        self.receive = receive
+        self.makeRequest = makeRequest
+        self.onAccount = onAccount
+        self.onPerson = onPerson
+        self.onNewAccount = onNewAccount
+        _path = State(initialValue: start)
+        _detent = State(initialValue: Self.menuHeight)
+    }
 
     var body: some View {
         NavigationStack(path: $path) {
-            root.navigationDestination(for: Step.self, destination: screen)
+            MoveMoneyMenu(onSend: { go(.payTo) }, onReceive: { go(.receive) }, onRequest: { go(.request) })
+                .navigationDestination(for: Step.self, destination: screen)
         }
         .tint(Theme.textPrimary)
-        .presentationDetents([Self.menuHeight, .large], selection: $detent)
-        .onAppear { detent = Self.menuHeight }
+        .presentationDetents(Self.detents(for: path.last).union([detent]), selection: $detent)
         .onChange(of: path) { _, path in
-            withAnimation(.snappy) { detent = isChoosing(path) ? Self.menuHeight : .large }
+            let allowed = Self.detents(for: path.last)
+            if !allowed.contains(detent) { withAnimation(.snappy) { detent = Self.opening(path.last) } }
         }
     }
 
-    /// Grows the sheet first, then moves on, so the next screen never shows squeezed into the short sheet.
+    @ViewBuilder
+    private func screen(_ step: Step) -> some View {
+        switch step {
+        case .receive:
+            ReceiveStartView(name: name, onFliqName: { go(.fliqName) }, onWallet: { go(.currencies) })
+        case .request:
+            if let request { RequestView(flow: request) { dismiss() }.sheetToolbar { dismiss() } }
+        case .payTo:
+            PayToView(onAccount: onAccount, onPerson: onPerson, onNew: onNewAccount)
+        case .fliqName:
+            FliqNameCardView(name: name ?? "").sheetToolbar { dismiss() }
+        case .currencies:
+            CurrencyListView(flow: receive) { token in
+                let networks = receive.networks(for: token)
+                if networks.count == 1, let only = networks.first { reserve(only) } else { go(.networks(token: token)) }
+            }
+            .task { await receive.loadSources() }
+        case .networks(let token):
+            NetworkListView(flow: receive, token: token, onPick: reserve)
+        case .address:
+            DepositAddressView(flow: receive) { if path.last != .arriving { go(.arriving) } }
+        case .arriving:
+            ArrivingView(flow: receive) { dismiss() }
+        }
+    }
+
+    /// Moves on. A step that needs more room grows the sheet first, so it never appears squeezed.
     private func go(_ step: Step) {
-        guard detent != .large, !isChoosing(path + [step]) else { return path.append(step) }
-        withAnimation(.snappy(duration: 0.28)) { detent = .large }
+        if step == .request, request == nil { request = makeRequest() }
+        let target = Self.opening(step)
+        guard target != detent else { return path.append(step) }
+        withAnimation(.snappy(duration: 0.28)) { detent = target }
         Task {
             try? await Task.sleep(for: .milliseconds(280))
             path.append(step)
         }
     }
 
-    /// The menu and "How do you want to get paid?" are short choices, so the sheet stays low for them.
-    private func isChoosing(_ path: [Step]) -> Bool {
-        path.isEmpty || path == [.receive]
+    private func reserve(_ source: DepositSource) {
+        Task { if await receive.reserve(source) { go(.address) } }
     }
 
-    @ViewBuilder
-    private var root: some View {
-        switch start {
-        case .menu:
-            MoveMoneyMenu(
-                onSend: { go(.payTo) },
-                onReceive: { openReceive() },
-                onRequest: {
-                    request = makeRequest()
-                    go(.request)
-                }
-            )
-        case .receive:
-            receiveStart.task { if receive == nil { receive = makeReceive() } }
-        }
-    }
-
-    private var receiveStart: some View {
-        ReceiveStartView(name: receive?.name, onFliqName: { go(.fliqName) }, onWallet: { go(.currencies) })
-    }
-
-    private func openReceive() {
-        if receive == nil { receive = makeReceive() }
-        go(.receive)
-    }
-
-    @ViewBuilder
-    private func screen(_ step: Step) -> some View {
+    private static func detents(for step: Step?) -> Set<PresentationDetent> {
         switch step {
-        case .payTo:
-            PayToView(onAccount: onAccount, onPerson: onPerson, onNew: onNewAccount)
-        case .request:
-            if let request { RequestView(flow: request) { dismiss() } }
-        case .receive:
-            receiveStart
-        default:
-            if let receive { receiveScreen(step, receive) }
+        case nil, .receive: [menuHeight]
+        case .request: [requestHeight]
+        default: [.medium, .large]
         }
     }
 
-    @ViewBuilder
-    private func receiveScreen(_ step: Step, _ flow: ReceiveFlow) -> some View {
+    private static func opening(_ step: Step?) -> PresentationDetent {
         switch step {
-        case .fliqName: FliqNameCardView(name: flow.name ?? "")
-        case .currencies:
-            CurrencyListView(flow: flow) { token in
-                let networks = flow.networks(for: token)
-                if networks.count == 1, let only = networks.first { reserve(only, in: flow) } else { go(.networks(token: token)) }
-            }
-            .task { await flow.loadSources() }
-        case .networks(let token): NetworkListView(flow: flow, token: token) { reserve($0, in: flow) }
-        case .address: DepositAddressView(flow: flow) { if path.last != .arriving { go(.arriving) } }
-        case .arriving: ArrivingView(flow: flow) { dismiss() }
-        default: EmptyView()
+        case nil, .receive: menuHeight
+        case .request: requestHeight
+        default: .large
         }
-    }
-
-    private func reserve(_ source: DepositSource, in flow: ReceiveFlow) {
-        Task { if await flow.reserve(source) { go(.address) } }
     }
 }
 
@@ -320,7 +318,7 @@ private struct NetworkListView: View {
 // MARK: fliq name
 
 /// The user's fliq name as a card to share: fliq users pay it instantly, and any NEAR wallet can send USDC to it.
-private struct FliqNameCardView: View {
+struct FliqNameCardView: View {
     let name: String
     @State private var copied = false
 

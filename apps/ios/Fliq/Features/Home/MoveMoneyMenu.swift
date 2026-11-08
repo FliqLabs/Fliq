@@ -9,19 +9,6 @@ struct MoveMoneyMenu: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Spacer()
-                Button { dismiss() } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 15, weight: .bold))
-                        .frame(width: 36, height: 36)
-                        .foregroundStyle(Theme.textPrimary)
-                        .fliqGlass(Circle(), interactive: true)
-                }
-                .accessibilityLabel("Close")
-            }
-            .padding(.top, 20)
-
             Image(systemName: "arrow.up.arrow.down")
                 .font(.system(size: 30, weight: .medium))
                 .foregroundStyle(Theme.textSecondary)
@@ -47,5 +34,6 @@ struct MoveMoneyMenu: View {
             Spacer(minLength: 12)
         }
         .padding(.horizontal, 16)
+        .sheetToolbar { dismiss() }
     }
 }

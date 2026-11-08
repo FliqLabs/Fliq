@@ -4,14 +4,20 @@ enum RootTab: Hashable {
     case home, transfer, activity
 }
 
+/// Transfer opens on its menu; Receive from Activity opens straight on "How do you want to get paid?".
+enum HomeSheet: Identifiable {
+    case menu, receive
+
+    var id: Self { self }
+}
+
 struct RootView: View {
     @Environment(AppEnvironment.self) private var environment
     @State private var home: HomeModel?
     @State private var flow: PayFlow?
     @State private var personFlow: PersonPayFlow?
     @State private var tab = RootTab.home
-    /// Where the money sheet opens: its menu from the middle tab, or straight on Receive.
-    @State private var moneySheet: MoneySheet.Start?
+    @State private var sheet: HomeSheet?
     @State private var activityPath: [AppRoute] = []
 
     var body: some View {
@@ -33,7 +39,7 @@ struct RootView: View {
                 .tag(RootTab.transfer)
 
             NavigationStack(path: $activityPath) {
-                ActivityView(store: environment.activity) { moneySheet = .receive }
+                ActivityView(store: environment.activity) { sheet = .receive }
                     .padding(.horizontal, 16)
                     .background(Theme.ground.ignoresSafeArea())
                     .navigationDestination(for: AppRoute.self) { pushed($0) }
@@ -46,20 +52,13 @@ struct RootView: View {
         .onChange(of: tab) { old, new in
             guard new == .transfer else { return }
             tab = old
-            moneySheet = .menu
+            sheet = .menu
         }
-        .sheet(item: $moneySheet) { start in
-            MoneySheet(
-                start: start,
-                makeReceive: makeReceive,
-                makeRequest: { RequestFlow(api: environment.api, vault: environment.vault) },
-                onAccount: { account in leaveSheet { startPayment(to: account) } },
-                onPerson: { account in leaveSheet { startPersonPayment(to: account) } },
-                onNewAccount: { leaveSheet { startPayment() } }
-            )
-            .presentationDragIndicator(.visible)
-            .presentationCornerRadius(32)
-            .presentationBackground(Color(hex: 0x161616))
+        .sheet(item: $sheet) { sheet in
+            content(of: sheet)
+                .presentationDragIndicator(.visible)
+                .presentationCornerRadius(32)
+                .presentationBackground(Color(hex: 0x161616))
         }
         .onAppear {
             if home == nil { home = HomeModel(api: environment.api, vault: environment.vault) }
@@ -74,8 +73,20 @@ struct RootView: View {
         destination(route).toolbar(.hidden, for: .tabBar)
     }
 
+    private func content(of sheet: HomeSheet) -> some View {
+        MoveMoneySheet(
+            startingAt: sheet == .receive ? [.receive] : [],
+            name: environment.profile.name,
+            receive: makeReceive(),
+            makeRequest: { RequestFlow(api: environment.api, vault: environment.vault) },
+            onAccount: { account in leaveSheet { startPayment(to: account) } },
+            onPerson: { account in leaveSheet { startPersonPayment(to: account) } },
+            onNewAccount: { leaveSheet { startPayment() } }
+        )
+    }
+
     private func leaveSheet(then next: @escaping () -> Void) {
-        moneySheet = nil
+        sheet = nil
         tab = .home
         next()
     }
