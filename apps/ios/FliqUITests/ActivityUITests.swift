@@ -15,9 +15,11 @@ final class ActivityUITests: XCTestCase {
         app.buttons["Activity"].tap()
         XCTAssertTrue(app.staticTexts["Nothing yet"].waitForExistence(timeout: 3))
         snap("a1-activity-empty")
-        XCTAssertTrue(app.buttons["Send"].exists, "The action bar stays under Activity")
-        app.buttons["Activity"].tap()
+        XCTAssertTrue(app.buttons["Send, receive or request"].exists, "The action bar stays under Activity")
+        app.buttons["Home"].tap()
 
+        app.buttons["Send, receive or request"].tap()
+        XCTAssertTrue(app.buttons["Send"].waitForExistence(timeout: 3))
         app.buttons["Send"].tap()
         XCTAssertTrue(app.buttons["New recipient"].waitForExistence(timeout: 3))
         app.buttons["New recipient"].tap()

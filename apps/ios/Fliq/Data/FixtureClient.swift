@@ -128,6 +128,14 @@ struct FixtureClient: FliqAPI {
 
     func revokeSession(id: String) async throws {}
 
+    func createRequest(_ input: PaymentRequestInput, idempotencyKey: String) async throws -> PaymentRequest {
+        try load("request.created")
+    }
+
+    func request(id: String) async throws -> PaymentRequest {
+        try load("request.created")
+    }
+
     func load<Value: Decodable>(_ name: String) throws -> Value {
         try FliqJSON.decoder().decode(Value.self, from: data(name))
     }

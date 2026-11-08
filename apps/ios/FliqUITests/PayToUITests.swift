@@ -12,6 +12,8 @@ final class PayToUITests: XCTestCase {
         app.launchArguments = ["--ui-testing", "--onboarded", "--sample-recipients"]
         app.launch()
 
+        app.buttons["Send, receive or request"].tap()
+        XCTAssertTrue(app.buttons["Send"].waitForExistence(timeout: 3))
         app.buttons["Send"].tap()
         XCTAssertTrue(app.staticTexts["All recipients"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["Yours"].exists)

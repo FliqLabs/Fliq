@@ -134,11 +134,19 @@ struct HTTPClient: FliqAPI {
         try await send("GET", "sessions")
     }
 
+    func createRequest(_ input: PaymentRequestInput, idempotencyKey: String) async throws -> PaymentRequest {
+        try await send("POST", "requests", body: input, headers: ["Idempotency-Key": idempotencyKey])
+    }
+
+    func request(id: String) async throws -> PaymentRequest {
+        try await send("GET", "requests/\(id)")
+    }
+
     func revokeSession(id: String) async throws {
         let _: Empty = try await send("DELETE", "sessions/\(id)")
     }
 
-    private func send<Response: Decodable>(
+    func send<Response: Decodable>(
         _ method: String,
         _ path: String,
         query: [String: String] = [:],

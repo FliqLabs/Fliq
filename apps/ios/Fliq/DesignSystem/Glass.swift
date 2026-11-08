@@ -52,4 +52,5 @@ struct PressableStyle: ButtonStyle {
 
 extension ButtonStyle where Self == PressableStyle {
     static var pressable: PressableStyle { PressableStyle() }
+    static func pressable(scale: CGFloat) -> PressableStyle { PressableStyle(scale: scale) }
 }

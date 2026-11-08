@@ -1,16 +1,27 @@
 import SwiftUI
 
+/// The sheets Home opens. Setting a new one while another shows swaps them.
+enum HomeSheet: Identifiable {
+    case moveMoney, payTo
+    case receive(ReceiveFlow)
+
+    var id: String {
+        switch self {
+        case .moveMoney: "move"
+        case .payTo: "payTo"
+        case .receive: "receive"
+        }
+    }
+}
+
 struct RootView: View {
     @Environment(AppEnvironment.self) private var environment
     @State private var home: HomeModel?
     @State private var flow: PayFlow?
     @State private var personFlow: PersonPayFlow?
-    @State private var choosingRecipient = false
+    @State private var requestFlow: RequestFlow?
+    @State private var sheet: HomeSheet?
     @State private var tab = HomeTab.balance
-    @State private var receive: ReceiveFlow?
-    /// The flow the source sheet was opened with. Kept apart from `receive` so the sheet gets
-    /// its flow in the same update that presents it, and closing it leaves `receive` for the next screens.
-    @State private var sourceSheet: ReceiveFlow?
 
     var body: some View {
         @Bindable var router = environment.router
@@ -18,7 +29,7 @@ struct RootView: View {
         NavigationStack(path: $router.path) {
             Group {
                 if let home {
-                    HomeView(model: home, tab: $tab, onSend: { choosingRecipient = true }, onReceive: startReceive, onMenu: { router.push(.settings) }) {
+                    HomeView(model: home, tab: $tab, onMoveMoney: { sheet = .moveMoney }, onMenu: { router.push(.settings) }) {
                         ActivityView(store: environment.activity, onReceive: startReceive)
                     }
                 }
@@ -26,31 +37,40 @@ struct RootView: View {
             .navigationDestination(for: AppRoute.self, destination: destination)
         }
         .tint(Theme.textPrimary)
-        .sheet(isPresented: $choosingRecipient) {
-            PayToView(onAccount: { account in
-                choosingRecipient = false
-                startPayment(to: account)
-            }, onPerson: { account in
-                choosingRecipient = false
-                startPersonPayment(to: account)
-            }, onNew: {
-                choosingRecipient = false
-                startPayment()
-            })
-            .presentationDetents([.large])
-            .presentationDragIndicator(.visible)
-            .presentationCornerRadius(28)
-            .presentationBackground(Color(hex: 0x141414))
-        }
-        .sheet(item: $sourceSheet) { flow in
-            ReceiveSourceView(flow: flow, onPicked: { route in
-                sourceSheet = nil
-                router.push(route)
-            })
-            .presentationDetents([.height(700)])
-            .presentationDragIndicator(.hidden)
-            .presentationCornerRadius(24)
-            .presentationBackground(Color(hex: 0x141414))
+        .sheet(item: $sheet) { sheet in
+            switch sheet {
+            case .moveMoney:
+                MoveMoneySheet(
+                    onSend: { self.sheet = .payTo },
+                    onReceive: startReceive,
+                    onRequest: startRequest
+                )
+                .presentationDetents([.height(460)])
+                .presentationDragIndicator(.visible)
+                .presentationCornerRadius(32)
+                .presentationBackground(Color(hex: 0x141414))
+            case .payTo:
+                PayToView(onAccount: { account in
+                    self.sheet = nil
+                    startPayment(to: account)
+                }, onPerson: { account in
+                    self.sheet = nil
+                    startPersonPayment(to: account)
+                }, onNew: {
+                    self.sheet = nil
+                    startPayment()
+                })
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+                .presentationCornerRadius(28)
+                .presentationBackground(Color(hex: 0x141414))
+            case .receive(let flow):
+                ReceiveSheet(flow: flow)
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+                    .presentationCornerRadius(28)
+                    .presentationBackground(Color(hex: 0x141414))
+            }
         }
         .onAppear {
             if home == nil { home = HomeModel(api: environment.api, vault: environment.vault) }
@@ -74,12 +94,18 @@ struct RootView: View {
     }
 
     private func startReceive() {
-        receive = ReceiveFlow(
+        sheet = .receive(ReceiveFlow(
             api: environment.deposits,
             vault: environment.vault,
-            vaultAccount: environment.profile.name ?? "fliq-vault.testnet"
-        )
-        sourceSheet = receive
+            vaultAccount: environment.profile.name ?? "fliq-vault.testnet",
+            name: environment.profile.name
+        ))
+    }
+
+    private func startRequest() {
+        sheet = nil
+        requestFlow = RequestFlow(api: environment.api, vault: environment.vault)
+        environment.router.push(.request)
     }
 
     @ViewBuilder
@@ -98,8 +124,10 @@ struct RootView: View {
                     Task { await environment.refreshVault() }
                 }
             }
-        case .receiveAddress, .receiveArriving:
-            if let receive { receiveStep(route, receive) }
+        case .request:
+            if let requestFlow {
+                RequestView(flow: requestFlow) { environment.router.reset() }
+            }
         case .agents: AgentsView(store: environment.agents)
         case .settings: SettingsView()
         case .settingsAccounts: AccountsView(onAdd: { startPayment() })
@@ -122,18 +150,10 @@ struct RootView: View {
             if let payout = flow.payout {
                 RefundedView(payout: payout, quote: flow.quote, onTryAgain: { startPayment(to: flow.verified) })
             }
-        case .payPerson, .receipt, .receiveAddress, .receiveArriving, .agents, .agentConnect, .settings, .settingsAccounts, .settingsSecurity, .settingsNotifications: EmptyView()
+        case .payPerson, .request, .receipt, .agents, .agentConnect, .settings, .settingsAccounts, .settingsSecurity, .settingsNotifications: EmptyView()
         }
     }
 
-    @ViewBuilder
-    private func receiveStep(_ route: AppRoute, _ receive: ReceiveFlow) -> some View {
-        switch route {
-        case .receiveAddress: DepositAddressView(flow: receive)
-        case .receiveArriving: ArrivingView(flow: receive)
-        default: EmptyView()
-        }
-    }
 
     @ViewBuilder
     private func receipt(for payout: Payout) -> some View {

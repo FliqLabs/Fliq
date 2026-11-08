@@ -33,6 +33,8 @@ protocol FliqAPI: Sendable {
     func passkeys() async throws -> PasskeyList
     func deviceSessions() async throws -> DeviceSessionList
     func revokeSession(id: String) async throws
+    func createRequest(_ input: PaymentRequestInput, idempotencyKey: String) async throws -> PaymentRequest
+    func request(id: String) async throws -> PaymentRequest
     func relayResult(hash: String) async throws -> RelayResult
 }
 

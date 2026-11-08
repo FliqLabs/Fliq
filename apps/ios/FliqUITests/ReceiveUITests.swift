@@ -1,6 +1,6 @@
 import XCTest
 
-/// Demo script step 1: pick Solana, get the address straight away, send 200 USDC and watch it land.
+/// Demo script step 1: Receive from an external wallet, USDC on Solana, then watch 200 USDC land.
 final class ReceiveUITests: XCTestCase {
     override func setUp() {
         continueAfterFailure = false
@@ -12,23 +12,34 @@ final class ReceiveUITests: XCTestCase {
         app.launchArguments = ["--ui-testing", "--onboarded"]
         app.launch()
 
+        app.buttons["Send, receive or request"].tap()
+        XCTAssertTrue(app.buttons["Receive"].waitForExistence(timeout: 3))
+        snap("r0-move-money")
         app.buttons["Receive"].tap()
-        let solana = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Solana")).firstMatch
+
+        XCTAssertTrue(app.buttons["External wallet"].waitForExistence(timeout: 3))
+        snap("r1-how")
+        app.buttons["External wallet"].tap()
+
+        XCTAssertTrue(app.buttons["USDC"].waitForExistence(timeout: 3))
+        snap("r2-currency")
+        app.buttons["USDC"].tap()
+
+        let solana = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Solana")).firstMatch
         XCTAssertTrue(solana.waitForExistence(timeout: 3))
-        snap("r1-sources")
+        snap("r3-network")
         solana.tap()
 
-        XCTAssertTrue(app.staticTexts["Demo address. Don't send real funds to it."].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.staticTexts["Any amount over $1"].exists, "No amount is asked for; the minimum is shown")
-        snap("r2-address")
-        app.buttons["I have sent it"].tap()
+        XCTAssertTrue(app.staticTexts["Receive USDC"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["Copy address"].exists)
+        snap("r4-address")
 
-        XCTAssertTrue(app.staticTexts["in your vault"].waitForExistence(timeout: 12))
-        snap("r3-landed")
+        XCTAssertTrue(app.staticTexts["in your vault"].waitForExistence(timeout: 20))
+        snap("r5-landed")
         app.buttons["Back to vault"].tap()
 
         XCTAssertTrue(app.staticTexts["199.98"].waitForExistence(timeout: 3), "Home shows the new balance")
-        snap("r4-home")
+        snap("r6-home")
     }
 
     @MainActor

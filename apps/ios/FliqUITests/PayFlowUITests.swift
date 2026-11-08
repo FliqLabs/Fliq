@@ -16,6 +16,8 @@ final class PayFlowUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Vault balance"].waitForExistence(timeout: 5))
         snap("1-home")
 
+        app.buttons["Send, receive or request"].tap()
+        XCTAssertTrue(app.buttons["Send"].waitForExistence(timeout: 3))
         app.buttons["Send"].tap()
         XCTAssertTrue(app.buttons["New recipient"].waitForExistence(timeout: 3))
         app.buttons["New recipient"].tap()

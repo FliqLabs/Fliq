@@ -66,7 +66,7 @@ final class AppEnvironment {
             sender: { await profile.name },
             vault: { try? await api.me().vault }
         )
-        return AppEnvironment(api: api, isLive: true, profile: profile, transfers: transfers)
+        return AppEnvironment(api: api, isLive: true, profile: profile, deposits: HTTPDepositAPI(client: api), transfers: transfers)
     }
 
     static let preview = AppEnvironment(

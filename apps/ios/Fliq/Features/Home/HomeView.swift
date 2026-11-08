@@ -7,8 +7,7 @@ enum HomeTab {
 struct HomeView<Activity: View>: View {
     @State var model: HomeModel
     @Binding var tab: HomeTab
-    var onSend: () -> Void = {}
-    var onReceive: () -> Void = {}
+    var onMoveMoney: () -> Void = {}
     var onMenu: () -> Void = {}
     /// Activity shows in place of the balance, so the action bar stays under it.
     @ViewBuilder var activity: () -> Activity
@@ -45,7 +44,7 @@ struct HomeView<Activity: View>: View {
             .accessibilityLabel("Profile")
             Spacer()
             Button { tab = .balance } label: { Wordmark() }
-                .accessibilityLabel("Home")
+                .accessibilityLabel("fliq")
             Spacer()
             Button(action: onMenu) {
                 Image(systemName: "line.3.horizontal.decrease")
@@ -109,12 +108,9 @@ struct HomeView<Activity: View>: View {
 
     private var actions: [ActionBarItem] {
         [
-            ActionBarItem(title: "Receive", symbol: "square.and.arrow.down", action: onReceive),
-            ActionBarItem(title: "Send", symbol: "paperplane", action: onSend),
-            ActionBarItem(title: "Request", symbol: "link", isEnabled: model.hasBalance) {},
-            ActionBarItem(title: "Activity", symbol: "clock.arrow.circlepath", isSelected: tab == .activity) {
-                tab = tab == .activity ? .balance : .activity
-            },
+            ActionBarItem(title: "Home", symbol: "house", isSelected: tab == .balance) { tab = .balance },
+            ActionBarItem(title: "Send, receive or request", symbol: "arrow.up.arrow.down", isProminent: true, action: onMoveMoney),
+            ActionBarItem(title: "Activity", symbol: "clock.arrow.circlepath", isSelected: tab == .activity) { tab = .activity },
         ]
     }
 }
