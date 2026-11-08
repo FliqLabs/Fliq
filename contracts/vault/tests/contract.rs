@@ -355,6 +355,26 @@ fn setting_an_agent_pays_for_its_storage_and_revoking_needs_one_yocto() {
     }
 }
 
+#[test]
+fn maximum_agent_policy_fits_inside_point_zero_one_near() {
+    let mut contract = contract();
+    let corridors = (0..16)
+        .map(|index| format!("C{index:02}{}", "X".repeat(29)))
+        .collect();
+    set_caller_with_deposit(accounts(3), NOW, 10_000_000_000_000_000_000_000);
+    contract.set_agent(
+        agent_key(),
+        accounts(5),
+        U128(10),
+        U128(20),
+        Some(corridors),
+        U64(0),
+        U64(NOW + 1),
+    );
+
+    assert!(contract.get_policy(accounts(3), accounts(5)).is_some());
+}
+
 #[cfg(feature = "testing")]
 #[test]
 fn authorized_agent_payout_counts_pending_and_completed_spend() {
@@ -417,7 +437,7 @@ fn naming_someone_as_your_agent_never_limits_their_own_funds() {
     set_caller(accounts(5), NOW);
     let _promise = payout(&mut contract, "own-order");
     set_caller_with_deposit(accounts(5), NOW, 1);
-    contract.transfer(accounts(4), U128(40));
+    contract.transfer(accounts(4), U128(40), None);
     assert_eq!(contract.get_balance(accounts(4)).available, U128(40));
     assert_eq!(policy(&contract, accounts(3)).spent_today, U128(0));
 }
@@ -1096,6 +1116,32 @@ fn status_replay_is_a_no_op() {
     );
 }
 
+#[cfg(feature = "testing")]
+#[test]
+fn backend_status_sequence_is_accepted_after_payout() {
+    let mut contract = contract();
+    contract.credit_for_testing(accounts(3), 10);
+    register_payout_order(&mut contract, 10, NOW + 3_600_000_000_000);
+    set_caller(accounts(3), NOW);
+    let _promise = payout(&mut contract, "order-1");
+    complete_payout(&mut contract, "order-1", PromiseResult::Successful(vec![]));
+
+    set_caller(accounts(1), NOW);
+    for status in ["routing", "with_provider", "paying_out", "settled"] {
+        contract.set_status(
+            "order-1".to_string(),
+            status.to_string(),
+            ReceiptRefs::default(),
+        );
+    }
+    assert_eq!(
+        contract
+            .get_receipt("order-1".to_string())
+            .and_then(|receipt| receipt.status),
+        Some("settled".to_string())
+    );
+}
+
 #[test]
 fn earlier_status_is_rejected() {
     let mut contract = contract();
@@ -1477,7 +1523,7 @@ fn transfer_requires_one_yocto_and_moves_only_available_balance() {
     set_caller(accounts(3), NOW);
     assert!(
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            contract.transfer(accounts(4), U128(25));
+            contract.transfer(accounts(4), U128(25), None);
         }))
         .is_err()
     );
@@ -1485,7 +1531,11 @@ fn transfer_requires_one_yocto_and_moves_only_available_balance() {
     assert_eq!(contract.get_balance(accounts(4)).available, U128(0));
 
     set_caller_with_deposit(accounts(3), NOW, 1);
-    contract.transfer(accounts(4), U128(25));
+    contract.transfer(
+        accounts(4),
+        U128(25),
+        Some("request_01J_DAPPER".to_string()),
+    );
     assert_eq!(contract.get_balance(accounts(3)).available, U128(75));
     assert_eq!(contract.get_balance(accounts(4)).available, U128(25));
     assert!(
@@ -1493,6 +1543,26 @@ fn transfer_requires_one_yocto_and_moves_only_available_balance() {
             .iter()
             .any(|log| log.contains("\"event\":\"transferred\"") && log.contains("\"data\":[{"))
     );
+}
+
+#[test]
+fn transfer_rejects_invalid_request_ids_without_moving_funds() {
+    let mut contract = contract();
+    register_storage(&mut contract, accounts(4));
+    fund(&mut contract, accounts(3), 100);
+
+    let too_long = "x".repeat(65);
+    for request_id in ["", "contains spaces", too_long.as_str()] {
+        set_caller_with_deposit(accounts(3), NOW, 1);
+        assert!(
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                contract.transfer(accounts(4), U128(25), Some(request_id.to_string()));
+            }))
+            .is_err()
+        );
+    }
+    assert_eq!(contract.get_balance(accounts(3)).available, U128(100));
+    assert_eq!(contract.get_balance(accounts(4)).available, U128(0));
 }
 
 #[test]
@@ -1514,7 +1584,7 @@ fn agent_cannot_move_the_owners_funds_with_transfer() {
     set_agent_caller(NOW, 1);
     assert!(
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            contract.transfer(accounts(4), U128(25));
+            contract.transfer(accounts(4), U128(25), None);
         }))
         .is_err()
     );
@@ -1590,7 +1660,7 @@ fn unrelated_balance_cannot_be_credited_to_an_order() {
 
 #[cfg(feature = "testing")]
 #[test]
-fn failed_transfer_and_stuck_resolution_restore_once_without_refund() {
+fn registration_account_can_resolve_stuck_payout_without_refund() {
     let mut contract = contract();
     set_caller(accounts(0), NOW);
     contract.set_payout_timeout(U64(10));
@@ -1598,7 +1668,7 @@ fn failed_transfer_and_stuck_resolution_restore_once_without_refund() {
     register_payout_order(&mut contract, 10, NOW + 3_600_000_000_000);
     set_caller(accounts(3), NOW);
     let _promise = payout(&mut contract, "order-1");
-    set_caller(accounts(0), NOW + 10);
+    set_caller(accounts(1), NOW + 10);
     contract.resolve_stuck_payout("order-1".to_string(), false);
     assert_eq!(
         order_transfer_state(&contract, "order-1"),
@@ -1620,6 +1690,34 @@ fn failed_transfer_and_stuck_resolution_restore_once_without_refund() {
         .is_err()
     );
     assert_eq!(contract.get_balance(accounts(3)).available, U128(100));
+}
+
+#[test]
+fn canonical_event_fixture_covers_every_documented_event() {
+    let fixture = include_str!("fixtures/events.jsonl");
+    let actual: std::collections::BTreeSet<String> = fixture
+        .lines()
+        .map(|line| {
+            near_sdk::serde_json::from_str::<near_sdk::serde_json::Value>(line)
+                .unwrap_or_else(|_| panic!("invalid event fixture"))["event"]
+                .as_str()
+                .unwrap_or_else(|| panic!("fixture event is missing"))
+                .to_string()
+        })
+        .collect();
+    let expected = std::collections::BTreeSet::from([
+        "agent_revoked".to_string(),
+        "agent_set".to_string(),
+        "agent_spend".to_string(),
+        "deposited".to_string(),
+        "order_registered".to_string(),
+        "order_released".to_string(),
+        "payout_executed".to_string(),
+        "recredited".to_string(),
+        "status_set".to_string(),
+        "transferred".to_string(),
+    ]);
+    assert_eq!(actual, expected);
 }
 
 #[cfg(feature = "testing")]

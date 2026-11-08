@@ -1,6 +1,6 @@
 # FLIQ vault contract handoff
 
-Branch: `Ariya-Agent-Permissions`
+Branch: `Dapper-Contract`
 
 ## Implemented contract surface
 
@@ -13,11 +13,11 @@ Branch: `Ariya-Agent-Permissions`
 | `remove_agent(agent_id)` | `policies.rs` | With exactly 1 yoctoNEAR, revokes the caller's policy for that agent. Emits `agent_revoked`. |
 | `get_policy(owner, agent_id)` | `policies.rs` | Returns owner, agent, public key label, caps, current-day spend, corridors, cooldown, expiry, last payout time and the revoked flag. |
 | Policy lifecycle | `policies.rs`, `integration.rs` | Counts pending plus successful spend, releases same-day spend after failed transfers, retains successful spend, rolls daily buckets, and makes parallel-limit bypass fail. |
-| `on_payout_complete`, `resolve_stuck_payout` | `orders.rs` | Commits a confirmed transfer or releases the reservation and enters terminal `TransferFailed`; policy pending state follows the same outcome. |
+| `on_payout_complete`, `resolve_stuck_payout` | `orders.rs` | Commits a confirmed transfer or releases the reservation and enters terminal `TransferFailed`; policy pending state follows the same outcome. After timeout, either the owner or registration account may resolve it. |
 | `release_order` | `lib.rs`, `vault.rs` | Registration account or contract owner restores a reservation and moves a never-executed order to terminal `Released`. |
 | `set_status`, `get_receipt` | `orders.rs`, `receipts.rs` | Keeps authenticated backend status separate from verified NEAR transfer state; missing receipts return `null`. |
 | `recredit` | `orders.rs`, `vault.rs` | Requires write-once refund evidence and real unattributed USDC backing before exactly-once recredit. |
-| `ft_on_transfer`, `get_balance`, `transfer` | `vault.rs`, `lib.rs`, `policies.rs` | Handles approved-USDC deposits, isolated available/reserved balances and registered internal transfers; agent transfers debit the policy owner and enforce policy spend limits. |
+| `ft_on_transfer`, `get_balance`, `transfer` | `vault.rs`, `lib.rs` | Handles approved-USDC deposits, isolated available/reserved balances and registered internal transfers. Optional validated request IDs let the backend correlate request payments from transaction arguments; agents cannot transfer the owner's balance. |
 
 ## Agent identity decision
 
@@ -33,7 +33,7 @@ Hosted-agent key removal should accompany `remove_agent`, but the on-chain revok
 - Successful spend remains counted if the provider later refunds it, preventing spend-limit recycling.
 - Cooldown begins when authorization succeeds and remains after a transfer failure.
 - Corridors use exact string matching. Policy corridor values are non-empty ASCII identifiers containing letters, digits, `-`, or `_`.
-- Agent-initiated vault transfers use the same per-action cap, daily cap, cooldown, expiry and revocation checks and debit the policy owner. Corridors do not apply because a vault transfer has no corridor.
+- Agent accounts cannot transfer the policy owner's balance; every vault transfer debits its predecessor's own registered balance.
 - Policy updates preserve current-day spend and last-payout time. Revoked policies can be deliberately reconfigured by their owner through `set_agent`.
 
 ## Verification
@@ -51,7 +51,7 @@ Policy coverage includes:
 - failed-transfer release and successful-transfer retention;
 - daily rollover and same-day update preservation;
 - duplicate payout and callback replay protection.
-- exactly-1-yocto agent administration and policy-limited vault transfers.
+- deposit-funded agent administration and caller-owned vault transfers.
 
 ## Deployment migration
 

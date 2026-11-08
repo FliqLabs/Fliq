@@ -282,11 +282,14 @@ impl Contract {
     }
 
     #[payable]
-    pub fn transfer(&mut self, to_account: AccountId, amount: U128) {
+    pub fn transfer(&mut self, to_account: AccountId, amount: U128, request_id: Option<String>) {
         require!(
             env::attached_deposit() == NearToken::from_yoctonear(1),
             errors::ONE_YOCTO_REQUIRED
         );
+        if let Some(request_id) = request_id.as_deref() {
+            orders::validate_request_id(request_id);
+        }
         let from = env::predecessor_account_id();
         match self.vault.transfer_available(&from, &to_account, amount.0) {
             Ok(()) => {}
@@ -377,9 +380,10 @@ impl Contract {
     /// Resolve an execution only after checking on chain whether the USDC transfer happened.
     /// Releasing funds after a real transfer would double pay the order.
     pub fn resolve_stuck_payout(&mut self, order_id: String, transferred: bool) {
+        let caller = env::predecessor_account_id();
         require!(
-            env::predecessor_account_id() == self.config.owner,
-            errors::OWNER_ONLY
+            caller == self.config.owner || caller == self.config.registration_account,
+            errors::UNAUTHORIZED
         );
         orders::resolve_stuck_payout(self, order_id, transferred);
     }
