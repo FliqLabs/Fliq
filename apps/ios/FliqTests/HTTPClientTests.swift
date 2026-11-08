@@ -259,6 +259,96 @@ final class HTTPClientTests: XCTestCase {
         return flow
     }
 
+    func testAgentsAreReadFromTheAPI() async throws {
+        let client = makeClient()
+        StubProtocol.respond { request in
+            request.url?.path == "/v1/agents" ? (200, try fixtures.data("agents.list")) : (404, Data())
+        }
+
+        let agents = try await makeAgentAPI(client).agents(vault: "fliq-vault.testnet")
+
+        XCTAssertEqual(agents.map(\.id), ["claude-frank.fliq.near", "payroll-bot-frank.fliq.near"])
+        XCTAssertEqual(agents[0].policy, AgentPolicy(dailyCap: 150_000, perPayout: 50_000, currencies: [.ngn], savedAccountsOnly: true))
+        XCTAssertEqual(agents[0].usedToday, 30_000)
+        XCTAssertEqual(agents[1].policy.currencies, [.kes])
+    }
+
+    func testConnectingSignsTheSetAgentStepAndRelaysIt() async throws {
+        let client = makeClient()
+        let relayed = Data(#"{"status":"succeeded","tx_hash":"tx","delegate_hash":"dh","sender_id":"frank.fliqaccount.testnet","receiver_id":"fliq-vault.testnet"}"#.utf8)
+        StubProtocol.respond { request in
+            if request.url?.host == "rpc.test" {
+                let body = try JSONSerialization.jsonObject(with: Data(reading: request.httpBodyStream!)) as? [String: Any]
+                return body?["method"] as? String == "block"
+                    ? (200, Data(#"{"result":{"header":{"height":1000}}}"#.utf8))
+                    : (200, Data(#"{"result":{"nonce":41}}"#.utf8))
+            }
+            switch request.url?.path {
+            case "/v1/agents": return (201, try fixtures.data("agent.connect"))
+            case "/v1/relays": return (200, relayed)
+            default: return (404, Data())
+            }
+        }
+
+        let agent = try await makeAgentAPI(client).connect(
+            name: "Claude", publicKey: "ed25519:5FjQ8mT3vXk2NcR7yLpW9sBdH4uZaE6gKoJt1qMi9kQ",
+            policy: AgentPolicy(dailyCap: 150_000, perPayout: 50_000, currencies: [.ngn, .kes]), vault: "fliq-vault.testnet"
+        )
+
+        XCTAssertEqual(agent.id, "claude-frank.fliq.near")
+        XCTAssertEqual(agent.status, .active)
+        let connect = try XCTUnwrap(StubProtocol.requests.first { $0.url?.path == "/v1/agents" })
+        XCTAssertNotNil(connect.value(forHTTPHeaderField: "Idempotency-Key"))
+        let sent = try JSONSerialization.jsonObject(with: Data(reading: connect.httpBodyStream!)) as? [String: Any]
+        XCTAssertEqual(sent?["currencies"] as? [String], ["KES", "NGN"])
+        XCTAssertEqual((sent?["daily_cap"] as? [String: String])?["currency"], "NGN")
+
+        let relay = try XCTUnwrap(StubProtocol.requests.first { $0.url?.path == "/v1/relays" })
+        let body = try JSONSerialization.jsonObject(with: Data(reading: relay.httpBodyStream!)) as? [String: String]
+        let step = try XCTUnwrap(SignStep.steps(in: fixtures.data("agent.connect")).first)
+        let expected = DelegateAction.step(step, from: "frank.fliqaccount.testnet", nonce: 42, blockHeight: 1000, publicKey: Data(count: 32))
+        XCTAssertEqual(body?["signed_delegate"], expected.signed(with: AgentKeys.signature))
+    }
+
+    func testSignStepsKeepTheirArgKeysAndTheFullStorageDeposit() throws {
+        let step = try XCTUnwrap(SignStep.steps(in: fixtures.data("agent.connect")).first)
+        let args = try XCTUnwrap(JSONSerialization.jsonObject(with: step.args) as? [String: Any])
+
+        XCTAssertEqual(step.methodName, "set_agent")
+        XCTAssertEqual(step.receiverId, "fliq-vault.testnet")
+        XCTAssertEqual(step.gas, 30_000_000_000_000)
+        XCTAssertEqual(Set(args.keys), ["public_key", "agent_id", "per_payout_cap", "daily_cap", "corridors", "cooldown_ns", "expiry_ns"])
+        XCTAssertEqual(step.deposit, Yocto(decimal: "10000000000000000000000"))
+        XCTAssertEqual(step.deposit.high, 542)
+        XCTAssertEqual(step.deposit.low, 1_864_712_049_423_024_128)
+    }
+
+    func testYoctoRefusesWhatIsNotAU128() {
+        XCTAssertEqual(Yocto(decimal: "1"), 1)
+        XCTAssertEqual(Yocto(decimal: "340282366920938463463374607431768211455"), Yocto(low: .max, high: .max))
+        XCTAssertNil(Yocto(decimal: "340282366920938463463374607431768211456"))
+        XCTAssertNil(Yocto(decimal: "1.5"))
+        XCTAssertNil(Yocto(decimal: ""))
+    }
+
+    func testCapsForAShillingOnlyAgentAreInShillings() {
+        let limits = HTTPAgentAPI.Limits(AgentPolicy(dailyCap: 40_000, perPayout: 10_000, currencies: [.kes]))
+
+        XCTAssertEqual(limits.dailyCap, HTTPAgentAPI.Cap(amount: "40000", currency: "KES"))
+        XCTAssertEqual(limits.currencies, ["KES"])
+    }
+
+    private func makeAgentAPI(_ client: HTTPClient) -> HTTPAgentAPI {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [StubProtocol.self]
+        let rpc = NEARRPC(url: URL(string: "https://rpc.test")!, session: URLSession(configuration: configuration))
+        return HTTPAgentAPI(
+            client: client,
+            relay: DelegateRelay(api: client, rpc: rpc, keys: AgentKeys(), pollInterval: .zero),
+            owner: { "frank.fliqaccount.testnet" }
+        )
+    }
+
     private func makeClient(sessions: SessionVault = SessionVault(keychain: nil)) -> HTTPClient {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [StubProtocol.self]
@@ -269,6 +359,13 @@ final class HTTPClientTests: XCTestCase {
             session: URLSession(configuration: configuration)
         )
     }
+}
+
+private struct AgentKeys: DeviceKeys {
+    static let signature = Data(repeating: 7, count: 64)
+
+    func publicKey() throws -> String { "ed25519:11111111111111111111111111111111" }
+    func sign(_ message: Data, reason: String) throws -> Data { Self.signature }
 }
 
 private struct FixedKeys: DeviceKeys {

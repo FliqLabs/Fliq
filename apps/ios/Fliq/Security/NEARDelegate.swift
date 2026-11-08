@@ -7,7 +7,7 @@ struct DelegateAction: Equatable, Sendable {
         let methodName: String
         let args: Data
         let gas: UInt64
-        let deposit: UInt64
+        let deposit: Yocto
     }
 
     let senderId: String
@@ -74,6 +74,52 @@ extension DelegateAction {
             publicKey: publicKey
         )
     }
+
+    /// A call the API asked the device to sign, such as the vault's `set_agent` or `remove_agent`.
+    static func step(_ step: SignStep, from sender: String, nonce: UInt64, blockHeight: UInt64, publicKey: Data) -> DelegateAction {
+        DelegateAction(
+            senderId: sender,
+            receiverId: step.receiverId,
+            call: FunctionCall(methodName: step.methodName, args: step.args, gas: step.gas, deposit: step.deposit),
+            nonce: nonce,
+            maxBlockHeight: blockHeight + lifetimeBlocks,
+            publicKey: publicKey
+        )
+    }
+}
+
+/// yoctoNEAR is a u128: an agent's storage deposit (10^22) does not fit in 64 bits.
+struct Yocto: Equatable, Sendable, ExpressibleByIntegerLiteral {
+    let low: UInt64
+    let high: UInt64
+
+    init(low: UInt64, high: UInt64) {
+        self.low = low
+        self.high = high
+    }
+
+    init(integerLiteral value: UInt64) {
+        self.init(low: value, high: 0)
+    }
+
+    /// Parses a decimal string as the API sends it. Nil when it is not a whole number that fits in 128 bits.
+    init?(decimal: String) {
+        guard !decimal.isEmpty, decimal.allSatisfy({ $0.isASCII && $0.isNumber }) else { return nil }
+        var low: UInt64 = 0
+        var high: UInt64 = 0
+        for digit in decimal.utf8.map({ UInt64($0 - 48) }) {
+            // (high, low) * 10 + digit, carrying between the two words.
+            let lowProduct = low.multipliedFullWidth(by: 10)
+            let (highTimesTen, highOverflow) = high.multipliedReportingOverflow(by: 10)
+            let (sumLow, carryLow) = lowProduct.low.addingReportingOverflow(digit)
+            let (withCarry, carryHigh) = highTimesTen.addingReportingOverflow(lowProduct.high + (carryLow ? 1 : 0))
+            guard !highOverflow, !carryHigh else { return nil }
+            low = sumLow
+            high = withCarry
+        }
+        self.low = low
+        self.high = high
+    }
 }
 
 /// Little-endian Borsh, enough for a delegate action.
@@ -83,9 +129,9 @@ struct BorshWriter {
     mutating func u8(_ value: UInt8) { data.append(value) }
     mutating func u32(_ value: UInt32) { withUnsafeBytes(of: value.littleEndian) { data.append(contentsOf: $0) } }
     mutating func u64(_ value: UInt64) { withUnsafeBytes(of: value.littleEndian) { data.append(contentsOf: $0) } }
-    mutating func u128(_ value: UInt64) {
-        u64(value)
-        u64(0)
+    mutating func u128(_ value: Yocto) {
+        u64(value.low)
+        u64(value.high)
     }
     mutating func raw(_ bytes: Data) { data.append(bytes) }
     mutating func bytes(_ bytes: Data) {

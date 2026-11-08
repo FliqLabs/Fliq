@@ -59,14 +59,22 @@ final class AppEnvironment {
         guard let api = liveAPI(info: info) else { return AppEnvironment(api: FixtureClient(bundle: bundle)) }
         let profile = ProfileStore()
         let rpc = (info["FliqNearRPCURL"] as? String).flatMap(URL.init(string:)) ?? URL(string: "https://rpc.testnet.near.org")!
+        let keys = KeychainDeviceKeys()
         let transfers = RelayedVaultTransfers(
             api: api,
             rpc: NEARRPC(url: rpc),
-            keys: KeychainDeviceKeys(),
+            keys: keys,
             sender: { await profile.name },
             vault: { try? await api.me().vault }
         )
-        let environment = AppEnvironment(api: api, isLive: true, profile: profile, deposits: HTTPDepositAPI(client: api), transfers: transfers)
+        let agents = HTTPAgentAPI(
+            client: api,
+            relay: DelegateRelay(api: api, rpc: NEARRPC(url: rpc), keys: keys),
+            owner: { await profile.name }
+        )
+        let environment = AppEnvironment(
+            api: api, isLive: true, profile: profile, deposits: HTTPDepositAPI(client: api), agentAPI: agents, transfers: transfers
+        )
         Task {
             await api.sessions.whenEnded {
                 Task { @MainActor in environment.signedOutByServer() }
