@@ -1,6 +1,7 @@
 import Foundation
 
 /// Agent keys through the API: `GET /agents`, `POST /agents`, `PATCH` and `DELETE /agents/{id}`.
+/// What each agent paid or was refused comes from `GET /activity?filter=agents`.
 /// Each change comes back with vault calls the device signs and relays; the vault only holds a policy the user signed.
 struct HTTPAgentAPI: AgentAPI {
     let client: HTTPClient
@@ -27,6 +28,23 @@ struct HTTPAgentAPI: AgentAPI {
 
     private struct AgentList: Decodable {
         let agents: [LiveAgent]
+    }
+
+    struct ActivityRow: Decodable {
+        struct Party: Decodable { let name: String }
+        struct Ref: Decodable { let agentId: String }
+
+        let activityId: String
+        let kind: String
+        let at: Date
+        let party: Party
+        let agent: Ref?
+        let local: Cap?
+        let reason: String?
+    }
+
+    private struct ActivityList: Decodable {
+        let items: [ActivityRow]
     }
 
     private struct AgentChange: Decodable {
@@ -60,7 +78,14 @@ struct HTTPAgentAPI: AgentAPI {
 
     func agents(vault: String) async throws -> [Agent] {
         let list: AgentList = try await client.send("GET", "agents")
-        return list.agents.map(Self.agent)
+        // The list still shows when the activity can't be read; the rows are only history.
+        let activity: ActivityList? = try? await client.send("GET", "activity", query: ["filter": "agents", "limit": "100"])
+        let events = Dictionary(grouping: (activity?.items ?? []).compactMap(Self.event), by: \.agentId)
+        return list.agents.map { live in
+            var agent = Self.agent(live)
+            agent.events = events[live.agentId]?.map(\.event) ?? []
+            return agent
+        }
     }
 
     func connect(name: String, publicKey: String, policy: AgentPolicy, vault: String) async throws -> Agent {
@@ -96,6 +121,39 @@ struct HTTPAgentAPI: AgentAPI {
             }
         }
         return Self.agent(agent)
+    }
+
+    /// Payouts and refusals only, in whole local units as the agent screen shows them. Other kinds never carry an agent.
+    static func event(_ row: ActivityRow) -> (agentId: String, event: AgentEvent)? {
+        guard
+            let agentId = row.agent?.agentId,
+            let local = row.local,
+            let currency = Currency(rawValue: local.currency.lowercased()),
+            let amount = Decimal(string: local.amount)
+        else { return nil }
+        let outcome: AgentEvent.Outcome
+        switch row.kind {
+        case "payout": outcome = .paid
+        case "refused": outcome = .refused(reason: reasonText(row.reason))
+        default: return nil
+        }
+        let event = AgentEvent(
+            id: row.activityId, recipient: row.party.name, amount: NSDecimalNumber(decimal: amount).intValue,
+            currency: currency, outcome: outcome, at: row.at
+        )
+        return (agentId, event)
+    }
+
+    static func reasonText(_ reason: String?) -> String {
+        switch reason {
+        case "over_daily_cap": "over the daily cap"
+        case "over_per_payout_cap": "over the per-payout cap"
+        case "corridor_not_allowed": "not allowed in this currency"
+        case "not_saved_account": "not a saved account"
+        case "provider_failed": "the bank didn't take it"
+        case "expired": "it expired"
+        default: "the vault refused it"
+        }
     }
 
     static func agent(_ live: LiveAgent) -> Agent {
