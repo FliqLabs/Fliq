@@ -34,7 +34,7 @@ const configured = enabledAdapters(process.env, {
 const adapters = configured.length > 0 ? configured : sandboxAdapters();
 
 // The deployed vault when an RPC and the registration key are set; otherwise Ladipeo's in-memory model for local runs.
-const usdcContract = process.env.USDC_CONTRACT_ID ?? "usdc.test.near";
+const usdcContract = config.usdcContract;
 const registrationAccount = process.env.NEAR_REGISTRATION_ACCOUNT_ID ?? "registrar.test.near";
 const registrationKey = process.env.NEAR_REGISTRATION_PRIVATE_KEY?.trim();
 const nearRpcUrl = process.env.NEAR_RPC_URL?.trim();
