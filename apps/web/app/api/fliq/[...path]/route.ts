@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const API_BASE = process.env.FLIQ_API_BASE_URL ?? "https://fliq-yclq.onrender.com/v1";
+const API_BASE = process.env.FLIQ_API_BASE_URL ?? "https://api-production-54e10.up.railway.app/v1";
 const ACCESS_COOKIE = "fliq_access";
 const REFRESH_COOKIE = "fliq_refresh";
 const REFRESH_MAX_AGE = 30 * 24 * 60 * 60;
