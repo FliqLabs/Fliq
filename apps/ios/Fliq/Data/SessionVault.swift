@@ -53,7 +53,12 @@ actor SessionVault {
     func renewedToken(replacing used: String?, with renew: @escaping @Sendable (String) async throws -> Session?) async -> String? {
         if let current = tokens?.accessToken, current != used { return current }
         if let renewal { return try? await renewal.value?.accessToken }
-        guard let refreshToken = tokens?.refreshToken else { return nil }
+        // A refused call with no session at all, as after a reinstall that lost the Keychain, cannot be renewed:
+        // ending it sends the app back to sign-in instead of leaving Home on a session that is not there.
+        guard let refreshToken = tokens?.refreshToken else {
+            end()
+            return nil
+        }
         let task = Task { try await renew(refreshToken) }
         renewal = task
         defer { renewal = nil }

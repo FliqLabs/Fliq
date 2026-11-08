@@ -204,7 +204,7 @@ struct HTTPClient: FliqAPI {
             bearer = await sessions.renewedToken(replacing: bearer, with: refresh) ?? bearer
         }
         let first = try await perform(method, path, query: query, body: body, headers: headers, bearer: bearer ?? apiKey)
-        guard first.1 == 401, signedIn, bearer != nil else { return first }
+        guard first.1 == 401, signedIn else { return first }
 
         guard let renewed = await sessions.renewedToken(replacing: bearer, with: refresh) else { return first }
         return try await perform(method, path, query: query, body: body, headers: headers, bearer: renewed)
