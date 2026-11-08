@@ -14,4 +14,3 @@
 - [ ] Contract change touching balances, permissions or transfers: marked "needs contract review"
 - [ ] Tests added or updated, `make test-<area>` passes locally
 - [ ] No secrets, no `.env`, no AI attribution in commits
-- [ ] AI-generated code listed in `docs/AI_USAGE.md`
