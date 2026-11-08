@@ -8,6 +8,8 @@ struct HTTPClient: FliqAPI {
     let apiKey: String
     var sessions = SessionVault()
     var session: URLSession = .shared
+    /// Sent as `X-Device-Name`, so Devices and sessions can tell this phone from a browser.
+    var deviceName = "iPhone"
     /// How long to wait before asking again while the server is still creating the NEAR account.
     var claimRetryDelay: Duration = .seconds(2)
     static let claimAttempts = 5
@@ -95,8 +97,8 @@ struct HTTPClient: FliqAPI {
         try await send("PATCH", "me", body: ["display_name": displayName])
     }
 
-    func institutions() async throws -> [Institution] {
-        let list: InstitutionList = try await send("GET", "institutions")
+    func institutions(in country: Country) async throws -> [Institution] {
+        let list: InstitutionList = try await send("GET", "institutions", query: ["country": country.rawValue])
         return list.items
     }
 
@@ -116,13 +118,34 @@ struct HTTPClient: FliqAPI {
         try await send("GET", "people/\(name)")
     }
 
+    func relay(signedDelegate: String) async throws -> RelayResult {
+        try await send("POST", "relays", body: ["signed_delegate": signedDelegate])
+    }
+
+    func relayResult(hash: String) async throws -> RelayResult {
+        try await send("GET", "relays/\(hash)")
+    }
+
+    func passkeys() async throws -> PasskeyList {
+        try await send("GET", "passkeys")
+    }
+
+    func deviceSessions() async throws -> DeviceSessionList {
+        try await send("GET", "sessions")
+    }
+
+    func revokeSession(id: String) async throws {
+        let _: Empty = try await send("DELETE", "sessions/\(id)")
+    }
+
     private func send<Response: Decodable>(
         _ method: String,
         _ path: String,
+        query: [String: String] = [:],
         body: (any Encodable)? = nil,
         headers: [String: String] = [:]
     ) async throws -> Response {
-        let (data, status) = try await exchange(method, path, body: body, headers: headers)
+        let (data, status) = try await exchange(method, path, query: query, body: body, headers: headers)
         return try decode(data, status: status)
     }
 
@@ -146,18 +169,19 @@ struct HTTPClient: FliqAPI {
     private func exchange(
         _ method: String,
         _ path: String,
+        query: [String: String] = [:],
         body: (any Encodable)?,
         headers: [String: String]
     ) async throws -> (Data, Int) {
         let tokens = await sessions.tokens
-        let first = try await perform(method, path, body: body, headers: headers, bearer: tokens?.accessToken ?? apiKey)
+        let first = try await perform(method, path, query: query, body: body, headers: headers, bearer: tokens?.accessToken ?? apiKey)
         guard first.1 == 401, let tokens, !path.hasPrefix("auth/") else { return first }
 
         guard let renewed = try await renew(tokens.refreshToken) else {
             await sessions.clear()
             return first
         }
-        return try await perform(method, path, body: body, headers: headers, bearer: renewed)
+        return try await perform(method, path, query: query, body: body, headers: headers, bearer: renewed)
     }
 
     private func renew(_ refreshToken: String) async throws -> String? {
@@ -170,13 +194,17 @@ struct HTTPClient: FliqAPI {
     private func perform(
         _ method: String,
         _ path: String,
+        query: [String: String] = [:],
         body: (any Encodable)?,
         headers: [String: String],
         bearer: String?
     ) async throws -> (Data, Int) {
-        var request = URLRequest(url: baseURL.appending(path: path))
+        var url = baseURL.appending(path: path)
+        if !query.isEmpty { url.append(queryItems: query.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) }) }
+        var request = URLRequest(url: url)
         request.httpMethod = method
         if let bearer, !bearer.isEmpty { request.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization") }
+        request.setValue(deviceName, forHTTPHeaderField: "X-Device-Name")
         headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
         if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")

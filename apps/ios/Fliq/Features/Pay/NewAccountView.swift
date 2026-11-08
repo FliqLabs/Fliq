@@ -6,19 +6,21 @@ struct NewAccountView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            CountryChips()
-                .padding(.top, 28)
+            CountryChips(selected: flow.recipient.country) { country in
+                Task { await flow.recipient.choose(country) }
+            }
+            .padding(.top, 28)
 
             BankAccountFields(entry: flow.recipient)
                 .padding(.top, 28)
 
             Toggle("Save this account", isOn: $flow.saveAccount)
                 .tint(Theme.confirmed)
-                .font(.system(size: 16))
+                .font(.system(size: 17))
                 .padding(.horizontal, 16)
-                .frame(height: 54)
-                .background(Theme.field, in: RoundedRectangle(cornerRadius: 12))
-                .padding(.top, 28)
+                .frame(height: 64)
+                .background(Theme.field, in: RoundedRectangle(cornerRadius: 14))
+                .padding(.top, 36)
 
             Spacer()
 
@@ -32,20 +34,26 @@ struct NewAccountView: View {
 }
 
 struct CountryChips: View {
+    let selected: Country
+    let onSelect: (Country) -> Void
+
     var body: some View {
         HStack(spacing: 8) {
-            Text("Nigeria")
-                .foregroundStyle(.black)
-                .padding(.horizontal, 16)
-                .frame(height: 36)
-                .background(.white, in: Capsule())
-            Text("Kenya · soon")
-                .foregroundStyle(Theme.textSecondary)
-                .padding(.horizontal, 16)
-                .frame(height: 36)
-                .background(Theme.field, in: Capsule())
+            ForEach(Country.allCases, id: \.self) { country in
+                Button { onSelect(country) } label: {
+                    HStack(spacing: 8) {
+                        CountryFlag(country: country)
+                        Text(country.name)
+                    }
+                    .foregroundStyle(country == selected ? .black : Theme.textSecondary)
+                    .padding(.leading, 12)
+                    .padding(.trailing, 16)
+                    .frame(height: 40)
+                    .background(country == selected ? Color.white : Theme.field, in: Capsule())
+                }
+            }
         }
-        .font(.system(size: 14, weight: .medium))
+        .font(.system(size: 16, weight: .medium))
     }
 }
 

@@ -24,11 +24,16 @@ protocol FliqAPI: Sendable {
     func claimName(_ name: FliqName, publicKey: String) async throws -> User
     func updateProfile(displayName: String) async throws -> User
 
-    func institutions() async throws -> [Institution]
+    func institutions(in country: Country) async throws -> [Institution]
     func vaultBalance() async throws -> VaultBalance
     func recipients() async throws -> RecipientList
     func recentPeople() async throws -> RecentPeopleList
     func person(named name: String) async throws -> Person
+    func relay(signedDelegate: String) async throws -> RelayResult
+    func passkeys() async throws -> PasskeyList
+    func deviceSessions() async throws -> DeviceSessionList
+    func revokeSession(id: String) async throws
+    func relayResult(hash: String) async throws -> RelayResult
 }
 
 enum PasskeyPurpose: String, Sendable {

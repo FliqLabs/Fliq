@@ -4,6 +4,7 @@ struct ActionBarItem: Identifiable {
     let title: String
     let symbol: String
     var isEnabled = true
+    var isSelected = false
     let action: () -> Void
 
     var id: String { title }
@@ -26,11 +27,13 @@ struct ActionBar: View {
                                 .font(.system(size: 12))
                         }
                         .frame(maxWidth: .infinity, minHeight: 56)
+                        .background(item.isSelected ? Color.white.opacity(0.12) : .clear, in: Capsule())
                         .contentShape(Rectangle())
                         .foregroundStyle(item.isEnabled ? Theme.textPrimary : Theme.textDisabled)
                     }
                     .buttonStyle(.pressable)
                     .disabled(!item.isEnabled)
+                    .accessibilityAddTraits(item.isSelected ? .isSelected : [])
                 }
             }
             .padding(.horizontal, 12)

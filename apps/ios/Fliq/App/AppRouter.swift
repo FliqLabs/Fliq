@@ -2,6 +2,7 @@ import Observation
 
 enum AppRoute: Hashable {
     case payNew
+    case payPerson
     case payAmount
     case payQuote
     case paySending
@@ -9,7 +10,6 @@ enum AppRoute: Hashable {
     case payRefunded
     case receiveAddress
     case receiveArriving
-    case activity
     case agents
     case settings
     case settingsAccounts

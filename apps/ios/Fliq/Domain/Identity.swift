@@ -8,6 +8,50 @@ struct User: Codable, Sendable, Equatable {
     let occupation: String?
     let vault: String?
     let photoUrl: String?
+    var homeCurrency: String?
+    var dailyLimit: MoneyAmount?
+    var verified: Bool?
+}
+
+/// The API's `Money`: a decimal string in the currency's own units, with an uppercase currency code.
+struct MoneyAmount: Codable, Sendable, Equatable {
+    let amount: String
+    let currency: String
+
+    var formatted: String {
+        let symbol = ["NGN": "₦", "KES": "KSh ", "GHS": "GH₵", "USD": "$"][currency] ?? "\(currency) "
+        let value = Decimal(string: amount) ?? 0
+        return symbol + value.formatted(.number.precision(.fractionLength(0...2)))
+    }
+}
+
+/// A signed-in device, from `GET /sessions`.
+struct DeviceSession: Codable, Sendable, Equatable, Identifiable {
+    let sessionId: String
+    let device: String
+    let current: Bool
+    let createdAt: Date
+    let lastActiveAt: Date
+
+    var id: String { sessionId }
+}
+
+struct DeviceSessionList: Codable, Sendable, Equatable {
+    let items: [DeviceSession]
+}
+
+/// A passkey on the account, from `GET /passkeys`. `hybrid` means it syncs through iCloud Keychain.
+struct Passkey: Codable, Sendable, Equatable, Identifiable {
+    let passkeyId: String
+    let transports: [String]
+    let createdAt: Date
+    let lastUsedAt: Date?
+
+    var id: String { passkeyId }
+}
+
+struct PasskeyList: Codable, Sendable, Equatable {
+    let items: [Passkey]
 }
 
 struct Session: Codable, Sendable, Equatable {

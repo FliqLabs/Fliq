@@ -15,9 +15,12 @@ final class ActivityUITests: XCTestCase {
         app.buttons["Activity"].tap()
         XCTAssertTrue(app.staticTexts["Nothing yet"].waitForExistence(timeout: 3))
         snap("a1-activity-empty")
-        app.buttons["BackButton"].tap()
+        XCTAssertTrue(app.buttons["Send"].exists, "The action bar stays under Activity")
+        app.buttons["Activity"].tap()
 
         app.buttons["Send"].tap()
+        XCTAssertTrue(app.buttons["New recipient"].waitForExistence(timeout: 3))
+        app.buttons["New recipient"].tap()
         let number = app.textFields["Account number"]
         XCTAssertTrue(number.waitForExistence(timeout: 3))
         number.typeText("0123456789")

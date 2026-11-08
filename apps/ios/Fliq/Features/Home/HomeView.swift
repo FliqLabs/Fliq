@@ -1,18 +1,31 @@
 import SwiftUI
 
-struct HomeView: View {
+enum HomeTab {
+    case balance, activity
+}
+
+struct HomeView<Activity: View>: View {
     @State var model: HomeModel
+    @Binding var tab: HomeTab
     var onSend: () -> Void = {}
-    var onActivity: () -> Void = {}
     var onReceive: () -> Void = {}
     var onMenu: () -> Void = {}
+    /// Activity shows in place of the balance, so the action bar stays under it.
+    @ViewBuilder var activity: () -> Activity
 
     var body: some View {
         VStack(spacing: 0) {
             header
-            Spacer()
-            balance
-            Spacer()
+            switch tab {
+            case .balance:
+                Spacer()
+                balance
+                Spacer()
+            case .activity:
+                activity()
+                    .padding(.horizontal, 16)
+                    .frame(maxHeight: .infinity, alignment: .top)
+            }
             ActionBar(items: actions)
                 .padding(.horizontal, 16)
                 .padding(.bottom, 12)
@@ -31,7 +44,8 @@ struct HomeView: View {
             }
             .accessibilityLabel("Profile")
             Spacer()
-            Wordmark()
+            Button { tab = .balance } label: { Wordmark() }
+                .accessibilityLabel("Home")
             Spacer()
             Button(action: onMenu) {
                 Image(systemName: "line.3.horizontal.decrease")
@@ -98,7 +112,9 @@ struct HomeView: View {
             ActionBarItem(title: "Receive", symbol: "square.and.arrow.down", action: onReceive),
             ActionBarItem(title: "Send", symbol: "paperplane", action: onSend),
             ActionBarItem(title: "Request", symbol: "link", isEnabled: model.hasBalance) {},
-            ActionBarItem(title: "Activity", symbol: "clock.arrow.circlepath", action: onActivity),
+            ActionBarItem(title: "Activity", symbol: "clock.arrow.circlepath", isSelected: tab == .activity) {
+                tab = tab == .activity ? .balance : .activity
+            },
         ]
     }
 }
@@ -113,5 +129,7 @@ private struct TrailingIconLabelStyle: LabelStyle {
 }
 
 #Preview {
-    HomeView(model: HomeModel(api: AppEnvironment.preview.api, vault: AppEnvironment.preview.vault))
+    HomeView(model: HomeModel(api: AppEnvironment.preview.api, vault: AppEnvironment.preview.vault), tab: .constant(.balance)) {
+        EmptyView()
+    }
 }

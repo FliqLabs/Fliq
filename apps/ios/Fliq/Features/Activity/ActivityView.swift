@@ -12,6 +12,11 @@ struct ActivityView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            Text("Activity")
+                .font(.system(size: 26, weight: .bold))
+                .tracking(-0.52)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 20)
             HStack(spacing: 8) {
                 ForEach(Filter.allCases, id: \.self) { option in
                     Button(option.rawValue) { filter = option }
@@ -22,7 +27,8 @@ struct ActivityView: View {
                         .background(filter == option ? Color.white : Theme.field, in: Capsule())
                 }
             }
-            .padding(.top, 18)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 14)
 
             if shown.isEmpty {
                 empty
@@ -47,7 +53,6 @@ struct ActivityView: View {
                 .scrollIndicators(.hidden)
             }
         }
-        .fliqScreen("Activity")
     }
 
     private var empty: some View {

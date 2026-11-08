@@ -4,6 +4,9 @@ struct RootView: View {
     @Environment(AppEnvironment.self) private var environment
     @State private var home: HomeModel?
     @State private var flow: PayFlow?
+    @State private var personFlow: PersonPayFlow?
+    @State private var choosingRecipient = false
+    @State private var tab = HomeTab.balance
     @State private var receive: ReceiveFlow?
     /// The flow the source sheet was opened with. Kept apart from `receive` so the sheet gets
     /// its flow in the same update that presents it, and closing it leaves `receive` for the next screens.
@@ -15,12 +18,30 @@ struct RootView: View {
         NavigationStack(path: $router.path) {
             Group {
                 if let home {
-                    HomeView(model: home, onSend: startPayment, onActivity: { router.push(.activity) }, onReceive: startReceive, onMenu: { router.push(.settings) })
+                    HomeView(model: home, tab: $tab, onSend: { choosingRecipient = true }, onReceive: startReceive, onMenu: { router.push(.settings) }) {
+                        ActivityView(store: environment.activity, onReceive: startReceive)
+                    }
                 }
             }
             .navigationDestination(for: AppRoute.self, destination: destination)
         }
         .tint(Theme.textPrimary)
+        .sheet(isPresented: $choosingRecipient) {
+            PayToView(onAccount: { account in
+                choosingRecipient = false
+                startPayment(to: account)
+            }, onPerson: { account in
+                choosingRecipient = false
+                startPersonPayment(to: account)
+            }, onNew: {
+                choosingRecipient = false
+                startPayment()
+            })
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+            .presentationCornerRadius(28)
+            .presentationBackground(Color(hex: 0x141414))
+        }
         .sheet(item: $sourceSheet) { flow in
             ReceiveSourceView(flow: flow, onPicked: { route in
                 sourceSheet = nil
@@ -39,9 +60,17 @@ struct RootView: View {
         }
     }
 
-    private func startPayment() {
-        flow = PayFlow(api: environment.api, activity: environment.activity, vault: environment.vault, accounts: environment.accounts)
-        environment.router.push(.payNew)
+    private func startPayment(to account: VerifiedAccount? = nil) {
+        let flow = PayFlow(api: environment.api, activity: environment.activity, vault: environment.vault, accounts: environment.accounts)
+        self.flow = flow
+        guard let account else { return environment.router.push(.payNew) }
+        flow.recipient.use(account)
+        environment.router.push(.payAmount)
+    }
+
+    private func startPersonPayment(to account: String?) {
+        personFlow = PersonPayFlow(api: environment.api, transfers: environment.transfers, vault: environment.vault, account: account)
+        environment.router.push(.payPerson)
     }
 
     private func startReceive() {
@@ -56,19 +85,24 @@ struct RootView: View {
     @ViewBuilder
     private func destination(_ route: AppRoute) -> some View {
         switch route {
-        case .activity:
-            ActivityView(store: environment.activity, onReceive: startReceive)
         case .receipt(let id):
             if let payout = environment.activity.entry(id: id)?.payout {
                 receipt(for: payout)
             }
         case .payNew, .payAmount, .payQuote, .paySending, .payPaid, .payRefunded:
             if let flow { payStep(route, flow) }
+        case .payPerson:
+            if let personFlow {
+                PersonPayView(flow: personFlow) {
+                    environment.router.reset()
+                    Task { await environment.refreshVault() }
+                }
+            }
         case .receiveAddress, .receiveArriving:
             if let receive { receiveStep(route, receive) }
         case .agents: AgentsView(store: environment.agents)
         case .settings: SettingsView()
-        case .settingsAccounts: AccountsView(onAdd: startPayment)
+        case .settingsAccounts: AccountsView(onAdd: { startPayment() })
         case .settingsSecurity: SecurityView()
         case .settingsNotifications: NotificationsView()
         case .agentConnect: AgentConnectView(store: environment.agents)
@@ -83,12 +117,12 @@ struct RootView: View {
         case .payQuote: QuoteView(flow: flow)
         case .paySending: SendingView(flow: flow)
         case .payPaid:
-            if let payout = flow.payout { PaidView(payout: payout, onPayAgain: startPayment) }
+            if let payout = flow.payout { PaidView(payout: payout, onPayAgain: { startPayment(to: flow.verified) }) }
         case .payRefunded:
             if let payout = flow.payout {
-                RefundedView(payout: payout, quote: flow.quote, onTryAgain: startPayment)
+                RefundedView(payout: payout, quote: flow.quote, onTryAgain: { startPayment(to: flow.verified) })
             }
-        case .activity, .receipt, .receiveAddress, .receiveArriving, .agents, .agentConnect, .settings, .settingsAccounts, .settingsSecurity, .settingsNotifications: EmptyView()
+        case .payPerson, .receipt, .receiveAddress, .receiveArriving, .agents, .agentConnect, .settings, .settingsAccounts, .settingsSecurity, .settingsNotifications: EmptyView()
         }
     }
 

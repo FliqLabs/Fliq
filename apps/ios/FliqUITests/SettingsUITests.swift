@@ -13,6 +13,8 @@ final class SettingsUITests: XCTestCase {
         app.launch()
 
         app.buttons["Send"].tap()
+        XCTAssertTrue(app.buttons["New recipient"].waitForExistence(timeout: 3))
+        app.buttons["New recipient"].tap()
         let number = app.textFields["Account number"]
         XCTAssertTrue(number.waitForExistence(timeout: 3))
         number.typeText("0123456789")

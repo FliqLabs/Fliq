@@ -17,6 +17,7 @@ final class AppEnvironment {
     let deposits: any DepositAPI
     let agents: AgentStore
     let accounts: AccountBook
+    let transfers: any VaultTransfers
     let preferences: Preferences
     let biometrics: any Biometrics
 
@@ -31,6 +32,7 @@ final class AppEnvironment {
         deposits: any DepositAPI = FixtureDepositAPI(),
         agentAPI: any AgentAPI = FixtureAgentAPI(),
         accounts: AccountBook = AccountBook(),
+        transfers: any VaultTransfers = FixtureVaultTransfers(),
         preferences: Preferences = Preferences(),
         biometrics: any Biometrics = DeviceBiometrics()
     ) {
@@ -43,6 +45,7 @@ final class AppEnvironment {
         self.vault = vault
         self.deposits = deposits
         self.accounts = accounts
+        self.transfers = transfers
         self.preferences = preferences
         agents = AgentStore(api: agentAPI, vault: { profile.name ?? "fliq-vault.testnet" })
         self.biometrics = biometrics
@@ -52,8 +55,18 @@ final class AppEnvironment {
         #if DEBUG
         if let testing = uiTesting(bundle: bundle) { return testing }
         #endif
-        guard let api = liveAPI(info: bundle.infoDictionary ?? [:]) else { return AppEnvironment(api: FixtureClient(bundle: bundle)) }
-        return AppEnvironment(api: api, isLive: true)
+        let info = bundle.infoDictionary ?? [:]
+        guard let api = liveAPI(info: info) else { return AppEnvironment(api: FixtureClient(bundle: bundle)) }
+        let profile = ProfileStore()
+        let rpc = (info["FliqNearRPCURL"] as? String).flatMap(URL.init(string:)) ?? URL(string: "https://rpc.testnet.near.org")!
+        let transfers = RelayedVaultTransfers(
+            api: api,
+            rpc: NEARRPC(url: rpc),
+            keys: KeychainDeviceKeys(),
+            sender: { await profile.name },
+            vault: { try? await api.me().vault }
+        )
+        return AppEnvironment(api: api, isLive: true, profile: profile, transfers: transfers)
     }
 
     static let preview = AppEnvironment(
