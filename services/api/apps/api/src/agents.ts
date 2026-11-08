@@ -135,6 +135,7 @@ export async function connectAgent(unit: Unit, deps: AgentDeps, userId: string, 
   if (taken) throw conflict(`An agent called ${name} is already connected. Pick another name or revoke it first.`);
   const units = await usdcCaps(deps, caps);
   await deps.provisioner.createAccount(agentId, input.public_key);
+  await deps.provisioner.fundAgentDeposit(owner, agentId);
   const now = deps.now?.() ?? new Date();
   const agent = await unit((tx) =>
     tx.agent.upsert({

@@ -20,6 +20,14 @@ export type AccountResponse = {
   storage: Record<string, "registered" | "already_registered" | "not_deployed" | "pending">;
 };
 
+export type AgentDepositResponse = {
+  status: "funded" | "already_funded" | "not_needed" | "pending";
+  account_id: string;
+  agent_id: string;
+  yocto: string;
+  tx_hash: string | null;
+};
+
 export class RelayerClientError extends Error {
   readonly status: number;
   readonly code: string;
@@ -43,6 +51,7 @@ export type RelayerClient = {
   relay(signedDelegateBase64: string): Promise<RelayResponse>;
   relayStatus(delegateHash: string): Promise<RelayResponse>;
   provisionAccount(accountId: string, publicKey: string): Promise<AccountResponse>;
+  fundAgentDeposit(accountId: string, agentId: string): Promise<AgentDepositResponse>;
   health(): Promise<{ status: string }>;
 };
 
@@ -84,6 +93,8 @@ export function createRelayerClient(options: RelayerClientOptions): RelayerClien
     relayStatus: (delegateHash) => call("GET", `/v1/relays/${encodeURIComponent(delegateHash)}`),
     provisionAccount: (accountId, publicKey) =>
       call("POST", "/v1/accounts", { account_id: accountId, public_key: publicKey }),
+    fundAgentDeposit: (accountId, agentId) =>
+      call("POST", "/v1/accounts/agent-deposit", { account_id: accountId, agent_id: agentId }),
     health: () => call("GET", "/health"),
   };
 }
