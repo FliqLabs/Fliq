@@ -57,6 +57,7 @@ describe.skipIf(!enabled)("creating NEAR accounts and relaying calls through the
     relay: (signed) => real.relay(signed),
     relayStatus: (hash) => real.relayStatus(hash),
     health: () => real.health(),
+    fundAgentDeposit: (accountId, agentId) => real.fundAgentDeposit(accountId, agentId),
     async provisionAccount(accountId, publicKey) {
       if (trouble.slowOnce) {
         trouble.slowOnce = false;
@@ -100,6 +101,7 @@ describe.skipIf(!enabled)("creating NEAR accounts and relaying calls through the
     await database.$transaction(async (tx) => {
       const users = await tx.user.findMany({ where: { email: { in: emails } }, select: { id: true } });
       const ids = users.map((user) => user.id);
+      await tx.$executeRaw`DELETE FROM core.agents WHERE user_id = ANY(${ids}::text[])`;
       await tx.$executeRaw`DELETE FROM developer.idempotency_records WHERE scope = ANY(${ids}::text[])`;
       await tx.$executeRaw`DELETE FROM auth.sessions WHERE user_id = ANY(${ids}::text[])`;
       await tx.$executeRaw`DELETE FROM auth.users WHERE id = ANY(${ids}::text[])`;
@@ -131,6 +133,27 @@ describe.skipIf(!enabled)("creating NEAR accounts and relaying calls through the
     const replay = await claim(headers, `c-${suffix}`, { name: `create${suffix}`, public_key: user.publicKey });
     expect(replay.statusCode).toBe(201);
     expect(replay.json()).toEqual(claimed.json());
+  });
+
+  it("tops the owner up once so they can attach set_agent's deposit, however often the agent is connected", async () => {
+    const headers = await signIn("agent");
+    const user = newUser(`agent${suffix}.${ROOT}`);
+    expect((await claim(headers, `a-${suffix}`, { name: `agent${suffix}`, public_key: user.publicKey })).statusCode).toBe(201);
+    // A fresh account on chain holds 1 yoctoNEAR; the fake chain starts accounts rich.
+    rpc.setAmount(user.accountId, 1n);
+    const input = { name: "Claude", public_key: newUser("agent key").publicKey, daily_cap: { amount: "150000", currency: "NGN" }, per_payout_cap: { amount: "50000", currency: "NGN" }, currencies: ["NGN"], saved_accounts_only: true };
+    const connect = () => app.inject({ method: "POST", url: "/v1/agents", payload: input, headers: { ...headers, "idempotency-key": randomBytes(8).toString("hex") } });
+    const toOwner = () => rpc.sent.filter((tx) => tx.receiverId === user.accountId && tx.actionKinds.join() === "transfer");
+
+    const first = await connect();
+    expect(first.statusCode, first.body).toBe(201);
+    expect(toOwner()).toHaveLength(1);
+    expect(toOwner()[0]).toMatchObject({ signerId: ROOT });
+    const owner = await rpc.account(user.accountId);
+    expect(owner!.amount - BigInt(owner!.storageUsage) * 10n ** 19n).toBeGreaterThanOrEqual(BigInt(first.json().steps[0].deposit));
+
+    expect((await connect()).statusCode).toBe(201);
+    expect(toOwner()).toHaveLength(1);
   });
 
   it("asks for the key, and refuses one that is not ed25519", async () => {

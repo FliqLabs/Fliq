@@ -73,6 +73,10 @@ export function createAccountActions(userPublicKey: string, fundingYocto: bigint
   ];
 }
 
+export function transferActions(yocto: bigint): Action[] {
+  return [actions.transfer(yocto)];
+}
+
 export function functionCallActions(method: string, args: object, gasTgas: bigint, depositYocto = 0n): Action[] {
   return [actions.functionCall(method, args, gasTgas * TGAS, depositYocto)];
 }

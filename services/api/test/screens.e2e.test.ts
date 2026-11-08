@@ -56,6 +56,9 @@ describe.skipIf(!enabled)("the app's activity, agents, requests and settings", (
     provisionAccount: async () => {
       throw new Error("not used");
     },
+    fundAgentDeposit: async () => {
+      throw new Error("not used");
+    },
   };
 
   let server: Server;

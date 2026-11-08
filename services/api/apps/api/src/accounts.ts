@@ -15,6 +15,8 @@ export type Provisioned = { status: "created" | "pending"; nearAccount: string; 
 
 export interface NearProvisioner {
   createAccount(fullName: string, publicKey: string | undefined): Promise<Provisioned>;
+  // Leaves the owner enough NEAR to attach set_agent's storage deposit to the delegate action they sign.
+  fundAgentDeposit(owner: string, agentId: string): Promise<void>;
 }
 
 // For local runs and tests without a relayer: creates nothing on chain.
@@ -28,6 +30,8 @@ export class MockProvisioner implements NearProvisioner {
     this.onCreated(fullName);
     return { status: "created", nearAccount: fullName, vault: this.vaultAccount };
   }
+
+  async fundAgentDeposit(): Promise<void> {}
 }
 
 // A named account can only be made by its parent, so it is the relayer's account creator that makes it, with the
@@ -54,6 +58,18 @@ export class RelayerProvisioner implements NearProvisioner {
       if (error.code === "invalid_name") throw invalidRequest("Name is invalid.");
       console.error(`relayer could not create ${fullName}: ${error.status} ${error.code} ${error.message}`);
       throw new ApiError(503, "chain_unavailable", "Your NEAR account could not be created right now. Try again in a moment.");
+    }
+  }
+
+  async fundAgentDeposit(owner: string, agentId: string): Promise<void> {
+    try {
+      await this.relayer.fundAgentDeposit(owner, agentId);
+    } catch (error) {
+      if (!(error instanceof RelayerClientError)) throw error;
+      // A top-up still in flight lands before the user can sign, so only a refused or failed one stops the connect.
+      if (error.code === "in_progress" || error.code === "relayer_timeout") return;
+      console.error(`relayer could not fund the agent deposit for ${owner} (${agentId}): ${error.status} ${error.code} ${error.message}`);
+      throw new ApiError(503, "chain_unavailable", "The agent could not be set up right now. Try again in a moment.");
     }
   }
 }

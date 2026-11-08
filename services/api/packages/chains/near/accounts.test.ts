@@ -1,6 +1,6 @@
 import { KeyPair } from "near-api-js";
 import { beforeEach, describe, expect, it } from "vitest";
-import { AccountError, MemoryRelayStore, NearRpcError, provisionAccount, type ProvisionDeps } from "./index";
+import { AccountError, AGENT_DEPOSIT_FLOOR, fundAgentDeposit, MemoryRelayStore, NearRpcError, provisionAccount, type ProvisionDeps } from "./index";
 import { FakeNearRpc, newUser, publicKeyText, ROOT, USDC, VAULT } from "./near.fixtures";
 
 let rpc: FakeNearRpc;
@@ -148,5 +148,58 @@ describe("provisionAccount", () => {
     expect(await code(provisionAccount(deps, ada.accountId, ada.publicKey))).toBe("in_progress");
     release();
     expect((await firstRun).status).toBe("created");
+  });
+});
+
+describe("fundAgentDeposit", () => {
+  const owner = "ada.fliq.testnet";
+  const agent = "claude-ada.fliq.testnet";
+  // storageUsage 200 locks 2e21 yocto, so 1e21 on top leaves nothing free for the deposit.
+  const locked = 200n * 10n ** 19n;
+
+  beforeEach(() => {
+    rpc.addAccount(owner);
+    rpc.addAccount(agent);
+    rpc.setAmount(owner, locked + 1n);
+  });
+
+  it("tops a fresh owner up to the floor from the root, once per agent", async () => {
+    const first = await fundAgentDeposit(deps, owner, agent);
+    expect(first).toMatchObject({ status: "funded", accountId: owner, agentId: agent, yocto: (AGENT_DEPOSIT_FLOOR - 1n).toString() });
+    expect(rpc.sent).toHaveLength(1);
+    expect(rpc.sent[0]).toMatchObject({ signerId: ROOT, receiverId: owner, actionKinds: ["transfer"] });
+    expect(rpc.sent[0]!.raw.transaction.actions[0]!.transfer!.deposit).toBe(AGENT_DEPOSIT_FLOOR - 1n);
+
+    rpc.setAmount(owner, locked);
+    expect(await fundAgentDeposit(deps, owner, agent)).toMatchObject({ status: "already_funded", yocto: "0" });
+    expect(rpc.sent).toHaveLength(1);
+  });
+
+  it("sends nothing to an owner who already holds the floor", async () => {
+    rpc.setAmount(owner, locked + AGENT_DEPOSIT_FLOOR);
+    expect(await fundAgentDeposit(deps, owner, agent)).toMatchObject({ status: "not_needed", yocto: "0" });
+    expect(rpc.sent).toHaveLength(0);
+  });
+
+  it("funds each new agent separately, and only up to the floor", async () => {
+    const second = "travel-ada.fliq.testnet";
+    rpc.addAccount(second);
+    await fundAgentDeposit(deps, owner, agent);
+    rpc.setAmount(owner, locked + AGENT_DEPOSIT_FLOOR / 2n);
+    expect(await fundAgentDeposit(deps, owner, second)).toMatchObject({ status: "funded", yocto: (AGENT_DEPOSIT_FLOOR / 2n).toString() });
+  });
+
+  it("refuses accounts outside the root, an agent that is not created yet, and paying the agent itself", async () => {
+    expect(await code(fundAgentDeposit(deps, "ada.near", agent))).toBe("invalid_name");
+    expect(await code(fundAgentDeposit(deps, owner, "ghost-ada.fliq.testnet"))).toBe("invalid_name");
+    expect(await code(fundAgentDeposit(deps, owner, owner))).toBe("invalid_name");
+    expect(rpc.sent).toHaveLength(0);
+  });
+
+  it("lets a retry fund the agent when the first transfer failed", async () => {
+    rpc.behaviour = (tx) => ({ txHash: tx.txHash, status: "failed", failures: ["boom"], gasBurnt: 1n });
+    expect(await code(fundAgentDeposit(deps, owner, agent))).toBe("chain_failure");
+    rpc.behaviour = (tx) => ({ txHash: tx.txHash, status: "succeeded", failures: [], gasBurnt: 1n });
+    expect((await fundAgentDeposit(deps, owner, agent)).status).toBe("funded");
   });
 });
