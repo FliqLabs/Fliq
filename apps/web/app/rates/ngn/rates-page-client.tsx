@@ -31,21 +31,33 @@ type Rate = {
   provider: ProviderId;
   providers_quoting: number;
   spread: number;
-  official: ReferenceRate;
-  p2p: ReferenceRate;
-  change_24h: number;
+  official?: ReferenceRate;
+  p2p?: ReferenceRate;
+  change_24h?: number;
   fetched_at: string;
 };
 
-type Provider = {
-  name: string;
-  description: string;
-  quoteRate: number | null;
-  fee: string;
-  effectiveRate: number | null;
-  status: string;
-  updated: string;
-  note?: string;
+type ProviderRate = {
+  provider: string;  
+  status: "live" | "stale" | "paused";
+  rate: number | null;
+  rate_before_fees: number | null;
+  fee: number | null;
+  fee_percent: number | null;
+  receive: number | null;
+  eta_seconds: number | null;
+  on_time_percent: number | null;
+  updated_at: string;
+  not_offered_reason: string | null;
+};
+
+type RateBoard = {
+  token: string;
+  currency: string;
+  amount: string;
+  best: string | null;
+  fetched_at: string;
+  providers: ProviderRate[];
 };
 
 type HistoryRange = "24h" | "7d" | "30d";
@@ -80,60 +92,6 @@ type Corridor = {
 /* Text for values the live rate has not filled in yet. */
 const EMPTY = "-";
 
-const DESIGN_PREVIEW = {
-  conversion: {
-    amount: 50,
-    providerRate: 1383.2,
-    gross: 69160,
-    providerFee: 250,
-    networkFee: 94,
-    received: 68816,
-  },
-};
-
-const MOCK_PROVIDERS: Provider[] = [
-  {
-    name: "Paycrest",
-    description: "NGN bank and mobile · non-custodial",
-    quoteRate: 1383.2,
-    fee: "₦344 (0.50%)",
-    effectiveRate: 1376.32,
-    status: "Live",
-    updated: "6s ago",
-    note: "ROUTED",
-  },
-  {
-    name: "Busha",
-    description: "NGN bank · flat fee",
-    quoteRate: 1372.23,
-    fee: "₦107.50 (flat)",
-    effectiveRate: 1370.08,
-    status: "Live",
-    updated: "9s ago",
-    note: "1.3% behind",
-  },
-  {
-    name: "Fonbnk",
-    description: "Excluded from best-of until fresh",
-    quoteRate: 1365,
-    fee: "₦330 (0.48%)",
-    effectiveRate: 1358.4,
-    status: "Stale",
-    updated: "13:58",
-    note: "Stale 4m",
-  },
-  {
-    name: "Bitnob",
-    description: "Pre-funded float · sandbox only",
-    quoteRate: null,
-    fee: "n/a",
-    effectiveRate: null,
-    status: "Paused",
-    updated: "27 Oct",
-    note: "Sandbox only",
-  },
-];
-
 const MOCK_CORRIDORS: Corridor[] = [
   {
     pair: "USDC to KES M-Pesa",
@@ -151,15 +109,6 @@ const MOCK_CORRIDORS: Corridor[] = [
     provider: "Paycrest · best of 2",
   },
 ];
-
-const API_EXAMPLE = {
-  rate: 1376.32,
-  rate_before_fees: 1383.2,
-  provider: "paycrest",
-  providers_quoting: 3,
-  change_24h: 0.0042,
-  fetched_at: "2026-10-29T13:02:13Z",
-};
 
 /* -------------------------------------------------------
    FORMATTERS
@@ -413,10 +362,16 @@ function RateChart() {
 
 /* -------------------------------------------------------
    PROVIDER COMPARISON
-   Replace MOCK_PROVIDERS with a provider quotes endpoint.
+   Displays live quotes from GET /rates/usdc/ngn/providers.
 ------------------------------------------------------- */
 
-function ProviderTable({ providers }: { providers: Provider[] }) {
+function ProviderTable({ board, isPending, isError }: {
+  board?: RateBoard;
+  isPending: boolean;
+  isError: boolean;
+}) {
+  const providers = board?.providers ?? [];
+
   return (
     <Panel className="overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-3 p-5 sm:p-6">
@@ -424,66 +379,68 @@ function ProviderTable({ providers }: { providers: Provider[] }) {
           <Eyebrow>Market comparison</Eyebrow>
           <h3 className="mt-2 text-base font-semibold text-white">Who&apos;s quoting right now</h3>
         </div>
-        <PreviewLabel />
+        <span className="rounded-full border border-[#303030] px-3 py-1 text-[10px] text-[#aaa]">
+          {isPending ? "Loading providers" : isError ? "Unavailable" : `${providers.filter((p) => p.status === "live").length} live`}
+        </span>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[760px] text-left">
-          <thead>
-            <tr className="border-y border-[#303030] text-[9px] font-semibold uppercase tracking-wider text-[#777]">
-              <th className="px-5 py-4">Provider</th>
-              <th className="px-4 py-4">Quote rate</th>
-              <th className="px-4 py-4">Fee on $50</th>
-              <th className="px-4 py-4">Effective</th>
-              <th className="px-4 py-4">Status</th>
-              <th className="px-4 py-4">Updated</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {providers.map((provider) => (
-              <tr key={provider.name} className="border-b border-[#292929] last:border-0">
-                <td className="px-5 py-5">
-                  <p className="text-sm font-semibold text-white">{provider.name}</p>
-                  <p className="mt-1 text-[10px] text-[#777]">{provider.description}</p>
-                  {provider.note && (
-                    <p className="mt-1 text-[9px] font-semibold text-[#a594ff]">{provider.note}</p>
-                  )}
-                </td>
-
-                <td className="px-4 py-5 text-xs tabular-nums text-[#ccc]">
-                  {provider.quoteRate === null ? EMPTY : formatNaira(provider.quoteRate)}
-                </td>
-
-                <td className="px-4 py-5 text-xs text-[#ccc]">{provider.fee}</td>
-
-                <td className="px-4 py-5 text-xs font-semibold tabular-nums text-white">
-                  {provider.effectiveRate === null ? EMPTY : formatNaira(provider.effectiveRate)}
-                </td>
-
-                <td className="px-4 py-5">
-                  <span
-                    className={`rounded-full px-2 py-1 text-[9px] ${
-                      provider.status === "Live"
+      {isPending ? (
+        <p className="border-t border-[#303030] p-6 text-sm text-[#888]">Loading provider quotes…</p>
+      ) : isError ? (
+        <p className="border-t border-[#303030] p-6 text-sm text-[#888]">Provider quotes are temporarily unavailable.</p>
+      ) : providers.length === 0 ? (
+        <p className="border-t border-[#303030] p-6 text-sm text-[#888]">No provider quotes are available for this corridor yet.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[760px] text-left">
+            <thead>
+              <tr className="border-y border-[#303030] text-[9px] font-semibold tracking-wider text-[#777]">
+                <th className="px-5 py-4">Provider</th>
+                <th className="px-4 py-4">Quote rate</th>
+                <th className="px-4 py-4">Fee</th>
+                <th className="px-4 py-4">Payout</th>
+                <th className="px-4 py-4">Status</th>
+                <th className="px-4 py-4">Updated</th>
+              </tr>
+            </thead>
+            <tbody>
+              {providers.map((provider) => (
+                <tr key={provider.provider} className="border-b border-[#292929] last:border-0">
+                  <td className="px-5 py-5 text-sm font-semibold text-white">{providerName(provider.provider)}</td>
+                  <td className="px-4 py-5 text-xs tabular-nums text-[#ccc]">
+                    {provider.rate === null ? EMPTY : formatNaira(provider.rate)}
+                  </td>
+                  <td className="px-4 py-5 text-xs text-[#ccc]">
+                    {provider.fee === null ? EMPTY : formatNaira(provider.fee / 100)}
+                    {provider.fee_percent === null ? "" : ` (${provider.fee_percent}%)`}
+                  </td>
+                  <td className="px-4 py-5 text-xs font-semibold tabular-nums text-white">
+                    {provider.receive === null ? EMPTY : formatNaira(provider.receive)}
+                  </td>
+                  <td className="px-4 py-5">
+                    <span className={`rounded-full px-2 py-1 text-[9px] ${
+                      provider.status === "live"
                         ? "bg-[#183629] text-[#70d6a3]"
-                        : provider.status === "Stale"
+                        : provider.status === "stale"
                           ? "bg-[#382f1e] text-[#e4c17d]"
                           : "bg-[#303030] text-[#999]"
-                    }`}
-                  >
-                    {provider.status}
-                  </span>
-                </td>
+                    }`}>
+                      {provider.status}
+                    </span>
+                    {provider.not_offered_reason && (
+                      <p className="mt-1 max-w-36 text-[9px] text-[#777]">{provider.not_offered_reason}</p>
+                    )}
+                  </td>
+                  <td className="px-4 py-5 text-xs text-[#888]">{formatTime(provider.updated_at)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
-                <td className="px-4 py-5 text-xs text-[#888]">{provider.updated}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      <p className="p-5 text-[10px] text-[#666]">
-        Provider rows are Figma reference values for layout integration. They are not verified live quotes.
+      <p className="border-t border-[#303030] p-5 text-[10px] text-[#666]">
+        Provider rates and payout amounts are supplied by Fliq&apos;s rate board. Fees are shown in NGN.
       </p>
     </Panel>
   );
@@ -491,54 +448,89 @@ function ProviderTable({ providers }: { providers: Provider[] }) {
 
 /* -------------------------------------------------------
    CONVERSION BREAKDOWN
-   Connect to a quote endpoint when the quote flow is ready.
+   Uses the public after-fee rate for an indicative estimate.
 ------------------------------------------------------- */
 
-function ConversionPanel() {
-  const conversion = DESIGN_PREVIEW.conversion;
+function ConversionPanel({ rate }: { rate?: number }) {
+  const [amount, setAmount] = useState("50");
+
+  const parsedAmount = Number(amount);
+  const validAmount =
+    amount.trim() !== "" &&
+    Number.isFinite(parsedAmount) &&
+    parsedAmount > 0;
+
+  const estimatedReceive =
+    rate !== undefined && validAmount
+      ? parsedAmount * rate
+      : undefined;
 
   return (
     <Panel className="p-5 sm:p-7">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <Eyebrow>Example conversion</Eyebrow>
-          <h3 className="mt-2 text-lg font-semibold text-white">What $50 becomes</h3>
+          <Eyebrow>Indicative conversion</Eyebrow>
+          <h3 className="mt-2 text-lg font-semibold text-white">
+            What your USDC could become
+          </h3>
         </div>
-        <PreviewLabel />
+        <span className="rounded-full border border-[#303030] px-3 py-1 text-[10px] text-[#aaa]">
+          {rate === undefined ? "Rate unavailable" : "Live rate estimate"}
+        </span>
       </div>
 
-      <p className="mt-7 text-3xl font-semibold tracking-tight text-white">
-        {formatNaira(conversion.received)}
-      </p>
-      <p className="mt-2 text-xs text-[#888]">Estimated amount landing in bank</p>
-
-      <div className="mt-7 space-y-4 border-t border-[#303030] pt-5">
-        <div className="flex justify-between gap-4 text-sm">
-          <span className="text-[#888]">${conversion.amount} at provider rate</span>
-          <span className="tabular-nums text-white">{formatNaira(conversion.gross)}</span>
+      <div className="mt-7">
+        <label htmlFor="conversion-amount" className="text-xs text-[#888]">
+          You send
+        </label>
+        <div className="mt-2 flex items-center gap-3 rounded-xl border border-[#383838] bg-[#111] px-4 py-3">
+          <span className="text-sm font-semibold text-white">USDC</span>
+          <input
+            id="conversion-amount"
+            type="number"
+            min="0.01"
+            step="0.01"
+            value={amount}
+            onChange={(event) => setAmount(event.target.value)}
+            className="w-full bg-transparent text-right text-xl font-semibold text-white outline-none"
+            placeholder="50.00"
+          />
         </div>
+      </div>
 
+      <div className="mt-6 rounded-xl border border-[#303030] bg-[#111] p-5">
+        <p className="text-xs text-[#888]">Estimated bank payout</p>
+        <p className="mt-3 text-3xl font-semibold tracking-tight text-white">
+          {estimatedReceive === undefined ? EMPTY : formatNaira(estimatedReceive)}
+        </p>
+        <p className="mt-2 text-xs text-[#888]">
+          {rate === undefined
+            ? "Waiting for the live rate."
+            : validAmount
+              ? `Based on ${formatNaira(rate)} per USDC.`
+              : "Enter a valid USDC amount to calculate."}
+        </p>
+      </div>
+
+      <div className="mt-6 space-y-4 border-t border-[#303030] pt-5">
         <div className="flex justify-between gap-4 text-sm">
-          <span className="text-[#888]">Paycrest fee</span>
-          <span className="tabular-nums text-white">−{formatNaira(conversion.providerFee)}</span>
+          <span className="text-[#888]">Exchange rate</span>
+          <span className="tabular-nums text-white">
+            {rate === undefined ? EMPTY : formatNaira(rate)}
+          </span>
         </div>
-
         <div className="flex justify-between gap-4 text-sm">
-          <span className="text-[#888]">Network fee · Solana</span>
-          <span className="tabular-nums text-white">−{formatNaira(conversion.networkFee)}</span>
-        </div>
-
-        <div className="flex justify-between gap-4 border-t border-[#303030] pt-4 text-sm">
-          <span className="font-medium text-white">Lands in bank</span>
-          <span className="font-semibold tabular-nums text-[#a594ff]">
-            {formatNaira(conversion.received)}
+          <span className="text-[#888]">Provider</span>
+          <span className="text-white">
+            {rate === undefined ? EMPTY : "Best available route"}
           </span>
         </div>
       </div>
 
       <p className="mt-5 text-xs leading-6 text-[#888]">
-        Equivalent to ₦1,376.32 per $1 after fees. fliq&apos;s share is included in the displayed fee
-        breakdown.
+        This is an indicative estimate calculated from Fliq&apos;s public
+        after-fee rate. The final payout, provider fees and network fees
+        are confirmed when a quote is requested.
       </p>
 
       <div className="mt-6 flex flex-wrap gap-3">
@@ -548,14 +540,14 @@ function ConversionPanel() {
         >
           Get this rate via API
         </Link>
-
         <button
-          onClick={() => navigator.clipboard?.writeText("https://fliq.cash/rates/ngn")}
+          onClick={() =>
+            navigator.clipboard?.writeText("https://fliq.cash/rates/ngn")
+          }
           className="rounded-lg border border-[#383838] px-4 py-3 text-xs text-white hover:bg-white/5"
         >
           Copy link
         </button>
-
         <a
           href="https://twitter.com/intent/tweet?text=Compare%20USDC%20to%20NGN%20rates%20on%20fliq"
           target="_blank"
@@ -589,12 +581,31 @@ export function RatesPageClient() {
     retry: (failureCount, err) => !isRateUnavailable(err) && failureCount < 1,
   });
 
-  const liveRate = rate?.rate;
-  const officialRate = rate?.official.rate;
-  const p2pRate = rate?.p2p.rate;
+  const {
+    data: rateBoard,
+    isPending: providersPending,
+    isError: providersError,
+  } = useQuery({
+    queryKey: ["rate-board", "usdc", "ngn"],
+    queryFn: () => fliqApi<RateBoard>("rates/usdc/ngn/providers"),
+    staleTime: 10_000,
+    refetchInterval: 15_000,
+    retry: 1,
+  });
 
-  const officialDifference = rate ? relativeDifference(rate.rate, rate.official.rate) : null;
-  const p2pDifference = rate ? relativeDifference(rate.rate, rate.p2p.rate) : null;
+  const liveRate = rate?.rate;
+  const officialRate = rate?.official?.rate;
+  const p2pRate = rate?.p2p?.rate;
+
+  const officialDifference =
+    rate && officialRate !== undefined
+      ? relativeDifference(rate.rate, officialRate)
+      : null;
+
+  const p2pDifference =
+    rate && p2pRate !== undefined
+      ? relativeDifference(rate.rate, p2pRate)
+      : null;
 
   const comingSoon = !rate && isError && isRateUnavailable(error);
   const statusLine = rate
@@ -662,10 +673,10 @@ export function RatesPageClient() {
               <Eyebrow>24h change</Eyebrow>
               <p
                 className={`mt-2 text-xl font-semibold ${
-                  !rate ? "text-[#777]" : rate.change_24h < 0 ? "text-[#e48a8a]" : "text-[#70d6a3]"
+                  rate?.change_24h === undefined ? "text-[#777]" : rate.change_24h < 0 ? "text-[#e48a8a]" : "text-[#70d6a3]"
                 }`}
               >
-                {rate ? `${rate.change_24h >= 0 ? "+" : ""}${(rate.change_24h * 100).toFixed(2)}%` : EMPTY}
+                {rate?.change_24h === undefined ? EMPTY : `${rate.change_24h >= 0 ? "+" : ""}${(rate.change_24h * 100).toFixed(2)}%`}
               </p>
             </div>
           </div>
@@ -674,13 +685,13 @@ export function RatesPageClient() {
             <Metric
               label="Official CBN NFEM close"
               value={formatNairaOrEmpty(officialRate)}
-              detail={rate?.official.source}
+              detail={rate?.official?.source}
             />
 
             <Metric
               label="P2P Bybit USDT/NGN median"
               value={formatNairaOrEmpty(p2pRate)}
-              detail={rate?.p2p.source}
+              detail={rate?.p2p?.source}
             />
 
             <Metric
@@ -728,9 +739,9 @@ export function RatesPageClient() {
             <h3 className="mt-3 text-sm font-semibold text-white">CBN NFEM close</h3>
             <p className="mt-4 text-2xl font-semibold tabular-nums">{formatNairaOrEmpty(officialRate)}</p>
             <p className="mt-2 text-xs text-[#888]">
-              {rate
-                ? `fliq's rate is ${differenceLabel(officialDifference)} this reference.`
-                : "Shown next to fliq's rate once live rates are on."}
+              {officialRate === undefined
+                ? "Official reference data is currently unavailable."
+                : `fliq's rate is ${differenceLabel(officialDifference)} this reference.`}
             </p>
           </Panel>
 
@@ -739,9 +750,9 @@ export function RatesPageClient() {
             <h3 className="mt-3 text-sm font-semibold text-white">Bybit USDT/NGN median</h3>
             <p className="mt-4 text-2xl font-semibold tabular-nums">{formatNairaOrEmpty(p2pRate)}</p>
             <p className="mt-2 text-xs text-[#888]">
-              {rate
-                ? `fliq's rate is ${differenceLabel(p2pDifference)} this reference.`
-                : "Shown next to fliq's rate once live rates are on."}
+              {p2pRate === undefined
+                ? "P2P reference data is currently unavailable."
+                : `fliq's rate is ${differenceLabel(p2pDifference)} this reference.`}
             </p>
           </Panel>
         </div>
@@ -761,14 +772,20 @@ export function RatesPageClient() {
           <SectionHeading
             eyebrow="Provider comparison"
             title="Compare live payout routes"
-            description="Three of four providers quoting · 1.3% apart in this design reference."
+            description={
+              providersPending
+                ? "Loading provider availability..."
+                : providersError
+                  ? "Provider availability is temporarily unavailable."
+                  : `${rateBoard?.providers.filter((provider) => provider.status === "live").length ?? 0} providers currently quoting. Availability updates automatically.`
+            }
           />
-          <ProviderTable providers={MOCK_PROVIDERS} />
+          <ProviderTable board={rateBoard} isPending={providersPending} isError={providersError} />
         </div>
 
         {/* Conversion */}
         <div className="mb-12">
-          <ConversionPanel />
+          <ConversionPanel rate={liveRate} />
         </div>
 
         {/* API response */}
@@ -786,11 +803,19 @@ export function RatesPageClient() {
 
           <Panel className="overflow-hidden">
             <div className="flex items-center justify-between border-b border-[#303030] px-5 py-4">
-              <span className="text-xs font-semibold text-white">Example response</span>
-              <PreviewLabel />
+              <span className="text-xs font-semibold text-white">
+                {rate ? "Live API response" : "API response"}
+              </span>
+              {rate && (
+                <span className="text-[9px] font-semibold uppercase tracking-wider text-[#8bd5a8]">
+                  Live
+                </span>
+              )}
             </div>
             <pre className="overflow-x-auto p-5 text-xs leading-6 text-[#b9b0d8]">
-              {JSON.stringify(API_EXAMPLE, null, 2)}
+              {rate
+                ? JSON.stringify(rate, null, 2)
+                : "Waiting for a live API response..."}
             </pre>
           </Panel>
         </div>
@@ -803,6 +828,9 @@ export function RatesPageClient() {
             description="More stablecoin-to-local-currency routes."
           />
 
+          <div className="mb-4">
+            <PreviewLabel />
+          </div>
           <div className="grid gap-3 md:grid-cols-3">
             {MOCK_CORRIDORS.map((corridor) => (
               <Panel key={corridor.pair} className="p-5">
