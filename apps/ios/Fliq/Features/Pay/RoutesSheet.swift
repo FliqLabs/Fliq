@@ -50,10 +50,7 @@ private struct RouteRow: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            Text(String(route.provider.displayName.prefix(1)))
-                .font(.system(size: 16, weight: .semibold))
-                .frame(width: 38, height: 38)
-                .background(Theme.surfaceRaised, in: Circle())
+            ProviderMark(provider: route.provider, size: 38)
             VStack(alignment: .leading, spacing: 3) {
                 Text(route.provider.displayName).font(.system(size: 16, weight: .medium))
                 Text(detail).font(.system(size: 13)).foregroundStyle(Theme.textSecondary)

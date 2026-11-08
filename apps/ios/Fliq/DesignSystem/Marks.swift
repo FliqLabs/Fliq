@@ -114,3 +114,42 @@ struct NEARMark: View {
             .foregroundStyle(Color(hex: 0x00EC97))
     }
 }
+
+/// A payout provider's mark, drawn to match the design: Paycrest's blue badge with a spark, Busha's bolt and so on.
+struct ProviderMark: View {
+    let provider: ProviderID
+    var size: CGFloat = 40
+
+    var body: some View {
+        Image(systemName: symbol)
+            .font(.system(size: size * 0.42, weight: .bold))
+            .foregroundStyle(.white)
+            .frame(width: size * 0.72, height: size * 0.72)
+            .background(color, in: RoundedRectangle(cornerRadius: size * 0.2, style: .continuous))
+            .frame(width: size, height: size)
+            .background(Color.black, in: Circle())
+            .accessibilityHidden(true)
+    }
+
+    private var symbol: String {
+        switch provider {
+        case .paycrest: "sparkle"
+        case .busha: "bolt.fill"
+        case .fonbnk: "circle"
+        case .bitnob: "ellipsis"
+        case .transfi: "arrow.left.arrow.right"
+        case .mock: "testtube.2"
+        }
+    }
+
+    private var color: Color {
+        switch provider {
+        case .paycrest: Color(hex: 0x2E5BFF)
+        case .busha: Color(hex: 0x6E4BF2)
+        case .fonbnk: Color(hex: 0xE9B31B)
+        case .bitnob: Color(hex: 0x1F2A44)
+        case .transfi: Color(hex: 0x0FA37F)
+        case .mock: Color(hex: 0x444444)
+        }
+    }
+}
