@@ -1,57 +1,47 @@
 import SwiftUI
 import UIKit
 
-/// Send, Receive or Request from the + menu, as one sheet that moves forward in place.
-/// Receive opens as a short floating card and grows to full height once there is a list to show.
+/// Send, Receive and Request, as one sheet that moves forward in place and grows to full height after the menu.
 struct MoneySheet: View {
-    enum Step: Hashable {
-        case fliqName, currencies, networks(token: String), address, arriving
+    enum Start: Identifiable {
+        case menu, receive
+
+        var id: Self { self }
     }
 
-    let start: MoneyAction
+    enum Step: Hashable {
+        case payTo, receive, fliqName, currencies, networks(token: String), address, arriving, request
+    }
+
+    let start: Start
+    let makeReceive: () -> ReceiveFlow
+    let makeRequest: () -> RequestFlow
     let onAccount: (VerifiedAccount) -> Void
     let onPerson: (String?) -> Void
     let onNewAccount: () -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var path: [Step] = []
-    @State private var receive: ReceiveFlow
-    @State private var request: RequestFlow
-    @State private var detent: PresentationDetent
+    @State private var receive: ReceiveFlow?
+    @State private var request: RequestFlow?
+    @State private var detent = PresentationDetent.large
 
-    static let choiceHeight = PresentationDetent.height(360)
-
-    init(
-        start: MoneyAction,
-        makeReceive: () -> ReceiveFlow,
-        makeRequest: () -> RequestFlow,
-        onAccount: @escaping (VerifiedAccount) -> Void,
-        onPerson: @escaping (String?) -> Void,
-        onNewAccount: @escaping () -> Void
-    ) {
-        self.start = start
-        self.onAccount = onAccount
-        self.onPerson = onPerson
-        self.onNewAccount = onNewAccount
-        _receive = State(initialValue: makeReceive())
-        _request = State(initialValue: makeRequest())
-        _detent = State(initialValue: start == .receive ? Self.choiceHeight : .large)
-    }
+    static let menuHeight = PresentationDetent.height(470)
 
     var body: some View {
         NavigationStack(path: $path) {
             root.navigationDestination(for: Step.self, destination: screen)
         }
         .tint(Theme.textPrimary)
-        .presentationDetents(start == .receive ? [Self.choiceHeight, .large] : [.large], selection: $detent)
+        .presentationDetents([Self.menuHeight, .large], selection: $detent)
+        .onAppear { detent = Self.menuHeight }
         .onChange(of: path) { _, path in
-            guard start == .receive else { return }
-            withAnimation(.snappy) { detent = path.isEmpty ? Self.choiceHeight : .large }
+            withAnimation(.snappy) { detent = isChoosing(path) ? Self.menuHeight : .large }
         }
     }
 
-    /// Grows the sheet first, then moves on, so the next screen never shows squeezed into the short card.
+    /// Grows the sheet first, then moves on, so the next screen never shows squeezed into the short sheet.
     private func go(_ step: Step) {
-        guard detent != .large else { return path.append(step) }
+        guard detent != .large, !isChoosing(path + [step]) else { return path.append(step) }
         withAnimation(.snappy(duration: 0.28)) { detent = .large }
         Task {
             try? await Task.sleep(for: .milliseconds(280))
@@ -59,22 +49,53 @@ struct MoneySheet: View {
         }
     }
 
+    /// The menu and "How do you want to get paid?" are short choices, so the sheet stays low for them.
+    private func isChoosing(_ path: [Step]) -> Bool {
+        path.isEmpty || path == [.receive]
+    }
+
     @ViewBuilder
     private var root: some View {
         switch start {
+        case .menu:
+            MoveMoneyMenu(
+                onSend: { go(.payTo) },
+                onReceive: { openReceive() },
+                onRequest: {
+                    request = makeRequest()
+                    go(.request)
+                }
+            )
         case .receive:
-            ReceiveStartView(name: receive.name, onFliqName: { go(.fliqName) }, onWallet: { go(.currencies) })
-        case .send:
-            PayToView(onAccount: onAccount, onPerson: onPerson, onNew: onNewAccount)
-        case .request:
-            RequestView(flow: request) { dismiss() }
-                .sheetToolbar { dismiss() }
+            receiveStart.task { if receive == nil { receive = makeReceive() } }
         }
+    }
+
+    private var receiveStart: some View {
+        ReceiveStartView(name: receive?.name, onFliqName: { go(.fliqName) }, onWallet: { go(.currencies) })
+    }
+
+    private func openReceive() {
+        if receive == nil { receive = makeReceive() }
+        go(.receive)
     }
 
     @ViewBuilder
     private func screen(_ step: Step) -> some View {
-        let flow = receive
+        switch step {
+        case .payTo:
+            PayToView(onAccount: onAccount, onPerson: onPerson, onNew: onNewAccount)
+        case .request:
+            if let request { RequestView(flow: request) { dismiss() } }
+        case .receive:
+            receiveStart
+        default:
+            if let receive { receiveScreen(step, receive) }
+        }
+    }
+
+    @ViewBuilder
+    private func receiveScreen(_ step: Step, _ flow: ReceiveFlow) -> some View {
         switch step {
         case .fliqName: FliqNameCardView(name: flow.name ?? "")
         case .currencies:
@@ -86,6 +107,7 @@ struct MoneySheet: View {
         case .networks(let token): NetworkListView(flow: flow, token: token) { reserve($0, in: flow) }
         case .address: DepositAddressView(flow: flow) { if path.last != .arriving { go(.arriving) } }
         case .arriving: ArrivingView(flow: flow) { dismiss() }
+        default: EmptyView()
         }
     }
 
@@ -104,53 +126,33 @@ private struct ReceiveStartView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Image(systemName: MoneyAction.receive.symbol)
-                .font(.system(size: 30, weight: .bold))
-                .foregroundStyle(MoneyAction.receive.tint)
-            Text("Receive")
-                .font(.system(size: 20, weight: .semibold))
-                .padding(.top, 14)
-            Text("Choose how you want to get paid")
-                .font(.system(size: 16))
+            Image("IconDownload")
+                .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 52, height: 52)
                 .foregroundStyle(Theme.textSecondary)
-                .padding(.top, 4)
-            VStack(spacing: 4) {
+                .padding(.top, 8)
+            Text("How do you want to get paid?")
+                .font(.system(size: 24, weight: .bold))
+                .tracking(-0.4)
+                .multilineTextAlignment(.center)
+                .padding(.top, 18)
+            VStack(spacing: 10) {
                 if let name {
-                    option(title: "fliq name", detail: "Share \(name)", action: onFliqName) {
-                        NEARMark(size: 26)
+                    SheetRow(title: "Your fliq name", detail: "Share \(name)", action: onFliqName) {
+                        NEARMark(size: 22)
                     }
                 }
-                option(title: "Crypto", detail: "Any coin, on the network you pick", action: onWallet) {
-                    Image(systemName: "bitcoinsign.circle.fill")
-                        .font(.system(size: 28))
-                        .foregroundStyle(Color(hex: 0xF7931A))
+                SheetRow(title: "External wallet", detail: "Choose a coin and network", action: onWallet) {
+                    Image(systemName: "wallet.bifold").font(.system(size: 20))
                 }
             }
-            .padding(.top, 26)
-            Spacer(minLength: 0)
+            .padding(.top, 34)
+            Spacer()
         }
-        .padding(.horizontal, 22)
-        .padding(.top, 8)
+        .padding(.horizontal, 16)
         .sheetToolbar { dismiss() }
-    }
-
-    private func option<Mark: View>(title: String, detail: String, action: @escaping () -> Void, @ViewBuilder mark: () -> Mark) -> some View {
-        Button(action: action) {
-            HStack(spacing: 16) {
-                mark().frame(width: 36, height: 36)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(title).font(.system(size: 17, weight: .semibold))
-                    Text(detail).font(.system(size: 14)).foregroundStyle(Theme.textSecondary).lineLimit(1)
-                }
-                Spacer()
-                Image(systemName: "chevron.right").font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.textTertiary)
-            }
-            .foregroundStyle(Theme.textPrimary)
-            .padding(.vertical, 14)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.pressable(scale: 0.98))
-        .accessibilityIdentifier(title)
     }
 }
 
@@ -374,6 +376,37 @@ private struct FliqNameCardView: View {
 }
 
 // MARK: Shared
+
+/// A tall row with a mark, two lines and a chevron, as the Receive and Move money sheets use.
+struct SheetRow<Mark: View>: View {
+    let title: String
+    let detail: String
+    let action: () -> Void
+    @ViewBuilder let mark: () -> Mark
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 16) {
+                mark().frame(width: 44, height: 44)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title).font(.system(size: 18, weight: .semibold))
+                    Text(detail).font(.system(size: 15)).foregroundStyle(Theme.textSecondary).lineLimit(1)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Theme.textTertiary)
+            }
+            .foregroundStyle(Theme.textPrimary)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 16)
+            .contentShape(Rectangle())
+            .fliqGlass(RoundedRectangle(cornerRadius: 22), interactive: true)
+        }
+        .buttonStyle(.pressable(scale: 0.98))
+        .accessibilityIdentifier(title)
+    }
+}
 
 /// A short note in a rounded box, with an icon in its own colour.
 struct Callout: View {

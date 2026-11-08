@@ -1,49 +1,56 @@
 import SwiftUI
 
+enum RootTab: Hashable {
+    case home, transfer, activity
+}
+
 struct RootView: View {
     @Environment(AppEnvironment.self) private var environment
     @State private var home: HomeModel?
     @State private var flow: PayFlow?
     @State private var personFlow: PersonPayFlow?
     @State private var tab = RootTab.home
-    @State private var isMenuOpen = false
-    @State private var moneySheet: MoneyAction?
+    /// Where the money sheet opens: its menu from the middle tab, or straight on Receive.
+    @State private var moneySheet: MoneySheet.Start?
+    @State private var activityPath: [AppRoute] = []
 
     var body: some View {
         @Bindable var router = environment.router
 
-        NavigationStack(path: $router.path) {
-            ZStack(alignment: .bottom) {
+        TabView(selection: $tab) {
+            NavigationStack(path: $router.path) {
                 Group {
-                    switch tab {
-                    case .home:
-                        if let home { HomeView(model: home, onMenu: { tab = .settings }) }
-                    case .activity:
-                        ActivityView(store: environment.activity) { moneySheet = .receive }
-                            .padding(.horizontal, 16)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                            .background(Theme.ground.ignoresSafeArea())
-                    case .settings:
-                        SettingsView()
-                    }
+                    if let home { HomeView(model: home, onMenu: { router.push(.settings) }) }
                 }
-                .safeAreaPadding(.bottom, 84)
-
-                if isMenuOpen {
-                    MoneyMenu(isOpen: $isMenuOpen) { action in moneySheet = action }
-                        .transition(.opacity)
-                }
-
-                HomeBar(tab: $tab, isMenuOpen: $isMenuOpen)
-                    .padding(.bottom, 8)
+                .navigationDestination(for: AppRoute.self) { pushed($0) }
             }
-            .toolbar(tab == .settings ? .visible : .hidden, for: .navigationBar)
-            .navigationDestination(for: AppRoute.self, destination: destination)
+            .tabItem { Label("Home", systemImage: "house.fill") }
+            .tag(RootTab.home)
+
+            // An action, not a page: picking it opens the money sheet and leaves the current tab selected.
+            Color.clear
+                .tabItem { Label("Transfer", systemImage: "arrow.up.arrow.down") }
+                .tag(RootTab.transfer)
+
+            NavigationStack(path: $activityPath) {
+                ActivityView(store: environment.activity) { moneySheet = .receive }
+                    .padding(.horizontal, 16)
+                    .background(Theme.ground.ignoresSafeArea())
+                    .navigationDestination(for: AppRoute.self) { pushed($0) }
+            }
+            .tabItem { Label("Activity", systemImage: "clock.arrow.circlepath") }
+            .tag(RootTab.activity)
         }
         .tint(Theme.textPrimary)
-        .sheet(item: $moneySheet) { action in
+        .minimizesTabBarOnScroll()
+        .onChange(of: tab) { old, new in
+            guard new == .transfer else { return }
+            tab = old
+            moneySheet = .menu
+        }
+        .sheet(item: $moneySheet) { start in
             MoneySheet(
-                start: action,
+                start: start,
                 makeReceive: makeReceive,
                 makeRequest: { RequestFlow(api: environment.api, vault: environment.vault) },
                 onAccount: { account in leaveSheet { startPayment(to: account) } },
@@ -51,7 +58,7 @@ struct RootView: View {
                 onNewAccount: { leaveSheet { startPayment() } }
             )
             .presentationDragIndicator(.visible)
-            .presentationCornerRadius(36)
+            .presentationCornerRadius(32)
             .presentationBackground(Color(hex: 0x161616))
         }
         .onAppear {
@@ -62,8 +69,14 @@ struct RootView: View {
         }
     }
 
+    /// Pushed screens own the whole display, so the tab bar steps aside for them.
+    private func pushed(_ route: AppRoute) -> some View {
+        destination(route).toolbar(.hidden, for: .tabBar)
+    }
+
     private func leaveSheet(then next: @escaping () -> Void) {
         moneySheet = nil
+        tab = .home
         next()
     }
 
@@ -158,3 +171,14 @@ private struct SendingReceipt: View {
     }
 }
 
+private extension View {
+    /// The iOS 26 tab bar shrinks while a list scrolls down, as Apple's own apps do.
+    @ViewBuilder
+    func minimizesTabBarOnScroll() -> some View {
+        if #available(iOS 26.0, *) {
+            tabBarMinimizeBehavior(.onScrollDown)
+        } else {
+            self
+        }
+    }
+}
