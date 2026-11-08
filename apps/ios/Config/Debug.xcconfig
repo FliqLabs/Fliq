@@ -2,7 +2,7 @@
 // fixtures: the app reads spec/fixtures from its bundle, no server needed.
 // For `make dev-mock`, set FLIQ_API_BASE_URL = http:/$()/localhost:4000/v1 and FLIQ_API_KEY = rt_test_7Kp2demo00c9Qe in Debug.xcconfig.local.
 FLIQ_DATA_SOURCE = api
-FLIQ_API_BASE_URL = https:/$()/fliq-yclq.onrender.com/v1
+FLIQ_API_BASE_URL = https:/$()/api-production-54e10.up.railway.app/v1
 FLIQ_API_KEY =
 // Reads the device key's nonce and the latest block before a fliq-to-fliq payment is signed.
 FLIQ_NEAR_RPC_URL = https:/$()/rpc.testnet.near.org
