@@ -273,6 +273,43 @@ final class HTTPClientTests: XCTestCase {
         XCTAssertEqual(agents[1].policy.currencies, [.kes])
     }
 
+    func testAgentsShowWhatTheyPaidAndWereRefusedFromActivity() async throws {
+        let client = makeClient()
+        // Activity answers only when asked for what agents did, so the rows below also check the query.
+        StubProtocol.respond { request in
+            switch (request.url?.path, request.url?.query?.contains("filter=agents")) {
+            case ("/v1/agents", _): (200, try fixtures.data("agents.list"))
+            case ("/v1/activity", true): (200, try fixtures.data("activity.list"))
+            default: (404, Data())
+            }
+        }
+
+        let agents = try await makeAgentAPI(client).agents(vault: "fliq-vault.testnet")
+
+        let claude = try XCTUnwrap(agents.first { $0.id == "claude-frank.fliq.near" })
+        let refused = try XCTUnwrap(claude.events.first { $0.id == "act_ref_01jbd9a2c4e6g8j0k2m4p6r8s0" })
+        XCTAssertEqual(refused.outcome, .refused(reason: "over the daily cap"))
+        XCTAssertEqual(refused.amount, 500_000)
+        XCTAssertEqual(refused.currency, .ngn)
+        XCTAssertEqual(refused.recipient, "DARA OKONKWO")
+        let paid = try XCTUnwrap(claude.events.first { $0.id == "act_po_5d18e2b7" })
+        XCTAssertEqual(paid.outcome, .paid)
+        XCTAssertEqual(paid.amount, 30_000)
+        XCTAssertNotNil(paid.at)
+    }
+
+    func testAgentsStillLoadWhenActivityFails() async throws {
+        let client = makeClient()
+        StubProtocol.respond { request in
+            request.url?.path == "/v1/agents" ? (200, try fixtures.data("agents.list")) : (500, Data())
+        }
+
+        let agents = try await makeAgentAPI(client).agents(vault: "fliq-vault.testnet")
+
+        XCTAssertEqual(agents.count, 2)
+        XCTAssertTrue(agents.allSatisfy(\.events.isEmpty))
+    }
+
     func testConnectingSignsTheSetAgentStepAndRelaysIt() async throws {
         let client = makeClient()
         let relayed = Data(#"{"status":"succeeded","tx_hash":"tx","delegate_hash":"dh","sender_id":"frank.fliqaccount.testnet","receiver_id":"fliq-vault.testnet"}"#.utf8)
