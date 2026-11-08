@@ -121,6 +121,7 @@ struct MoveMoneySheet: View {
         switch step {
         case nil, .receive: menuHeight
         case .request: requestHeight
+        case .currencies, .networks: .medium
         default: .large
         }
     }
