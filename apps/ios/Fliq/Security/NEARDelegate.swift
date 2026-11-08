@@ -75,6 +75,20 @@ extension DelegateAction {
         )
     }
 
+    /// Moves USDC from the user's own NEAR account into their vault. An empty msg credits the sender, and the relayer
+    /// refuses any other receiver, so this can only ever top up the signer's own vault.
+    static func walletTopUp(from sender: String, units: UInt64, usdc: String, vault: String, nonce: UInt64, blockHeight: UInt64, publicKey: Data) -> DelegateAction {
+        let args = Data(#"{"receiver_id":"\#(vault)","amount":"\#(units)","msg":""}"#.utf8)
+        return DelegateAction(
+            senderId: sender,
+            receiverId: usdc,
+            call: FunctionCall(methodName: "ft_transfer_call", args: args, gas: 100_000_000_000_000, deposit: 1),
+            nonce: nonce,
+            maxBlockHeight: blockHeight + lifetimeBlocks,
+            publicKey: publicKey
+        )
+    }
+
     /// A call the API asked the device to sign, such as the vault's `set_agent` or `remove_agent`.
     static func step(_ step: SignStep, from sender: String, nonce: UInt64, blockHeight: UInt64, publicKey: Data) -> DelegateAction {
         DelegateAction(

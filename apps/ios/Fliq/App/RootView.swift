@@ -61,10 +61,12 @@ struct RootView: View {
                 .presentationBackground(Color(hex: 0x161616))
         }
         .onAppear {
-            if home == nil { home = HomeModel(api: environment.api, vault: environment.vault) }
+            if home == nil { home = HomeModel(api: environment.api, vault: environment.vault, inbox: environment.inbox) }
         }
         .task(id: router.path.isEmpty) {
-            if router.path.isEmpty { await environment.refreshVault() }
+            guard router.path.isEmpty else { return }
+            await environment.refreshVault()
+            await environment.inbox.load()
         }
     }
 
@@ -78,6 +80,7 @@ struct RootView: View {
             startingAt: sheet == .receive ? [.receive] : [],
             name: environment.profile.name,
             receive: makeReceive(),
+            inbox: environment.inbox,
             makeRequest: { RequestFlow(api: environment.api, vault: environment.vault) },
             onAccount: { account in leaveSheet { startPayment(to: account) } },
             onPerson: { account in leaveSheet { startPersonPayment(to: account) } },

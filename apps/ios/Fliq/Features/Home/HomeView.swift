@@ -10,6 +10,9 @@ struct HomeView: View {
             Spacer()
             balance
             Spacer()
+            WalletArrivedCard(inbox: model.inbox)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 16)
         }
         .background(Theme.ground.ignoresSafeArea())
         .task { await model.load() }

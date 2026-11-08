@@ -18,6 +18,7 @@ final class AppEnvironment {
     let agents: AgentStore
     let accounts: AccountBook
     let transfers: any VaultTransfers
+    let inbox: WalletInbox
     let preferences: Preferences
     let biometrics: any Biometrics
 
@@ -33,6 +34,7 @@ final class AppEnvironment {
         agentAPI: any AgentAPI = FixtureAgentAPI(),
         accounts: AccountBook = AccountBook(),
         transfers: any VaultTransfers = FixtureVaultTransfers(),
+        walletTopUp: any WalletTopUp = FixtureWalletTopUp(),
         preferences: Preferences = Preferences(),
         biometrics: any Biometrics = DeviceBiometrics()
     ) {
@@ -46,9 +48,11 @@ final class AppEnvironment {
         self.deposits = deposits
         self.accounts = accounts
         self.transfers = transfers
+        inbox = WalletInbox(topUp: walletTopUp)
         self.preferences = preferences
         agents = AgentStore(api: agentAPI, vault: { profile.name ?? "fliq-vault.testnet" })
         self.biometrics = biometrics
+        inbox.onAdded = { [weak self] in await self?.refreshVault() }
     }
 
     static func live(bundle: Bundle = .main) -> AppEnvironment {
@@ -72,8 +76,15 @@ final class AppEnvironment {
             relay: DelegateRelay(api: api, rpc: NEARRPC(url: rpc), keys: keys),
             owner: { await profile.name }
         )
+        let walletTopUp = RelayedWalletTopUp(
+            rpc: NEARRPC(url: rpc),
+            relay: DelegateRelay(api: api, rpc: NEARRPC(url: rpc), keys: keys),
+            owner: { await profile.name },
+            vault: { try? await api.me().vault }
+        )
         let environment = AppEnvironment(
-            api: api, isLive: true, profile: profile, deposits: HTTPDepositAPI(client: api), agentAPI: agents, transfers: transfers
+            api: api, isLive: true, profile: profile, deposits: HTTPDepositAPI(client: api), agentAPI: agents,
+            transfers: transfers, walletTopUp: walletTopUp
         )
         Task {
             await api.sessions.whenEnded {
