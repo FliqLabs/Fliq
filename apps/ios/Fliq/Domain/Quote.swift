@@ -16,6 +16,8 @@ struct Route: Codable, Sendable, Equatable {
     let rate: Double?
     let ageSeconds: Int?
     let routed: Bool?
+    var etaSeconds: Int?
+    var onTimePercent: Int?
 }
 
 struct Quote: Codable, Sendable, Equatable {
@@ -31,6 +33,8 @@ struct Quote: Codable, Sendable, Equatable {
     let bestOf: Int
     let routes: [Route]
     let expiresIn: Int
+    var etaSeconds: Int?
+    var savingVsNext: Int?
 }
 
 struct QuoteRequest: Codable, Sendable, Equatable {
