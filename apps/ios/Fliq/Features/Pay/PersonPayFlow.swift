@@ -40,9 +40,11 @@ final class PersonPayFlow {
         return vault == nil || amount <= available
     }
 
-    func tapKey(_ key: String) {
-        amountText = AmountTyping.apply(key, to: amountText)
+    @discardableResult
+    func enterAmount(_ typed: String) -> String {
+        amountText = AmountTyping.clean(typed, previous: amountText)
         errorMessage = nil
+        return amountText
     }
 
     /// Runs after typing pauses. The view calls it with `task(id: nameText)`, so a newer keystroke cancels it.

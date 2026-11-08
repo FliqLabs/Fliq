@@ -4,6 +4,7 @@ struct PersonPayView: View {
     @Bindable var flow: PersonPayFlow
     let onDone: () -> Void
     @FocusState private var nameFocused: Bool
+    @FocusState private var amountFocused: Bool
 
     var body: some View {
         Group {
@@ -20,24 +21,16 @@ struct PersonPayView: View {
         VStack(spacing: 0) {
             nameField.padding(.top, 20)
             whoLine.frame(height: 44).padding(.top, 8)
-            Spacer()
-            VStack(spacing: 12) {
-                Text("\(firstName) receives")
-                    .font(.system(size: 15))
-                    .foregroundStyle(Theme.textSecondary)
-                HeroAmount(symbol: "$", value: Money.dollars(flow.amount ?? .zero))
-                Label("Vault to vault · instant · no fee", systemImage: "bolt")
-                    .font(.system(size: 15))
-                    .foregroundStyle(Theme.textSecondary)
-                    .padding(.horizontal, 16)
-                    .frame(height: 40)
-                    .overlay(Capsule().strokeBorder(Theme.hairline))
-                Text("In your vault $\(Money.dollars(flow.available))")
-                    .font(.system(size: 14))
-                    .foregroundStyle(Theme.textTertiary)
-                    .padding(.top, 4)
+            Spacer(minLength: 8)
+            AmountInput(text: flow.amountText, onType: flow.enterAmount, isFocused: $amountFocused) {
+                // With a keyboard up on a small iPhone the full block does not fit; overflowing would push the
+                // name field under the navigation bar and the pay button under the keyboard.
+                ViewThatFits(in: .vertical) {
+                    amount
+                    compactAmount
+                }
             }
-            Spacer()
+            Spacer(minLength: 8)
             if let message = flow.errorMessage {
                 Text(message)
                     .font(.system(size: 13))
@@ -55,10 +48,39 @@ struct PersonPayView: View {
             .buttonStyle(PrimaryButtonStyle())
             .disabled(!flow.canPay)
             .padding(.bottom, 12)
-            Keypad(onKey: flow.tapKey)
         }
         .task(id: flow.nameText) { await flow.lookUp() }
-        .onAppear { if flow.nameText.isEmpty { nameFocused = true } }
+        .onAppear { if flow.nameText.isEmpty { nameFocused = true } else { amountFocused = true } }
+    }
+
+    private var compactAmount: some View {
+        VStack(spacing: 4) {
+            HeroAmount(symbol: "$", value: Money.dollars(flow.amount ?? .zero), size: 48)
+            Text("\(firstName) receives · in your vault $\(Money.dollars(flow.available))")
+                .font(.system(size: 14))
+                .foregroundStyle(Theme.textSecondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+    }
+
+    private var amount: some View {
+        VStack(spacing: 12) {
+            Text("\(firstName) receives")
+                .font(.system(size: 15))
+                .foregroundStyle(Theme.textSecondary)
+            HeroAmount(symbol: "$", value: Money.dollars(flow.amount ?? .zero))
+            Label("Vault to vault · instant · no fee", systemImage: "bolt")
+                .font(.system(size: 15))
+                .foregroundStyle(Theme.textSecondary)
+                .padding(.horizontal, 16)
+                .frame(height: 40)
+                .overlay(Capsule().strokeBorder(Theme.hairline))
+            Text("In your vault $\(Money.dollars(flow.available))")
+                .font(.system(size: 14))
+                .foregroundStyle(Theme.textTertiary)
+                .padding(.top, 4)
+        }
     }
 
     private var nameField: some View {
@@ -70,6 +92,8 @@ struct PersonPayView: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .keyboardType(.asciiCapable)
+                .submitLabel(.next)
+                .onSubmit { amountFocused = true }
                 .font(.system(size: 19, weight: .medium))
             Text(FliqName.suffix)
                 .font(.system(size: 17))

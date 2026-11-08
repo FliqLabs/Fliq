@@ -52,8 +52,10 @@ final class PayFlow {
         rate = try? await api.rate(.usdc, currency)
     }
 
-    func tapKey(_ key: String) {
-        amountText = AmountTyping.apply(key, to: amountText)
+    @discardableResult
+    func enterAmount(_ typed: String) -> String {
+        amountText = AmountTyping.clean(typed, previous: amountText)
+        return amountText
     }
 
     // MARK: Quote and send
