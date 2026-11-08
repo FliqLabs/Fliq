@@ -41,6 +41,12 @@ final class PayFlow {
     // MARK: Amount
 
     var amount: TokenAmount? { TokenAmount(decimalString: amountText) }
+    var available: TokenAmount { vault?.balance ?? .zero }
+    /// More than the vault holds. A flow without a vault (previews) never blocks.
+    var isOverBalance: Bool {
+        guard vault != nil, let amount else { return false }
+        return amount > available
+    }
 
     var estimatedReceive: Int? {
         guard let amount, let rate else { return nil }
@@ -101,6 +107,9 @@ final class PayFlow {
             return true
         } catch APIError.refused(let refusal) {
             errorMessage = refusal.error.message
+            return false
+        } catch APIError.server(_, let detail) {
+            errorMessage = "\(detail.message) Nothing moved."
             return false
         } catch {
             errorMessage = "The payout didn't start. Nothing moved."
