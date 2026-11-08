@@ -142,6 +142,18 @@ final class HTTPClientTests: XCTestCase {
         XCTAssertTrue(needsSignIn)
     }
 
+    func testARefusedCallWithNoSessionSignsOut() async throws {
+        let sessions = SessionVault(keychain: nil)
+        let ended = expectation(description: "session ended")
+        await sessions.whenEnded { ended.fulfill() }
+        let client = makeClient(sessions: sessions)
+        StubProtocol.respond { _ in (401, try fixtures.data("error.unauthorized")) }
+
+        _ = try? await client.me()
+
+        await fulfillment(of: [ended], timeout: 1)
+    }
+
     func testPasskeyResponsesKeepTheirWebAuthnKeys() async throws {
         let client = makeClient()
         StubProtocol.respond { _ in (201, try fixtures.data("session.signed-in")) }
