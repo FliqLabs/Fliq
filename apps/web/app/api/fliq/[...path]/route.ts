@@ -16,10 +16,7 @@ const publicRoutes = new Set([
   "POST auth/email-links/verify",
   "GET institutions",
   "GET rates/usdc/ngn",
-<<<<<<< HEAD
-=======
   "GET rates/usdc/ngn/providers",
->>>>>>> e7629305f69dfa7aac4d42157c5e2a507f146902
   "GET rates/usdc/ngn/history",
 ]);
 

@@ -92,60 +92,6 @@ type Corridor = {
 /* Text for values the live rate has not filled in yet. */
 const EMPTY = "-";
 
-const DESIGN_PREVIEW = {
-  conversion: {
-    amount: 50,
-    providerRate: 1383.2,
-    gross: 69160,
-    providerFee: 250,
-    networkFee: 94,
-    received: 68816,
-  },
-};
-
-const MOCK_PROVIDERS: Provider[] = [
-  {
-    name: "Paycrest",
-    description: "NGN bank and mobile · non-custodial",
-    quoteRate: 1383.2,
-    fee: "₦344 (0.50%)",
-    effectiveRate: 1376.32,
-    status: "Live",
-    updated: "6s ago",
-    note: "ROUTED",
-  },
-  {
-    name: "Busha",
-    description: "NGN bank · flat fee",
-    quoteRate: 1372.23,
-    fee: "₦107.50 (flat)",
-    effectiveRate: 1370.08,
-    status: "Live",
-    updated: "9s ago",
-    note: "1.3% behind",
-  },
-  {
-    name: "Fonbnk",
-    description: "Excluded from best-of until fresh",
-    quoteRate: 1365,
-    fee: "₦330 (0.48%)",
-    effectiveRate: 1358.4,
-    status: "Stale",
-    updated: "13:58",
-    note: "Stale 4m",
-  },
-  {
-    name: "Bitnob",
-    description: "Pre-funded float · sandbox only",
-    quoteRate: null,
-    fee: "n/a",
-    effectiveRate: null,
-    status: "Paused",
-    updated: "27 Oct",
-    note: "Sandbox only",
-  },
-];
-
 const MOCK_CORRIDORS: Corridor[] = [
   {
     pair: "USDC to KES M-Pesa",

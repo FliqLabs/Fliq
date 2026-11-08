@@ -1,4 +1,4 @@
-import { JoinWaitlistLink } from "./components/join-waitlist-link";
+import { MarketingActionLink } from "./components/marketing-action-link";
 import { MarketingShell } from "./components/marketing-shell";
 import { siteContainer } from "./components/site-container";
 import { IconRow, eyebrow } from "./landing/components";
@@ -34,7 +34,10 @@ function Hero() {
           use.
         </p>
         <div className="mt-7 flex flex-wrap gap-2.5">
-          <JoinWaitlistLink />
+          <MarketingActionLink href="/create-workspace">Get started</MarketingActionLink>
+          <MarketingActionLink href="/rates/ngn" variant="secondary">
+            Explore rates
+          </MarketingActionLink>
         </div>
         <div className="mt-8 flex flex-wrap items-center gap-4">
           <IconRow icons={providerIcons} label="Payout providers" />
