@@ -12,14 +12,14 @@ final class ReceiveUITests: XCTestCase {
         app.launchArguments = ["--ui-testing", "--onboarded"]
         app.launch()
 
-        app.buttons["Transfer"].tap()
+        app.buttons["Receive, send or request"].tap()
         XCTAssertTrue(app.buttons["Receive"].waitForExistence(timeout: 3))
         snap("r0-move-money")
         app.buttons["Receive"].tap()
 
-        XCTAssertTrue(app.buttons["External wallet"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["Crypto"].waitForExistence(timeout: 3))
         snap("r1-how")
-        app.buttons["External wallet"].tap()
+        app.buttons["Crypto"].tap()
 
         XCTAssertTrue(app.buttons["USDC"].waitForExistence(timeout: 3))
         snap("r2-currency")
