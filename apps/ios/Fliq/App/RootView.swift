@@ -81,7 +81,7 @@ struct RootView: View {
             makeRequest: { RequestFlow(api: environment.api, vault: environment.vault) },
             onAccount: { account in leaveSheet { startPayment(to: account) } },
             onPerson: { account in leaveSheet { startPersonPayment(to: account) } },
-            onNewAccount: { leaveSheet { startPayment() } }
+            onNewAccount: { account, save in leaveSheet { startPayment(to: account, save: save) } }
         )
     }
 
@@ -100,8 +100,9 @@ struct RootView: View {
         )
     }
 
-    private func startPayment(to account: VerifiedAccount? = nil) {
+    private func startPayment(to account: VerifiedAccount? = nil, save: Bool = true) {
         let flow = PayFlow(api: environment.api, activity: environment.activity, vault: environment.vault, accounts: environment.accounts)
+        flow.saveAccount = save
         self.flow = flow
         guard let account else { return environment.router.push(.payNew) }
         flow.recipient.use(account)

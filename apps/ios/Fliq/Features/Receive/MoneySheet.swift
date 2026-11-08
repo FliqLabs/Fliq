@@ -6,6 +6,7 @@ import UIKit
 struct MoveMoneySheet: View {
     enum Step: Hashable {
         case receive, request, payTo, fliqName, currencies, networks(token: String), address, arriving
+        case recipientCurrency, sendMethod(Country), recipient(Country, SendMethod)
     }
 
     static let menuHeight = PresentationDetent.height(470)
@@ -17,7 +18,7 @@ struct MoveMoneySheet: View {
     let makeRequest: () -> RequestFlow
     let onAccount: (VerifiedAccount) -> Void
     let onPerson: (String?) -> Void
-    let onNewAccount: () -> Void
+    let onNewAccount: (VerifiedAccount, Bool) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var path: [Step]
     @State private var request: RequestFlow?
@@ -30,7 +31,7 @@ struct MoveMoneySheet: View {
         makeRequest: @escaping () -> RequestFlow,
         onAccount: @escaping (VerifiedAccount) -> Void,
         onPerson: @escaping (String?) -> Void,
-        onNewAccount: @escaping () -> Void
+        onNewAccount: @escaping (VerifiedAccount, Bool) -> Void
     ) {
         self.name = name
         self.receive = receive
@@ -63,7 +64,15 @@ struct MoveMoneySheet: View {
         case .request:
             if let request { RequestView(flow: request) { dismiss() }.sheetToolbar { dismiss() } }
         case .payTo:
-            PayToView(onAccount: onAccount, onPerson: onPerson, onNew: onNewAccount)
+            PayToView(onAccount: onAccount, onPerson: onPerson, onNew: { go(.recipientCurrency) })
+        case .recipientCurrency:
+            RecipientCurrencyView { go(.sendMethod($0)) }
+        case .sendMethod(let country):
+            SendMethodView(country: country) { method in
+                if method == .fliqName { onPerson(nil) } else { go(.recipient(country, method)) }
+            }
+        case .recipient(let country, let method):
+            RecipientFormView(country: country, method: method, onContinue: onNewAccount)
         case .fliqName:
             FliqNameCardView(name: name ?? "").sheetToolbar { dismiss() }
         case .currencies:
