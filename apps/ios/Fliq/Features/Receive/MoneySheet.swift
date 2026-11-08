@@ -121,6 +121,7 @@ struct MoveMoneySheet: View {
         switch step {
         case nil, .receive: menuHeight
         case .request: requestHeight
+        case .currencies: .medium
         default: .large
         }
     }
@@ -246,6 +247,8 @@ private struct NetworkListView: View {
     let token: String
     let onPick: (DepositSource) -> Void
     @Environment(\.dismiss) private var dismiss
+    /// At half height the header and rows tighten so every network still fits without scrolling.
+    @State private var compact = false
 
     var body: some View {
         ScrollView {
@@ -253,28 +256,30 @@ private struct NetworkListView: View {
                 HStack(alignment: .center) {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Receive \(token.uppercased())")
-                            .font(.system(size: 36, weight: .medium))
+                            .font(.system(size: compact ? 26 : 36, weight: .medium))
                             .tracking(-0.7)
                         Text(token == "btc" ? "Lands in your vault as dollars" : "1 \(token.uppercased()) ≈ $1.00")
-                            .font(.system(size: 18))
+                            .font(.system(size: compact ? 15 : 18))
                             .foregroundStyle(Theme.textSecondary)
                     }
                     Spacer()
-                    TokenLogo(token: token.uppercased(), size: 40)
+                    TokenLogo(token: token.uppercased(), size: compact ? 32 : 40)
                 }
-                .padding(.top, 20)
+                .padding(.top, compact ? 8 : 20)
 
-                HStack(spacing: 18) {
-                    Image(systemName: "exclamationmark.circle").font(.system(size: 22)).foregroundStyle(Color(hex: 0xF5C542))
-                    Text("Your receiving address depends on the coin and network.")
-                        .font(.system(size: 17))
-                        .foregroundStyle(Theme.textPrimary)
-                    Spacer(minLength: 0)
+                if !compact {
+                    HStack(spacing: 18) {
+                        Image(systemName: "exclamationmark.circle").font(.system(size: 22)).foregroundStyle(Color(hex: 0xF5C542))
+                        Text("Your receiving address depends on the coin and network.")
+                            .font(.system(size: 17))
+                            .foregroundStyle(Theme.textPrimary)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 22)
+                    .padding(.vertical, 18)
+                    .background(Color(hex: 0x0E0E0E), in: RoundedRectangle(cornerRadius: 22))
+                    .padding(.top, 26)
                 }
-                .padding(.horizontal, 22)
-                .padding(.vertical, 18)
-                .background(Color(hex: 0x0E0E0E), in: RoundedRectangle(cornerRadius: 22))
-                .padding(.top, 26)
 
                 let networks = flow.networks(for: token)
                 VStack(spacing: 0) {
@@ -289,12 +294,15 @@ private struct NetworkListView: View {
                 }
                 .background(Color(hex: 0x262626), in: RoundedRectangle(cornerRadius: 26))
                 .overlay(RoundedRectangle(cornerRadius: 26).strokeBorder(Color.white.opacity(0.06)))
-                .padding(.top, 24)
+                .padding(.top, compact ? 14 : 24)
             }
             .padding(.horizontal, 24)
             .padding(.bottom, 32)
         }
         .scrollIndicators(.hidden)
+        .onGeometryChange(for: Bool.self) { $0.size.height < 560 } action: { small in
+            withAnimation(.snappy(duration: 0.2)) { compact = small }
+        }
         .navigationTitle("Choose network")
         .navigationBarTitleDisplayMode(.inline)
         .sheetToolbar { dismiss() }
@@ -303,11 +311,11 @@ private struct NetworkListView: View {
     private func row(_ source: DepositSource) -> some View {
         let reason = flow.reason(unavailable: source)
         return HStack(spacing: 18) {
-            ChainLogo(source: source, size: 32)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(source.isDirect ? "NEAR" : source.chain).font(.system(size: 20))
-                Text(reason ?? (source.isDirect ? "\(source.eta) · no fee" : source.eta))
-                    .font(.system(size: 17))
+            ChainLogo(source: source, size: compact ? 28 : 32)
+            VStack(alignment: .leading, spacing: compact ? 2 : 4) {
+                Text(source.isDirect ? "NEAR" : source.chain).font(.system(size: compact ? 17 : 20))
+                Text(reason == nil ? (source.isDirect ? "\(source.eta) · no fee" : source.eta) : "Not available yet")
+                    .font(.system(size: compact ? 14 : 17))
                     .foregroundStyle(reason == nil ? Theme.textSecondary : Theme.warning)
                     .lineLimit(1)
             }
@@ -322,7 +330,8 @@ private struct NetworkListView: View {
         .opacity(reason == nil ? 1 : 0.5)
         .padding(.leading, 22)
         .padding(.trailing, 24)
-        .frame(minHeight: 76)
+        .frame(minHeight: compact ? 56 : 76)
+        .accessibilityHint(reason ?? "")
         .contentShape(Rectangle())
     }
 }
