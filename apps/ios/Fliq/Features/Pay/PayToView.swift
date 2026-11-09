@@ -34,7 +34,7 @@ struct PayToView: View {
         var name: String {
             switch self {
             case .account(let account): account.accountName.localizedCapitalized
-            case .person(let person): person.displayName ?? person.nearAccount
+            case .person(let person): person.displayName ?? FliqName.display(person.nearAccount)
             }
         }
     }
@@ -202,7 +202,7 @@ struct PayToView: View {
             sectionTitle("On fliq")
             card {
                 Button { onPerson(typed.account) } label: {
-                    RowLayout(title: Text("Pay \(typed.value)"), detail: Text("\(typed.account) · instant, no fee").foregroundStyle(Theme.textSecondary)) {
+                    RowLayout(title: Text("Pay @\(typed.value)"), detail: Text("fliq user · instant, no fee").foregroundStyle(Theme.textSecondary)) {
                         NEARMark(size: 22)
                             .frame(width: 46, height: 46)
                             .background(Color.black, in: Circle())
@@ -244,7 +244,7 @@ struct PayToView: View {
             return highlighted(account.institution, base: Theme.textSecondary) + Text("  ·  ").foregroundStyle(Theme.textTertiary)
                 + highlighted(number, base: Theme.textSecondary)
         case .person(let person):
-            return highlighted(person.nearAccount, base: Theme.textSecondary)
+            return highlighted(FliqName.display(person.nearAccount), base: Theme.textSecondary)
                 + Text("  ·  instant, no fee").foregroundStyle(Theme.confirmed.opacity(0.85))
         }
     }
@@ -289,7 +289,7 @@ struct PayToView: View {
             }
         case .person(let person):
             Button { onPerson(person.nearAccount) } label: { Label("Pay", systemImage: "paperplane") }
-            Button { UIPasteboard.general.string = person.nearAccount } label: { Label("Copy fliq name", systemImage: "doc.on.doc") }
+            Button { UIPasteboard.general.string = FliqName.display(person.nearAccount) } label: { Label("Copy fliq name", systemImage: "doc.on.doc") }
         }
     }
 
@@ -425,7 +425,7 @@ struct PayToView: View {
         return (own + listed).filter { payee in
             switch payee {
             case .account(let account): [account.accountName, account.institution, account.number].contains(where: contains)
-            case .person(let person): [person.displayName ?? "", person.nearAccount].contains(where: contains)
+            case .person(let person): [person.displayName ?? "", FliqName.display(person.nearAccount)].contains(where: contains)
             }
         }
     }
@@ -436,7 +436,8 @@ struct PayToView: View {
 
     /// What's typed, read as a fliq name, when it isn't someone already listed.
     private var typedName: FliqName? {
-        guard filter == .all || filter == .fliqUsers, !query.allSatisfy(\.isNumber), let name = FliqName(query.lowercased()) else { return nil }
+        guard filter == .all || filter == .fliqUsers, !query.allSatisfy(\.isNumber), let account = FliqName.account(typed: query),
+              let name = FliqName(String(account.dropLast(FliqName.suffix.count))) else { return nil }
         return people.contains { $0.nearAccount == name.account } ? nil : name
     }
 

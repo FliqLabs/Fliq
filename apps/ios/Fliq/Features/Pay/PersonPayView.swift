@@ -85,8 +85,9 @@ struct PersonPayView: View {
 
     private var nameField: some View {
         HStack(spacing: 12) {
-            Image("NearLogo").resizable().renderingMode(.template).scaledToFit().frame(width: 22, height: 22)
-                .foregroundStyle(Color(hex: 0x00EC97))
+            Text("@")
+                .font(.system(size: 19, weight: .medium))
+                .foregroundStyle(Theme.textSecondary)
             TextField("name", text: $flow.nameText)
                 .focused($nameFocused)
                 .textInputAutocapitalization(.never)
@@ -95,11 +96,6 @@ struct PersonPayView: View {
                 .submitLabel(.next)
                 .onSubmit { amountFocused = true }
                 .font(.system(size: 19, weight: .medium))
-            Text(FliqName.suffix)
-                .font(.system(size: 17))
-                .foregroundStyle(Theme.textSecondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
         }
         .padding(.horizontal, 18)
         .frame(height: 60)
@@ -113,14 +109,14 @@ struct PersonPayView: View {
     private var whoLine: some View {
         HStack(spacing: 10) {
             if let person = flow.person {
-                PersonAvatar(name: person.displayName ?? person.nearAccount, photoURL: person.photoUrl.flatMap(URL.init(string:)), size: 32)
+                PersonAvatar(name: person.displayName ?? FliqName.display(person.nearAccount), photoURL: person.photoUrl.flatMap(URL.init(string:)), size: 32)
                 Image(systemName: "checkmark.circle").foregroundStyle(Theme.confirmed)
-                Text(person.displayName ?? person.nearAccount).fontWeight(.semibold).foregroundStyle(Theme.confirmed)
+                Text(person.displayName ?? FliqName.display(person.nearAccount)).fontWeight(.semibold).foregroundStyle(Theme.confirmed)
                 Text("· on fliq since \(person.memberSince.formatted(.dateTime.month(.abbreviated).year()))")
                     .foregroundStyle(Theme.textSecondary)
             } else if flow.isLookingUp {
                 ProgressView().controlSize(.small)
-                Text("Finding \(flow.account ?? "")").foregroundStyle(Theme.textSecondary)
+                Text("Finding \(flow.account.map(FliqName.display) ?? "")").foregroundStyle(Theme.textSecondary)
             } else if flow.lookupFailed {
                 Image(systemName: "questionmark.circle").foregroundStyle(Theme.warning)
                 Text("No one on fliq has that name").foregroundStyle(Theme.warning)
@@ -141,10 +137,10 @@ struct PersonPayView: View {
                 .frame(width: 72, height: 72)
                 .background(Theme.confirmed, in: Circle())
             HeroAmount(symbol: "$", value: Money.dollars(paid))
-            Text("Paid to \(person.displayName ?? person.nearAccount)")
+            Text("Paid to \(person.displayName ?? FliqName.display(person.nearAccount))")
                 .font(.system(size: 16))
                 .foregroundStyle(Theme.textSecondary)
-            Text(person.nearAccount)
+            Text(FliqName.display(person.nearAccount))
                 .font(.system(size: 13, design: .monospaced))
                 .foregroundStyle(Theme.textTertiary)
             Spacer()

@@ -11,7 +11,7 @@ struct ProfileSetupView: View {
         VStack(spacing: 0) {
             VStack(spacing: 6) {
                 if let name = flow.name, flow.canClaim {
-                    Label("\(name.account) is yours", systemImage: "checkmark.circle.fill")
+                    Label("@\(name.value) is yours", systemImage: "checkmark.circle.fill")
                         .symbolRenderingMode(.palette)
                         .foregroundStyle(Color.black, Theme.confirmed)
                         .font(.system(size: 13, weight: .bold))
