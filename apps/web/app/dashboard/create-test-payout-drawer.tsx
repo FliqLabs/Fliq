@@ -5,6 +5,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { fliqApi, type Institution, type Quote, type VerifiedAccount } from "../lib/fliq-api";
 import type { Payout } from "./payout-model";
 import { useRouter } from "next/navigation";
+import { ConfirmActionDialog } from "./components/confirm-action-dialog";
+import { formatLocalAmount } from "./payout-model";
 
 type Props = { dialogRef: RefObject<HTMLDialogElement | null> };
 type Corridor = "ngn" | "kes";
@@ -20,6 +22,7 @@ export function CreateTestPayoutDrawer({ dialogRef }: Props) {
   const [quote, setQuote] = useState<{ value: Quote; key: string; expiresAt: number }>();
   const [verified, setVerified] = useState<{ value: VerifiedAccount; key: string }>();
   const [now, setNow] = useState(0);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const idempotencyKey = useRef<string | null>(null);
   const queryClient = useQueryClient();
 
@@ -103,6 +106,16 @@ export function CreateTestPayoutDrawer({ dialogRef }: Props) {
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!canSubmit || !currentQuote || !currentAccount) return;
+    if (isMockPayout) {
+      submitCurrentPayout();
+      return;
+    }
+    setConfirmOpen(true);
+  }
+
+  function submitCurrentPayout() {
+    if (!canSubmit || !currentQuote || !currentAccount) return;
+    setConfirmOpen(false);
     submitPayout.mutate({ quoteId: currentQuote.quote_id, name: currentAccount.account_name });
   }
 
@@ -343,6 +356,29 @@ export function CreateTestPayoutDrawer({ dialogRef }: Props) {
             </button>
           </div>
         </form>
+        <ConfirmActionDialog
+          open={confirmOpen}
+          title="Create this payout?"
+          description={
+            <>
+              <p>
+                {amount} USDC via {currentQuote?.provider} to {currentAccount?.account_name} ({bank} ····{" "}
+                {accountNumber.slice(-4)}). The recipient is expected to receive{" "}
+                {currentQuote ? formatLocalAmount(currentQuote.receive, corridor) : "—"}.
+              </p>
+              <p className="mt-2 font-medium text-red-700">
+                This provider order may use real USDC from your vault.
+              </p>
+              {!currentQuote && (
+                <p className="mt-2 text-red-700">The quote expired. Get a new quote first.</p>
+              )}
+            </>
+          }
+          confirmLabel="Create payout"
+          disabled={!canSubmit}
+          onCancel={() => setConfirmOpen(false)}
+          onConfirm={submitCurrentPayout}
+        />
       </div>
     </dialog>
   );
