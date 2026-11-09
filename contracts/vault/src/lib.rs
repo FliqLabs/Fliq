@@ -24,8 +24,9 @@ use crate::receipts::FliqEvent;
 #[cfg(all(feature = "testing", debug_assertions))]
 use crate::types::Amount;
 use crate::types::{
-    AgentPolicy, AgentPolicyView, Config, DEFAULT_MAX_EXPIRY, DEFAULT_PAYOUT_TIMEOUT, PayoutOrder,
-    PendingPolicySpend, Receipt, ReceiptRefs, ReceiptView, StorageKey, TransferState, now,
+    AgentPolicy, AgentPolicyView, Config, DEFAULT_MAX_EXPIRY, DEFAULT_PAYOUT_TIMEOUT,
+    MAX_PAYOUT_TIMEOUT, MIN_PAYOUT_TIMEOUT, PayoutOrder, PendingPolicySpend, Receipt, ReceiptRefs,
+    ReceiptView, StorageKey, TransferState, now,
 };
 use crate::vault::{BalanceView, TransferError, Vault};
 
@@ -42,6 +43,13 @@ trait ExtFungibleToken {
 #[allow(dead_code)]
 trait ExtContract {
     fn on_recredit_balance(&mut self, order_id: String, amount: U128) -> bool;
+    fn on_withdraw_complete(&mut self, account_id: AccountId, amount: U128) -> bool;
+}
+
+#[ext_contract(ext_usdc)]
+#[allow(dead_code)]
+trait ExtUsdc {
+    fn ft_transfer(&mut self, receiver_id: AccountId, amount: U128, memo: Option<String>);
 }
 
 #[derive(Deserialize)]
@@ -68,6 +76,26 @@ pub struct Contract {
     pub(crate) payout_keys: LookupMap<String, String>,
     pub(crate) agent_policies: LookupMap<(AccountId, AccountId), AgentPolicy>,
     pub(crate) pending_policy_spends: LookupMap<String, PendingPolicySpend>,
+    /// The only agent allowed to pay each order. Orders without one can be paid by the payer alone.
+    pub(crate) order_agents: LookupMap<String, AccountId>,
+}
+
+/// The state layout before order_agents, read once by `migrate`.
+#[near(serializers = [borsh])]
+struct ContractV1 {
+    approved_usdc: AccountId,
+    vault: Vault,
+    config: Config,
+    orders: LookupMap<String, PayoutOrder>,
+    receipts: LookupMap<String, Receipt>,
+    used_refund_transactions: LookupSet<String>,
+    payout_keys: LookupMap<String, String>,
+    agent_policies: LookupMap<(AccountId, AccountId), AgentPolicy>,
+    pending_policy_spends: LookupMap<String, PendingPolicySpend>,
+}
+
+fn withdraw_key(account_id: &AccountId) -> String {
+    format!("{}{account_id}", orders::WITHDRAW_KEY_PREFIX)
 }
 
 #[near]
@@ -103,6 +131,28 @@ impl Contract {
             payout_keys: LookupMap::new(StorageKey::PayoutKeys),
             agent_policies: LookupMap::new(StorageKey::AgentPolicies),
             pending_policy_spends: LookupMap::new(StorageKey::PendingPolicySpends),
+            order_agents: LookupMap::new(StorageKey::OrderAgents),
+        }
+    }
+
+    /// Upgrades a vault deployed before order_agents existed. Deploy the new code and call this in the same
+    /// transaction; balances, orders and policies are kept as they are.
+    #[init(ignore_state)]
+    #[private]
+    pub fn migrate() -> Self {
+        let old: ContractV1 =
+            env::state_read().unwrap_or_else(|| env::panic_str(errors::MIGRATION_STATE_MISSING));
+        Self {
+            approved_usdc: old.approved_usdc,
+            vault: old.vault,
+            config: old.config,
+            orders: old.orders,
+            receipts: old.receipts,
+            used_refund_transactions: old.used_refund_transactions,
+            payout_keys: old.payout_keys,
+            agent_policies: old.agent_policies,
+            pending_policy_spends: old.pending_policy_spends,
+            order_agents: LookupMap::new(StorageKey::OrderAgents),
         }
     }
 
@@ -156,10 +206,15 @@ impl Contract {
             env::predecessor_account_id() == self.config.owner,
             errors::OWNER_ONLY
         );
-        require!(payout_timeout.0 > 0, errors::INVALID_EXPIRY);
+        require!(
+            (MIN_PAYOUT_TIMEOUT..=MAX_PAYOUT_TIMEOUT).contains(&payout_timeout.0),
+            errors::PAYOUT_TIMEOUT_OUT_OF_RANGE
+        );
         self.config.payout_timeout = payout_timeout;
+        FliqEvent::PayoutTimeoutSet { payout_timeout }.emit();
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn register_order(
         &mut self,
         order_id: String,
@@ -168,6 +223,7 @@ impl Contract {
         amount: U128,
         expires_at_ns: near_sdk::json_types::U64,
         corridor: String,
+        agent_id: Option<AccountId>,
     ) {
         require!(
             env::predecessor_account_id() == self.config.registration_account,
@@ -182,6 +238,7 @@ impl Contract {
             expires_at_ns.0 - current_time <= self.config.max_expiry.0,
             errors::INVALID_EXPIRY
         );
+        require!(agent_id.as_ref() != Some(&payer), errors::INVALID_POLICY);
         integration::reserve_for_order(&mut self.vault, &order_id, &payer, amount.0);
         let order = PayoutOrder {
             order_id: order_id.clone(),
@@ -195,6 +252,9 @@ impl Contract {
             executing_since: None,
         };
         self.orders.insert(&order_id, &order);
+        if let Some(agent_id) = &agent_id {
+            self.order_agents.insert(&order_id, agent_id);
+        }
         self.receipts.insert(
             &order_id,
             &Receipt {
@@ -235,18 +295,21 @@ impl Contract {
         apply_status(self, order_id, status, refs);
     }
 
-    /// Releases a registered order. An executing order must use resolve_stuck_payout.
+    /// Releases a registered order. The backend or owner can release one at any time; once it has expired
+    /// anyone can, so a payer is never locked out by an order the backend stopped looking after.
+    /// An executing order must use resolve_stuck_payout.
     pub fn release_order(&mut self, order_id: String) {
-        require!(
-            matches!(
-                env::predecessor_account_id(),
-                caller if caller == self.config.registration_account || caller == self.config.owner
-            ),
-            errors::REGISTRATION_ONLY
-        );
         let Some(mut order) = self.orders.get(&order_id) else {
             env::panic_str(errors::ORDER_NOT_FOUND);
         };
+        let caller = env::predecessor_account_id();
+        require!(
+            caller == self.config.registration_account
+                || caller == self.config.owner
+                || (order.transfer_state == TransferState::Registered
+                    && orders::is_expired(order.expiry, now())),
+            errors::REGISTRATION_ONLY
+        );
         require!(
             order.transfer_state == TransferState::Registered,
             errors::INVALID_STATE
@@ -279,6 +342,54 @@ impl Contract {
                     .with_static_gas(RECREDIT_CALLBACK_GAS)
                     .on_recredit_balance(order_id, amount),
             )
+    }
+
+    /// Sends the caller's own available USDC back to them. It needs no order and no backend, so funds can
+    /// always leave the vault. The amount is reserved while the transfer is in flight and comes back if it fails.
+    #[payable]
+    pub fn withdraw(&mut self, amount: U128) -> Promise {
+        require!(
+            env::attached_deposit() == NearToken::from_yoctonear(1),
+            errors::ONE_YOCTO_REQUIRED
+        );
+        require!(
+            env::prepaid_gas() >= orders::PAYOUT_GAS_FLOOR,
+            errors::INSUFFICIENT_GAS
+        );
+        let account_id = env::predecessor_account_id();
+        integration::reserve_for_withdrawal(
+            &mut self.vault,
+            &withdraw_key(&account_id),
+            &account_id,
+            amount.0,
+        );
+        ext_usdc::ext(self.config.approved_usdc_token_contract.clone())
+            .with_attached_deposit(NearToken::from_yoctonear(1))
+            .with_static_gas(orders::FT_TRANSFER_GAS)
+            .ft_transfer(account_id.clone(), amount, Some("fliq withdraw".to_owned()))
+            .then(
+                ext_self::ext(env::current_account_id())
+                    .with_static_gas(orders::CALLBACK_GAS)
+                    .on_withdraw_complete(account_id, amount),
+            )
+    }
+
+    #[private]
+    pub fn on_withdraw_complete(&mut self, account_id: AccountId, amount: U128) -> bool {
+        require!(
+            env::promise_results_count() == 1,
+            errors::CALLBACK_PROMISE_COUNT
+        );
+        let key = withdraw_key(&account_id);
+        if env::promise_result_checked(0, 1024 * 1024).is_ok() {
+            integration::commit_withdrawal(&mut self.vault, &key);
+            FliqEvent::Withdrawn { account_id, amount }.emit();
+            true
+        } else {
+            integration::release_reservation(&mut self.vault, &key);
+            FliqEvent::WithdrawFailed { account_id, amount }.emit();
+            false
+        }
     }
 
     #[payable]
@@ -380,11 +491,6 @@ impl Contract {
     /// Resolve an execution only after checking on chain whether the USDC transfer happened.
     /// Releasing funds after a real transfer would double pay the order.
     pub fn resolve_stuck_payout(&mut self, order_id: String, transferred: bool) {
-        let caller = env::predecessor_account_id();
-        require!(
-            caller == self.config.owner || caller == self.config.registration_account,
-            errors::UNAUTHORIZED
-        );
         orders::resolve_stuck_payout(self, order_id, transferred);
     }
 }
@@ -893,5 +999,144 @@ mod tests {
             U128(1)
         );
         assert_eq!(contract.get_balance(user).available, U128(u128::MAX));
+    }
+
+    fn funded(contract: &mut Contract, user: &AccountId, amount: u128) {
+        register(contract, user);
+        testing_env!(context(
+            &account("usdc.testnet"),
+            NearToken::from_yoctonear(0)
+        ));
+        assert_eq!(
+            returned_amount(contract.ft_on_transfer(user.clone(), U128(amount), String::new())),
+            U128(0)
+        );
+    }
+
+    fn withdraw_settles(
+        contract: &mut Contract,
+        user: &AccountId,
+        amount: u128,
+        sent: bool,
+    ) -> bool {
+        let result = if sent {
+            near_sdk::PromiseResult::Successful(vec![])
+        } else {
+            near_sdk::PromiseResult::Failed
+        };
+        testing_env!(
+            context(&account("vault.testnet"), NearToken::from_yoctonear(0)),
+            near_sdk::test_vm_config(),
+            near_sdk::RuntimeFeesConfig::test(),
+            Default::default(),
+            vec![result]
+        );
+        contract.on_withdraw_complete(user.clone(), U128(amount))
+    }
+
+    #[test]
+    fn withdraw_sends_usdc_to_the_caller_and_settles_liabilities_once() {
+        let mut contract = contract();
+        let user = account("ada.testnet");
+        funded(&mut contract, &user, 100);
+        testing_env!(context(&user, NearToken::from_yoctonear(1)));
+        drop(contract.withdraw(U128(40)));
+        assert!(
+            get_created_receipts()
+                .iter()
+                .any(|receipt| receipt.receiver_id == account("usdc.testnet"))
+        );
+        assert_eq!(contract.get_balance(user.clone()).available, U128(60));
+        assert_eq!(contract.get_balance(user.clone()).reserved, U128(40));
+        assert_eq!(contract.vault.total_liabilities(), 100);
+
+        assert!(withdraw_settles(&mut contract, &user, 40, true));
+        assert_eq!(contract.get_balance(user.clone()).total, U128(60));
+        assert_eq!(contract.vault.total_liabilities(), 60);
+        assert!(
+            get_logs()
+                .iter()
+                .any(|log| log.contains("\"event\":\"withdrawn\""))
+        );
+
+        testing_env!(context(&user, NearToken::from_yoctonear(1)));
+        let _again = contract.withdraw(U128(60));
+        assert!(withdraw_settles(&mut contract, &user, 60, true));
+        assert_eq!(contract.get_balance(user).total, U128(0));
+        assert_eq!(contract.vault.total_liabilities(), 0);
+    }
+
+    #[test]
+    fn a_failed_withdraw_gives_everything_back() {
+        let mut contract = contract();
+        let user = account("ada.testnet");
+        funded(&mut contract, &user, 100);
+        testing_env!(context(&user, NearToken::from_yoctonear(1)));
+        let _promise = contract.withdraw(U128(100));
+        assert!(!withdraw_settles(&mut contract, &user, 100, false));
+        assert_eq!(contract.get_balance(user).available, U128(100));
+        assert_eq!(contract.vault.total_liabilities(), 100);
+        assert!(
+            get_logs()
+                .iter()
+                .any(|log| log.contains("\"event\":\"withdraw_failed\""))
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "fliq_vault: WITHDRAW_IN_PROGRESS")]
+    fn one_withdraw_at_a_time() {
+        let mut contract = contract();
+        let user = account("ada.testnet");
+        funded(&mut contract, &user, 100);
+        testing_env!(context(&user, NearToken::from_yoctonear(1)));
+        let _first = contract.withdraw(U128(10));
+        let _second = contract.withdraw(U128(10));
+    }
+
+    #[test]
+    #[should_panic(expected = "fliq_vault: INSUFFICIENT_BALANCE")]
+    fn withdraw_cannot_take_more_than_is_available() {
+        let mut contract = contract();
+        let user = account("ada.testnet");
+        funded(&mut contract, &user, 100);
+        testing_env!(context(&user, NearToken::from_yoctonear(1)));
+        let _promise = contract.withdraw(U128(101));
+    }
+
+    #[test]
+    #[should_panic(expected = "fliq_vault: ONE_YOCTO_REQUIRED")]
+    fn withdraw_needs_one_yocto() {
+        let mut contract = contract();
+        let user = account("ada.testnet");
+        funded(&mut contract, &user, 100);
+        testing_env!(context(&user, NearToken::from_yoctonear(0)));
+        let _promise = contract.withdraw(U128(10));
+    }
+
+    #[test]
+    fn migrate_keeps_balances_from_the_previous_layout() {
+        let mut contract = contract();
+        let user = account("ada.testnet");
+        funded(&mut contract, &user, 100);
+        let old = ContractV1 {
+            approved_usdc: contract.approved_usdc,
+            vault: contract.vault,
+            config: contract.config,
+            orders: contract.orders,
+            receipts: contract.receipts,
+            used_refund_transactions: contract.used_refund_transactions,
+            payout_keys: contract.payout_keys,
+            agent_policies: contract.agent_policies,
+            pending_policy_spends: contract.pending_policy_spends,
+        };
+        env::state_write(&old);
+        testing_env!(context(
+            &account("vault.testnet"),
+            NearToken::from_yoctonear(0)
+        ));
+        let migrated = Contract::migrate();
+        assert_eq!(migrated.get_balance(user).available, U128(100));
+        assert_eq!(migrated.get_config().owner, account("owner.testnet"));
     }
 }

@@ -14,6 +14,9 @@ use near_sdk::{AccountId, PublicKey, testing_env};
 use near_sdk::{PromiseResult, RuntimeFeesConfig, test_vm_config};
 
 const NOW: u64 = 1_000_000_000;
+#[cfg(feature = "testing")]
+/// The default payout timeout, which is also the lowest the owner may set.
+const TIMEOUT: u64 = 600_000_000_000;
 
 fn set_caller(account: AccountId, timestamp: u64) {
     testing_env!(
@@ -158,6 +161,7 @@ fn register_agent_order(
         U128(amount),
         U64(timestamp + 3_600_000_000_000),
         corridor.to_string(),
+        Some(accounts(5)),
     );
 }
 
@@ -422,7 +426,7 @@ fn naming_someone_as_your_agent_never_limits_their_own_funds() {
     register_storage(&mut contract, accounts(4));
     register_storage(&mut contract, accounts(5));
     contract.credit_for_testing(accounts(5), 100);
-    register_agent_order(&mut contract, "own-order", accounts(5), 60, "USDC-NGN", NOW);
+    register_named_order(&mut contract, "own-order", accounts(5), 60);
     set_caller_with_deposit(accounts(3), NOW, POLICY_DEPOSIT);
     contract.set_agent(
         agent_key(),
@@ -656,6 +660,7 @@ fn register_named_order(contract: &mut Contract, order_id: &str, payer: AccountI
         U128(amount),
         U64(NOW + 3_600_000_000_000),
         "USDC-NGN".to_string(),
+        None,
     );
 }
 
@@ -669,6 +674,7 @@ fn register_payout_order(contract: &mut Contract, amount: u128, expiry: u64) {
         U128(amount),
         U64(expiry),
         "USDC-NGN".to_string(),
+        None,
     );
 }
 
@@ -761,6 +767,7 @@ fn registration_account_can_register() {
         U128(10),
         U64(NOW + 3_600_000_000_000),
         "USDC-NGN".to_string(),
+        None,
     );
     let receipt = contract
         .get_receipt("order-1".to_string())
@@ -852,6 +859,7 @@ fn unauthorized_release_fails_and_released_order_cannot_be_reused() {
                 U128(10),
                 U64(NOW + 3_600_000_000_000),
                 "USDC-NGN".to_owned(),
+                None,
             );
         }))
         .is_err()
@@ -870,6 +878,7 @@ fn another_account_cannot_register() {
             U128(10),
             U64(NOW + 3_600_000_000_000),
             "USDC-NGN".to_string(),
+            None,
         );
     }));
     assert!(result.is_err());
@@ -889,6 +898,7 @@ fn duplicate_order_id_fails() {
             U128(10),
             U64(expiry),
             "USDC-NGN".to_string(),
+            None,
         );
         contract.register_order(
             "order-1".to_string(),
@@ -897,6 +907,7 @@ fn duplicate_order_id_fails() {
             U128(10),
             U64(expiry),
             "USDC-NGN".to_string(),
+            None,
         );
     }));
     assert!(result.is_err());
@@ -922,6 +933,7 @@ fn invalid_registration_fields_fail() {
                 U128(amount),
                 U64(expiry),
                 corridor.to_string(),
+                None,
             );
         }));
         assert!(
@@ -943,6 +955,7 @@ fn registered_order_fields_cannot_be_changed() {
         U128(10),
         U64(NOW + 3_600_000_000_000),
         "USDC-NGN".to_string(),
+        None,
     );
     let receipt_before = contract
         .get_receipt("order-1".to_string())
@@ -957,6 +970,7 @@ fn registered_order_fields_cannot_be_changed() {
                 U128(20),
                 U64(NOW + 7_200_000_000_000),
                 "USDC-KES".to_string(),
+                None,
             );
         }))
         .is_err()
@@ -986,6 +1000,7 @@ fn registration_event_contains_order_fields() {
         json_amount,
         U64(NOW + 3_600_000_000_000),
         "USDC-NGN".to_string(),
+        None,
     );
     let receipt = contract
         .get_receipt("order-1".to_string())
@@ -1486,6 +1501,7 @@ fn refund_transaction_cannot_back_two_orders() {
         U128(10),
         U64(NOW + 3_600_000_000_000),
         "USDC-NGN".to_string(),
+        None,
     );
     set_caller(accounts(3), NOW);
     let _promise = payout(&mut contract, "order-2");
@@ -1660,15 +1676,20 @@ fn unrelated_balance_cannot_be_credited_to_an_order() {
 
 #[cfg(feature = "testing")]
 #[test]
-fn registration_account_can_resolve_stuck_payout_without_refund() {
+fn only_the_owner_can_resolve_a_stuck_payout_as_not_transferred() {
     let mut contract = contract();
-    set_caller(accounts(0), NOW);
-    contract.set_payout_timeout(U64(10));
     contract.credit_for_testing(accounts(3), 100);
     register_payout_order(&mut contract, 10, NOW + 3_600_000_000_000);
     set_caller(accounts(3), NOW);
     let _promise = payout(&mut contract, "order-1");
-    set_caller(accounts(1), NOW + 10);
+    set_caller(accounts(1), NOW + TIMEOUT);
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            contract.resolve_stuck_payout("order-1".to_string(), false);
+        }))
+        .is_err()
+    );
+    set_caller(accounts(0), NOW + TIMEOUT);
     contract.resolve_stuck_payout("order-1".to_string(), false);
     assert_eq!(
         order_transfer_state(&contract, "order-1"),
@@ -1682,7 +1703,7 @@ fn registration_account_can_resolve_stuck_payout_without_refund() {
     );
     assert_eq!(contract.get_balance(accounts(3)).available, U128(100));
     assert_eq!(contract.get_balance(accounts(3)).reserved, U128(0));
-    set_caller(accounts(1), NOW + 10);
+    set_caller(accounts(1), NOW + TIMEOUT);
     assert!(
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let _ = contract.recredit("order-1".to_string(), U128(10));
@@ -1709,32 +1730,51 @@ fn canonical_event_fixture_covers_every_documented_event() {
         "agent_revoked".to_string(),
         "agent_set".to_string(),
         "agent_spend".to_string(),
+        "agent_spend_reversed".to_string(),
         "deposited".to_string(),
         "order_registered".to_string(),
         "order_released".to_string(),
         "payout_executed".to_string(),
+        "payout_failed".to_string(),
+        "payout_resolved".to_string(),
+        "payout_timeout_set".to_string(),
         "recredited".to_string(),
         "status_set".to_string(),
         "transferred".to_string(),
+        "withdraw_failed".to_string(),
+        "withdrawn".to_string(),
     ]);
     assert_eq!(actual, expected);
 }
 
 #[cfg(feature = "testing")]
 #[test]
-fn payout_timeout_is_owner_configurable() {
+fn payout_timeout_is_owner_configurable_within_bounds() {
     let mut contract = contract();
-    assert_eq!(contract.get_config().payout_timeout, U64(600_000_000_000));
+    assert_eq!(contract.get_config().payout_timeout, U64(TIMEOUT));
     set_caller(accounts(3), NOW);
     assert!(
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            contract.set_payout_timeout(U64(1));
+            contract.set_payout_timeout(U64(2 * TIMEOUT));
         }))
         .is_err()
     );
     set_caller(accounts(0), NOW);
-    contract.set_payout_timeout(U64(1));
-    assert_eq!(contract.get_config().payout_timeout, U64(1));
+    for out_of_range in [1, TIMEOUT - 1, 7 * 24 * 3_600_000_000_000 + 1] {
+        assert!(
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                contract.set_payout_timeout(U64(out_of_range));
+            }))
+            .is_err()
+        );
+    }
+    contract.set_payout_timeout(U64(2 * TIMEOUT));
+    assert_eq!(contract.get_config().payout_timeout, U64(2 * TIMEOUT));
+    assert!(
+        near_sdk::test_utils::get_logs()
+            .iter()
+            .any(|log| log.contains("\"event\":\"payout_timeout_set\""))
+    );
 }
 
 #[cfg(feature = "testing")]
@@ -1742,7 +1782,6 @@ fn payout_timeout_is_owner_configurable() {
 fn stuck_payout_requires_owner_timeout_and_executing_state() {
     let mut contract = contract();
     set_caller(accounts(0), NOW);
-    contract.set_payout_timeout(U64(10));
     set_caller(accounts(1), NOW);
     assert!(
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -1755,14 +1794,14 @@ fn stuck_payout_requires_owner_timeout_and_executing_state() {
     register_payout_order(&mut contract, 10, NOW + 3_600_000_000_000);
     set_caller(accounts(3), NOW);
     let _promise = payout(&mut contract, "order-1");
-    set_caller(accounts(0), NOW + 9);
+    set_caller(accounts(0), NOW + TIMEOUT - 1);
     assert!(
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             contract.resolve_stuck_payout("order-1".to_string(), false);
         }))
         .is_err()
     );
-    set_caller(accounts(0), NOW + 10);
+    set_caller(accounts(0), NOW + TIMEOUT);
     contract.resolve_stuck_payout("order-1".to_string(), false);
     assert_eq!(
         order_transfer_state(&contract, "order-1"),
@@ -1777,12 +1816,11 @@ fn stuck_payout_requires_owner_timeout_and_executing_state() {
 fn stuck_payout_transferred_commits_and_is_single_use() {
     let mut contract = contract();
     set_caller(accounts(0), NOW);
-    contract.set_payout_timeout(U64(10));
     contract.credit_for_testing(accounts(3), 100);
     register_payout_order(&mut contract, 10, NOW + 3_600_000_000_000);
     set_caller(accounts(3), NOW);
     let _promise = payout(&mut contract, "order-1");
-    set_caller(accounts(0), NOW + 10);
+    set_caller(accounts(0), NOW + TIMEOUT);
     contract.resolve_stuck_payout("order-1".to_string(), true);
     assert_eq!(
         order_transfer_state(&contract, "order-1"),
@@ -1802,7 +1840,7 @@ fn stuck_payout_transferred_commits_and_is_single_use() {
         VMContextBuilder::new()
             .current_account_id(accounts(0))
             .predecessor_account_id(accounts(0))
-            .block_timestamp(NOW + 10)
+            .block_timestamp(NOW + TIMEOUT)
             .build(),
         PromiseResult::Successful(vec![]),
     );
@@ -2116,4 +2154,219 @@ fn outsider_callback_and_stale_callback_change_nothing() {
         TransferState::Dispatched
     );
     assert_eq!(contract.get_balance(accounts(3)).reserved, U128(0));
+}
+
+#[cfg(feature = "testing")]
+fn agent_ready(contract: &mut Contract) {
+    contract.credit_for_testing(accounts(3), 100);
+    set_agent(
+        contract,
+        accounts(3),
+        50,
+        80,
+        &["USDC-NGN"],
+        0,
+        NOW + 2 * 24 * 60 * 60 * 1_000_000_000,
+    );
+}
+
+#[cfg(feature = "testing")]
+#[test]
+fn an_agent_cannot_pay_an_order_that_was_not_registered_for_it() {
+    let mut contract = contract();
+    agent_ready(&mut contract);
+    register_named_order(&mut contract, "user-order", accounts(3), 30);
+    set_agent_caller(NOW, 0);
+    let refused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = payout(&mut contract, "user-order");
+    }));
+    assert!(refused.is_err());
+    assert_eq!(
+        order_transfer_state(&contract, "user-order"),
+        Some(TransferState::Registered)
+    );
+    assert_eq!(policy(&contract, accounts(3)).spent_today, U128(0));
+
+    set_caller(accounts(3), NOW);
+    let _promise = payout(&mut contract, "user-order");
+    assert_eq!(
+        order_transfer_state(&contract, "user-order"),
+        Some(TransferState::Executing)
+    );
+}
+
+#[cfg(feature = "testing")]
+#[test]
+fn an_order_bound_to_one_agent_cannot_be_paid_by_another() {
+    let mut contract = contract();
+    agent_ready(&mut contract);
+    set_caller(accounts(1), NOW);
+    contract.register_order(
+        "other-agent".to_string(),
+        accounts(3),
+        accounts(4),
+        U128(30),
+        U64(NOW + 3_600_000_000_000),
+        "USDC-NGN".to_string(),
+        Some(accounts(2)),
+    );
+    set_agent_caller(NOW, 0);
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = payout(&mut contract, "other-agent");
+        }))
+        .is_err()
+    );
+}
+
+#[cfg(feature = "testing")]
+#[test]
+fn an_order_cannot_be_bound_to_its_own_payer_or_use_the_withdraw_prefix() {
+    let mut contract = contract();
+    contract.credit_for_testing(accounts(3), 100);
+    set_caller(accounts(1), NOW);
+    for (order_id, agent) in [("self-bound", Some(accounts(3))), ("withdraw:x", None)] {
+        assert!(
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                contract.register_order(
+                    order_id.to_string(),
+                    accounts(3),
+                    accounts(4),
+                    U128(10),
+                    U64(NOW + 3_600_000_000_000),
+                    "USDC-NGN".to_string(),
+                    agent.clone(),
+                );
+            }))
+            .is_err()
+        );
+    }
+    assert_eq!(contract.get_balance(accounts(3)).available, U128(100));
+}
+
+#[cfg(feature = "testing")]
+#[test]
+fn a_failed_agent_payout_reverses_the_spend_with_events() {
+    let mut contract = contract();
+    agent_ready(&mut contract);
+    register_agent_order(
+        &mut contract,
+        "agent-order",
+        accounts(3),
+        30,
+        "USDC-NGN",
+        NOW,
+    );
+    set_agent_caller(NOW, 0);
+    let _promise = payout(&mut contract, "agent-order");
+    complete_payout(&mut contract, "agent-order", PromiseResult::Failed);
+    let logs = near_sdk::test_utils::get_logs();
+    assert!(
+        logs.iter()
+            .any(|log| log.contains("\"event\":\"payout_failed\""))
+    );
+    assert!(
+        logs.iter()
+            .any(|log| log.contains("\"event\":\"agent_spend_reversed\""))
+    );
+    assert_eq!(policy(&contract, accounts(3)).spent_today, U128(0));
+    assert_eq!(contract.get_balance(accounts(3)).available, U128(100));
+}
+
+#[cfg(feature = "testing")]
+#[test]
+fn a_payout_cannot_be_resolved_before_the_real_callback_can_run() {
+    let mut contract = contract();
+    contract.credit_for_testing(accounts(3), 100);
+    register_payout_order(&mut contract, 10, NOW + 3_600_000_000_000);
+    set_caller(accounts(3), NOW);
+    let _promise = payout(&mut contract, "order-1");
+
+    set_caller(accounts(0), NOW);
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            contract.set_payout_timeout(U64(1));
+        }))
+        .is_err()
+    );
+    set_caller(accounts(0), NOW + 1);
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            contract.resolve_stuck_payout("order-1".to_string(), false);
+        }))
+        .is_err()
+    );
+
+    complete_payout(&mut contract, "order-1", PromiseResult::Successful(vec![]));
+    assert_eq!(
+        order_transfer_state(&contract, "order-1"),
+        Some(TransferState::Dispatched)
+    );
+    assert_eq!(contract.get_balance(accounts(3)).total, U128(90));
+}
+
+#[cfg(feature = "testing")]
+#[test]
+fn resolving_a_stuck_payout_emits_who_resolved_it() {
+    let mut contract = contract();
+    contract.credit_for_testing(accounts(3), 100);
+    register_payout_order(&mut contract, 10, NOW + 3_600_000_000_000);
+    set_caller(accounts(3), NOW);
+    let _promise = payout(&mut contract, "order-1");
+    set_caller(accounts(1), NOW + TIMEOUT);
+    contract.resolve_stuck_payout("order-1".to_string(), true);
+    assert!(
+        near_sdk::test_utils::get_logs()
+            .iter()
+            .any(|log| log.contains("\"event\":\"payout_resolved\"")
+                && log.contains("\"transferred\":true"))
+    );
+}
+
+#[cfg(feature = "testing")]
+#[test]
+fn the_payer_or_anyone_can_release_an_expired_order() {
+    let mut contract = contract();
+    contract.credit_for_testing(accounts(3), 100);
+    register_payout_order(&mut contract, 40, NOW + 1_000);
+
+    set_caller(accounts(3), NOW + 999);
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            contract.release_order("order-1".to_string());
+        }))
+        .is_err()
+    );
+    assert_eq!(contract.get_balance(accounts(3)).available, U128(60));
+
+    set_caller(accounts(5), NOW + 1_000);
+    contract.release_order("order-1".to_string());
+    assert_eq!(contract.get_balance(accounts(3)).available, U128(100));
+    assert_eq!(contract.get_balance(accounts(3)).reserved, U128(0));
+    assert_eq!(
+        order_transfer_state(&contract, "order-1"),
+        Some(TransferState::Released)
+    );
+}
+
+#[cfg(feature = "testing")]
+#[test]
+fn payout_needs_the_raised_gas_floor() {
+    let mut contract = contract();
+    contract.credit_for_testing(accounts(3), 100);
+    register_payout_order(&mut contract, 10, NOW + 3_600_000_000_000);
+    testing_env!(
+        VMContextBuilder::new()
+            .current_account_id(accounts(0))
+            .predecessor_account_id(accounts(3))
+            .block_timestamp(NOW)
+            .prepaid_gas(near_sdk::Gas::from_tgas(55))
+            .build()
+    );
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = payout(&mut contract, "order-1");
+        }))
+        .is_err()
+    );
 }

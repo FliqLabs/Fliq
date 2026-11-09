@@ -54,6 +54,33 @@ pub enum FliqEvent {
         order_id: String,
         amount: U128,
     },
+    AgentSpendReversed {
+        owner: AccountId,
+        agent_id: AccountId,
+        order_id: String,
+        amount: U128,
+    },
+    PayoutFailed {
+        order_id: String,
+        payer: AccountId,
+        amount: U128,
+    },
+    PayoutResolved {
+        order_id: String,
+        transferred: bool,
+        resolved_by: AccountId,
+    },
+    PayoutTimeoutSet {
+        payout_timeout: U64,
+    },
+    Withdrawn {
+        account_id: AccountId,
+        amount: U128,
+    },
+    WithdrawFailed {
+        account_id: AccountId,
+        amount: U128,
+    },
 }
 
 impl FliqEvent {
@@ -172,6 +199,56 @@ impl FliqEvent {
                     "order_id": order_id,
                     "amount": amount,
                 }),
+            ),
+            Self::AgentSpendReversed {
+                owner,
+                agent_id,
+                order_id,
+                amount,
+            } => (
+                "agent_spend_reversed",
+                near_sdk::serde_json::json!({
+                    "owner": owner,
+                    "agent_id": agent_id,
+                    "order_id": order_id,
+                    "amount": amount,
+                }),
+            ),
+            Self::PayoutFailed {
+                order_id,
+                payer,
+                amount,
+            } => (
+                "payout_failed",
+                near_sdk::serde_json::json!({
+                    "order_id": order_id,
+                    "payer": payer,
+                    "amount": amount,
+                }),
+            ),
+            Self::PayoutResolved {
+                order_id,
+                transferred,
+                resolved_by,
+            } => (
+                "payout_resolved",
+                near_sdk::serde_json::json!({
+                    "order_id": order_id,
+                    "transferred": transferred,
+                    "resolved_by": resolved_by,
+                }),
+            ),
+            Self::PayoutTimeoutSet { payout_timeout } => (
+                "payout_timeout_set",
+                near_sdk::serde_json::json!({ "payout_timeout": payout_timeout }),
+            ),
+            Self::Withdrawn { account_id, amount } => (
+                "withdrawn",
+                near_sdk::serde_json::json!({ "account_id": account_id, "amount": amount }),
+            ),
+            Self::WithdrawFailed { account_id, amount } => (
+                "withdraw_failed",
+                near_sdk::serde_json::json!({ "account_id": account_id, "amount": amount }),
             ),
         };
         let envelope = near_sdk::serde_json::json!({
