@@ -50,6 +50,6 @@ export function formatTimestamp(value: string) {
   }).format(new Date(value));
 }
 
-export function stateLabel(state: PayoutState) {
+export function stateLabel(state: string) {
   return state.replaceAll("_", " ").replace(/^\w/, (letter) => letter.toUpperCase());
 }

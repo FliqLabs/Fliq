@@ -5,9 +5,10 @@ import { useParams } from "next/navigation";
 import { Suspense } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Payout } from "../../payout-model";
-import { formatLocalAmount, formatTimestamp, stateLabel } from "../../payout-model";
+import { formatLocalAmount, formatTimestamp } from "../../payout-model";
 import { ApiError, fliqApi } from "../../../lib/fliq-api";
 import { ReceiptActions } from "./receipt-actions";
+import { PayoutStatusBadge } from "../../components/payout-status-badge";
 
 export default function PayoutDetailPage() {
   return (
@@ -76,9 +77,7 @@ export function PayoutDetail({ payout, payoutId }: { payout: Payout | null; payo
           <h1 className="mt-1 text-2xl font-semibold">{payout.payout_id}</h1>
           <p className="mt-1 text-sm text-zinc-500">Track the transfer and view its receipt.</p>
         </div>
-        <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">
-          {stateLabel(payout.state)}
-        </span>
+        <PayoutStatusBadge state={payout.state} />
       </div>
 
       <div className="mt-7 grid gap-5 lg:grid-cols-[minmax(0,1fr)_280px]">
@@ -89,24 +88,30 @@ export function PayoutDetail({ payout, payoutId }: { payout: Payout | null; payo
           <div className="flex flex-wrap items-start justify-between gap-4 border-b border-zinc-100 pb-6">
             <div>
               <p className="text-sm font-bold">fliq</p>
-              <p className="mt-1 text-xs text-zinc-500">Payout receipt</p>
+              <p className="mt-1 text-xs text-zinc-500">
+                {payout.state === "settled" ? "Payout receipt" : "Payout details"}
+              </p>
             </div>
             <p className="text-xs text-zinc-500">
               {payout.history.at(-1) ? formatTimestamp(payout.history.at(-1)!.at) : ""} UTC
             </p>
           </div>
           <div className="border-b border-zinc-100 py-8 text-center">
-            <p className="text-sm text-zinc-500">Amount received</p>
+            <p className="text-sm text-zinc-500">
+              {payout.state === "settled" ? "Amount received" : "Expected amount"}
+            </p>
             <p className="mt-2 text-3xl font-semibold">
               {formatLocalAmount(payout.receive, payout.currency)}
             </p>
-            <p className="mt-2 text-sm text-zinc-500">{stateLabel(payout.state)}</p>
+            <div className="mt-3 flex justify-center">
+              <PayoutStatusBadge state={payout.state} />
+            </div>
           </div>
           <dl className="divide-y divide-zinc-100 text-sm">
             <Detail label="Recipient" value={payout.account_name} />
             <Detail label="Account number" value={`•••• ${payout.account.number.slice(-4)}`} />
             <Detail label="Bank code" value={payout.account.bank} />
-            <Detail label="Sent" value={`${payout.amount} USDC`} />
+            <Detail label="Amount" value={`${payout.amount} USDC`} />
             <Detail
               label="Rate"
               value={`${payout.rate.toLocaleString("en-NG")} ${payout.currency.toUpperCase()} / USDC`}
@@ -129,7 +134,7 @@ export function PayoutDetail({ payout, payoutId }: { payout: Payout | null; payo
                   key={`${change.state}-${change.at}`}
                   className="relative text-xs before:absolute before:top-1 before:-left-[21px] before:size-2.5 before:rounded-full before:bg-zinc-950"
                 >
-                  <p className="font-semibold">{stateLabel(change.state)}</p>
+                  <PayoutStatusBadge state={change.state} />
                   <p className="mt-1 text-zinc-500">{formatTimestamp(change.at)} UTC</p>
                 </li>
               ))}

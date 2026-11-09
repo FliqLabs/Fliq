@@ -89,8 +89,8 @@ export function ApiKeysList() {
               <dd className="mt-1 font-semibold">{usage.data.totals.requests}</dd>
             </div>
             <div>
-              <dt className="text-zinc-500">Failed</dt>
-              <dd className="mt-1 font-semibold">{usage.data.totals.failed}</dd>
+              <dt className="text-red-700">Failed</dt>
+              <dd className="mt-1 font-semibold text-red-800">{usage.data.totals.failed}</dd>
             </div>
             <div>
               <dt className="text-zinc-500">Payouts created</dt>

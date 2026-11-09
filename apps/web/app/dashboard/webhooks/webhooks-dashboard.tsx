@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { WebhookEndpoint } from "../../lib/fliq-api";
+import { ConfirmActionDialog } from "../components/confirm-action-dialog";
 
 export type WebhookDelivery = {
   id: string;
@@ -39,6 +40,8 @@ export function WebhooksDashboard({
   const [createdSecret, setCreatedSecret] = useState("");
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [replayError, setReplayError] = useState<string | null>(null);
+  const [selectedReplayId, setSelectedReplayId] = useState<string | null>(null);
+  const selectedDelivery = deliveries.find((delivery) => delivery.id === selectedReplayId);
   const visibleDeliveries = deliveries.filter((delivery) =>
     [delivery.id, delivery.event, delivery.payoutId].some((value) =>
       value.toLowerCase().includes(search.toLowerCase()),
@@ -204,7 +207,7 @@ export function WebhooksDashboard({
                 <button
                   type="button"
                   disabled={!onReplay || pendingId !== null}
-                  onClick={() => replay(delivery.id)}
+                  onClick={() => setSelectedReplayId(delivery.id)}
                   className="w-fit rounded-lg border border-zinc-200 px-3 py-2 text-xs font-semibold disabled:cursor-not-allowed disabled:text-zinc-400"
                 >
                   {pendingId === delivery.id ? "Replaying…" : "Replay"}
@@ -224,6 +227,25 @@ export function WebhooksDashboard({
           {loadingMore ? "Loading…" : "Load more deliveries"}
         </button>
       )}
+      <ConfirmActionDialog
+        open={selectedReplayId !== null}
+        title="Replay this webhook delivery?"
+        description={
+          <p>
+            This sends {selectedDelivery?.event ?? "the event"} again to your endpoint. Your receiver may
+            process the event more than once.
+          </p>
+        }
+        confirmLabel="Replay delivery"
+        tone="warning"
+        onCancel={() => setSelectedReplayId(null)}
+        onConfirm={() => {
+          if (!selectedReplayId) return;
+          const deliveryId = selectedReplayId;
+          setSelectedReplayId(null);
+          void replay(deliveryId);
+        }}
+      />
     </main>
   );
 }

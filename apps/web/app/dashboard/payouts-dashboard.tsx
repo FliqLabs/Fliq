@@ -6,6 +6,7 @@ import { CreateTestPayoutDrawer } from "./create-test-payout-drawer";
 import { FirstLoginDashboard } from "./first-login-dashboard";
 import { PayoutExportButton } from "./payout-export-button";
 import type { Onboarding } from "../lib/fliq-api";
+import { PayoutStatusBadge } from "./components/payout-status-badge";
 
 export type PayoutRow = {
   id: string;
@@ -93,15 +94,20 @@ export function PayoutsDashboard({
       </div>
 
       <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <SummaryCard label="Settled today" value={summary.settledToday?.toString() ?? "—"} />
+        <SummaryCard label="Settled today" value={summary.settledToday?.toString() ?? "—"} tone="success" />
         <SummaryCard
           label="Median time to bank"
           value={summary.medianSecondsToBank === null ? "—" : `${summary.medianSecondsToBank}s`}
         />
-        <SummaryCard label="Refused by vault caps" value={summary.refusedByVaultCaps?.toString() ?? "—"} />
+        <SummaryCard
+          label="Refused by vault caps"
+          value={summary.refusedByVaultCaps?.toString() ?? "—"}
+          tone="danger"
+        />
         <SummaryCard
           label="Best rate now"
           value={summary.bestRate === null ? "—" : `₦${summary.bestRate.toFixed(2)}`}
+          tone="progress"
         />
       </div>
       {summaryLoading && <p className="mt-2 text-xs text-zinc-500">Loading summary metrics…</p>}
@@ -149,7 +155,7 @@ export function PayoutsDashboard({
                   )}
                 </span>
                 <span>{payout.provider}</span>
-                <span>{payout.state}</span>
+                <PayoutStatusBadge state={payout.state} />
                 <span>{payout.when}</span>
                 <span className="truncate text-xs text-zinc-500">{payout.id}</span>
               </Link>
@@ -172,11 +178,30 @@ export function PayoutsDashboard({
   );
 }
 
-function SummaryCard({ label, value }: { label: string; value: string }) {
+function SummaryCard({
+  label,
+  value,
+  tone = "neutral",
+}: {
+  label: string;
+  value: string;
+  tone?: "neutral" | "success" | "danger" | "progress";
+}) {
+  const colors = {
+    neutral: { card: "border-zinc-200", label: "text-zinc-500", value: "text-zinc-950" },
+    success: {
+      card: "border-emerald-200 bg-emerald-50/50",
+      label: "text-emerald-700",
+      value: "text-emerald-800",
+    },
+    danger: { card: "border-red-200 bg-red-50/50", label: "text-red-700", value: "text-red-800" },
+    progress: { card: "border-blue-200 bg-blue-50/50", label: "text-blue-700", value: "text-blue-800" },
+  }[tone];
+
   return (
-    <div className="min-h-28 rounded-xl border border-zinc-200 p-4">
-      <p className="text-xs text-zinc-500">{label}</p>
-      <p className="mt-2 text-2xl font-semibold">{value}</p>
+    <div className={`min-h-28 rounded-xl border p-4 ${colors.card}`}>
+      <p className={`text-xs ${colors.label}`}>{label}</p>
+      <p className={`mt-2 text-2xl font-semibold ${colors.value}`}>{value}</p>
     </div>
   );
 }

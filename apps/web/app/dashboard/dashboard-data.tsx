@@ -78,7 +78,7 @@ export function DashboardData() {
       amount: item.receive,
       currency: item.currency,
       provider: item.provider,
-      state: item.state.replaceAll("_", " "),
+      state: item.state,
       when: new Date(item.created_at).toLocaleDateString("en-NG"),
     })),
   );

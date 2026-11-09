@@ -7,6 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { Payout } from "../../payout-model";
 import { formatLocalAmount } from "../../payout-model";
 import { ApiError, fliqApi } from "../../../lib/fliq-api";
+import { PayoutStatusBadge, payoutStatusTone } from "../../components/payout-status-badge";
 
 export default function TestPayoutSentPage() {
   return (
@@ -55,9 +56,7 @@ export function TestPayoutSent({ payout }: { payout: Payout | null }) {
           ↗
         </div>
         <h1 className="mt-5 text-2xl font-semibold">No payout created yet</h1>
-        <p className="mt-2 text-sm text-zinc-500">
-          Create a payout to see its details here.
-        </p>
+        <p className="mt-2 text-sm text-zinc-500">Create a payout to see its details here.</p>
         <Link
           href="/dashboard"
           className="mt-6 inline-flex rounded-lg bg-zinc-950 px-4 py-2.5 text-sm font-semibold text-white"
@@ -68,13 +67,15 @@ export function TestPayoutSent({ payout }: { payout: Payout | null }) {
     );
   }
 
+  const tone = payoutStatusTone(payout.state);
+
   return (
     <main className="mx-auto max-w-2xl py-10">
       <div
-        className="mx-auto grid size-14 place-items-center rounded-full bg-emerald-50 text-2xl text-emerald-700"
+        className={`mx-auto grid size-14 place-items-center rounded-full text-2xl ${tone === "success" ? "bg-emerald-50 text-emerald-700" : tone === "danger" ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-700"}`}
         aria-hidden="true"
       >
-        ✓
+        {tone === "success" ? "✓" : tone === "danger" ? "!" : "↗"}
       </div>
       <h1 className="mt-5 text-center text-2xl font-semibold">
         {payout.provider === "mock" ? "Test payout created" : "Payout order created"}
@@ -107,7 +108,9 @@ export function TestPayoutSent({ payout }: { payout: Payout | null }) {
           </div>
           <div>
             <dt className="text-zinc-500">Status</dt>
-            <dd className="mt-1 font-medium capitalize">{payout.state.replaceAll("_", " ")}</dd>
+            <dd className="mt-1">
+              <PayoutStatusBadge state={payout.state} />
+            </dd>
           </div>
         </dl>
       </section>
