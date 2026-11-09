@@ -158,12 +158,12 @@ function openDatabase(): Promise<IDBDatabase> {
   });
 }
 
-export async function loadNearKey(userId: string): Promise<StoredNearKey | undefined> {
+export async function loadNearKey(userId: string): Promise<StoredNearKey | null> {
   const database = await openDatabase();
   try {
     return await new Promise((resolve, reject) => {
       const request = database.transaction(STORE_NAME, "readonly").objectStore(STORE_NAME).get(userId);
-      request.onsuccess = () => resolve(request.result as StoredNearKey | undefined);
+      request.onsuccess = () => resolve((request.result as StoredNearKey | undefined) ?? null);
       request.onerror = () => reject(new Error("Could not read the NEAR key from this browser."));
     });
   } finally {
