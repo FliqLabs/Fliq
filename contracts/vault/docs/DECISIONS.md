@@ -40,7 +40,7 @@ These rules are PROPOSED and require backend approval:
 ## Backend-requested behavior
 
 - `transfer` accepts an optional public `request_id` made only of ASCII letters, digits, `-` and `_`, at most 64 bytes. The identifier remains visible in the transaction arguments while the frozen `transferred` event stays unchanged.
-- The owner and immutable registration account may resolve stuck payouts after the timeout. Operational alerts go to both operators, and the caller verifies the approved-USDC transaction before resolving.
+- After the timeout the owner may resolve a stuck payout either way; the registration account may only confirm a transfer that happened. The caller verifies the approved-USDC transaction before resolving.
 - Cash-out on arrival uses a deliberately scoped agent policy held by fliq; the vault does not add a second standing-permission type in this release.
 - Account recovery is not a vault permission. A recovery key or social-recovery account design must be approved and implemented at the NEAR account layer before the recovery-contact screen can claim to restore access.
 
@@ -59,3 +59,20 @@ These rules are PROPOSED and require backend approval:
 - **PROPOSED:** Agent policies are keyed by `(owner, agent account)`. An agent is a distinct NEAR account because a relayed NEP-366 call reports the relayer's key as the signer. The app and backend must never place an agent key on the user's own account: calls from the user's account are treated as the user. The contract cannot see which function-call key signed the transaction.
 - **PROPOSED:** A failed payout refunds that payout's daily policy spend but retains the cooldown timestamp. This prevents a failed transfer from consuming the daily allowance while preventing immediate retry abuse.
 - **PROPOSED:** A failed payout releases the Dapper reservation and enters terminal `TransferFailed`; it cannot be retried or released again. A stale callback is a no-op.
+
+## Review fixes (November 2026)
+
+Two reviews before mainnet found no way for an outsider to take funds, but found risks that rest on our own keys. These are fixed:
+
+- **Users can always leave.** `withdraw(amount)` (1 yocto) sends the caller's own available USDC to their account with no order and no backend. The amount is reserved while the transfer is in flight, committed when it lands and returned if it fails, so `total_liabilities` is exact at every step. One withdraw per account at a time.
+- **Expired orders unlock themselves.** Once a `Registered` order has expired anyone may call `release_order`, so a backend outage or a leaked registration key cannot freeze a balance for longer than the order's expiry (at most 24 hours).
+- **The payout timeout is bounded** to between 10 minutes and 7 days. A 1 ns timeout let an operator resolve a payout as not transferred before the real transfer callback ran, leaving the vault owing more than it holds.
+- **Only the owner may resolve a stuck payout as not transferred.** That answer gives funds back, so it needs the cold owner key. The registration key may only confirm a transfer that happened.
+- **Orders are bound to an agent.** `register_order` takes an optional `agent_id`. Only the payer, or that one agent, may pay the order. An agent cannot pay an order registered without it, so it cannot pay one the user meant to confirm personally.
+- **The payout gas floor is 60 Tgas**, so a call that passes the check always has gas left for the transfer and its callback.
+- **Every outcome has an event**: failed payouts, resolutions, timeout changes, withdrawals and reversed agent spend.
+
+Upgrading a vault deployed before these fixes: deploy the new code and call `migrate` in the same transaction. Balances, orders and policies are kept.
+
+Still open, for after the hackathon: crediting refunds atomically in `ft_on_transfer` instead of a separate balance read, an owner pause, a rolling 24-hour agent cap instead of the UTC day, and cleaning up terminal orders.
+

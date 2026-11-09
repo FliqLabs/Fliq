@@ -20,6 +20,12 @@ pub const ERR_BAD_DEPOSIT_ADDRESS: &str = errors::INVALID_ADDRESS;
 pub const MAX_REFS_LENGTH: usize = 256;
 pub const ERR_REFS_TOO_LONG: &str = errors::INVALID_REFS;
 pub const ERR_REFS_FORMAT: &str = errors::INVALID_REFS;
+/// Withdrawals reserve under this prefix, so no order may use it.
+pub const WITHDRAW_KEY_PREFIX: &str = "withdraw:";
+/// ft_transfer and its callback take 50 Tgas between them; the rest pays for the payout call itself.
+pub const PAYOUT_GAS_FLOOR: Gas = Gas::from_tgas(60);
+pub const FT_TRANSFER_GAS: Gas = Gas::from_tgas(30);
+pub const CALLBACK_GAS: Gas = Gas::from_tgas(20);
 
 const BACKFILLABLE_STATUSES: &[&str] = &[
     "awaiting_deposit",
@@ -140,6 +146,10 @@ fn merge_refs(current: &mut ReceiptRefs, incoming: &ReceiptRefs) -> Result<bool,
 
 pub fn validate_order(order_id: &str, amount: Amount, corridor: &str) {
     require!(!order_id.is_empty(), ERR_EMPTY_ORDER_ID);
+    require!(
+        !order_id.starts_with(WITHDRAW_KEY_PREFIX),
+        errors::RESERVED_ORDER_ID
+    );
     require!(
         order_id.chars().count() <= MAX_ORDER_ID_LENGTH,
         ERR_LONG_ORDER_ID
@@ -280,10 +290,12 @@ pub fn payout(
     );
 
     let caller = env::predecessor_account_id();
+    let bound_agent = contract.order_agents.get(&order_id);
     integration::authorize_payout(
         contract,
         &caller,
         &order.payer,
+        bound_agent.as_ref(),
         &order.order_id,
         order.amount.0,
         &order.corridor,
@@ -303,10 +315,10 @@ pub fn payout(
         contract.receipts.insert(&order_id, &receipt);
     }
 
-    let transfer_gas = Gas::from_tgas(30);
-    let callback_gas = Gas::from_tgas(20);
+    let transfer_gas = FT_TRANSFER_GAS;
+    let callback_gas = CALLBACK_GAS;
     require!(
-        env::prepaid_gas() >= Gas::from_tgas(50),
+        env::prepaid_gas() >= PAYOUT_GAS_FLOOR,
         errors::INSUFFICIENT_GAS
     );
     let transfer_args = near_sdk::serde_json::json!({
@@ -440,6 +452,13 @@ fn finalize_payout(contract: &mut Contract, order_id: String, successful: bool) 
             public_key,
         }
         .emit();
+    } else {
+        FliqEvent::PayoutFailed {
+            order_id,
+            payer: order.payer,
+            amount: order.amount,
+        }
+        .emit();
     }
     true
 }
@@ -449,7 +468,15 @@ pub fn on_payout_complete(contract: &mut Contract, order_id: String) {
     finalize_payout(contract, order_id, successful);
 }
 
+/// Saying a transfer did not happen gives the reservation back, so only the cold owner key may say it.
+/// The backend's registration key may only confirm a transfer that did happen.
 pub fn resolve_stuck_payout(contract: &mut Contract, order_id: String, transferred: bool) {
+    let caller = env::predecessor_account_id();
+    require!(
+        caller == contract.config.owner
+            || (transferred && caller == contract.config.registration_account),
+        errors::UNAUTHORIZED
+    );
     let Some(order) = contract.orders.get(&order_id) else {
         env::panic_str(errors::ORDER_NOT_FOUND);
     };
@@ -468,7 +495,13 @@ pub fn resolve_stuck_payout(contract: &mut Contract, order_id: String, transferr
         errors::TIMEOUT_NOT_REACHED
     );
     require!(
-        finalize_payout(contract, order_id, transferred),
+        finalize_payout(contract, order_id.clone(), transferred),
         errors::STUCK_PAYOUT_UNRESOLVED
     );
+    FliqEvent::PayoutResolved {
+        order_id,
+        transferred,
+        resolved_by: caller,
+    }
+    .emit();
 }

@@ -71,6 +71,20 @@ const registration = { accountId: REGISTRAR, privateKey: KeyPair.fromRandom("ed2
 const vaultOn = (rpc: NearRpc) => new NearVault({ rpc, contractId: CONTRACT, registration });
 
 describe("the deployed vault through NEAR RPC", () => {
+  it("names the one agent that may pay an order, and leaves the argument out otherwise", async () => {
+    const chain = fakeChain();
+    await vaultOn(chain.rpc).registerOrder({
+      orderId: "po_agent",
+      payer: "frank.fliq.testnet",
+      depositAddress: "deposit.testnet",
+      amount: 1n,
+      expiresAtNs: 1_761_742_930_000_000_000n,
+      corridor: "NG-NGN-bank",
+      agentId: "claude-frank.fliq.testnet",
+    });
+    expect(chain.sent[0]?.args).toMatchObject({ agent_id: "claude-frank.fliq.testnet" });
+  });
+
   it("registers an order with the contract's argument names, U128 strings, 50 Tgas and no deposit", async () => {
     const chain = fakeChain();
     const tx = await vaultOn(chain.rpc).registerOrder({

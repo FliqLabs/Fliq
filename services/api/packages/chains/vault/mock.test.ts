@@ -131,14 +131,22 @@ describe("agent policy", () => {
   });
 
   const agentPays = (orderId: string) => () => vault.payout(AGENT, orderId);
+  const agentOrder = (overrides: Partial<RegisterOrderInput>) => order({ agentId: AGENT, ...overrides });
+
+  it("lets an agent pay only orders registered for it", async () => {
+    await vault.registerOrder(order({ orderId: "po_mine", amount: USDC_UNIT }));
+    expect(await refusal(agentPays("po_mine"))).toBe("AGENT_NOT_BOUND");
+    await vault.registerOrder(agentOrder({ orderId: "po_agent", amount: USDC_UNIT }));
+    agentPays("po_agent")();
+  });
 
   it("enforces the per-payout cap, daily cap and corridor list of the agent account", async () => {
-    await vault.registerOrder(order({ orderId: "po_big", amount: 61n * USDC_UNIT }));
+    await vault.registerOrder(agentOrder({ orderId: "po_big", amount: 61n * USDC_UNIT }));
     await vault.registerOrder(
-      order({ orderId: "po_ke", corridor: "KE-KES-mobile_money", amount: USDC_UNIT }),
+      agentOrder({ orderId: "po_ke", corridor: "KE-KES-mobile_money", amount: USDC_UNIT }),
     );
-    await vault.registerOrder(order({ orderId: "po_a", amount: 50n * USDC_UNIT }));
-    await vault.registerOrder(order({ orderId: "po_b", amount: 31n * USDC_UNIT }));
+    await vault.registerOrder(agentOrder({ orderId: "po_a", amount: 50n * USDC_UNIT }));
+    await vault.registerOrder(agentOrder({ orderId: "po_b", amount: 31n * USDC_UNIT }));
 
     expect(await refusal(agentPays("po_big"))).toBe("POLICY_PER_PAYOUT_CAP");
     expect(await refusal(agentPays("po_ke"))).toBe("POLICY_CORRIDOR");
@@ -148,11 +156,11 @@ describe("agent policy", () => {
   });
 
   it("resets the daily allowance the next day and leaves the payer unlimited", async () => {
-    await vault.registerOrder(order({ orderId: "po_a", amount: 60n * USDC_UNIT }));
+    await vault.registerOrder(agentOrder({ orderId: "po_a", amount: 60n * USDC_UNIT }));
     agentPays("po_a")();
     now += DAY_NS;
     expect((await vault.getAgent(ADA, AGENT))?.spentToday).toBe(0n);
-    await vault.registerOrder(order({ orderId: "po_big", amount: 100n * USDC_UNIT }));
+    await vault.registerOrder(agentOrder({ orderId: "po_big", amount: 100n * USDC_UNIT }));
     vault.payout(ADA, "po_big");
   });
 

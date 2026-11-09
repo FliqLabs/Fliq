@@ -102,7 +102,7 @@ describe.skipIf(!enabled)("payout creation against a real database", () => {
       payload: body,
       headers: { authorization: `Bearer ${access}`, ...(key ? { "idempotency-key": key } : {}) },
     });
-  const body = (quoteId: string, extra: object = {}) => ({ quote_id: quoteId, account: ACCOUNT, refund_address: "frank.fliq.near", ...extra });
+  const body = (quoteId: string, extra: object = {}) => ({ quote_id: quoteId, account: ACCOUNT, refund_address: "0x1111111111111111111111111111111111111111", ...extra });
 
   let frank: { access: string; userId: string };
   beforeAll(async () => {
@@ -207,6 +207,14 @@ describe.skipIf(!enabled)("payout creation against a real database", () => {
     expect(first.statusCode).toBe(201);
     const second = await pay(app, frank.access, `k-${suffix}-c2`, body(await quote(frank.access), { client_reference: "invoice-7" }));
     expect(second.statusCode).toBe(409);
+  }, 60_000);
+
+  it("refuses a refund address that is not an address on the network the payout is funded on", async () => {
+    const nearName = await pay(app, frank.access, `k-${suffix}-r1`, body(await quote(frank.access), { refund_address: "frank.fliq.near" }));
+    expect(nearName.statusCode).toBe(400);
+    expect(nearName.json().error.code).toBe("invalid_request");
+    const missing = await pay(app, frank.access, `k-${suffix}-r2`, { quote_id: await quote(frank.access), account: ACCOUNT });
+    expect(missing.statusCode).toBe(400);
   }, 60_000);
 
   it("refuses an expired quote, someone else's quote and an account the bank cannot find", async () => {

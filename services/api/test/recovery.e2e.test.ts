@@ -99,7 +99,7 @@ describe.skipIf(!enabled)("recovering a payout that did not land", () => {
     const reply = await app.inject({
       method: "POST",
       url: "/v1/payouts",
-      payload: { quote_id: quote.json().quote_id, account: ACCOUNT, refund_address: "frank.fliq.near", ...extra },
+      payload: { quote_id: quote.json().quote_id, account: ACCOUNT, refund_address: "0x1111111111111111111111111111111111111111", ...extra },
       headers: { ...headers, "idempotency-key": key() },
     });
     expect(reply.statusCode, reply.body).toBe(201);
@@ -152,7 +152,7 @@ describe.skipIf(!enabled)("recovering a payout that did not land", () => {
     const retry = await app.inject({
       method: "POST",
       url: "/v1/payouts",
-      payload: { quote_id: quote.quote_id, account: ACCOUNT, refund_address: "frank.fliq.near", retry_of: failed.payout_id },
+      payload: { quote_id: quote.quote_id, account: ACCOUNT, refund_address: "0x1111111111111111111111111111111111111111", retry_of: failed.payout_id },
       headers: { ...headers, "idempotency-key": key() },
     });
     expect(retry.statusCode, retry.body).toBe(201);
@@ -168,7 +168,7 @@ describe.skipIf(!enabled)("recovering a payout that did not land", () => {
     const linked = await app.inject({
       method: "POST",
       url: "/v1/payouts",
-      payload: { quote_id: quote.quote_id, account: ACCOUNT, refund_address: "frank.fliq.near", retry_of: live.payout_id },
+      payload: { quote_id: quote.quote_id, account: ACCOUNT, refund_address: "0x1111111111111111111111111111111111111111", retry_of: live.payout_id },
       headers: { ...headers, "idempotency-key": key() },
     });
     expect(linked.statusCode).toBe(409);

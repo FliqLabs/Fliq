@@ -8,7 +8,7 @@ const U64_MAX = 2n ** 64n - 1n;
 const U128_MAX = 2n ** 128n - 1n;
 const REF_KEYS = ["provider", "provider_order", "bank_reference", "refund_tx"] as const;
 
-type FieldKind = "text" | "u64" | "u128" | "status" | "refs" | "corridors";
+type FieldKind = "text" | "u64" | "u128" | "bool" | "status" | "refs" | "corridors";
 
 const EVENT_FIELDS = {
   order_registered: {
@@ -43,6 +43,12 @@ const EVENT_FIELDS = {
   },
   agent_revoked: { owner: "text", agent_id: "text", public_key: "text" },
   agent_spend: { owner: "text", agent_id: "text", order_id: "text", amount: "u128" },
+  agent_spend_reversed: { owner: "text", agent_id: "text", order_id: "text", amount: "u128" },
+  payout_failed: { order_id: "text", payer: "text", amount: "u128" },
+  payout_resolved: { order_id: "text", transferred: "bool", resolved_by: "text" },
+  payout_timeout_set: { payout_timeout: "u64" },
+  withdrawn: { account_id: "text", amount: "u128" },
+  withdraw_failed: { account_id: "text", amount: "u128" },
 } as const satisfies Record<string, Record<string, FieldKind>>;
 
 export type VaultEventName = keyof typeof EVENT_FIELDS;
@@ -82,7 +88,13 @@ export type VaultEvent =
       expiryNs: bigint;
     }
   | { event: "agent_revoked"; owner: string; agentId: string; publicKey: string }
-  | { event: "agent_spend"; owner: string; agentId: string; orderId: string; amount: bigint };
+  | { event: "agent_spend"; owner: string; agentId: string; orderId: string; amount: bigint }
+  | { event: "agent_spend_reversed"; owner: string; agentId: string; orderId: string; amount: bigint }
+  | { event: "payout_failed"; orderId: string; payer: string; amount: bigint }
+  | { event: "payout_resolved"; orderId: string; transferred: boolean; resolvedBy: string }
+  | { event: "payout_timeout_set"; payoutTimeout: bigint }
+  | { event: "withdrawn"; accountId: string; amount: bigint }
+  | { event: "withdraw_failed"; accountId: string; amount: bigint };
 
 export class VaultEventError extends Error {
   constructor(problem: string) {
@@ -152,6 +164,9 @@ function fromWire(kind: FieldKind, value: unknown, path: string): unknown {
       return unsigned(value, U64_MAX, path);
     case "u128":
       return unsigned(value, U128_MAX, path);
+    case "bool":
+      if (typeof value !== "boolean") throw new VaultEventError(`${path} must be true or false`);
+      return value;
     case "status":
       if (!RECEIPT_STATUSES.includes(value as ReceiptStatus))
         throw new VaultEventError(`${path} is not a status`);

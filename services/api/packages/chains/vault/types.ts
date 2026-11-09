@@ -65,6 +65,8 @@ export type RegisterOrderInput = {
   amount: bigint;
   expiresAtNs: bigint;
   corridor: string;
+  // The one agent allowed to pay this order. Without it only the payer can.
+  agentId?: AccountId;
 };
 
 export type VaultReceipt = RegisterOrderInput & {
@@ -161,6 +163,11 @@ export const VAULT_ERROR_CODES = [
   "VAULT_RELEASE_FAILED",
   "VAULT_REFUND_FAILED",
   "RELEASED_ORDER",
+  "PAYOUT_TIMEOUT_OUT_OF_RANGE",
+  "AGENT_NOT_BOUND",
+  "RESERVED_ORDER_ID",
+  "WITHDRAW_IN_PROGRESS",
+  "MIGRATION_STATE_MISSING",
 ] as const;
 export type VaultErrorCode = (typeof VAULT_ERROR_CODES)[number];
 

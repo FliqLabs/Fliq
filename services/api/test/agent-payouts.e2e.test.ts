@@ -36,7 +36,7 @@ describe.skipIf(!enabled)("an agent paying from its owner's vault through the MC
 
   const database = createDatabase();
   const unit = unitOf(database);
-  const config = loadConfig();
+  const config = { ...loadConfig(), providerRefundAddresses: { base: "0x2222222222222222222222222222222222222222" } };
   const links: string[] = [];
   const sender: EmailSender = { sendSignInLink: async (_to, link) => void links.push(link) };
   const suffix = randomBytes(3).toString("hex");

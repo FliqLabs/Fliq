@@ -147,6 +147,7 @@ export class MockVault implements VaultClient {
     const order = this.#order(orderId);
     const agent = predecessor === order.payer ? null : this.#agents.get(predecessor);
     if (agent === undefined || (agent && agent.owner !== order.payer)) throw new VaultError("UNAUTHORIZED");
+    if (agent && order.agentId !== predecessor) throw new VaultError("AGENT_NOT_BOUND");
     if (order.state !== "registered") throw new VaultError("ORDER_NOT_REGISTERED");
     if (this.#options.now() >= order.expiresAtNs) throw new VaultError("ORDER_EXPIRED");
     if (agent) this.#enforcePolicy(predecessor, agent, order);
