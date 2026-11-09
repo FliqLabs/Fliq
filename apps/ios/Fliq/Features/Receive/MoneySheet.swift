@@ -360,10 +360,18 @@ struct FliqNameCardView: View {
                     NEARMark(size: 22).frame(width: 46, height: 46).background(Color.black, in: Circle())
                 }
                 .frame(width: 210, height: 210)
-                Text(name)
-                    .font(.system(size: 17, weight: .semibold, design: .monospaced))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.6)
+                VStack(spacing: 4) {
+                    Text(FliqName.display(name))
+                        .font(.system(size: 24, weight: .bold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                    Text("NEAR wallets: \(name)")
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundStyle(Theme.textTertiary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                        .textSelection(.enabled)
+                }
             }
             .padding(24)
             .frame(maxWidth: .infinity)
@@ -379,10 +387,10 @@ struct FliqNameCardView: View {
                     UIPasteboard.general.string = name
                     copied = true
                 } label: {
-                    Label(copied ? "Copied" : "Copy name", systemImage: copied ? "checkmark" : "doc.on.doc")
+                    Label(copied ? "Copied" : "Copy NEAR address", systemImage: copied ? "checkmark" : "doc.on.doc")
                 }
                 .buttonStyle(PrimaryButtonStyle(filled: true))
-                ShareLink(item: name) {
+                ShareLink(item: "Pay me on fliq: \(FliqName.display(name))\nFrom a NEAR wallet, send USDC to \(name)") {
                     Image(systemName: "square.and.arrow.up")
                         .font(.system(size: 18, weight: .semibold))
                         .frame(width: 56, height: 56)

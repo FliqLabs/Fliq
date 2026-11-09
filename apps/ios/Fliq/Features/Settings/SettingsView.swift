@@ -109,7 +109,7 @@ struct SettingsView: View {
                 }
             VStack(alignment: .leading, spacing: 4) {
                 Text(user?.displayName ?? profile.displayName ?? "Your profile").font(.system(size: 19, weight: .semibold))
-                Text(user?.nearAccount ?? profile.name ?? "No fliq name yet")
+                Text((user?.nearAccount ?? profile.name).map(FliqName.display) ?? "No fliq name yet")
                     .font(.system(size: 13, design: .monospaced))
                     .foregroundStyle(Theme.textSecondary)
                     .lineLimit(1)

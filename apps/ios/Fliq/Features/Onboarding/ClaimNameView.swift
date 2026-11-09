@@ -68,6 +68,10 @@ struct ClaimNameView: View {
 
     private var nameCapsule: some View {
         HStack(spacing: 0) {
+            Text("@")
+                .foregroundStyle(Theme.textPrimary.opacity(0.7))
+                .padding(.trailing, 2)
+                .accessibilityHidden(true)
             Text(flow.nameText.isEmpty ? "yourname" : flow.nameText)
                 .tracking(-0.26)
                 .hidden()
@@ -83,14 +87,8 @@ struct ClaimNameView: View {
                         .onSubmit { if flow.canClaim { onContinue() } }
                         .disabled(flow.isClaiming)
                         .accessibilityLabel("Name")
-                        .accessibilityHint("Ends in \(FliqName.suffix)")
                 }
-                .padding(.trailing, 6)
-            Text(FliqName.suffix)
-                .foregroundStyle(Theme.textPrimary.opacity(0.7))
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
-                .layoutPriority(-1)
+            Spacer(minLength: 0)
         }
         .font(.system(size: 26, weight: .bold))
         .padding(.horizontal, 24)

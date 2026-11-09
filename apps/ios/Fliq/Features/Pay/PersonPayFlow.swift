@@ -31,7 +31,7 @@ final class PersonPayFlow {
         nameText = account.map { $0.hasSuffix(FliqName.suffix) ? String($0.dropLast(FliqName.suffix.count)) : $0 } ?? ""
     }
 
-    var account: String? { FliqName(nameText)?.account }
+    var account: String? { FliqName.account(typed: nameText) }
     var amount: TokenAmount? { TokenAmount(decimalString: amountText) }
     var available: TokenAmount { vault?.balance ?? .zero }
 
