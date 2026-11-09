@@ -188,9 +188,12 @@ function smoothed(outcomes: Outcomes | null, config: RoutingConfig): number {
 }
 
 // The first chain this provider accepts for the asset that the hop can reach from the sender's chain.
-async function hopChain(adapter: ProviderAdapter, request: RouteRequest, hop: HopPricer): Promise<Chain | null> {
+// A hop that cannot say whether it reaches a chain in time counts as not reaching it.
+async function hopChain(adapter: ProviderAdapter, request: RouteRequest, hop: HopPricer, waitMs: number): Promise<Chain | null> {
   for (const source of adapter.capabilities().sources) {
-    if (source.asset === request.source.asset && (await hop.reachable(source.asset, request.source.chain, source.chain))) return source.chain;
+    if (source.asset !== request.source.asset) continue;
+    const reachable = await Promise.race([hop.reachable(source.asset, request.source.chain, source.chain), timeout(waitMs)]).catch(() => false);
+    if (reachable) return source.chain;
   }
   return null;
 }
@@ -232,7 +235,7 @@ export async function quoteRoutes(
     let refusal = accepts(adapter, request);
     let via: Chain | null = null;
     if (refusal === "source" && hop) {
-      via = await hopChain(adapter, request, hop);
+      via = await hopChain(adapter, request, hop, config.hopFanOutMs);
       if (via) refusal = withinLimits(adapter, request) ? null : "limits";
     }
     const state = signals.breaker(adapter.id, request.corridor);

@@ -1,9 +1,11 @@
 import { quoteRoutes } from "../../../packages/domain/routing.js";
 import type { Asset, Chain, FiatCurrency } from "../../../packages/providers/types.js";
 import { ApiError, invalidRequest } from "./errors.js";
-import { COUNTRY, rateOf, total, type QuoteDeps, type QuoteInput } from "./quotes.js";
+import { COUNTRY, logTimeouts, rateOf, total, type QuoteDeps, type QuoteInput } from "./quotes.js";
 
 export const RATE_TTL_MS = 10_000;
+// A public rate answers fast or says no route: past this, nobody is waiting for it.
+export const RATE_DEADLINE_MS = 8_000;
 // Fees are partly flat, so a rate only means something for a stated size. 100 tokens in 6-decimal units.
 const REFERENCE_UNITS = 100_000_000n;
 const TOKENS: readonly string[] = ["usdc", "usdt"];
@@ -23,12 +25,16 @@ type Entry = { value: Promise<Rate>; expiresAt: number };
 
 const round4 = (value: number) => Math.round(value * 10_000) / 10_000;
 
+function deadline(ms: number): Promise<null> {
+  return new Promise((resolve) => setTimeout(() => resolve(null), ms).unref?.());
+}
+
 export function createRates(deps: QuoteDeps) {
   const cache = new Map<string, Entry>();
 
-  async function fetchRate(token: Rate["token"], currency: Rate["currency"]): Promise<Rate> {
+  async function fetchRate(token: Rate["token"], currency: Rate["currency"], deadlineMs: number): Promise<Rate> {
     const now = deps.now();
-    const { routes, expiresAt } = await quoteRoutes(
+    const priced = quoteRoutes(
       deps.adapters,
       {
         corridor: { country: COUNTRY[currency], currency: currency.toUpperCase() as FiatCurrency, payoutType: "bank" },
@@ -41,6 +47,13 @@ export function createRates(deps: QuoteDeps) {
       now,
       deps.hop,
     );
+    const answer = await Promise.race([priced, deadline(deadlineMs)]);
+    if (!answer) {
+      console.warn(`[routing] rate ${currency}: no answer within ${deadlineMs}ms`);
+      throw new ApiError(422, "no_route", "No provider can pay this corridor right now.");
+    }
+    logTimeouts("rate", currency, answer.dropped);
+    const { routes, expiresAt } = answer;
     const best = routes[0];
     if (!best || expiresAt <= now) throw new ApiError(422, "no_route", "No provider can pay this corridor right now.");
     const rate = rateOf(best.amountOutMinor, best.amountIn);
@@ -57,14 +70,14 @@ export function createRates(deps: QuoteDeps) {
     };
   }
 
-  return function getRate(token: string, currency: string): Promise<Rate> {
+  return function getRate(token: string, currency: string, deadlineMs = RATE_DEADLINE_MS): Promise<Rate> {
     if (!TOKENS.includes(token)) throw invalidRequest(`Unsupported token ${token}.`);
     if (!Object.hasOwn(COUNTRY, currency)) throw invalidRequest(`Unsupported currency ${currency}.`);
     const key = `${token}:${currency}`;
     const nowMs = deps.now().getTime();
     const cached = cache.get(key);
     if (cached && cached.expiresAt > nowMs) return cached.value;
-    const value = fetchRate(token as Rate["token"], currency as Rate["currency"]);
+    const value = fetchRate(token as Rate["token"], currency as Rate["currency"], deadlineMs);
     cache.set(key, { value, expiresAt: nowMs + RATE_TTL_MS });
     value.catch(() => {
       if (cache.get(key)?.value === value) cache.delete(key);
