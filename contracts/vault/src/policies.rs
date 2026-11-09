@@ -140,6 +140,7 @@ pub fn authorize_payout(
     contract: &mut Contract,
     caller: &AccountId,
     payer: &AccountId,
+    bound_agent: Option<&AccountId>,
     order_id: &str,
     amount: Amount,
     corridor: &str,
@@ -154,6 +155,8 @@ pub fn authorize_payout(
     let policy_id = if caller == payer {
         None
     } else {
+        // An agent pays only the orders registered for it, so it cannot pay one the user meant to confirm.
+        require!(bound_agent == Some(caller), errors::AGENT_NOT_BOUND);
         let id: PolicyId = (payer.clone(), caller.clone());
         let Some(mut policy) = contract.agent_policies.get(&id) else {
             env::panic_str(errors::UNAUTHORIZED);
@@ -196,6 +199,13 @@ pub fn release_pending(contract: &mut Contract, order_id: &str) {
         policy.spent_today = spent_today;
         contract.agent_policies.insert(&id, &policy);
     }
+    FliqEvent::AgentSpendReversed {
+        owner: id.0,
+        agent_id: id.1,
+        order_id: order_id.to_owned(),
+        amount: U128(pending.amount),
+    }
+    .emit();
 }
 
 pub fn settle_pending(contract: &mut Contract, order_id: &str) {

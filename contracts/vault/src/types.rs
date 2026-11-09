@@ -8,6 +8,9 @@ pub type Timestamp = u64;
 
 pub const DEFAULT_MAX_EXPIRY: Timestamp = 24 * 60 * 60 * 1_000_000_000;
 pub const DEFAULT_PAYOUT_TIMEOUT: Timestamp = 10 * 60 * 1_000_000_000;
+/// A shorter timeout would let a stuck-payout resolution race the real transfer callback.
+pub const MIN_PAYOUT_TIMEOUT: Timestamp = 10 * 60 * 1_000_000_000;
+pub const MAX_PAYOUT_TIMEOUT: Timestamp = 7 * 24 * 60 * 60 * 1_000_000_000;
 
 // PROPOSED: public expiry values use NEAR block-timestamp nanoseconds, matching now().
 pub fn now() -> Timestamp {
@@ -22,6 +25,7 @@ pub enum StorageKey {
     PayoutKeys,
     AgentPolicies,
     PendingPolicySpends,
+    OrderAgents,
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Clone, Debug, PartialEq, Eq)]

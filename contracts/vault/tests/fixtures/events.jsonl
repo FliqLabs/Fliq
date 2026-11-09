@@ -8,3 +8,9 @@
 {"standard":"fliq_vault","version":"1.0.0","event":"agent_set","data":[{"owner":"payer.testnet","public_key":"ed25519:11111111111111111111111111111111","agent_id":"agent.payer.testnet","per_payout_cap":"1000000","daily_cap":"5000000","corridors":["NG-NGN-bank"],"cooldown_ns":"0","expiry_ns":"3610000000000"}]}
 {"standard":"fliq_vault","version":"1.0.0","event":"agent_revoked","data":[{"owner":"payer.testnet","agent_id":"agent.payer.testnet","public_key":"ed25519:11111111111111111111111111111111"}]}
 {"standard":"fliq_vault","version":"1.0.0","event":"agent_spend","data":[{"owner":"payer.testnet","agent_id":"agent.payer.testnet","order_id":"order-fixture","amount":"1000000"}]}
+{"standard":"fliq_vault","version":"1.0.0","event":"agent_spend_reversed","data":[{"owner":"payer.testnet","agent_id":"agent.testnet","order_id":"order-fixture","amount":"50000000"}]}
+{"standard":"fliq_vault","version":"1.0.0","event":"payout_failed","data":[{"order_id":"order-fixture","payer":"payer.testnet","amount":"50000000"}]}
+{"standard":"fliq_vault","version":"1.0.0","event":"payout_resolved","data":[{"order_id":"order-fixture","transferred":true,"resolved_by":"owner.testnet"}]}
+{"standard":"fliq_vault","version":"1.0.0","event":"payout_timeout_set","data":[{"payout_timeout":"600000000000"}]}
+{"standard":"fliq_vault","version":"1.0.0","event":"withdrawn","data":[{"account_id":"payer.testnet","amount":"50000000"}]}
+{"standard":"fliq_vault","version":"1.0.0","event":"withdraw_failed","data":[{"account_id":"payer.testnet","amount":"50000000"}]}

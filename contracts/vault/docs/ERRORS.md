@@ -59,6 +59,11 @@ Every contract-owned panic uses the exact `fliq_vault: CODE` form.
 | POLICY_COOLDOWN | The agent is attempting another payout too soon. |
 | POLICY_PENDING_EXISTS | The order already has pending policy spend. |
 | POLICY_ARITHMETIC | Policy spend accounting would overflow or underflow. |
+| PAYOUT_TIMEOUT_OUT_OF_RANGE | `set_payout_timeout` is outside 10 minutes to 7 days. |
+| AGENT_NOT_BOUND | An agent tried to pay an order that was not registered for that agent. |
+| RESERVED_ORDER_ID | The order ID starts with `withdraw:`, which withdrawals use internally. |
+| WITHDRAW_IN_PROGRESS | The account already has a withdraw in flight. |
+| MIGRATION_STATE_MISSING | `migrate` found no previous state to upgrade. |
 
 ## Dapper to convert
 
