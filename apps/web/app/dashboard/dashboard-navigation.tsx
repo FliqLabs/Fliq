@@ -103,8 +103,11 @@ export function DashboardNavigation() {
       </aside>
       <header className="sticky top-0 z-30 flex min-h-16 items-center justify-between border-b border-zinc-200 bg-white px-6 lg:fixed lg:right-0 lg:left-[232px] lg:px-8">
         <p className="text-sm font-semibold">{title}</p>
-        <span className="rounded-full bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700">
-          {liveAccess.data?.live_enabled ? "Live" : "Sandbox"}
+        <span
+          title="API access level. Check the quote for the payout provider."
+          className="rounded-full bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700"
+        >
+          {liveAccess.data?.live_enabled ? "Live API" : "Test API"}
         </span>
       </header>
     </>

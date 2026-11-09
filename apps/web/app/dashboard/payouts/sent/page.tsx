@@ -54,9 +54,9 @@ export function TestPayoutSent({ payout }: { payout: Payout | null }) {
         >
           ↗
         </div>
-        <h1 className="mt-5 text-2xl font-semibold">No test payout sent yet</h1>
+        <h1 className="mt-5 text-2xl font-semibold">No payout created yet</h1>
         <p className="mt-2 text-sm text-zinc-500">
-          A successful sandbox payout will appear here after it is created.
+          Create a payout to see its details here.
         </p>
         <Link
           href="/dashboard"
@@ -76,9 +76,13 @@ export function TestPayoutSent({ payout }: { payout: Payout | null }) {
       >
         ✓
       </div>
-      <h1 className="mt-5 text-center text-2xl font-semibold">Test payout created</h1>
+      <h1 className="mt-5 text-center text-2xl font-semibold">
+        {payout.provider === "mock" ? "Test payout created" : "Payout order created"}
+      </h1>
       <p className="mt-2 text-center text-sm text-zinc-500">
-        The payout is being tracked in your sandbox workspace. Follow its status below.
+        {payout.provider === "mock"
+          ? "The payout is being tracked in your sandbox workspace. Follow its status below."
+          : `The ${payout.provider} payout is being tracked. Follow its status below.`}
       </p>
       <section aria-label="Payout summary" className="mt-8 rounded-xl border border-zinc-200 p-6">
         <div className="flex items-start justify-between gap-4 border-b border-zinc-100 pb-5">

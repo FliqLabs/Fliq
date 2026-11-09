@@ -52,8 +52,8 @@ export function FirstLoginDashboard({ onCreatePayout, onboarding }: Props) {
           <div className="flex items-center justify-between">
             <Step
               number={1}
-              title="Create a test payout"
-              description="Start in your sandbox"
+              title="Create a payout"
+              description="Get a quote to see the provider"
               active
               done={onboarding?.steps.find((step) => step.id === "create_test_payout")?.done}
             />
@@ -111,7 +111,7 @@ export function FirstLoginDashboard({ onCreatePayout, onboarding }: Props) {
             onClick={onCreatePayout}
             className="rounded-lg bg-zinc-950 px-4 py-2.5 text-xs font-semibold text-white hover:bg-zinc-800"
           >
-            Create test payout
+            Create payout
           </button>
         </div>
       </div>
@@ -135,10 +135,10 @@ export function FirstLoginDashboard({ onCreatePayout, onboarding }: Props) {
               ●
             </span>
           </div>
-          <h1 className="text-lg font-semibold">No payouts yet. Send your first in sandbox.</h1>
+          <h1 className="text-lg font-semibold">No payouts yet. Create your first payout.</h1>
           <p className="mt-2 max-w-lg text-sm text-zinc-500">
-            Your payouts will appear here once you create one. Start with a test payout, then connect a
-            webhook endpoint to follow its status.
+            Your payouts will appear here once you create one. Get a quote to see which provider will
+            handle it, then connect a webhook endpoint to follow its status.
           </p>
           <div className="mt-5 flex flex-wrap justify-center gap-2">
             <button
@@ -146,7 +146,7 @@ export function FirstLoginDashboard({ onCreatePayout, onboarding }: Props) {
               onClick={onCreatePayout}
               className="rounded-lg bg-zinc-950 px-4 py-2.5 text-xs font-semibold text-white hover:bg-zinc-800"
             >
-              Create test payout
+              Create payout
             </button>
             <a
               href="#quickstart"
@@ -203,7 +203,7 @@ export function FirstLoginDashboard({ onCreatePayout, onboarding }: Props) {
         </div>
       </section>
       <p className="mt-3 text-xs text-zinc-500">
-        <span className="text-amber-500">●</span> Sandbox payouts are for testing. Live payouts require KYB.
+        <span className="text-amber-500">●</span> Check the provider on your quote before creating a payout.
       </p>
     </>
   );

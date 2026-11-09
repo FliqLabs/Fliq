@@ -87,7 +87,7 @@ export function PayoutsDashboard({
             onClick={openCreatePayout}
             className="rounded-lg bg-zinc-950 px-4 py-2.5 text-xs font-semibold text-white hover:bg-zinc-800"
           >
-            Create test payout
+            Create payout
           </button>
         </div>
       </div>

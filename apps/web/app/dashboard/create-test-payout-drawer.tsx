@@ -97,7 +97,8 @@ export function CreateTestPayoutDrawer({ dialogRef }: Props) {
 
   const validAmount = /^\d+(?:\.\d{1,6})?$/.test(amount) && Number(amount) > 0;
   const validAccount = Boolean(bank) && /^\d{6,20}$/.test(accountNumber);
-  const canSubmit = currentQuote?.provider === "mock" && Boolean(currentAccount) && !submitPayout.isPending;
+  const canSubmit = Boolean(currentQuote && currentAccount) && !submitPayout.isPending;
+  const isMockPayout = currentQuote?.provider === "mock";
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -123,11 +124,13 @@ export function CreateTestPayoutDrawer({ dialogRef }: Props) {
         <div className="flex items-center justify-between border-b border-zinc-200 px-5 py-4">
           <div className="flex items-center gap-2">
             <h2 id="create-payout-title" className="text-sm font-semibold">
-              Create test payout
+              {isMockPayout ? "Create test payout" : "Create payout"}
             </h2>
-            <span className="rounded-full bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-700">
-              ● Sandbox
-            </span>
+            {currentQuote && (
+              <span className="rounded-full bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-700">
+                {isMockPayout ? "Mock provider" : currentQuote.provider}
+              </span>
+            )}
           </div>
           <button
             type="button"
@@ -310,9 +313,9 @@ export function CreateTestPayoutDrawer({ dialogRef }: Props) {
             </div>
           </div>
           <div className="border-t border-zinc-200 p-5">
-            {currentQuote && currentQuote.provider !== "mock" && (
+            {currentQuote && !isMockPayout && (
               <p className="mb-3 text-xs text-amber-700">
-                This quote uses {currentQuote.provider}. Test payouts require the mock provider.
+                This creates a {currentQuote.provider} order and may use real USDC from your vault.
               </p>
             )}
             {submitPayout.isError && (
@@ -322,7 +325,7 @@ export function CreateTestPayoutDrawer({ dialogRef }: Props) {
             )}
             {submitPayout.isSuccess && (
               <p role="status" className="mb-3 text-xs text-emerald-700">
-                Test payout created. It is now in your payouts list.
+                Payout created. It is now in your payouts list.
               </p>
             )}
             <button
@@ -330,7 +333,13 @@ export function CreateTestPayoutDrawer({ dialogRef }: Props) {
               disabled={!canSubmit}
               className="w-full rounded-lg bg-zinc-950 px-4 py-3 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {submitPayout.isPending ? "Sending test payout…" : "Send test payout"}
+              {submitPayout.isPending
+                ? "Creating payout…"
+                : isMockPayout
+                  ? "Send test payout"
+                  : currentQuote
+                    ? `Create ${currentQuote.provider} payout`
+                    : "Create payout"}
             </button>
           </div>
         </form>
