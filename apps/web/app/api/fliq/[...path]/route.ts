@@ -42,6 +42,13 @@ const protectedRoutes = new Set([
   "POST auth/logout",
 ]);
 
+// Payment request links are opened by people with no fliq account, so these need no session.
+const publicPatterns: [string, RegExp][] = [
+  ["GET", /^pay\/[a-z0-9-]+\/[A-Za-z0-9-]+$/],
+  ["POST", /^pay\/[a-z0-9-]+\/[A-Za-z0-9-]+\/deposits$/],
+  ["GET", /^pay\/[a-z0-9-]+\/[A-Za-z0-9-]+\/deposits\/[A-Za-z0-9_-]+$/],
+];
+
 type RouteContext = { params: Promise<{ path: string[] }> };
 type Session = {
   access_token: string;
@@ -53,7 +60,7 @@ type Session = {
 function isAllowed(method: string, path: string) {
   const route = `${method} ${path}`;
   return (
-    publicRoutes.has(route) ||
+    isPublic(method, path) ||
     protectedRoutes.has(route) ||
     (method === "GET" && /^payouts\/[^/]+$/.test(path)) ||
     (method === "GET" && /^webhook-deliveries\/[^/]+$/.test(path)) ||
@@ -63,7 +70,10 @@ function isAllowed(method: string, path: string) {
 }
 
 function isPublic(method: string, path: string) {
-  return publicRoutes.has(`${method} ${path}`);
+  return (
+    publicRoutes.has(`${method} ${path}`) ||
+    publicPatterns.some(([allowed, pattern]) => allowed === method && pattern.test(path))
+  );
 }
 
 function cookieOptions(request: NextRequest, maxAge: number) {
