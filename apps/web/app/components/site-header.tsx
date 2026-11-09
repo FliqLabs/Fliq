@@ -3,7 +3,7 @@ import Link from "next/link";
 import { siteContainer } from "./site-container";
 
 const navigation = [
-  { label: "Rates", href: "/rates/ngn", visibility: "sm:inline" },
+  { label: "Rates", href: "/rates", visibility: "sm:inline" },
   { label: "Docs", href: "/#developers", visibility: "sm:inline" },
   { label: "Agents", href: "/#agents", visibility: "sm:inline" },
   { label: "Pricing", href: "/pricing", visibility: "inline" },
