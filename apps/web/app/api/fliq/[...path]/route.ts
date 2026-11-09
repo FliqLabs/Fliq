@@ -21,6 +21,7 @@ const publicRoutes = new Set([
 
 const protectedRoutes = new Set([
   "GET me",
+  "GET agents",
   "PATCH me",
   "POST me/name",
   "POST workspaces",

@@ -5,7 +5,7 @@ import { siteContainer } from "./site-container";
 const navigation = [
   { label: "Rates", href: "/rates", visibility: "sm:inline" },
   { label: "Docs", href: "/#developers", visibility: "sm:inline" },
-  { label: "Agents", href: "/#agents", visibility: "sm:inline" },
+  { label: "Agents", href: "/agents", visibility: "sm:inline" },
   { label: "Pricing", href: "/pricing", visibility: "inline" },
   { label: "Status", href: "/status", visibility: "lg:inline" },
   { label: "Sign in", href: "/sign-in", visibility: "sm:inline" },
