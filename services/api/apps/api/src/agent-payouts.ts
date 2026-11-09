@@ -9,7 +9,7 @@ import { parseUnits } from "./deposits.js";
 import { ApiError, invalidRequest, notFound } from "./errors.js";
 import type { Reply } from "./idempotency.js";
 import { createPayout, payoutView, type PayoutDeps } from "./payouts.js";
-import { developerIdFor, requestQuote, type QuoteDeps, type QuoteInput } from "./quotes.js";
+import { developerIdFor, quoteAndSave, type QuoteDeps, type QuoteInput } from "./quotes.js";
 import { listRecipients } from "./recipients.js";
 
 // The vault forwards 30 Tgas to the token transfer and 20 Tgas to its callback, on top of its own work.
@@ -68,7 +68,7 @@ export async function agentRecipients(unit: Unit, config: Config, ownerId: strin
 
 // An agent pays from the owner's vault, so its quote is always from NEAR in USDC.
 export async function quoteForAgent(unit: Unit, quotes: QuoteDeps, ownerId: string, input: { currency: QuoteInput["currency"]; amount: string; mode?: "send" | "receive" }) {
-  return unit((tx) => requestQuote(tx, quotes, ownerId, { token: "usdc", currency: input.currency, amount: input.amount, source_chain: "near", mode: input.mode ?? "send" }));
+  return quoteAndSave(unit, quotes, ownerId, { token: "usdc", currency: input.currency, amount: input.amount, source_chain: "near", mode: input.mode ?? "send" });
 }
 
 async function refuse(unit: Unit, agent: Agent, reason: Refusal, receiveMinor: bigint | null, currency: string | null): Promise<never> {
