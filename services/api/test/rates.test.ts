@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
+import type { Unit } from "../apps/api/src/db.js";
+import { quoteAndSave } from "../apps/api/src/quotes.js";
 import { sandboxAdapters } from "../apps/api/src/sandbox.js";
 import { createRates, RATE_TTL_MS } from "../apps/api/src/rates.js";
-import { DEFAULT_ROUTING_CONFIG, NO_SIGNALS } from "../packages/domain/routing.js";
+import { DEFAULT_ROUTING_CONFIG, NO_SIGNALS, type HopPricer } from "../packages/domain/routing.js";
+import type { ProviderAdapter } from "../packages/providers/types.js";
 
 const START = new Date("2026-11-06T10:00:00Z");
 
@@ -51,5 +54,61 @@ describe("getRate", () => {
     const { getRate } = setup([]);
     await expect(getRate("usdc", "ngn")).rejects.toMatchObject({ status: 422, code: "no_route" });
     await expect(getRate("usdc", "ngn")).rejects.toMatchObject({ status: 422 });
+  });
+});
+
+const never = <T>() => new Promise<T>(() => {});
+
+// A provider that only takes funds on Base, so pricing it from NEAR has to ask the hop first.
+function onBaseOnly(adapter: ProviderAdapter): ProviderAdapter {
+  const capabilities = adapter.capabilities();
+  return { ...adapter, capabilities: () => ({ ...capabilities, sources: capabilities.sources.map((source) => ({ ...source, chain: "base" as const })) }) };
+}
+
+const silentHop: HopPricer = {
+  reachable: () => never(),
+  exactInput: () => never(),
+  exactOutput: () => never(),
+};
+
+describe("a provider or hop that never answers", () => {
+  it("answers no_route within the rate deadline instead of hanging", async () => {
+    const getRate = createRates({ adapters: sandboxAdapters().map(onBaseOnly), hop: silentHop, routing: DEFAULT_ROUTING_CONFIG, signals: NO_SIGNALS, now: () => START });
+    const started = Date.now();
+    await expect(getRate("usdc", "ngn", 50)).rejects.toMatchObject({ status: 422, code: "no_route" });
+    expect(Date.now() - started).toBeLessThan(1_000);
+  });
+
+  it("drops a provider whose quote never comes back once the fan-out times out", async () => {
+    const silent = sandboxAdapters().map((adapter) => ({ ...adapter, quote: () => never<Awaited<ReturnType<typeof adapter.quote>>>() }));
+    const getRate = createRates({ adapters: silent, routing: { ...DEFAULT_ROUTING_CONFIG, fanOutMs: 20 }, signals: NO_SIGNALS, now: () => START });
+    await expect(getRate("usdc", "ngn")).rejects.toMatchObject({ status: 422, code: "no_route" });
+  });
+
+  it("treats a hop that never says whether it reaches a chain as not reaching it", async () => {
+    const getRate = createRates({ adapters: sandboxAdapters().map(onBaseOnly), hop: silentHop, routing: { ...DEFAULT_ROUTING_CONFIG, hopFanOutMs: 20 }, signals: NO_SIGNALS, now: () => START });
+    await expect(getRate("usdc", "ngn")).rejects.toMatchObject({ status: 422, code: "no_route" });
+  });
+});
+
+describe("quoteAndSave", () => {
+  it("prices every provider before it opens a transaction", async () => {
+    let priced = false;
+    const slow = sandboxAdapters().map((adapter) => ({
+      ...adapter,
+      quote: async (...args: Parameters<typeof adapter.quote>) => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        priced = true;
+        return adapter.quote(...args);
+      },
+    }));
+    let pricedWhenOpened: boolean | null = null;
+    const unit = (async () => {
+      pricedWhenOpened = priced;
+      throw new Error("stop before writing");
+    }) as Unit;
+    const deps = { adapters: slow, routing: DEFAULT_ROUTING_CONFIG, signals: NO_SIGNALS, now: () => new Date() };
+    await expect(quoteAndSave(unit, deps, "usr_1", { token: "usdc", currency: "ngn", amount: "50" })).rejects.toThrow("stop before writing");
+    expect(pricedWhenOpened).toBe(true);
   });
 });
