@@ -1,0 +1,73 @@
+{
+  "payout_id": "po_4e81b0d3",
+  "state": "refunded",
+  "account_name": "DARA OKONKWO",
+  "account": {
+    "bank": "058",
+    "number": "0123456789"
+  },
+  "amount": "50.00",
+  "receive": 68816,
+  "currency": "ngn",
+  "rate": 1376.32,
+  "fees": {
+    "provider": 25000,
+    "network": 9400,
+    "total": 34400
+  },
+  "provider": "paycrest",
+  "deposit": {
+    "chain": "near",
+    "address": "fliq-vault.testnet",
+    "amount": "50.00"
+  },
+  "provider_order": "pc_3b7e05d9c2",
+  "vault_receipt": "po_4e81b0d3",
+  "bank_reference": null,
+  "seconds": null,
+  "history": [
+    {
+      "state": "awaiting_deposit",
+      "at": "2026-10-28T17:20:10Z"
+    },
+    {
+      "state": "deposit_seen",
+      "at": "2026-10-28T17:20:11Z"
+    },
+    {
+      "state": "routing",
+      "at": "2026-10-28T17:20:12Z"
+    },
+    {
+      "state": "with_provider",
+      "at": "2026-10-28T17:20:14Z"
+    },
+    {
+      "state": "paying_out",
+      "at": "2026-10-28T17:20:15Z"
+    },
+    {
+      "state": "refunding",
+      "at": "2026-10-28T17:21:40Z"
+    },
+    {
+      "state": "refunded",
+      "at": "2026-10-28T17:21:59Z"
+    }
+  ],
+  "failure": {
+    "stage": "bank",
+    "code": null,
+    "at": "2026-10-28T17:21:40Z"
+  },
+  "refund": {
+    "amount": "50.00",
+    "to": "vault",
+    "at": "2026-10-28T17:21:59Z",
+    "tx": null
+  },
+  "settlement_name": null,
+  "retry_of": null,
+  "retried_by": null,
+  "claim": null
+}

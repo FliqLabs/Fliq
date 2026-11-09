@@ -4,21 +4,83 @@ The fliq USDC vault on NEAR: per-user balances, approved payout orders executed 
 
 The plan, method names and responsibilities are in the contract team guide (FLIQ Smart Contract Team Guide, 30 Oct 2026). The crate pins its Rust toolchain in `rust-toolchain.toml`.
 
-## Dapper vault milestone
+## Release build and sandbox
 
-Accounts must call `storage_deposit` before depositing USDC. The vault accepts `ft_transfer_call` only from its configured USDC contract and credits the NEP-141 `sender_id`. Deposit messages are intentionally rejected until the backend and contract team approve a verifiable top-up attribution format.
+Testnet runs NEAR protocol 88. Build both deployment artifacts with Rust 1.95.0 from the pinned toolchain:
 
-The crate-private reservation helpers move funds between `available` and `reserved`, consume a successful outflow once, and release a failed outflow once. Refund recredit is not implemented until the team approves the refund proof and attribution design.
+```sh
+(cd contracts/vault && cargo near build non-reproducible-wasm --no-abi)
+(cd contracts/mock_usdc && cargo near build non-reproducible-wasm --no-abi)
+```
 
-This milestone does not expose a withdrawal or payout path. Deposited USDC remains in the vault until the contract lead integrates the order execution flow. Reservation records are transient and removed after commit or release; the permanent order state owned by the contract lead prevents an order ID from being executed again.
+The outputs are `contracts/vault/target/near/fliq_vault.wasm` and `contracts/mock_usdc/target/near/fliq_mock_usdc.wasm`. The near-workspaces sandbox must use a binary with protocol 88 support; run the integration test separately with `make test-sandbox`.
+
+Order expiry values are nanosecond timestamps computed as `current_block_timestamp_ns + margin_ns`, where the margin is positive and no greater than the configured maximum horizon (24 hours by default).
+
+The release artifacts recorded for this branch are:
+
+| Artifact | Size | SHA-256 |
+| --- | ---: | --- |
+| `fliq_vault.wasm` | 259320 bytes | `dcde0eb1bd1f15a7945d52e2d34c4eace20663960e9c23fa8590d2240610a40f` |
+| `fliq_mock_usdc.wasm` | 162235 bytes | `6e14b97569bdeb389a59f84efc8fe97a2c7826356a9f30854f03ee9126759cce` |
+
+## Vault and policy integration
+
+Accounts must call `storage_deposit` before depositing USDC. The vault accepts `ft_transfer_call` only from its configured USDC contract. An empty message credits the NEP-141 `sender_id`; the strict `{"top_up":{"account_id":"<account>"}}` message credits that registered account. Malformed messages, unknown fields and unregistered beneficiaries return the full token amount. Accepted deposits emit the provisional `fliq_vault` `deposited` event consumed by the backend adapter.
+
+`register_order` reserves the payer's funds immediately. `payout` accepts the payer directly or a distinct NEAR agent account with an active owner-created policy, and commits the reservation only after the approved USDC contract confirms its transfer. A failed callback releases the reservation and enters terminal `TransferFailed`. `release_order` restores a reservation; the backend or owner can release at any time and anyone can release an order once it has expired. `withdraw` sends a user's available USDC straight to their own account. An agent may pay only orders registered with its `agent_id`. The registration account can advance the public receipt through the agreed backend status graph.
+
+Agent policies enforce a per-payout cap, a daily cap that includes pending transfers, optional exact corridor allowlists, cooldown, expiry and revocation. A policy is keyed by its owner and a distinct agent account, so naming someone as your agent only ever spends your own funds. Agents can pay out registered orders and nothing else: `transfer` always moves the caller's own balance. Failed payouts release same-day policy spend; successful payouts remain counted even if later refunded. `set_agent` stores the policy and pays for its storage from the attached deposit (the rest is refunded), `remove_agent(agent_id)` revokes it, and `get_policy(owner, agent_id)` shows every field, revoked policies included. Changing a policy needs an attached deposit and revoking needs exactly 1 yoctoNEAR, so a function-call key cannot do either. The agent is identified by its own account because a relayed NEP-366 call reports the relayer's key as the signer; an agent must never hold a key on the owner's account. The account provisioner funds each new user account with approximately 0.02 NEAR; the contract does not sponsor deposits from its custody balance. A maximum-size policy is tested to fit within 0.01 NEAR.
+
+`recredit` is registration-account-only and queries the vault's real USDC balance before restoring a refunded payout. The amount cannot exceed the original outflow or the vault's unattributed token balance, and each order can be recredited once. `transfer` moves available balances between two registered vault users without changing aggregate liabilities. Its optional `request_id` is validated as a public ASCII identifier and remains visible in the transaction arguments so the backend can match a transfer to a payment request without putting private request data in the event.
+
+The registration account is fixed at initialization and rotates keys on that account rather than through a contract setter. Receipt reference fields are write-once. A recredit requires a recorded `refund_tx`, and each refund transaction can back at most one order across the contract; only a successful recredit can mark the receipt `refunded`. The complete event wire fixture is `tests/fixtures/events.jsonl`, shared with the backend parser tests.
+
+After the configured timeout (10 minutes to 7 days), the owner may call `resolve_stuck_payout` either way and the registration account only with `transferred: true`. The caller must first verify the approved-USDC transfer on chain; an incorrect `transferred` value can release funds after a real transfer or commit funds that never left.
+
+Order storage is currently funded by the vault account and must be included in the contract team's deployment funding decision.
 
 Rules:
 
 - Changes to balances, permissions or outgoing transfers need two contract owners to approve.
 - Fixed integer token amounts only. No `unwrap()` or `expect()` on caller-reachable paths.
 - Tests read the canonical payout from `spec/fixtures/quote.usdc-ngn-50.json`.
-- Deploys to testnet run through the `Deploy contract` workflow, approved by sQuiDbOb. No deployer keys in the repository.
+- Deploys to testnet run through the `Deploy contract` workflow, approved by sQuiDbOb. The workflow deploys without an init call; after deployment, the vault account itself must call `new(owner, registration_account, approved_usdc_token_contract)` as the predecessor. No deployer keys in the repository.
+
+Initialization is deliberately self-authorized. The `new` call must be signed and sent by the deployed vault account, with the vault account as the transaction predecessor; an external deployer or any other account cannot initialize it. The initialization arguments are the immutable owner, registration account, and approved USDC token contract.
+
+This release targets a fresh testnet deployment. Deploy the Wasm and call the private `new(owner, registration_account, approved_usdc_token_contract)` initializer from the vault account itself. There is no migration path in this release.
 
 ```
 make test-contract
 ```
+
+The sandbox integration test is intentionally separate from `make test-contract`:
+
+```sh
+make test-sandbox
+```
+
+## sQuiDbOb side
+
+This side owns order registration, payout state transitions, backend status reporting, receipts, and the integration boundary for balances and policy decisions. It verifies on-chain transfer state separately from backend-reported progress. Registration reserves funds; a failed USDC transfer releases that reservation and enters terminal `TransferFailed`.
+
+It does not implement provider allowlists, rate comparison, money conversion, or bank transfers. The backend verifies refund transactions before calling `recredit`; the contract records the refund transaction once and independently queries its real USDC balance before crediting. Dapper's real vault ledger and Aria's production policy module are active.
+
+From a fresh clone, run the vault tests and mock-token tests with one shell command:
+
+```sh
+(cd contracts/vault && cargo test --features testing) && cargo test --manifest-path contracts/mock_usdc/Cargo.toml
+```
+
+## OPEN items
+
+Search all temporary and unresolved design markers with:
+
+```sh
+rg -n 'TEMPORARY|OPEN:' contracts docs
+```
+
+The current OPEN list is maintained in [docs/DECISIONS.md](docs/DECISIONS.md): order/`po_` ID mapping, corridor encoding, provider allowlists, storage cleanup, and testnet deployment details.
+
+The operational refund proof and deployment checklist are in [docs/TESTNET_ACCEPTANCE.md](docs/TESTNET_ACCEPTANCE.md).

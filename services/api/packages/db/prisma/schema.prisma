@@ -116,6 +116,8 @@ model Recipient {
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   // Set when the user chose to save this account; recipients made by paying are not saved ones.
   savedAt         DateTime? @map("saved_at") @db.Timestamptz(6)
+  own             Boolean   @default(false)
+  isDefault       Boolean   @default(false) @map("is_default")
   deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(6)
   payouts         Payout[]
 
@@ -141,6 +143,8 @@ model Payout {
   currency        String      @db.Text
   rate            Decimal     @db.Decimal(24, 10)
   retryOfId       String?     @map("retry_of_id") @db.Text
+  // The agent that made the payout, or null when the user did.
+  agentId         String?     @map("agent_id") @db.Text
   // Why a payout ended in failed. Reasons starting with vault_ are refusals by the vault caps.
   failureReason   String?     @map("failure_reason") @db.Text
   // Where the sender pays, from the provider's createOrder answer. Empty while the order is not confirmed.
@@ -156,6 +160,7 @@ model Payout {
   retryOf         Payout?     @relation("PayoutRetry", fields: [retryOfId], references: [id])
   retries         Payout[]    @relation("PayoutRetry")
   events          PayoutEvent[]
+  claims          PayoutClaim[]
 
   @@unique([developerId, clientReference])
   @@index([developerId, createdAt])
@@ -178,6 +183,7 @@ model PayoutEvent {
   payout    Payout      @relation(fields: [payoutId], references: [id])
 
   @@unique([payoutId, version])
+  @@index([createdAt])
   @@map("payout_events")
   @@schema("core")
 }
@@ -327,6 +333,9 @@ model User {
   // Uploaded by the client straight to object storage; we only keep the https URL it sends back.
   photoUrl      String?  @map("photo_url") @db.Text
   occupation    String?  @db.Text
+  homeCurrency  String   @default("NGN") @map("home_currency") @db.Text
+  // Null until the user changes a notification setting; the API then answers with its defaults.
+  notificationSettings Json? @map("notification_settings")
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   passkeys      PasskeyCredential[]
   sessions      Session[]
@@ -420,12 +429,50 @@ model ApiKey {
   // First characters, safe to show: the dashboard masks a key as prefix...last4.
   prefix      String         @db.Text
   last4       String         @db.Text
+  name        String         @default("Sandbox key") @db.Text
   createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  // Written at most once a minute per key, so authenticating does not write on every request.
+  lastUsedAt  DateTime?      @map("last_used_at") @db.Timestamptz(6)
   revokedAt   DateTime?      @map("revoked_at") @db.Timestamptz(6)
   workspace   Workspace      @relation(fields: [workspaceId], references: [id])
 
   @@index([workspaceId])
   @@map("api_keys")
+  @@schema("developer")
+}
+
+// ARCH §16.4: append-only (trigger). before and after never hold a secret, only ids, names and states.
+model AuditEvent {
+  id          String   @id @db.Text
+  workspaceId String   @map("workspace_id") @db.Text
+  actorUserId String   @map("actor_user_id") @db.Text
+  action      String   @db.Text
+  targetType  String   @map("target_type") @db.Text
+  targetId    String   @map("target_id") @db.Text
+  before      Json?
+  after       Json?
+  traceId     String?  @map("trace_id") @db.Text
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, createdAt])
+  @@map("audit_events")
+  @@schema("developer")
+}
+
+// Per key per UTC day. requests = succeeded + failed + rate_limited.
+model ApiUsageDaily {
+  keyId          String   @map("key_id") @db.Text
+  day            DateTime @db.Date
+  workspaceId    String   @map("workspace_id") @db.Text
+  requests       Int      @default(0)
+  succeeded      Int      @default(0)
+  failed         Int      @default(0)
+  rateLimited    Int      @default(0) @map("rate_limited")
+  payoutsCreated Int      @default(0) @map("payouts_created")
+
+  @@id([keyId, day])
+  @@index([workspaceId, day])
+  @@map("api_usage_daily")
   @@schema("developer")
 }
 
@@ -459,6 +506,208 @@ model Transfer {
   @@index([fromUserId, createdAt])
   @@index([toUserId, createdAt])
   @@map("transfers")
+  @@schema("core")
+}
+
+// One provider's after-fee rate for a corridor, sampled once a minute for the public rate chart. Kept 90 days.
+model RateSample {
+  id             String   @id @db.Text
+  token          String   @db.Text
+  currency       String   @db.Text
+  provider       String   @db.Text
+  rate           Decimal  @db.Decimal(24, 10)
+  rateBeforeFees Decimal  @map("rate_before_fees") @db.Decimal(24, 10)
+  feeMinor       BigInt   @map("fee_minor")
+  receiveMinor   BigInt   @map("receive_minor")
+  etaSeconds     Int      @map("eta_seconds")
+  onTimePercent  Int      @map("on_time_percent")
+  sampledAt      DateTime @map("sampled_at") @db.Timestamptz(6)
+
+  @@index([token, currency, sampledAt])
+  @@index([token, currency, provider, sampledAt])
+  @@index([sampledAt])
+  @@map("rate_samples")
+  @@schema("core")
+}
+
+// What a sign-in family is called on the security screen, from the app's X-Device-Name header or the user agent.
+model SessionDevice {
+  familyId  String   @id @map("family_id") @db.Text
+  userId    String   @map("user_id") @db.Text
+  device    String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([userId])
+  @@map("session_devices")
+  @@schema("auth")
+}
+
+model PushToken {
+  token     String   @id @db.Text
+  userId    String   @map("user_id") @db.Text
+  platform  String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@index([userId])
+  @@map("push_tokens")
+  @@schema("auth")
+}
+
+enum RequestState {
+  open
+  paid
+  cancelled
+
+  @@schema("core")
+}
+
+model PaymentRequest {
+  id               String       @id @db.Text
+  userId           String       @map("user_id") @db.Text
+  code             String       @db.Text
+  amountUnits      BigInt       @map("amount_units")
+  note             String       @db.Text
+  state            RequestState @default(open)
+  cashOutOnArrival Boolean      @map("cash_out_on_arrival")
+  createdAt        DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  paidAt           DateTime?    @map("paid_at") @db.Timestamptz(6)
+  depositId        String?      @map("deposit_id") @db.Text
+  payer            String?      @db.Text
+  paidToken        String?      @map("paid_token") @db.Text
+  paidChain        String?      @map("paid_chain") @db.Text
+  paidAmount       String?      @map("paid_amount") @db.Text
+  feeMicroUsd      BigInt?      @map("fee_micro_usd")
+  landedUnits      BigInt?      @map("landed_units")
+
+  @@unique([userId, code])
+  @@index([userId, createdAt])
+  @@map("payment_requests")
+  @@schema("core")
+}
+
+enum AgentState {
+  pending
+  active
+  revoked
+
+  @@schema("core")
+}
+
+// An agent's own NEAR account under the user's, and the limits the user chose. The vault policy is the authority;
+// this row keeps what the chain does not: the name, the caps in local currency and saved_accounts_only.
+model Agent {
+  id                String     @id @db.Text
+  userId            String     @map("user_id") @db.Text
+  owner             String     @db.Text
+  name              String     @db.Text
+  publicKey         String     @map("public_key") @db.Text
+  state             AgentState @default(pending)
+  capCurrency       String     @map("cap_currency") @db.Text
+  dailyCapMinor     BigInt     @map("daily_cap_minor")
+  perPayoutCapMinor BigInt     @map("per_payout_cap_minor")
+  currencies        String[]
+  savedAccountsOnly Boolean    @map("saved_accounts_only")
+  expiresAt         DateTime   @map("expires_at") @db.Timestamptz(6)
+  createdAt         DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  revokedAt         DateTime?  @map("revoked_at") @db.Timestamptz(6)
+
+  @@index([userId, createdAt])
+  @@map("agents")
+  @@schema("core")
+}
+
+// An agent payout the vault turned down. Nothing moved, so this is the only record of it.
+model AgentRefusal {
+  id          String   @id @db.Text
+  userId      String   @map("user_id") @db.Text
+  agentId     String   @map("agent_id") @db.Text
+  reason      String   @db.Text
+  amountMinor BigInt?  @map("amount_minor")
+  currency    String?  @db.Text
+  orderId     String?  @map("order_id") @db.Text
+  txHash      String?  @map("tx_hash") @db.Text
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([userId, createdAt])
+  @@map("agent_refusals")
+  @@schema("core")
+}
+
+enum ClaimState {
+  open
+  resolved
+
+  @@schema("core")
+}
+
+// A user saying a settled payout never reached the account. One open claim per payout.
+model PayoutClaim {
+  id         String     @id @db.Text
+  payoutId   String     @map("payout_id") @db.Text
+  userId     String     @map("user_id") @db.Text
+  state      ClaimState @default(open)
+  openedAt   DateTime   @default(now()) @map("opened_at") @db.Timestamptz(6)
+  resolvedAt DateTime?  @map("resolved_at") @db.Timestamptz(6)
+  payout     Payout     @relation(fields: [payoutId], references: [id])
+
+  @@index([payoutId, openedAt])
+  @@map("payout_claims")
+  @@schema("core")
+}
+
+enum DepositState {
+  waiting
+  seen
+  underpaid
+  bridging
+  landed
+  refunded
+  expired
+  failed
+
+  @@schema("core")
+}
+
+// A top-up of the user's vault from another chain through a NEAR Intents FLEX_INPUT swap.
+model VaultDeposit {
+  id             String       @id @db.Text
+  userId         String       @map("user_id") @db.Text
+  account        String       @db.Text
+  token          String       @db.Text
+  chain          String       @db.Text
+  // Units below are in the source token's decimals, except lands and landed (USDC) and fee (micro US dollars).
+  decimals       Int
+  depositAddress String       @map("deposit_address") @db.Text
+  depositMemo    String?      @map("deposit_memo") @db.Text
+  amountUnits    BigInt       @map("amount_units")
+  minimumUnits   BigInt       @map("minimum_units")
+  feeMicroUsd    BigInt       @map("fee_micro_usd")
+  landsUnits     BigInt       @map("lands_units")
+  etaSeconds     Int          @map("eta_seconds")
+  reservedUntil  DateTime     @map("reserved_until") @db.Timestamptz(6)
+  state          DepositState @default(waiting)
+  intentsStatus  String?      @map("intents_status") @db.Text
+  receivedUnits  BigInt?      @map("received_units")
+  landedUnits    BigInt?      @map("landed_units")
+  refundedUnits  BigInt?      @map("refunded_units")
+  refundReason   String?      @map("refund_reason") @db.Text
+  originTx       String?      @map("origin_tx") @db.Text
+  seenAt         DateTime?    @map("seen_at") @db.Timestamptz(6)
+  bridgingAt     DateTime?    @map("bridging_at") @db.Timestamptz(6)
+  landedAt       DateTime?    @map("landed_at") @db.Timestamptz(6)
+  polledAt       DateTime?    @map("polled_at") @db.Timestamptz(6)
+  // Set when the top-up pays a payment request, so landing it marks the request paid.
+  requestId      String?      @map("request_id") @db.Text
+  // The full 1Click quote, which 1Click asks integrators to keep.
+  quote          Json
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime     @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([depositAddress])
+  @@index([userId, createdAt])
+  @@index([state, reservedUntil])
+  @@map("vault_deposits")
   @@schema("core")
 }
 
@@ -541,8 +790,16 @@ model WebhookEndpoint {
   // AES-256-GCM ciphertext of the signing secret. Encrypted, not hashed: every delivery is signed with it.
   secretCipher Bytes                 @map("secret_cipher")
   status       WebhookEndpointStatus @default(active)
+  // Event types this endpoint receives; empty means all.
+  events       String[]              @default([])
+  description  String?               @db.Text
+  // After a secret rotation the old secret also signs, until it expires (ARCH §16.2 overlap).
+  previousSecretCipher    Bytes?     @map("previous_secret_cipher")
+  previousSecretExpiresAt DateTime?  @map("previous_secret_expires_at") @db.Timestamptz(6)
   createdAt    DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime              @default(now()) @map("updated_at") @db.Timestamptz(6)
   failingSince DateTime?             @map("failing_since") @db.Timestamptz(6)
+  deletedAt    DateTime?             @map("deleted_at") @db.Timestamptz(6)
   workspace    Workspace             @relation(fields: [workspaceId], references: [id])
   deliveries   WebhookDelivery[]
 
@@ -557,7 +814,7 @@ model WebhookDelivery {
   endpointId         String                @map("endpoint_id") @db.Text
   eventId            String                @map("event_id") @db.Text
   eventType          String                @map("event_type") @db.Text
-  payoutId           String                @map("payout_id") @db.Text
+  payoutId           String?               @map("payout_id") @db.Text
   payload            Json
   status             WebhookDeliveryStatus @default(pending)
   attempts           Int                   @default(0)
@@ -571,11 +828,29 @@ model WebhookDelivery {
   endpoint           WebhookEndpoint       @relation(fields: [endpointId], references: [id])
   replayOf           WebhookDelivery?      @relation("DeliveryReplay", fields: [replayOfId], references: [id])
   replays            WebhookDelivery[]     @relation("DeliveryReplay")
+  history            WebhookAttempt[]
 
   @@index([endpointId, createdAt])
   @@index([status, nextAttemptAt])
   @@index([eventId])
+  @@index([payoutId])
   @@map("webhook_deliveries")
+  @@schema("developer")
+}
+
+// One row per HTTP attempt of a delivery. error_kind is a category, never a response body.
+model WebhookAttempt {
+  id             String          @id @db.Text
+  deliveryId     String          @map("delivery_id") @db.Text
+  attempt        Int
+  startedAt      DateTime        @map("started_at") @db.Timestamptz(6)
+  durationMs     Int             @map("duration_ms")
+  responseStatus Int?            @map("response_status")
+  errorKind      String?         @map("error_kind") @db.Text
+  delivery       WebhookDelivery @relation(fields: [deliveryId], references: [id])
+
+  @@index([deliveryId])
+  @@map("webhook_attempts")
   @@schema("developer")
 }
 

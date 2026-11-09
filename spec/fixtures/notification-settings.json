@@ -1,0 +1,14 @@
+{
+  "received": true,
+  "payout_paid": true,
+  "payout_refunded": true,
+  "agent_paid": true,
+  "agent_refused": true,
+  "cap_almost_reached": true,
+  "rate_alert": {
+    "enabled": false,
+    "currency": "NGN",
+    "above": 1400
+  },
+  "weekly_summary": false
+}

@@ -1,0 +1,61 @@
+# @fliq/sdk
+
+TypeScript client for the fliq payouts API. No runtime dependencies: it uses `fetch` and Web Crypto, so it runs on Node 18+, Bun, Deno and edge runtimes. On Node 18, start node with `--experimental-global-webcrypto`.
+
+```
+npm install @fliq/sdk
+```
+
+## Pay out and wait for the bank
+
+```ts
+import { FliqClient, FliqError } from "@fliq/sdk";
+
+const fliq = new FliqClient({ apiKey: process.env.FLIQ_API_KEY! });
+const quote = await fliq.quote({ token: "usdc", currency: "ngn", amount: "50.00" });
+const account = await fliq.verifyAccount({ bank: "058", number: "0123456789" });
+console.log(`Paying ${account.account_name} ${quote.receive} NGN through ${quote.provider}`);
+const payout = await fliq.createPayout({
+  quote_id: quote.quote_id,
+  account: { bank: "058", number: "0123456789" },
+});
+console.log(`Send ${payout.deposit.amount} USDC on ${payout.deposit.chain} to ${payout.deposit.address}`);
+const done = await fliq.waitForPayout(payout.payout_id, { timeoutMs: 15 * 60_000 });
+console.log(done.state, done.bank_reference);
+```
+
+`createPayout` sends an `Idempotency-Key` header. It makes one up when you don't pass `{ idempotencyKey }`; pass your own (for example your order id) so a retry after a crash can't pay twice.
+
+## Methods
+
+| Method                                                               | API                                                                      |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `quote(request)`                                                     | `POST /quotes`, every provider ranked; `routes[0]` is what a payout uses |
+| `createPayout(request, { idempotencyKey? })`                         | `POST /payouts`                                                          |
+| `getPayout(id)`                                                      | `GET /payouts/{id}`                                                      |
+| `waitForPayout(id, { timeoutMs?, intervalMs?, signal?, onUpdate? })` | Polls `GET /payouts/{id}` until a final state                            |
+| `listPayouts(filters?)`                                              | `GET /payouts`, one page; pass `next_cursor` as `cursor` for the next    |
+| `getPayoutStats(timezone?)`                                          | `GET /payouts/stats`                                                     |
+| `verifyAccount({ bank, number, country? })`                          | `POST /accounts/verify`                                                  |
+| `institutions(country)`                                              | `GET /institutions?country=`                                             |
+| `getRate(token, currency)`                                           | `GET /rates/{token}/{currency}`                                          |
+
+Every failed call throws a `FliqError` with `status`, `code` and `message` from the API's error body. `error.refusal` holds the vault caps when the vault refused a payout, and `error.quote` holds the fresh quote of a `quote_changed` error. `error.retryable` is true for network errors, 429 and 5xx.
+
+Final payout states are `settled`, `refunded`, `expired`, `failed`, `refused` and `not_received` (`isFinalState`).
+
+## Webhooks
+
+Pass the raw request body, exactly as received, before any JSON parsing.
+
+```ts
+import { verifyWebhook } from "@fliq/sdk";
+
+const event = await verifyWebhook(rawBody, request.headers, process.env.FLIQ_WEBHOOK_SECRET!);
+```
+
+It checks the `fliq-signature` header (HMAC-SHA256 over `<t>.<raw body>`), refuses a timestamp more than 300 seconds from your clock (`{ toleranceSeconds }` changes it) and throws `WebhookVerificationError` with a `reason`. During a secret rotation the API signs with both secrets, and you can pass an array of secrets too. Deliveries can arrive out of order and more than once: deduplicate by `event.id` and keep the highest `data.version` per payout.
+
+## Building
+
+`pnpm build` (from `services/api/sdk`) compiles to `dist/` and copies the generated OpenAPI types from `spec/ts/openapi.ts` into `dist/openapi.d.ts`, so the published types don't depend on the private `@fliq/spec` package.

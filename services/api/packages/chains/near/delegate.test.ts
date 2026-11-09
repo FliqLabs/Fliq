@@ -1,7 +1,7 @@
 import { actions } from "near-api-js";
 import { describe, expect, it } from "vitest";
 import { checkPolicy, DelegateError, PolicyError, verifySignedDelegate, type RelayPolicy } from "./index";
-import { newUser, signDelegate, TGAS, USDC, VAULT } from "./near.fixtures";
+import { newUser, PAYOUT_ARGS, signDelegate, TGAS, USDC, VAULT } from "./near.fixtures";
 
 const policy: RelayPolicy = { vaultContractId: VAULT, usdcContractId: USDC };
 const ada = newUser("ada.fliq.testnet");
@@ -21,7 +21,7 @@ describe("verifySignedDelegate", () => {
       publicKey: ada.publicKey,
     });
     expect(delegate.calls).toEqual([
-      { methodName: "payout", args: expect.any(Uint8Array), gas: 30n * TGAS, deposit: 0n },
+      { methodName: "payout", args: expect.any(Uint8Array), gas: 80n * TGAS, deposit: 0n },
     ]);
     expect(delegate.hash).toMatch(/^[0-9a-f]{64}$/);
   });
@@ -71,10 +71,56 @@ describe("verifySignedDelegate", () => {
   });
 });
 
+const STORAGE = 5_000_000_000_000_000_000_000n;
+const AGENT = (over: Record<string, unknown>) => ({
+  public_key: "ed25519:6E8sCci9badyRkXb3JoRpBj5p8C6Tw41ELDZoiihKEtp",
+  agent_id: "agent-1.ada.testnet",
+  cooldown_ns: "0",
+  expiry_ns: "3600000000000",
+  ...over,
+});
+
 describe("checkPolicy", () => {
   it.each([
-    ["a vault payout", { methodName: "payout", args: { order_id: "po_1" } }],
+    ["without its one yoctoNEAR", { methodName: "transfer", deposit: 0n, args: { to_account: "tobi.fliq.testnet", amount: "1" } }],
+    ["with an extra argument", { methodName: "transfer", deposit: 1n, args: { to_account: "tobi.fliq.testnet", amount: "1", memo: "x" } }],
+    ["of nothing", { methodName: "transfer", deposit: 1n, args: { to_account: "tobi.fliq.testnet", amount: "0" } }],
+    ["as a withdraw without its one yoctoNEAR", { methodName: "withdraw", deposit: 0n, args: { amount: "1" } }],
+    ["as a withdraw to someone else", { methodName: "withdraw", deposit: 1n, args: { amount: "1", receiver_id: "mallory.testnet" } }],
+  ])("refuses a transfer %s", async (_, spec) => {
+    const delegate = verifySignedDelegate((await signDelegate(ada, spec)).base64);
+    expect(() => checkPolicy(policy, delegate)).toThrow(PolicyError);
+  });
+
+  it.each([
+    ["a vault payout", { methodName: "payout", args: PAYOUT_ARGS }],
+    [
+      "a vault payout with a numeric amount",
+      { methodName: "payout", args: { ...PAYOUT_ARGS, amount: 50_000_000 } },
+    ],
     ["a vault order release", { methodName: "release_order", args: { order_id: "po_1" } }],
+    ["a withdraw to the user's own account", { methodName: "withdraw", deposit: 1n, args: { amount: "1000000" } }],
+    [
+      "an agent policy",
+      {
+        methodName: "set_agent",
+        deposit: STORAGE,
+        args: AGENT({ per_payout_cap: "50000000", daily_cap: "100000000", corridors: ["NG-NGN-bank"] }),
+      },
+    ],
+    [
+      "an agent policy for any corridor",
+      { methodName: "set_agent", deposit: 1n, args: AGENT({ per_payout_cap: "1", daily_cap: "1", corridors: null }) },
+    ],
+    [
+      "an agent policy that leaves corridors out",
+      { methodName: "set_agent", deposit: 1n, args: AGENT({ per_payout_cap: "1", daily_cap: "1" }) },
+    ],
+    ["an agent removal", { methodName: "remove_agent", deposit: 1n, args: { agent_id: "agent-1.ada.testnet" } }],
+    [
+      "a transfer to another fliq user",
+      { methodName: "transfer", deposit: 1n, args: { to_account: "tobi.fliq.testnet", amount: "25000000" } },
+    ],
     [
       "a USDC top-up into the vault",
       {
@@ -97,10 +143,49 @@ describe("checkPolicy", () => {
     ["a deposit on payout", { deposit: 1n }],
     ["more than 100 Tgas", { gas: 101n * TGAS }],
     ["zero gas", { gas: 0n }],
-    ["extra arguments", { args: { order_id: "po_1", amount: "1" } }],
-    ["a missing order id", { args: {} }],
-    ["a numeric order id", { args: { order_id: 7 } }],
-    ["an over-long order id", { args: { order_id: "x".repeat(65) } }],
+    ["a payout with less than 50 Tgas", { gas: 49n * TGAS }],
+    ["extra arguments", { args: { ...PAYOUT_ARGS, memo: "x" } }],
+    ["a payout without amount or destination", { args: { order_id: "po_1" } }],
+    ["a missing order id", { args: { amount: "1", deposit_address: "pay.paycrest.testnet" } }],
+    ["a numeric order id", { args: { ...PAYOUT_ARGS, order_id: 7 } }],
+    ["an over-long order id", { args: { ...PAYOUT_ARGS, order_id: "x".repeat(65) } }],
+    ["a zero amount", { args: { ...PAYOUT_ARGS, amount: "0" } }],
+    ["a fractional amount", { args: { ...PAYOUT_ARGS, amount: 1.5 } }],
+    ["an unsafe numeric amount", { args: { ...PAYOUT_ARGS, amount: 2 ** 60 } }],
+    [
+      "a destination that is not an account id",
+      { args: { ...PAYOUT_ARGS, deposit_address: "Not An Account" } },
+    ],
+    [
+      "an agent with a zero cap",
+      { methodName: "set_agent", deposit: 1n, args: AGENT({ per_payout_cap: "0", daily_cap: "1", corridors: null }) },
+    ],
+    [
+      "an agent whose per-payout cap is above its daily cap",
+      { methodName: "set_agent", deposit: 1n, args: AGENT({ per_payout_cap: "2", daily_cap: "1" }) },
+    ],
+    [
+      "an agent with an empty corridor list",
+      { methodName: "set_agent", deposit: 1n, args: AGENT({ per_payout_cap: "1", daily_cap: "1", corridors: [] }) },
+    ],
+    [
+      "an agent without its key",
+      { methodName: "set_agent", deposit: 1n, args: { ...AGENT({ per_payout_cap: "1", daily_cap: "1" }), public_key: undefined } },
+    ],
+    [
+      "an agent with a negative expiry",
+      { methodName: "set_agent", deposit: 1n, args: AGENT({ per_payout_cap: "1", daily_cap: "1", expiry_ns: "-1" }) },
+    ],
+    [
+      "an agent policy with no deposit, which the vault refuses",
+      { methodName: "set_agent", args: AGENT({ per_payout_cap: "1", daily_cap: "1" }) },
+    ],
+    [
+      "an agent policy attaching more than its storage could cost",
+      { methodName: "set_agent", deposit: 10n ** 22n + 1n, args: AGENT({ per_payout_cap: "1", daily_cap: "1" }) },
+    ],
+    ["an agent removal without the one yocto", { methodName: "remove_agent", args: { agent_id: "agent-1.ada.testnet" } }],
+    ["an agent id that is not an account", { methodName: "remove_agent", deposit: 1n, args: { agent_id: "Agent One" } }],
     [
       "USDC sent anywhere but the vault",
       {

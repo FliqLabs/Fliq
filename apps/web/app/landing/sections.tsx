@@ -1,5 +1,5 @@
 import Image from "next/image";
-import { JoinWaitlistLink } from "../components/join-waitlist-link";
+import { MarketingActionLink } from "../components/marketing-action-link";
 import { siteContainer } from "../components/site-container";
 import { IconRow, eyebrow } from "./components";
 import { claudeIcon, steps, trustPoints } from "./data";
@@ -42,7 +42,10 @@ export function Developers() {
           Quote, create, watch the webhook. One API for the messy part between crypto and a bank account.
         </p>
         <div className="flex flex-wrap gap-2.5">
-          <JoinWaitlistLink />
+          <MarketingActionLink href="/create-workspace">Get a sandbox key</MarketingActionLink>
+          <MarketingActionLink href="#quickstart" variant="secondary">
+            Read the quickstart
+          </MarketingActionLink>
         </div>
       </div>
       <div id="quickstart" className="overflow-hidden rounded-xl bg-[#0f0f0f]">
@@ -85,7 +88,7 @@ export function Agents() {
           the boundaries.
         </p>
         <div className="flex flex-wrap gap-2.5">
-          <JoinWaitlistLink />
+          <MarketingActionLink href="/create-workspace">Start building</MarketingActionLink>
         </div>
       </div>
       <div className="grid gap-2.5 text-sm">

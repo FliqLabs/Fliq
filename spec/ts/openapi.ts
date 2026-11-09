@@ -28,8 +28,51 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Best after-fee rate for a corridor */
+        /**
+         * Best after-fee rate for a corridor
+         * @description Prices a 100 token payout through every eligible provider and returns the best route's rate. The official, p2p and change_24h reference fields are present only when a market source is connected.
+         */
         get: operations["getRate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rates/{token}/{currency}/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every provider's rate, fee and status for a corridor
+         * @description Prices the same 100 token payout as GET /rates/{token}/{currency} through every provider, best first. A stale provider did not answer this time and shows its last sampled rate; a paused one is held back by its circuit breaker.
+         */
+        get: operations["getRateBoard"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rates/{token}/{currency}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Best and worst after-fee rates over time, for the rate chart
+         * @description Built from a sample of every provider taken once a minute and kept 90 days. Points are 15 minutes apart for 24h, an hour for 7d and 4 hours for 30d. A period with no sample has no point.
+         */
+        get: operations["getRateHistory"];
         put?: never;
         post?: never;
         delete?: never;
@@ -144,7 +187,8 @@ export interface paths {
         delete: operations["deleteRecipient"];
         options?: never;
         head?: never;
-        patch?: never;
+        /** Mark a saved account as the user's own, or as the default for cash-outs */
+        patch: operations["updateRecipient"];
         trace?: never;
     };
     "/status": {
@@ -183,6 +227,510 @@ export interface paths {
          * @description The chain is authoritative. in_sync says whether the ledger mirror agrees with it.
          */
         get: operations["getVaultBalance"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/deposits/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The tokens and chains the vault can be topped up from
+         * @description Every source the app shows, in display order. A source that is not available right now is still listed, with available false. A direct source is the user's own NEAR account: there is nothing to reserve, so it carries the address and POST /deposits refuses it.
+         */
+        get: operations["listDepositSources"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/deposits/estimate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What a top-up of about this amount lands as, and how long it takes
+         * @description Nothing is reserved. Use it while the user types the amount.
+         */
+        get: operations["estimateDeposit"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/deposits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reserve a deposit address for one top-up
+         * @description The address takes any amount from minimum up and lands it in the vault as USDC. It is watched until reserved_until. A deposit below minimum, or one that cannot be completed, is refunded to the user's NEAR account, so nothing sent is lost.
+         */
+        post: operations["createDeposit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/deposits/{depositId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Where a top-up is
+         * @description Poll every few seconds while the app shows it. Each step carries the time it was seen.
+         */
+        get: operations["getDeposit"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Everything that moved money for the user, newest first
+         * @description Payouts, top-ups, transfers between fliq users, paid requests and agent payouts the vault refused, in one list. mine leaves out what agents did; agents keeps only that.
+         */
+        get: operations["listActivity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The user's notifications, newest first */
+        get: operations["listNotifications"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/devices/push": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Register this device for push notifications */
+        post: operations["registerPushToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The user's agents, their limits and what they spent today */
+        get: operations["listAgents"];
+        put?: never;
+        /**
+         * Connect an agent and get what the device must sign
+         * @description fliq creates the agent's own NEAR account, <agent>-<user>.<root>, with the scanned key as its only key. Its policy changes nothing until the user signs: the answer lists the steps, which the device signs as delegate actions and sends to POST /relays. The agent shows as active once the vault holds its policy.
+         */
+        post: operations["connectAgent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents/{agentId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The agent's NEAR account */
+                agentId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke an agent and get what the device must sign
+         * @description Revocation takes effect on chain when the device signs remove_agent. What the agent already paid stays paid.
+         */
+        delete: operations["revokeAgent"];
+        options?: never;
+        head?: never;
+        /**
+         * Change an agent's limits and get what the device must sign
+         * @description The new limits take effect on the agent's next payout once the device signs the policy change.
+         */
+        patch: operations["updateAgentLimits"];
+        trace?: never;
+    };
+    "/agent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The calling agent's limits and what it can still spend today
+         * @description For agents, not people. Every /agent call is signed with the agent's own key; see agentSignature.
+         */
+        get: operations["getAgentSelf"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agent/recipients": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The owner's saved accounts the agent may pay */
+        get: operations["listAgentRecipients"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agent/quotes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Quote a payout from the owner's vault */
+        post: operations["quoteForAgent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agent/payouts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pay one of the owner's accounts within the agent's limits
+         * @description The API checks the currency, the saved-accounts rule and the vault's caps before anything is created. A payout over a limit is refused with code agent_limit and recorded for the owner; nothing moves. A payout within the limits is registered on the vault and the answer carries the payout call for the agent to sign and send to POST /agent/relays. The vault checks the caps again when it runs.
+         */
+        post: operations["createAgentPayout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agent/payouts/{payoutId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A payout this agent made */
+        get: operations["getAgentPayout"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agent/relays": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send a payout the agent signed, with fliq paying the gas */
+        post: operations["relayForAgent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The user's payment requests, newest first */
+        get: operations["listRequests"];
+        put?: never;
+        /** Ask to be paid, with a link anyone can pay from any chain */
+        post: operations["createRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/requests/{requestId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        /** A payment request and whether it was paid */
+        get: operations["getRequest"];
+        put?: never;
+        post?: never;
+        /** Cancel an open request so its link stops taking payments */
+        delete: operations["cancelRequest"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pay/{name}/{code}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The payee's fliq name, for example frank */
+                name: components["parameters"]["PayeeName"];
+                code: components["parameters"]["RequestCode"];
+            };
+            cookie?: never;
+        };
+        /**
+         * The public page behind a pay link
+         * @description No session needed. Shows who is asking, how much and what for, and the ways to pay. Never shows the payee's balance or accounts.
+         */
+        get: operations["getPublicRequest"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pay/{name}/{code}/deposits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The payee's fliq name, for example frank */
+                name: components["parameters"]["PayeeName"];
+                code: components["parameters"]["RequestCode"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Get an address to pay a request from another chain
+         * @description No session needed. The address lands the payment in the payee's vault as USDC; follow it with GET /pay/{name}/{code}/deposits/{depositId}.
+         */
+        post: operations["payRequestDeposit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pay/{name}/{code}/deposits/{depositId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The payee's fliq name, for example frank */
+                name: components["parameters"]["PayeeName"];
+                code: components["parameters"]["RequestCode"];
+                depositId: string;
+            };
+            cookie?: never;
+        };
+        /** Where a payment to a request is */
+        get: operations["getRequestDeposit"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/receipts/{payoutId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The public receipt for a payout, which anyone with the link can check
+         * @description The bank session, the vault receipt on NEAR and the provider's order. The account holder's name and number are masked.
+         */
+        get: operations["getPublicReceipt"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Devices signed in to the user's account */
+        get: operations["listSessions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sessions/{sessionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Sign a device out */
+        delete: operations["revokeSession"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/passkeys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The user's passkeys */
+        get: operations["listPasskeys"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/notification-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Which notifications the user wants */
+        get: operations["getNotificationSettings"];
+        /** Choose which notifications the user wants */
+        put: operations["updateNotificationSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The getting-started steps on Home and which are done */
+        get: operations["getSetup"];
         put?: never;
         post?: never;
         delete?: never;
@@ -260,6 +808,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/payouts/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Payout history as CSV, with the same filters as the list
+         * @description Needs a signed-in session. The newest 5000 matching payouts; x-export-truncated is true when there were more, so narrow the dates and export again. No account names or full account numbers: bank and last four digits only. Cells that a spreadsheet would run as a formula are prefixed with a quote.
+         */
+        get: operations["exportPayouts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * API-key usage per day and per key, for the dashboard's usage section
+         * @description Needs a signed-in session. Counts requests made with the workspace's API keys, by UTC day; dashboard sessions are not counted. requests = succeeded + failed + rate_limited. payouts_created counts 201 answers to POST /payouts, including an idempotent replay of one.
+         */
+        get: operations["getUsage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/payouts/stats": {
         parameters: {
             query?: never;
@@ -291,6 +879,46 @@ export interface paths {
         get: operations["getPayout"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/payouts/{payoutId}/retry-quote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Quote the same payout again without the provider that could not pay it
+         * @description For a refunded, failed or expired payout. Same amount, currency and source; the provider that failed is left out. Pay it with POST /payouts, passing this quote_id and retry_of.
+         */
+        post: operations["quoteRetry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/payouts/{payoutId}/claims": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Tell support a settled payout has not reached the account
+         * @description Opens one claim per payout; asking again returns the open claim. Support chases the bank with the bank reference. A credit that never lands is reversed by the bank rail and refunded.
+         */
+        post: operations["openPayoutClaim"];
         delete?: never;
         options?: never;
         head?: never;
@@ -485,6 +1113,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/relays": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Relay a payout or deposit the user signed on their device, with fliq paying the gas
+         * @description The app signs a NEP-366 delegate action with the device key and the API forwards it to the relayer unchanged. Allowed calls are the vault's payout and release_order, and ft_transfer_call of USDC into the vault. A repeat of the same delegate returns the same body and is never paid for twice.
+         */
+        post: operations["relay"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/relays/{delegateHash}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The result of a relayed delegate, refreshed from the chain while it is pending */
+        get: operations["getRelay"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/workspaces": {
         parameters: {
             query?: never;
@@ -529,6 +1194,70 @@ export interface paths {
         /** API keys of the workspace, masked */
         get: operations["listKeys"];
         put?: never;
+        /**
+         * Create an API key. The full key is in this response only.
+         * @description Needs a signed-in session; API keys cannot create keys. Each deployment issues one environment (sandbox issues test, production issues live), and live keys also need an approved KYB review. There is no Idempotency-Key, so a stored replay never holds the plaintext key; a double submit makes two keys.
+         */
+        post: operations["createKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/keys/{keyId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke an API key. It stops authenticating at once.
+         * @description Needs a signed-in session. Revoking a revoked key succeeds and changes nothing.
+         */
+        delete: operations["revokeKey"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/keys/{keyId}/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replace an API key with a new one of the same name and environment
+         * @description Needs a signed-in session. The old key stops working in the same moment the new one is created.
+         */
+        post: operations["rotateKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workspaces/current/live-access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Whether the workspace can use live keys, for the Go live screen
+         * @description Read only. Live access needs an approved KYB review, and no review process exists yet, so live_enabled is false for every workspace and kyb_status is not_started.
+         */
+        get: operations["getLiveAccess"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -553,6 +1282,145 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/webhook-endpoints": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The workspace's webhook endpoints, the event types and how deliveries are signed
+         * @description Needs a signed-in session. Secrets are never listed; they are shown once at creation and rotation.
+         */
+        get: operations["listWebhookEndpoints"];
+        put?: never;
+        /**
+         * Register a webhook endpoint. The signing secret is in this response only.
+         * @description Needs a signed-in session. The URL must be https, carry no credentials and resolve only to public addresses; private, loopback, link-local and metadata addresses are refused. Deliveries do not follow redirects. An empty or missing events list subscribes to every event type. At most 10 endpoints.
+         */
+        post: operations["createWebhookEndpoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/webhook-endpoints/{endpointId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete a webhook endpoint. Its pending deliveries stop. */
+        delete: operations["deleteWebhookEndpoint"];
+        options?: never;
+        head?: never;
+        /**
+         * Change the URL, description or events, or turn the endpoint off and on
+         * @description Needs a signed-in session. enabled true also clears a failing endpoint.
+         */
+        patch: operations["updateWebhookEndpoint"];
+        trace?: never;
+    };
+    "/webhook-endpoints/{endpointId}/rotate-secret": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Issue a new signing secret. The old one also signs for 24 hours.
+         * @description Send no request body. During the overlap each delivery carries one v1 signature per secret.
+         */
+        post: operations["rotateWebhookSecret"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/webhook-endpoints/{endpointId}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a test.webhook event to this endpoint
+         * @description Send no request body. The event is marked test and names no payout. It goes through the normal signing, delivery and retry path; read its result with getWebhookDelivery. Replays and test events share a limit of 30 per workspace per minute.
+         */
+        post: operations["sendWebhookTest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/webhook-deliveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Deliveries to the workspace's endpoints, newest first */
+        get: operations["listWebhookDeliveries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/webhook-deliveries/{deliveryId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One delivery with the event it sent and every attempt */
+        get: operations["getWebhookDelivery"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/webhook-deliveries/{deliveryId}/replay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send the same event again as a new delivery
+         * @description Send no request body. The new delivery keeps the original event id and payload, so receivers that deduplicate by event id see a repeat. Only the webhook is sent again; the payout is never re-run. Each replay is audited. Replays and test events share a limit of 30 per workspace per minute.
+         */
+        post: operations["replayWebhookDelivery"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -566,6 +1434,60 @@ export interface components {
         ProviderId: "paycrest" | "busha" | "fonbnk" | "bitnob" | "transfi" | "mock";
         /** @enum {string} */
         ProviderStatus: "live" | "stale" | "paused";
+        ProviderRate: {
+            provider: components["schemas"]["ProviderId"];
+            status: components["schemas"]["ProviderStatus"];
+            /** @description Local currency per 1 token after every fee. For a stale provider, its last sampled rate. */
+            rate: number | null;
+            rate_before_fees: number | null;
+            /** @description Every fee on the reference amount, in local currency */
+            fee: number | null;
+            /** @description fee as a share of the amount before fees, in percent */
+            fee_percent: number | null;
+            /** @description Local currency the reference amount lands as, whole units */
+            receive: number | null;
+            eta_seconds: number | null;
+            on_time_percent: number | null;
+            /**
+             * Format: date-time
+             * @description When this provider's figures were priced. Null for a paused provider never sampled.
+             */
+            updated_at: string | null;
+            /** @enum {string|null} */
+            not_offered_reason: "breaker_open" | "half_open_over_limit" | "timeout" | "error" | null;
+        };
+        RateBoard: {
+            token: string;
+            currency: string;
+            /** @description The reference amount priced, in the token */
+            amount: string;
+            best: components["schemas"]["ProviderId"] | null;
+            /** Format: date-time */
+            fetched_at: string;
+            /** @description Live providers best first, then stale, then paused */
+            providers: components["schemas"]["ProviderRate"][];
+        };
+        RatePoint: {
+            /**
+             * Format: date-time
+             * @description Start of the period
+             */
+            at: string;
+            /** @description The best provider's after-fee rate, averaged over the period */
+            best: number;
+            /** @description The worst quoting provider's after-fee rate, averaged over the period */
+            worst: number;
+            /** @description Present only when a market source is connected */
+            p2p: number | null;
+        };
+        RateHistory: {
+            token: string;
+            currency: string;
+            /** @enum {string} */
+            range: "24h" | "7d" | "30d";
+            interval_seconds: number;
+            points: components["schemas"]["RatePoint"][];
+        };
         ReferenceRate: {
             source: string;
             rate: number;
@@ -579,9 +1501,9 @@ export interface components {
             provider: components["schemas"]["ProviderId"];
             providers_quoting: number;
             spread: number;
-            official: components["schemas"]["ReferenceRate"];
-            p2p: components["schemas"]["ReferenceRate"];
-            change_24h: number;
+            official?: components["schemas"]["ReferenceRate"];
+            p2p?: components["schemas"]["ReferenceRate"];
+            change_24h?: number;
             /** Format: date-time */
             fetched_at: string;
         };
@@ -676,6 +1598,8 @@ export interface components {
             refund_address?: string;
             /** @description Only needed when the bank cannot return a name for the account. */
             account_name?: string;
+            /** @description The refunded, failed or expired payout this one tries again, quoted with POST /payouts/{payoutId}/retry-quote. */
+            retry_of?: string;
         };
         /** @enum {string} */
         PayoutState: "created" | "provider_timeout" | "awaiting_recon" | "awaiting_deposit" | "deposit_seen" | "routing" | "with_provider" | "paying_out" | "settled" | "refunding" | "refunded" | "expired" | "failed" | "refused" | "not_received";
@@ -706,6 +1630,57 @@ export interface components {
             bank_reference?: string | null;
             seconds?: number | null;
             history: components["schemas"]["StateChange"][];
+            /** @description The agent that made this payout, if one did */
+            agent?: components["schemas"]["AgentRef"] | null;
+            failure?: components["schemas"]["PayoutFailure"] | null;
+            refund?: components["schemas"]["PayoutRefund"] | null;
+            /** @description The sender name the recipient's bank alert shows. Null until the provider's is confirmed. */
+            settlement_name?: string | null;
+            /** @description The payout this one tried again */
+            retry_of?: string | null;
+            /** @description The latest payout that tried this one again */
+            retried_by?: string | null;
+            claim?: components["schemas"]["PayoutClaim"] | null;
+        };
+        /** @description Why a payout did not settle. Providers do not say why a bank credit failed, so stage is where it stopped. */
+        PayoutFailure: {
+            /**
+             * @description deposit: nothing was sent in time. routing: NEAR Intents could not deliver to the provider. provider: the provider did not start the payout. bank: the provider could not credit the account.
+             * @enum {string}
+             */
+            stage: "deposit" | "routing" | "provider" | "bank";
+            /** @description The provider's failure code, when it gave one */
+            code: string | null;
+            /** Format: date-time */
+            at: string;
+        };
+        PayoutRefund: {
+            /** @description USDC returned, as a decimal string */
+            amount: string;
+            /**
+             * @description vault when the payout was paid from the vault, otherwise the refund address
+             * @enum {string}
+             */
+            to: "vault" | "sender";
+            /** Format: date-time */
+            at: string;
+            /** @description The refund transaction, when the provider reported one */
+            tx: string | null;
+        };
+        PayoutClaim: {
+            claim_id: string;
+            payout_id: string;
+            /** @enum {string} */
+            state: "open" | "resolved";
+            /** @description What the recipient gives their bank, for NGN the NIP session id */
+            bank_reference: string | null;
+            /** Format: date-time */
+            opened_at: string;
+            /**
+             * Format: date-time
+             * @description When a credit that never landed is due to be reversed by the bank rail, 24 hours after settlement
+             */
+            reversal_after: string;
         };
         Refusal: {
             error: components["schemas"]["ErrorBody"];
@@ -753,6 +1728,298 @@ export interface components {
         RefreshRequest: {
             refresh_token: string;
         };
+        Money: {
+            /** @description Decimal string in the currency's own units */
+            amount: string;
+            /** @enum {string} */
+            currency: "NGN" | "KES" | "GHS" | "USD";
+        };
+        ActivityParty: {
+            /** @description Who the money went to or came from, as the row shows it */
+            name: string;
+            near_account: string | null;
+            /** @description Bank or mobile money code for a payout */
+            institution: string | null;
+            account_last4: string | null;
+            photo_url: string | null;
+        };
+        ActivityItem: {
+            activity_id: string;
+            /**
+             * @description refused is an agent payout the vault turned down; nothing moved
+             * @enum {string}
+             */
+            kind: "payout" | "deposit" | "transfer_in" | "transfer_out" | "refused";
+            /** @enum {string} */
+            status: "pending" | "paid" | "received" | "sent" | "refunded" | "refused" | "failed" | "expired";
+            /** Format: date-time */
+            at: string;
+            party: components["schemas"]["ActivityParty"];
+            provider: components["schemas"]["ProviderId"] | null;
+            agent: components["schemas"]["AgentRef"] | null;
+            /** @description The local currency amount, for a payout */
+            local: components["schemas"]["Money"] | null;
+            /** @description The dollar amount that left or reached the vault */
+            usd: string | null;
+            /** @description What was sent from another chain, for a top-up, for example 200 USDC */
+            token: string | null;
+            seconds: number | null;
+            /** @enum {string|null} */
+            reason: "over_daily_cap" | "over_per_payout_cap" | "corridor_not_allowed" | "not_saved_account" | "provider_failed" | "expired" | null;
+            /** @description The payout, deposit, transfer or refusal behind the row */
+            ref_id: string;
+        };
+        ActivityList: {
+            items: components["schemas"]["ActivityItem"][];
+            next_cursor: string | null;
+        };
+        Notification: {
+            notification_id: string;
+            /** @enum {string} */
+            kind: "received" | "payout_paid" | "payout_refunded" | "agent_paid" | "agent_refused" | "request_paid";
+            title: string;
+            body: string;
+            /** Format: date-time */
+            at: string;
+            activity_id: string | null;
+        };
+        NotificationList: {
+            items: components["schemas"]["Notification"][];
+        };
+        PushTokenRequest: {
+            token: string;
+            /** @enum {string} */
+            platform: "ios" | "android";
+        };
+        AgentRef: {
+            agent_id: string;
+            name: string;
+        };
+        AgentSelf: {
+            agent_id: string;
+            /** @description The NEAR account whose vault the agent pays from */
+            owner: string;
+            name: string;
+            /** @enum {string} */
+            state: "pending" | "active" | "revoked";
+            daily_cap: components["schemas"]["Money"];
+            per_payout_cap: components["schemas"]["Money"];
+            currencies: ("NGN" | "KES")[];
+            saved_accounts_only: boolean;
+            /** @description From the vault's policy, in USDC. Null when the vault cannot be read. */
+            spent_today_usd: string | null;
+            remaining_today_usd: string | null;
+            per_payout_usd: string | null;
+        };
+        AgentQuoteRequest: {
+            /** @enum {string} */
+            currency: "ngn" | "kes";
+            /** @description Dollars to send, or the local amount to receive when mode is receive */
+            amount: string;
+            /**
+             * @default send
+             * @enum {string}
+             */
+            mode: "send" | "receive";
+        };
+        AgentPayoutRequest: {
+            quote_id: string;
+            /** @description One of the owner's saved accounts */
+            recipient_id?: string;
+            /** @description Any account, only when the owner turned saved accounts only off */
+            account?: components["schemas"]["Account"];
+        };
+        AgentPayout: {
+            payout: components["schemas"]["Payout"];
+            sign: components["schemas"]["SignStep"];
+        };
+        Agent: {
+            /** @description The agent's own NEAR account, for example claude-frank.fliq.near, which the vault policy names */
+            agent_id: string;
+            name: string;
+            public_key: string;
+            /**
+             * @description pending until the device signs the policy; revoked once remove_agent ran
+             * @enum {string}
+             */
+            state: "pending" | "active" | "revoked";
+            daily_cap: components["schemas"]["Money"];
+            per_payout_cap: components["schemas"]["Money"];
+            currencies: ("NGN" | "KES")[];
+            /** @description Enforced by the API, not the vault */
+            saved_accounts_only: boolean;
+            spent_today: components["schemas"]["Money"];
+            /** Format: date-time */
+            connected_at: string;
+            /** Format: date-time */
+            expires_at: string;
+        };
+        AgentList: {
+            agents: components["schemas"]["Agent"][];
+        };
+        AgentLimitsRequest: {
+            daily_cap: components["schemas"]["Money"];
+            per_payout_cap: components["schemas"]["Money"];
+            currencies: ("NGN" | "KES")[];
+            saved_accounts_only: boolean;
+        };
+        AgentRequest: {
+            name: string;
+            /** @description The agent's own key, scanned from the agent */
+            public_key: string;
+            daily_cap: components["schemas"]["Money"];
+            per_payout_cap: components["schemas"]["Money"];
+            currencies: ("NGN" | "KES")[];
+            saved_accounts_only: boolean;
+        };
+        /** @description One action for the device to sign as a delegate action and send to POST /relays */
+        SignStep: {
+            /** @enum {string} */
+            kind: "create_account" | "function_call";
+            receiver_id: string;
+            method_name: string | null;
+            args: {
+                [key: string]: unknown;
+            } | null;
+            /** @description Gas in units, for a function call */
+            gas: string | null;
+            /** @description yoctoNEAR attached */
+            deposit: string;
+            /** @description For create_account, the only full-access key of the new account */
+            public_key: string | null;
+        };
+        AgentChange: {
+            agent: components["schemas"]["Agent"];
+            steps: components["schemas"]["SignStep"][];
+        };
+        PaymentRequestInput: {
+            /** @description US dollars, as a decimal string */
+            amount: string;
+            note: string;
+            /** @description Pay it on to the user's default account when it lands */
+            cash_out_on_arrival: boolean;
+        };
+        RequestPayment: {
+            /** Format: date-time */
+            paid_at: string;
+            /** @description The payer's NEAR account when they paid from fliq or NEAR, else null */
+            payer: string | null;
+            token: string;
+            chain: string;
+            /** @description What the payer sent, in token */
+            amount: string;
+            /** @description US dollars */
+            fee: string;
+            /** @description USDC credited to the vault */
+            landed: string;
+            deposit_id: string | null;
+        };
+        PaymentRequest: {
+            request_id: string;
+            code: string;
+            /** Format: uri */
+            link: string;
+            amount: string;
+            note: string;
+            /** @enum {string} */
+            state: "open" | "paid" | "cancelled";
+            cash_out_on_arrival: boolean;
+            /** Format: date-time */
+            created_at: string;
+            paid: components["schemas"]["RequestPayment"] | null;
+        };
+        PaymentRequestList: {
+            items: components["schemas"]["PaymentRequest"][];
+        };
+        PublicRequest: {
+            near_account: string;
+            display_name: string | null;
+            photo_url: string | null;
+            amount: string;
+            note: string;
+            /** @enum {string} */
+            state: "open" | "paid" | "cancelled";
+            sources: components["schemas"]["DepositSource"][];
+        };
+        RequestDepositInput: {
+            token: components["schemas"]["DepositTokenId"];
+            chain: components["schemas"]["DepositChainId"];
+        };
+        PublicReceipt: {
+            payout_id: string;
+            state: components["schemas"]["PayoutState"];
+            receive: number;
+            currency: string;
+            /** @description For example D*** O*** ···6789 */
+            account_masked: string;
+            institution: string;
+            provider: components["schemas"]["ProviderId"];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            settled_at: string | null;
+            seconds: number | null;
+            bank_reference: string | null;
+            vault_receipt: string | null;
+            provider_order: string | null;
+        };
+        DeviceSession: {
+            session_id: string;
+            /** @description From the app's X-Device-Name header at sign-in, else the user agent, for example iPhone 17 Pro */
+            device: string;
+            current: boolean;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            last_active_at: string;
+        };
+        DeviceSessionList: {
+            items: components["schemas"]["DeviceSession"][];
+        };
+        Passkey: {
+            passkey_id: string;
+            transports: string[];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            last_used_at: string | null;
+        };
+        PasskeyList: {
+            items: components["schemas"]["Passkey"][];
+        };
+        NotificationSettings: {
+            received: boolean;
+            payout_paid: boolean;
+            payout_refunded: boolean;
+            agent_paid: boolean;
+            agent_refused: boolean;
+            /** @description When an agent has spent 80 percent of its daily cap */
+            cap_almost_reached: boolean;
+            rate_alert: {
+                enabled: boolean;
+                /** @enum {string} */
+                currency: "NGN" | "KES";
+                /** @description Alert when $1 pays more than this */
+                above: number | null;
+            };
+            weekly_summary: boolean;
+        };
+        SetupStep: {
+            /** @enum {string} */
+            step: "add_account" | "top_up";
+            done: boolean;
+        };
+        Setup: {
+            steps: components["schemas"]["SetupStep"][];
+            done: number;
+            total: number;
+        };
+        RecipientUpdate: {
+            /** @description The user's own account, listed under Yours */
+            own?: boolean;
+            /** @description Where cash-outs go; setting it clears the previous default */
+            default?: boolean;
+        };
         User: {
             /** @description https URL of the profile photo the client uploaded to storage */
             photo_url: string | null;
@@ -763,6 +2030,14 @@ export interface components {
             occupation: string | null;
             /** @description Vault contract account holding the user's balance. Null until a name is claimed. */
             vault: string | null;
+            /**
+             * @description The currency the app shows rates and limits in
+             * @enum {string}
+             */
+            home_currency?: "NGN" | "KES";
+            daily_limit?: components["schemas"]["Money"];
+            /** @description True once the user has a fliq name and a NEAR account */
+            verified?: boolean;
         };
         Session: {
             access_token: string;
@@ -781,6 +2056,29 @@ export interface components {
         ClaimNameRequest: {
             /** @description The label before .fliq.near */
             name: string;
+            /** @description The device's NEAR key, generated and kept on the phone. It becomes the only full-access key of the new account, so only that device can move the user's money. A passkey cannot be this key, because passkeys are P-256 and NEAR keys are ed25519. */
+            public_key?: string;
+        };
+        ClaimPending: {
+            /** @enum {string} */
+            status: "pending";
+            near_account: string;
+        };
+        RelayRequest: {
+            /**
+             * Format: byte
+             * @description Base64 Borsh SignedDelegate, signed by the device key over sha256(NEP-461 prefix and borsh(DelegateAction))
+             */
+            signed_delegate: string;
+        };
+        RelayResult: {
+            /** @enum {string} */
+            status: "succeeded" | "failed" | "pending";
+            tx_hash?: string | null;
+            delegate_hash: string;
+            sender_id: string;
+            receiver_id: string;
+            failures?: string[];
         };
         ProfileUpdate: {
             /**
@@ -790,6 +2088,8 @@ export interface components {
             photo_url?: string | null;
             display_name?: string;
             occupation?: string | null;
+            /** @enum {string} */
+            home_currency?: "NGN" | "KES";
         };
         /** @enum {string} */
         WorkspaceUseCase: "wallet" | "payroll" | "marketplace" | "agent" | "other";
@@ -825,6 +2125,47 @@ export interface components {
             masked: string;
             /** Format: date-time */
             created_at: string;
+            /** @description Keys made with the workspace are called Sandbox key */
+            name?: string;
+            /** @enum {string} */
+            status?: "active" | "revoked";
+            /**
+             * Format: date-time
+             * @description Updated at most once a minute
+             */
+            last_used_at?: string | null;
+        };
+        KeyRequest: {
+            name: string;
+            /** @enum {string} */
+            environment: "test" | "live";
+        };
+        KeyCreated: {
+            key_id: string;
+            name: string;
+            /** @enum {string} */
+            environment: "test" | "live";
+            masked: string;
+            /** @enum {string} */
+            status: "active" | "revoked";
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            last_used_at: string | null;
+            /** @description The full key. Returned once and never again. */
+            key: string;
+        };
+        LiveAccess: {
+            live_enabled: boolean;
+            /** @enum {string} */
+            kyb_status: "not_started" | "submitted" | "in_review" | "approved" | "rejected";
+            /**
+             * @description Sandbox and production are separate deployments; each issues and accepts one key environment
+             * @enum {string}
+             */
+            deployment_environment: "test" | "live";
+            test_keys_allowed: boolean;
+            live_keys_allowed: boolean;
         };
         KeyList: {
             items: components["schemas"]["ApiKeyView"][];
@@ -855,7 +2196,22 @@ export interface components {
             provider: components["schemas"]["ProviderId"];
             /** Format: date-time */
             created_at: string;
+            status?: components["schemas"]["PayoutDisplayStatus"];
+            client_reference?: string;
+            /** Format: date-time */
+            updated_at?: string;
+            /** Format: date-time */
+            settled_at?: string | null;
+            /** @description From the deposit being seen to settlement, as on the receipt */
+            seconds_to_bank?: number | null;
+            /** @description Why a payout failed. Reasons starting with vault_ are refusals by the vault caps. */
+            failure_reason?: string | null;
         };
+        /**
+         * @description The dashboard's status. pending includes provider_timeout and awaiting_recon: the outcome is unknown and being re-checked, never a failure.
+         * @enum {string}
+         */
+        PayoutDisplayStatus: "pending" | "paying_out" | "settled" | "refused" | "refunding" | "refunded" | "failed" | "expired";
         PayoutList: {
             items: components["schemas"]["PayoutSummary"][];
             next_cursor: string | null;
@@ -919,6 +2275,10 @@ export interface components {
             account_last4: string;
             /** Format: date-time */
             created_at: string;
+            /** @description The user's own account */
+            own?: boolean;
+            /** @description Where cash-outs go */
+            default?: boolean;
         };
         RecipientList: {
             items: components["schemas"]["Recipient"][];
@@ -932,6 +2292,98 @@ export interface components {
             total: string;
             /** @description False when the ledger mirror disagrees with the chain */
             in_sync: boolean;
+        };
+        /** @enum {string} */
+        DepositTokenId: "usdc" | "usdt" | "btc";
+        /** @enum {string} */
+        DepositChainId: "base" | "solana" | "tron" | "arbitrum" | "ethereum" | "polygon" | "bitcoin" | "near";
+        DepositSource: {
+            token: components["schemas"]["DepositTokenId"];
+            chain: components["schemas"]["DepositChainId"];
+            /**
+             * @description The heading the app lists the source under
+             * @enum {string}
+             */
+            group: "dollars" | "bitcoin" | "near";
+            /** @description Smallest top-up, in the source token */
+            minimum: string;
+            /** @description Typical time from sending to landing in the vault */
+            eta_seconds: number;
+            /** @description True for the user's own NEAR account, which needs no address reserved */
+            direct: boolean;
+            /** @description False when NEAR Intents does not offer this source right now */
+            available: boolean;
+            /** @description For a direct source, the account to send to. Null for the others; reserve one with POST /deposits. */
+            address: string | null;
+        };
+        DepositSourceList: {
+            sources: components["schemas"]["DepositSource"][];
+        };
+        DepositEstimate: {
+            token: components["schemas"]["DepositTokenId"];
+            chain: components["schemas"]["DepositChainId"];
+            /** @description What the user said they will send, in the source token */
+            amount: string;
+            /** @description Smallest amount the address will take, in the source token */
+            minimum: string;
+            /** @description NEAR Intents and network fees, in US dollars */
+            fee: string;
+            /** @description USDC the vault receives for amount */
+            lands: string;
+            eta_seconds: number;
+        };
+        DepositRequest: {
+            token: components["schemas"]["DepositTokenId"];
+            chain: components["schemas"]["DepositChainId"];
+            /** @description About how much the user will send, in the source token. Any amount from minimum up is taken. */
+            amount: string;
+        };
+        /**
+         * @description waiting: nothing has arrived. seen: the transfer is on the source chain. underpaid: less than minimum arrived; more can be sent until reserved_until, after that it is refunded. bridging: moving to NEAR. landed: in the vault. refunded: returned to the user's NEAR account. expired: nothing arrived in time. failed: NEAR Intents could not complete it and support has been told.
+         * @enum {string}
+         */
+        DepositState: "waiting" | "seen" | "underpaid" | "bridging" | "landed" | "refunded" | "expired" | "failed";
+        VaultDeposit: {
+            deposit_id: string;
+            state: components["schemas"]["DepositState"];
+            token: components["schemas"]["DepositTokenId"];
+            chain: components["schemas"]["DepositChainId"];
+            /** @description Where to send, on chain only */
+            address: string;
+            /** @description Must go with the transfer when the chain needs one */
+            memo: string | null;
+            /** @description What the user said they would send, in the source token */
+            amount: string;
+            /** @description Smallest amount the address takes, in the source token */
+            minimum: string;
+            /** @description Estimated fees for amount, in US dollars */
+            fee: string;
+            /** @description Estimated USDC for amount. Once landed, the landed field is the real figure. */
+            lands: string;
+            eta_seconds: number;
+            /**
+             * Format: date-time
+             * @description The address is watched until then
+             */
+            reserved_until: string;
+            /** @description What arrived on the source chain, in the source token */
+            received: string | null;
+            /** @description USDC credited to the vault */
+            landed: string | null;
+            /** @description What was returned to the user's NEAR account, in the source token */
+            refunded: string | null;
+            /** Format: date-time */
+            seen_at: string | null;
+            /** Format: date-time */
+            bridging_at: string | null;
+            /** Format: date-time */
+            landed_at: string | null;
+            /** @description From seen to landed */
+            seconds: number | null;
+            /** @description The transfer's hash on the source chain */
+            origin_tx: string | null;
+            /** Format: date-time */
+            created_at: string;
         };
         Person: {
             near_account: string;
@@ -991,6 +2443,163 @@ export interface components {
             components: components["schemas"]["StatusComponent"][];
             incidents: components["schemas"]["StatusIncident"][];
         };
+        /** @enum {string} */
+        WebhookEventType: "payout.created" | "payout.provider_timeout" | "payout.awaiting_recon" | "payout.awaiting_deposit" | "payout.deposit_seen" | "payout.routing" | "payout.with_provider" | "payout.paying_out" | "payout.settled" | "payout.refunding" | "payout.refunded" | "payout.expired" | "payout.failed";
+        WebhookEndpointRequest: {
+            /** @description https only, public hosts only */
+            url: string;
+            description?: string;
+            events?: components["schemas"]["WebhookEventType"][];
+        };
+        WebhookEndpointUpdate: {
+            url?: string;
+            description?: string | null;
+            events?: components["schemas"]["WebhookEventType"][];
+            enabled?: boolean;
+        };
+        WebhookEndpoint: {
+            endpoint_id: string;
+            url: string;
+            description: string | null;
+            /** @description Empty means every event type */
+            events: components["schemas"]["WebhookEventType"][];
+            /**
+             * @description failing once a delivery used up all its retries; the next successful delivery makes it active again
+             * @enum {string}
+             */
+            status: "active" | "failing" | "disabled";
+            /** @enum {string} */
+            environment: "test" | "live";
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            /** Format: date-time */
+            failing_since: string | null;
+        };
+        WebhookEndpointCreated: components["schemas"]["WebhookEndpoint"] & {
+            /** @description Starts with whsec_. Returned once and never again. */
+            secret: string;
+        };
+        WebhookSecretRotated: components["schemas"]["WebhookEndpoint"] & {
+            secret: string;
+            /** Format: date-time */
+            previous_secret_expires_at: string;
+        };
+        /** @description How to verify a delivery. Compute HMAC-SHA256 of "<t>.<raw body>" with the endpoint secret, hex encoded, compare in constant time with any v1 value, and reject t more than tolerance_seconds from your clock. Deduplicate by event id and keep the highest data.version per payout, since order is not guaranteed. */
+        WebhookSigning: {
+            header: string;
+            algorithm: string;
+            signed_payload: string;
+            format: string;
+            tolerance_seconds: number;
+            event_id_header: string;
+            event_type_header: string;
+            delivery_id_header: string;
+        };
+        WebhookEndpointList: {
+            items: components["schemas"]["WebhookEndpoint"][];
+            event_types: components["schemas"]["WebhookEventType"][];
+            signing: components["schemas"]["WebhookSigning"];
+        };
+        WebhookSend: {
+            event_id: string;
+            delivery_id: string;
+            /** @enum {string} */
+            status: "pending" | "delivered" | "failed";
+            /** @description Only on a replay, the delivery it repeats */
+            replay_of?: string;
+        };
+        WebhookDelivery: {
+            delivery_id: string;
+            /** @description The same on a replay as on the original */
+            event_id: string;
+            /** @description A WebhookEventType, or test.webhook */
+            event_type: string;
+            /** @description Null for test events */
+            payout_id: string | null;
+            endpoint_id: string;
+            endpoint_url: string;
+            /** @enum {string} */
+            status: "pending" | "delivered" | "failed";
+            attempts: number;
+            /** @description HTTP status of the latest attempt */
+            response_status: number | null;
+            /** @description Category of the latest failure, for example timeout, connection, tls, blocked_destination or http_500 */
+            error: string | null;
+            replay_of: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            last_attempt_at: string | null;
+            /**
+             * Format: date-time
+             * @description When the next retry runs, while pending
+             */
+            next_attempt_at: string | null;
+            /** Format: date-time */
+            delivered_at: string | null;
+        };
+        WebhookDeliveryList: {
+            items: components["schemas"]["WebhookDelivery"][];
+            next_cursor: string | null;
+        };
+        WebhookAttempt: {
+            attempt: number;
+            /** Format: date-time */
+            at: string;
+            duration_ms: number;
+            response_status: number | null;
+            error: string | null;
+        };
+        WebhookDeliveryDetail: components["schemas"]["WebhookDelivery"] & {
+            payload: components["schemas"]["WebhookEvent"];
+            history: components["schemas"]["WebhookAttempt"][];
+        };
+        /** @description The body of every delivery, signed as sent. Payout events carry the masked payout summary at the state of the event and its version. */
+        WebhookEvent: {
+            id: string;
+            type: string;
+            /** Format: date-time */
+            created_at: string;
+            livemode: boolean;
+            data: {
+                payout?: components["schemas"]["PayoutSummary"];
+                version?: number;
+                test?: boolean;
+                message?: string;
+            };
+        };
+        UsageCounters: {
+            requests: number;
+            succeeded: number;
+            failed: number;
+            rate_limited: number;
+            payouts_created: number;
+        };
+        UsageDay: {
+            /** Format: date */
+            date: string;
+        } & components["schemas"]["UsageCounters"];
+        UsageKey: components["schemas"]["ApiKeyView"] & components["schemas"]["UsageCounters"];
+        Usage: {
+            period: {
+                /** Format: date */
+                from: string;
+                /** Format: date */
+                to: string;
+                days: number;
+                timezone: string;
+            };
+            totals: components["schemas"]["UsageCounters"];
+            daily: components["schemas"]["UsageDay"][];
+            /** @description Active keys, and revoked keys that had usage in the period */
+            keys: components["schemas"]["UsageKey"][];
+            rate_limit: {
+                requests_per_minute: number;
+                scope: string;
+            };
+        };
     };
     responses: {
         /** @description Error */
@@ -1004,7 +2613,14 @@ export interface components {
         };
     };
     parameters: {
+        EndpointId: string;
+        DeliveryId: string;
+        /** @description The payee's fliq name, for example frank */
+        PayeeName: string;
+        RequestCode: string;
         IdempotencyKey: string;
+        DepositToken: components["schemas"]["DepositTokenId"];
+        DepositChain: components["schemas"]["DepositChainId"];
         Token: "usdc" | "usdt";
         Currency: "ngn" | "kes" | "ghs" | "idr" | "php";
     };
@@ -1055,6 +2671,58 @@ export interface operations {
                     "application/json": components["schemas"]["Rate"];
                 };
             };
+            400: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+        };
+    };
+    getRateBoard: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: components["parameters"]["Token"];
+                currency: components["parameters"]["Currency"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description All providers for the corridor, cached for 10 seconds */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RateBoard"];
+                };
+            };
+            400: components["responses"]["Error"];
+        };
+    };
+    getRateHistory: {
+        parameters: {
+            query?: {
+                range?: "24h" | "7d" | "30d";
+            };
+            header?: never;
+            path: {
+                token: components["parameters"]["Token"];
+                currency: components["parameters"]["Currency"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Points oldest first, cached for 60 seconds */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RateHistory"];
+                };
+            };
+            400: components["responses"]["Error"];
         };
     };
     createQuote: {
@@ -1242,6 +2910,33 @@ export interface operations {
             404: components["responses"]["Error"];
         };
     };
+    updateRecipient: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recipientId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecipientUpdate"];
+            };
+        };
+        responses: {
+            /** @description The updated recipient */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Recipient"];
+                };
+            };
+            404: components["responses"]["Error"];
+        };
+    };
     getStatus: {
         parameters: {
             query?: never;
@@ -1281,6 +2976,766 @@ export interface operations {
                 };
             };
             404: components["responses"]["Error"];
+        };
+    };
+    listDepositSources: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sources in display order */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DepositSourceList"];
+                };
+            };
+            404: components["responses"]["Error"];
+        };
+    };
+    estimateDeposit: {
+        parameters: {
+            query: {
+                token: components["parameters"]["DepositToken"];
+                chain: components["parameters"]["DepositChain"];
+                /** @description Amount of the source token, as a decimal string */
+                amount: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The estimate */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DepositEstimate"];
+                };
+            };
+            400: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    createDeposit: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DepositRequest"];
+            };
+        };
+        responses: {
+            /** @description Address reserved, waiting for the transfer */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultDeposit"];
+                };
+            };
+            400: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    getDeposit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                depositId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The top-up */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultDeposit"];
+                };
+            };
+            404: components["responses"]["Error"];
+        };
+    };
+    listActivity: {
+        parameters: {
+            query?: {
+                filter?: "all" | "mine" | "agents";
+                limit?: number;
+                /** @description next_cursor from the previous page */
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityList"];
+                };
+            };
+            400: components["responses"]["Error"];
+        };
+    };
+    listNotifications: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Notifications, built from the same events as the activity list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationList"];
+                };
+            };
+        };
+    };
+    registerPushToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PushTokenRequest"];
+            };
+        };
+        responses: {
+            /** @description Registered; registering the same token again is harmless */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Error"];
+        };
+    };
+    listAgents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Agents, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentList"];
+                };
+            };
+        };
+    };
+    connectAgent: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentRequest"];
+            };
+        };
+        responses: {
+            /** @description The agent, pending until the steps are signed */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentChange"];
+                };
+            };
+            400: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    revokeAgent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The agent's NEAR account */
+                agentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The agent and the step to sign */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentChange"];
+                };
+            };
+            404: components["responses"]["Error"];
+        };
+    };
+    updateAgentLimits: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The agent's NEAR account */
+                agentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentLimitsRequest"];
+            };
+        };
+        responses: {
+            /** @description The agent and the step to sign */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentChange"];
+                };
+            };
+            400: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
+    getAgentSelf: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The agent as the vault and the user's settings allow it */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentSelf"];
+                };
+            };
+            401: components["responses"]["Error"];
+        };
+    };
+    listAgentRecipients: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Saved accounts, the owner's own first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecipientList"];
+                };
+            };
+            401: components["responses"]["Error"];
+        };
+    };
+    quoteForAgent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentQuoteRequest"];
+            };
+        };
+        responses: {
+            /** @description The quote, paid from the vault over NEAR */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Quote"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+        };
+    };
+    createAgentPayout: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentPayoutRequest"];
+            };
+        };
+        responses: {
+            /** @description The payout and the call to sign */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentPayout"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+        };
+    };
+    getAgentPayout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                payoutId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The payout and its receipt */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Payout"];
+                };
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
+    relayForAgent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RelayRequest"];
+            };
+        };
+        responses: {
+            /** @description The transaction ran; status says whether the payout inside it succeeded */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelayResult"];
+                };
+            };
+            /** @description Sent, outcome not known yet */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelayResult"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    listRequests: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Requests */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentRequestList"];
+                };
+            };
+        };
+    };
+    createRequest: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PaymentRequestInput"];
+            };
+        };
+        responses: {
+            /** @description The request and its link */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentRequest"];
+                };
+            };
+            400: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
+    getRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The request */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentRequest"];
+                };
+            };
+            404: components["responses"]["Error"];
+        };
+    };
+    cancelRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The cancelled request */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentRequest"];
+                };
+            };
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    getPublicRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The payee's fliq name, for example frank */
+                name: components["parameters"]["PayeeName"];
+                code: components["parameters"]["RequestCode"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The request as the payer sees it */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicRequest"];
+                };
+            };
+            404: components["responses"]["Error"];
+        };
+    };
+    payRequestDeposit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The payee's fliq name, for example frank */
+                name: components["parameters"]["PayeeName"];
+                code: components["parameters"]["RequestCode"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RequestDepositInput"];
+            };
+        };
+        responses: {
+            /** @description Address reserved for this payment */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultDeposit"];
+                };
+            };
+            400: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    getRequestDeposit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The payee's fliq name, for example frank */
+                name: components["parameters"]["PayeeName"];
+                code: components["parameters"]["RequestCode"];
+                depositId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The payment */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultDeposit"];
+                };
+            };
+            404: components["responses"]["Error"];
+        };
+    };
+    getPublicReceipt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                payoutId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The receipt */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicReceipt"];
+                };
+            };
+            404: components["responses"]["Error"];
+        };
+    };
+    listSessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Active sessions, the current one first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceSessionList"];
+                };
+            };
+        };
+    };
+    revokeSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Signed out */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["Error"];
+        };
+    };
+    listPasskeys: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Passkeys, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasskeyList"];
+                };
+            };
+        };
+    };
+    getNotificationSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The settings; a new user has every money and agent notification on */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationSettings"];
+                };
+            };
+        };
+    };
+    updateNotificationSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationSettings"];
+            };
+        };
+        responses: {
+            /** @description The saved settings */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationSettings"];
+                };
+            };
+            400: components["responses"]["Error"];
+        };
+    };
+    getSetup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Steps in order */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Setup"];
+                };
+            };
         };
     };
     listRecentPeople: {
@@ -1356,8 +3811,19 @@ export interface operations {
         parameters: {
             query?: {
                 limit?: number;
-                /** @description next_cursor from the previous page */
+                /** @description next_cursor from the previous page. Send the same filters with it. */
                 cursor?: string;
+                /** @description Comma-separated dashboard statuses. pending covers every state before the provider pays out, including an unknown provider outcome that is being re-checked. refused is a payout the vault caps stopped. */
+                status?: string;
+                provider?: components["schemas"]["ProviderId"];
+                /** @description The payout corridor's currency, for example ngn or kes */
+                currency?: string;
+                /** @description Created at or after this time */
+                from?: string;
+                /** @description Created before this time */
+                to?: string;
+                /** @description An exact payout id or client_reference. Recipient names are encrypted at rest and cannot be searched. */
+                q?: string;
             };
             header?: never;
             path?: never;
@@ -1414,6 +3880,66 @@ export interface operations {
             };
         };
     };
+    exportPayouts: {
+        parameters: {
+            query?: {
+                /** @description Comma-separated dashboard statuses. pending covers every state before the provider pays out, including an unknown provider outcome that is being re-checked. refused is a payout the vault caps stopped. */
+                status?: string;
+                provider?: components["schemas"]["ProviderId"];
+                /** @description The payout corridor's currency, for example ngn or kes */
+                currency?: string;
+                /** @description Created at or after this time */
+                from?: string;
+                /** @description Created before this time */
+                to?: string;
+                /** @description An exact payout id or client_reference. Recipient names are encrypted at rest and cannot be searched. */
+                q?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Columns: payout_id, client_reference, status, state, created_at, updated_at, settled_at, seconds_to_bank, amount, receive, currency, provider, bank_code, bank_name, account_last4, failure_reason */
+            200: {
+                headers: {
+                    "x-export-rows"?: number;
+                    "x-export-truncated"?: boolean;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            400: components["responses"]["Error"];
+        };
+    };
+    getUsage: {
+        parameters: {
+            query?: {
+                /** @description The last N UTC days, today included */
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Totals, a daily series with every day present, and each key's share */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Usage"];
+                };
+            };
+            400: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
     getPayoutStats: {
         parameters: {
             query?: {
@@ -1459,6 +3985,66 @@ export interface operations {
                 };
             };
             404: components["responses"]["Error"];
+        };
+    };
+    quoteRetry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                payoutId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A fresh quote. routes[0] is the next best provider. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Quote"];
+                };
+            };
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+        };
+    };
+    openPayoutClaim: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                payoutId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A claim was already open; this is it */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayoutClaim"];
+                };
+            };
+            /** @description Claim opened */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayoutClaim"];
+                };
+            };
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
         };
     };
     startPasskeyRegistration: {
@@ -1737,7 +4323,96 @@ export interface operations {
                     "application/json": components["schemas"]["User"];
                 };
             };
+            /** @description The NEAR account is still being created. Send the same request again with the same Idempotency-Key; it finishes the job without creating a second account. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaimPending"];
+                };
+            };
+            400: components["responses"]["Error"];
             409: components["responses"]["Error"];
+            /** @description The NEAR account could not be created right now (code chain_unavailable); retry */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    relay: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RelayRequest"];
+            };
+        };
+        responses: {
+            /** @description The transaction ran. `failed` means a call inside it failed; `failures` says why. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelayResult"];
+                };
+            };
+            /** @description The outcome is not known yet. Poll GET /relays/{delegateHash}. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelayResult"];
+                };
+            };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+            /** @description The chain refused the transaction outright (code rejected_by_chain); nothing ran and retrying is safe */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            503: components["responses"]["Error"];
+        };
+    };
+    getRelay: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                delegateHash: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The stored result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelayResult"];
+                };
+            };
+            404: components["responses"]["Error"];
         };
     };
     createWorkspace: {
@@ -1809,6 +4484,125 @@ export interface operations {
             404: components["responses"]["Error"];
         };
     };
+    createKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KeyRequest"];
+            };
+        };
+        responses: {
+            /** @description The key. Store it now; it is never shown again. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeyCreated"];
+                };
+            };
+            400: components["responses"]["Error"];
+            /** @description live_not_enabled, the workspace has not passed KYB */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            404: components["responses"]["Error"];
+            /** @description limit_reached, the workspace already holds 20 active keys */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description environment_unavailable, this deployment does not issue that environment */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    revokeKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                keyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["Error"];
+        };
+    };
+    rotateKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                keyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The replacement key, shown once */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeyCreated"];
+                };
+            };
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    getLiveAccess: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Live access and KYB state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiveAccess"];
+                };
+            };
+            404: components["responses"]["Error"];
+        };
+    };
     getOnboarding: {
         parameters: {
             query?: never;
@@ -1828,6 +4622,232 @@ export interface operations {
                 };
             };
             404: components["responses"]["Error"];
+        };
+    };
+    listWebhookEndpoints: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Endpoints, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookEndpointList"];
+                };
+            };
+            404: components["responses"]["Error"];
+        };
+    };
+    createWebhookEndpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WebhookEndpointRequest"];
+            };
+        };
+        responses: {
+            /** @description The endpoint and its signing secret */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookEndpointCreated"];
+                };
+            };
+            400: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    deleteWebhookEndpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                endpointId: components["parameters"]["EndpointId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["Error"];
+        };
+    };
+    updateWebhookEndpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                endpointId: components["parameters"]["EndpointId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WebhookEndpointUpdate"];
+            };
+        };
+        responses: {
+            /** @description The endpoint after the change */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookEndpoint"];
+                };
+            };
+            400: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
+    rotateWebhookSecret: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                endpointId: components["parameters"]["EndpointId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The new secret, shown once */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookSecretRotated"];
+                };
+            };
+            404: components["responses"]["Error"];
+        };
+    };
+    sendWebhookTest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                endpointId: components["parameters"]["EndpointId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Queued */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookSend"];
+                };
+            };
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+        };
+    };
+    listWebhookDeliveries: {
+        parameters: {
+            query?: {
+                endpoint_id?: string;
+                event_type?: string;
+                status?: "pending" | "delivered" | "failed";
+                /** @description The deliveries of one payout, for the payout detail screen */
+                payout_id?: string;
+                /** @description Created at or after this time */
+                from?: string;
+                /** @description Created before this time */
+                to?: string;
+                limit?: number;
+                /** @description next_cursor from the previous page */
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of deliveries */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookDeliveryList"];
+                };
+            };
+            400: components["responses"]["Error"];
+        };
+    };
+    getWebhookDelivery: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deliveryId: components["parameters"]["DeliveryId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The delivery */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookDeliveryDetail"];
+                };
+            };
+            404: components["responses"]["Error"];
+        };
+    };
+    replayWebhookDelivery: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deliveryId: components["parameters"]["DeliveryId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Queued */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookSend"];
+                };
+            };
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            429: components["responses"]["Error"];
         };
     };
 }

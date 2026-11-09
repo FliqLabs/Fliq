@@ -3,11 +3,12 @@ import Link from "next/link";
 import { siteContainer } from "./site-container";
 
 const navigation = [
-  { label: "Rates", href: "/#rates", visibility: "sm:inline" },
+  { label: "Rates", href: "/rates", visibility: "sm:inline" },
   { label: "Docs", href: "/#developers", visibility: "sm:inline" },
   { label: "Agents", href: "/#agents", visibility: "sm:inline" },
   { label: "Pricing", href: "/pricing", visibility: "inline" },
-  { label: "Status", href: "/#trust", visibility: "lg:inline" },
+  { label: "Status", href: "/status", visibility: "lg:inline" },
+  { label: "Sign in", href: "/sign-in", visibility: "sm:inline" },
 ];
 
 export function SiteHeader({ activeHref, brandClassName }: { activeHref?: string; brandClassName?: string }) {
@@ -34,10 +35,10 @@ export function SiteHeader({ activeHref, brandClassName }: { activeHref?: string
             </Link>
           ))}
           <Link
-            href="/join-waitlist"
+            href="/create-workspace"
             className="rounded-xl bg-white px-4 py-2.5 font-semibold text-black transition-colors focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand"
           >
-            Join waitlist
+            Get started
           </Link>
         </nav>
       </div>

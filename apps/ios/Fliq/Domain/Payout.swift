@@ -5,11 +5,17 @@ struct Account: Codable, Sendable, Equatable {
     let number: String
 }
 
-struct VerifiedAccount: Codable, Sendable, Equatable {
+struct VerifiedAccount: Codable, Sendable, Hashable {
     let bank: String
     let number: String
     let accountName: String
     let institution: String
+    /// Not part of the API's answer. The app records the country it asked about, so a saved account is paid in its own
+    /// currency, and the institution's logo.
+    var country: Country?
+    var logoKey: String?
+
+    var currency: Currency { (country ?? .ng).currency }
 }
 
 enum PayoutState: String, Codable, Sendable, CaseIterable {
@@ -133,4 +139,18 @@ struct PayoutStats: Codable, Sendable, Equatable {
     let settled: Count
     let medianSecondsToBank: Double?
     let refused: Count
+}
+
+/// `POST /relays` and `GET /relays/{delegateHash}`: what happened to a delegate the phone signed.
+struct RelayResult: Codable, Sendable, Equatable {
+    enum Status: String, Codable, Sendable {
+        case succeeded, failed, pending
+    }
+
+    let status: Status
+    let txHash: String?
+    let delegateHash: String
+    let senderId: String
+    let receiverId: String
+    var failures: [String]?
 }

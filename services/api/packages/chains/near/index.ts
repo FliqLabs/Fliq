@@ -8,3 +8,4 @@ export * from "./relay";
 export * from "./rpc";
 export * from "./store";
 export * from "./transactions";
+export * from "./token-storage";

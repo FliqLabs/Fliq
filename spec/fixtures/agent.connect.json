@@ -1,0 +1,49 @@
+{
+  "agent": {
+    "agent_id": "claude-frank.fliq.near",
+    "name": "Claude",
+    "public_key": "ed25519:5FjQ8mT3vXk2NcR7yLpW9sBdH4uZaE6gKoJt1qMi9kQ",
+    "state": "pending",
+    "daily_cap": {
+      "amount": "150000",
+      "currency": "NGN"
+    },
+    "per_payout_cap": {
+      "amount": "50000",
+      "currency": "NGN"
+    },
+    "currencies": [
+      "NGN",
+      "KES"
+    ],
+    "saved_accounts_only": true,
+    "spent_today": {
+      "amount": "0",
+      "currency": "NGN"
+    },
+    "connected_at": "2026-10-28T09:00:00Z",
+    "expires_at": "2027-10-28T09:00:00Z"
+  },
+  "steps": [
+    {
+      "kind": "function_call",
+      "receiver_id": "fliq-vault.testnet",
+      "method_name": "set_agent",
+      "args": {
+        "public_key": "ed25519:5FjQ8mT3vXk2NcR7yLpW9sBdH4uZaE6gKoJt1qMi9kQ",
+        "agent_id": "claude-frank.fliq.near",
+        "per_payout_cap": "36330000",
+        "daily_cap": "108990000",
+        "corridors": [
+          "NG-NGN-bank",
+          "KE-KES-mobile_money"
+        ],
+        "cooldown_ns": "0",
+        "expiry_ns": "1824800400000000000"
+      },
+      "gas": "30000000000000",
+      "deposit": "10000000000000000000000",
+      "public_key": null
+    }
+  ]
+}

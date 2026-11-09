@@ -33,11 +33,13 @@ Body: `{ "signed_delegate": "<base64 Borsh SignedDelegate>" }`, signed by the us
 
 Checks, in order: signature; allowlist; one relay per delegate (the delegate hash is the idempotency key); 30 relays per sender per hour; not expired and at most 1,200 blocks ahead; the key is on the sender's account with an unused nonce, and a function-call key may only make calls it allows. Then a free pool key is leased, the delegate is wrapped unchanged in a transaction to the sender, and the result is returned after FINAL.
 
-Allowlist (exactly one call per delegate, at most 100 Tgas, at most 2 KB of arguments):
+Allowlist (exactly one call per delegate, at most 100 Tgas, at most 2 KB of arguments). A `payout` needs at least 50 Tgas, because the vault forwards 30 Tgas to the USDC transfer and 20 Tgas to its callback and refuses less; sign it with about 80 Tgas:
 
 | Receiver | Method | Arguments | Deposit |
 | --- | --- | --- | --- |
 | `VAULT_CONTRACT_ID` | `payout`, `release_order` | `{ "order_id": "<1..64 chars>" }` | 0 |
+| `VAULT_CONTRACT_ID` | `set_agent` | `{ "agent_id": "<NEAR account>", "per_payout_cap": "<positive integer>", "daily_cap": "<positive integer>", "corridors": null \| ["NG-NGN-bank", ...] }` | 0 |
+| `VAULT_CONTRACT_ID` | `remove_agent` | `{ "agent_id": "<NEAR account>" }` | 0 |
 | `USDC_CONTRACT_ID` | `ft_transfer_call` | `{ "receiver_id": VAULT_CONTRACT_ID, "amount": "<positive integer>", "msg": "" }` | 1 yoctoNEAR |
 
 Response `200` (`succeeded` or `failed`) or `202` (`pending`: the outcome is not known yet; poll the lookup below). A repeat of the same delegate returns the same body and is never paid for twice. `failed` means the transaction ran and a call inside it failed; `failures` says why.
@@ -101,12 +103,24 @@ Balances of the relayer account and the account creator against the 5 NEAR targe
 
 Liveness, no token.
 
-## Replacing the onboarding mock
+## Onboarding through the relayer
 
-The mock in `apps/api/src/accounts.ts` (`MockProvisioner`) cannot become real by itself: a named account can only be created by its parent account, so it must go through `POST /v1/accounts`, and that needs the user's NEAR public key, which the claim flow does not carry today.
+`POST /v1/me/name` creates the user's account here when the API has `RELAYER_URL` and `RELAYER_AUTH_TOKEN`; without them it falls back to `MockProvisioner`, which creates nothing on chain.
 
-1. **iOS (Frank):** generate an ed25519 key on the device (CryptoKit `Curve25519.Signing`), keep the private key in the Keychain behind Face ID, never show a seed phrase. A passkey cannot be the NEAR key: passkeys are P-256 and NEAR access keys are ed25519 or secp256k1.
-2. **Spec (backend, web, iOS approve):** add `public_key` to `ClaimNameRequest` for `POST /me/name`. Additive.
-3. **API (Oladipo):** replace `MockProvisioner` with a provisioner that calls `createRelayerClient(...).provisionAccount(fullName, publicKey)` from `packages/chains/near`. Store `nearAccount` only for `created` or `linked`; for `pending`, answer 202 and let the client retry the same request; map `taken` to 409. Make the call outside the database transaction, so a slow chain call does not hold a transaction open and a name-uniqueness failure cannot leave an account without its row (a retry links it).
-4. **API (Oladipo):** expose `POST /v1/relay` (architecture §12.1, app session auth) that forwards `{ signed_delegate }` with the client's `relay()` and returns the relayer's body. Spec change, same approvals.
-5. **Contract team:** deploy the vault; storage registration on it then happens automatically, and calling `POST /v1/accounts` again for existing users registers what is missing.
+- **Spec (done):** `ClaimNameRequest` carries `public_key`, `ed25519:<base58>`. `202` (`ClaimPending`) means the account is still being made: the app sends the same request with the same Idempotency-Key until it gets `201`.
+- **API (done):** `RelayerProvisioner` in `apps/api/src/accounts.ts` calls `POST /v1/accounts` between two short database transactions, never inside one. `created` and `linked` are saved; `pending` and `in_progress` answer `202` and save nothing; `taken` is `409`; a relayer that does not answer within 45 seconds is `202` too, since it may still finish; an unreachable relayer is `503 chain_unavailable`. While the API runs it pings the relayer every 10 minutes so a free Render instance does not sleep.
+- **API (done):** `POST /v1/relays` and `GET /v1/relays/{delegateHash}` (`apps/api/src/relay.ts`) forward to this service. The API refuses a delegate whose sender is not the signed-in user's account, and passes this service's own errors through unchanged.
+- **iOS (Frank):** generate an ed25519 key on the device (CryptoKit `Curve25519.Signing`), keep the private key in the Keychain behind Face ID, never show a seed phrase, and send the public key with the claim. A passkey cannot be the NEAR key: passkeys are P-256 and NEAR access keys are ed25519 or secp256k1.
+- **Contract team:** deploy the vault; storage registration on it then happens automatically, and calling `POST /v1/accounts` again for existing users registers what is missing.
+
+## Deploying on Railway
+
+A second service from this repository, private only (no public domain), started with `pnpm --filter @fliq/api start:relayer`.
+
+1. Set `NEAR_NETWORK=testnet` and a testnet `NEAR_RPC_URL`.
+2. `NEAR_ROOT_ACCOUNT=fliqaccount.testnet` with `NEAR_ROOT_PRIVATE_KEY` set to a full-access key of `fliqaccount.testnet` (in the NEAR CLI keychain on the machine that created it). The API service must use the same `NEAR_ROOT_ACCOUNT`: the API names the account `<label>.<NEAR_ROOT_ACCOUNT>` and this service refuses names under any other parent (`invalid_name`).
+3. `RELAYER_ACCOUNT_ID` and `RELAYER_PRIVATE_KEYS`: a gas account holding only gas money, with 5 to 10 full-access keys.
+4. `VAULT_CONTRACT_ID` and `USDC_CONTRACT_ID`, the same values as the API's. Until the vault is deployed, new accounts report it as `not_deployed`.
+5. `RELAYER_AUTH_TOKEN` (at least 16 characters; use a long random one), `RELAYER_PORT`, `REDIS_URL`.
+6. Fund `fliqaccount.testnet` (about 0.009 NEAR per new account) and the gas account; `GET /v1/status` reports both against the 5 NEAR target.
+7. On the API service set `RELAYER_URL=http://<relayer service>.railway.internal:<RELAYER_PORT>` and the same `RELAYER_AUTH_TOKEN`.

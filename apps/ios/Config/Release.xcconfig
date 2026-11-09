@@ -1,3 +1,7 @@
+// Render until api.fliq.cash points at it.
 FLIQ_DATA_SOURCE = api
-FLIQ_API_BASE_URL = https:/$()/api.fliq.cash/v1
+FLIQ_API_BASE_URL = https:/$()/api-production-54e10.up.railway.app/v1
 FLIQ_API_KEY =
+FLIQ_NEAR_RPC_URL = https:/$()/rpc.testnet.near.org
+FLIQ_NAME_SUFFIX = .fliqaccount.testnet
+FLIQ_ASSOCIATED_DOMAIN_MODE =

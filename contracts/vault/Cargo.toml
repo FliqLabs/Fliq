@@ -4,15 +4,28 @@ version = "0.1.0"
 edition = "2024"
 publish = false
 
+[workspace]
+
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[features]
+default = []
+testing = []
+# Runs tests/workspaces.rs, which embeds the release WASMs from `make build-contract`.
+sandbox = []
+
 [dependencies]
+borsh = "1"
 near-contract-standards = "=5.30.0"
 near-sdk = { version = "=5.30.0", features = ["legacy"] }
 
 [dev-dependencies]
+anyhow = "1"
 near-sdk = { version = "=5.30.0", features = ["legacy", "unit-testing"] }
+near-workspaces = "0.24"
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 
 [profile.release]
 codegen-units = 1

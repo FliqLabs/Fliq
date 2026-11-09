@@ -26,12 +26,14 @@ export type AppFee = { recipient: string; feeBps: number };
 
 export type QuoteInput = {
   dry: boolean;
-  swapType: "EXACT_INPUT" | "EXACT_OUTPUT";
+  swapType: "EXACT_INPUT" | "EXACT_OUTPUT" | "FLEX_INPUT";
   slippageBps: number;
   originAsset: string;
   destinationAsset: string;
   amount: bigint;
   refundTo: string;
+  // INTENTS refunds to a NEAR account's Intents balance, for senders whose origin-chain address is unknown.
+  refundType?: "ORIGIN_CHAIN" | "INTENTS";
   recipient: string;
   deadline: Date;
   appFees: readonly AppFee[];
@@ -48,6 +50,8 @@ export type OneClickQuote = {
   minAmountIn: bigint;
   amountOut: bigint;
   minAmountOut: bigint;
+  amountInUsd: string | undefined;
+  amountOutUsd: string | undefined;
   deadline: Date | undefined;
   timeWhenInactive: Date | undefined;
   timeEstimateSeconds: number;

@@ -1,25 +1,52 @@
-import type { Metadata } from "next";
+"use client";
+
 import Link from "next/link";
+import { useParams } from "next/navigation";
 import { Suspense } from "react";
+import { useQuery } from "@tanstack/react-query";
 import type { Payout } from "../../payout-model";
 import { formatLocalAmount, formatTimestamp, stateLabel } from "../../payout-model";
+import { ApiError, fliqApi } from "../../../lib/fliq-api";
 import { ReceiptActions } from "./receipt-actions";
 
-export const metadata: Metadata = { title: "Payout detail | Fliq" };
-
-export default function PayoutDetailPage({ params }: { params: Promise<{ payoutId: string }> }) {
+export default function PayoutDetailPage() {
   return (
     <Suspense
       fallback={<main className="py-16 text-center text-sm text-zinc-500">Loading payout detail…</main>}
     >
-      <PayoutDetailContent params={params} />
+      <PayoutDetailData />
     </Suspense>
   );
 }
 
-async function PayoutDetailContent({ params }: { params: Promise<{ payoutId: string }> }) {
-  const { payoutId } = await params;
-  return <PayoutDetail payout={null} payoutId={payoutId} />;
+function PayoutDetailData() {
+  const { payoutId } = useParams<{ payoutId: string }>();
+  const payout = useQuery({
+    queryKey: ["payout", payoutId],
+    queryFn: () => fliqApi<Payout>(`payouts/${encodeURIComponent(payoutId)}`),
+  });
+
+  if (payout.isPending)
+    return <main className="py-16 text-center text-sm text-zinc-500">Loading payout detail…</main>;
+  if (payout.error instanceof ApiError && payout.error.status === 401) {
+    return (
+      <main className="py-16 text-center">
+        <Link href="/sign-in" className="text-sm font-semibold underline">
+          Sign in to view this payout
+        </Link>
+      </main>
+    );
+  }
+  if (payout.error instanceof ApiError && payout.error.status === 404) {
+    return <PayoutDetail payout={null} payoutId={payoutId} />;
+  }
+  if (payout.isError)
+    return (
+      <main role="alert" className="py-16 text-center text-sm text-red-600">
+        {payout.error.message}
+      </main>
+    );
+  return <PayoutDetail payout={payout.data} payoutId={payoutId} />;
 }
 
 export function PayoutDetail({ payout, payoutId }: { payout: Payout | null; payoutId: string }) {

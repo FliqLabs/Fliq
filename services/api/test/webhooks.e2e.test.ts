@@ -72,7 +72,7 @@ describe.skipIf(!enabled)("provider webhooks against a real database", () => {
     const reply = await app.inject({
       method: "POST",
       url: "/v1/payouts",
-      payload: { quote_id: quote.json().quote_id, account: { bank: "058", number: "0123456789" }, refund_address: "frank.fliq.near" },
+      payload: { quote_id: quote.json().quote_id, account: { bank: "058", number: "0123456789" }, refund_address: "0x1111111111111111111111111111111111111111" },
       headers: { authorization: `Bearer ${access}`, "idempotency-key": `k-${randomBytes(6).toString("hex")}` },
     });
     expect(reply.statusCode).toBe(201);

@@ -12,6 +12,8 @@ export interface Weights {
 
 export interface RoutingConfig {
   fanOutMs: number;
+  // A route through 1Click waits on a real 1Click quote, which takes 2 to 17 seconds.
+  hopFanOutMs: number;
   expiryMarginMs: number;
   maxTtlMs: number;
   routingFeeBps: bigint;
@@ -27,6 +29,7 @@ export interface RoutingConfig {
 // Spec 8.3. Weights live in configuration so they can be tuned without a deploy.
 export const DEFAULT_ROUTING_CONFIG: RoutingConfig = {
   fanOutMs: 1_500,
+  hopFanOutMs: 20_000,
   expiryMarginMs: 10_000,
   maxTtlMs: 120_000,
   routingFeeBps: 0n,
@@ -185,9 +188,12 @@ function smoothed(outcomes: Outcomes | null, config: RoutingConfig): number {
 }
 
 // The first chain this provider accepts for the asset that the hop can reach from the sender's chain.
-async function hopChain(adapter: ProviderAdapter, request: RouteRequest, hop: HopPricer): Promise<Chain | null> {
+// A hop that cannot say whether it reaches a chain in time counts as not reaching it.
+async function hopChain(adapter: ProviderAdapter, request: RouteRequest, hop: HopPricer, waitMs: number): Promise<Chain | null> {
   for (const source of adapter.capabilities().sources) {
-    if (source.asset === request.source.asset && (await hop.reachable(source.asset, request.source.chain, source.chain))) return source.chain;
+    if (source.asset !== request.source.asset) continue;
+    const reachable = await Promise.race([hop.reachable(source.asset, request.source.chain, source.chain), timeout(waitMs)]).catch(() => false);
+    if (reachable) return source.chain;
   }
   return null;
 }
@@ -229,7 +235,7 @@ export async function quoteRoutes(
     let refusal = accepts(adapter, request);
     let via: Chain | null = null;
     if (refusal === "source" && hop) {
-      via = await hopChain(adapter, request, hop);
+      via = await hopChain(adapter, request, hop, config.hopFanOutMs);
       if (via) refusal = withinLimits(adapter, request) ? null : "limits";
     }
     const state = signals.breaker(adapter.id, request.corridor);
@@ -242,7 +248,7 @@ export async function quoteRoutes(
   const quoted = await Promise.all(
     candidates.map(async ({ adapter, state, via }) => {
       try {
-        const priced = await Promise.race([priceRoute(adapter, request, plan, via, hop), timeout(config.fanOutMs)]);
+        const priced = await Promise.race([priceRoute(adapter, request, plan, via, hop), timeout(via ? config.hopFanOutMs : config.fanOutMs)]);
         return { adapter, state, ...priced };
       } catch (error) {
         dropped.push({ provider: adapter.id, reason: (error as Error).message === "timeout" ? "timeout" : "error" });

@@ -208,4 +208,19 @@ describe("a route through a NEAR Intents hop", () => {
       ["paycrest", "intents"],
     ]);
   });
+
+  it("waits longer for a hopped route than for a direct one", async () => {
+    const slowHop: HopPricer = {
+      ...hop,
+      exactInput: async (...args) => {
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        return hop.exactInput(...args);
+      },
+    };
+    const slowDirect = provider("busha", { delayMs: 150, capabilities: { sources: [{ asset: "USDC", chain: "near" }] } });
+    const config = { ...DEFAULT_ROUTING_CONFIG, fanOutMs: 50, hopFanOutMs: 1_000 };
+    const { routes, dropped } = await quoteRoutes([baseOnly, slowDirect], nearRequest, config, undefined, now, slowHop);
+    expect(routes.map((r) => [r.provider, r.kind])).toEqual([["paycrest", "intents"]]);
+    expect(dropped).toContainEqual({ provider: "busha", reason: "timeout" });
+  });
 });

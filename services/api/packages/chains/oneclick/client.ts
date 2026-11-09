@@ -12,7 +12,8 @@ import {
 
 export const DEFAULT_TIMEOUT_MS: Record<OneClickOperation, number> = {
   tokens: 10_000,
-  quote: 1_500,
+  // Measured 2 to 17 seconds for real mainnet quotes.
+  quote: 20_000,
   submitDeposit: 10_000,
   status: 5_000,
 };
@@ -167,7 +168,7 @@ export function quoteBody(input: QuoteInput): Record<string, unknown> {
     destinationAsset: input.destinationAsset,
     amount: input.amount.toString(),
     refundTo: input.refundTo,
-    refundType: "ORIGIN_CHAIN",
+    refundType: input.refundType ?? "ORIGIN_CHAIN",
     recipient: input.recipient,
     recipientType: "DESTINATION_CHAIN",
     deadline: input.deadline.toISOString(),
@@ -212,6 +213,8 @@ function parseQuote(value: unknown, dry: boolean): OneClickQuote {
     minAmountIn: units("quote", quote, "minAmountIn"),
     amountOut: units("quote", quote, "amountOut"),
     minAmountOut: units("quote", quote, "minAmountOut"),
+    amountInUsd: optionalText("quote", quote, "amountInUsd"),
+    amountOutUsd: optionalText("quote", quote, "amountOutUsd"),
     deadline,
     timeWhenInactive: optionalDate("quote", quote, "timeWhenInactive"),
     timeEstimateSeconds: timeEstimate,

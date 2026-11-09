@@ -46,7 +46,7 @@ async function requestCredential(
     if (error instanceof DOMException && error.name === "NotAllowedError") {
       throw new Error(
         mode === "login"
-          ? "No passkey was selected. If you're new, create an account with a passkey first. Otherwise, check your browser's passkey prompt and try again."
+          ? "Passkey sign-in did not complete. Use the device where you saved your passkey. If using a phone, check that it has a passkey for this site and that Bluetooth and internet are available on both devices."
           : "Passkey setup did not complete. If you used a phone, check Bluetooth and internet on both devices, then try again. You can also save the passkey on this computer.",
       );
     }

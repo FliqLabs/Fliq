@@ -4,7 +4,8 @@ import type { OneClickStatus } from "./types";
 
 // A deterministic stand-in for the 1Click API in local and sandbox runs. It speaks the same paths and shapes as
 // 1Click OpenAPI 0.1.10, prices stablecoins 1:1, and picks each swap's outcome from the requested amount:
-// ending in 01 refunds, 02 fails, 03 is held in PROCESSING, anything else succeeds.
+// ending in 01 refunds, 02 fails, 03 is held in PROCESSING, anything else succeeds. A FLEX_INPUT swap pays out on
+// what was deposited, and takes anything from the quoted amount less slippage.
 
 // The stablecoins live 1Click listed for these chains on 3 November 2026 (no USDT on Base).
 const CHAINS: Record<string, readonly string[]> = {
@@ -18,7 +19,7 @@ const CHAINS: Record<string, readonly string[]> = {
 };
 const DECIMALS = 6;
 const BPS = 10_000n;
-const SWAP_TYPES = ["EXACT_INPUT", "EXACT_OUTPUT"];
+const SWAP_TYPES = ["EXACT_INPUT", "EXACT_OUTPUT", "FLEX_INPUT"];
 
 export const MOCK_MIN_AMOUNT = 1_000_000n;
 
@@ -37,6 +38,8 @@ type Swap = {
   quote: Record<string, unknown>;
   minAmountIn: bigint;
   amountOut: bigint;
+  fees: bigint;
+  flex: boolean;
   deadline: Date;
   outcome: Outcome;
   deposit: { amount: bigint; at: Date; txHash: string } | null;
@@ -78,8 +81,13 @@ export function createOneClickMock(options: OneClickMockOptions) {
     const appFees = (body.appFees as { fee: number }[] | undefined) ?? [];
     const fees = feeBps + appFees.reduce((sum, fee) => sum + BigInt(fee.fee), 0n);
     const exactOutput = body.swapType === "EXACT_OUTPUT";
+    const flex = body.swapType === "FLEX_INPUT";
     const amountOut = exactOutput ? amount : (amount * BPS) / (BPS + fees);
-    const minAmountIn = exactOutput ? ceilDiv(amount * (BPS + fees), BPS) : amount;
+    const minAmountIn = exactOutput
+      ? ceilDiv(amount * (BPS + fees), BPS)
+      : flex
+        ? (amount * (BPS - slippage)) / BPS
+        : amount;
     const amountIn = exactOutput ? ceilDiv(minAmountIn * (BPS + slippage), BPS) : amount;
     const minAmountOut = exactOutput ? amountOut : (amountOut * (BPS - slippage)) / BPS;
     const deadline = new Date(body.deadline as string);
@@ -107,6 +115,8 @@ export function createOneClickMock(options: OneClickMockOptions) {
         quote,
         minAmountIn,
         amountOut,
+        fees,
+        flex,
         deadline,
         outcome,
         deposit: null,
@@ -139,7 +149,8 @@ export function createOneClickMock(options: OneClickMockOptions) {
     if (deposited !== undefined) details.depositedAmount = deposited.toString();
     if (status === "SUCCESS") {
       details.amountIn = deposited?.toString();
-      details.amountOut = swap.amountOut.toString();
+      const out = swap.flex && deposited !== undefined ? (deposited * BPS) / (BPS + swap.fees) : swap.amountOut;
+      details.amountOut = out.toString();
       details.destinationChainTxHashes = [
         { hash: mockAddress("eth", `out:${swap.deposit?.txHash}`), explorerUrl: "" },
       ];
@@ -240,7 +251,7 @@ function validateQuote(body: Record<string, unknown>, now: Date): string | null 
   ]) {
     if (body[key] === undefined) return `${key} is required`;
   }
-  if (!SWAP_TYPES.includes(String(body.swapType))) return "mock supports EXACT_INPUT and EXACT_OUTPUT only";
+  if (!SWAP_TYPES.includes(String(body.swapType))) return "mock supports EXACT_INPUT, EXACT_OUTPUT and FLEX_INPUT only";
   if (!assets.has(String(body.originAsset)) || !assets.has(String(body.destinationAsset)))
     return "unknown asset";
   if (typeof body.amount !== "string" || !/^\d+$/.test(body.amount))

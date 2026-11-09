@@ -1,18 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
+import { CORRIDORS } from "../../../lib/corridors";
 
-const API_BASE = process.env.FLIQ_API_BASE_URL ?? "https://fliq-yclq.onrender.com/v1";
+const API_BASE = process.env.FLIQ_API_BASE_URL ?? "https://api-production-54e10.up.railway.app/v1";
 const ACCESS_COOKIE = "fliq_access";
 const REFRESH_COOKIE = "fliq_refresh";
 const REFRESH_MAX_AGE = 30 * 24 * 60 * 60;
 const NO_STORE = { "Cache-Control": "no-store" };
 
 const publicRoutes = new Set([
+  "GET status",
   "POST auth/passkeys/register/options",
   "POST auth/passkeys/register/verify",
   "POST auth/passkeys/login/options",
   "POST auth/passkeys/login/verify",
   "POST auth/email-links",
   "POST auth/email-links/verify",
+  "GET institutions",
+  ...CORRIDORS.flatMap(({ code }) => [`GET rates/usdc/${code}`, `GET rates/usdc/${code}/providers`, `GET rates/usdc/${code}/history`]),
 ]);
 
 const protectedRoutes = new Set([
@@ -24,6 +28,16 @@ const protectedRoutes = new Set([
   "GET keys",
   "GET onboarding",
   "GET payouts",
+  "GET payouts/stats",
+  "GET payouts/export",
+  "GET usage",
+  "GET workspaces/current/live-access",
+  "GET webhook-endpoints",
+  "POST webhook-endpoints",
+  "GET webhook-deliveries",
+  "POST quotes",
+  "POST accounts/verify",
+  "POST payouts",
   "POST auth/logout",
 ]);
 
@@ -40,6 +54,9 @@ function isAllowed(method: string, path: string) {
   return (
     publicRoutes.has(route) ||
     protectedRoutes.has(route) ||
+    (method === "GET" && /^payouts\/[^/]+$/.test(path)) ||
+    (method === "GET" && /^webhook-deliveries\/[^/]+$/.test(path)) ||
+    (method === "POST" && /^webhook-deliveries\/[^/]+\/replay$/.test(path)) ||
     (method === "GET" && /^names\/[a-z0-9-]+$/.test(path))
   );
 }
@@ -82,7 +99,7 @@ async function upstream(
       headers: {
         ...(body ? { "Content-Type": "application/json" } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(method === "POST" && ["me/name", "workspaces"].includes(path)
+        ...(method === "POST" && ["me/name", "workspaces", "payouts"].includes(path)
           ? { "Idempotency-Key": idempotencyKey ?? crypto.randomUUID() }
           : {}),
       },
@@ -138,7 +155,7 @@ async function handle(request: NextRequest, context: RouteContext) {
     return response;
   }
 
-  const query = path === "payouts" ? request.nextUrl.search : "";
+  const query = method === "GET" ? request.nextUrl.search : "";
   const idempotencyKey = request.headers.get("idempotency-key") ?? undefined;
   let result = await upstream(method, path, body, accessToken, query, idempotencyKey);
   if (result?.status === 401 && !isPublic(method, path) && path !== "auth/logout" && !session) {
@@ -157,6 +174,20 @@ async function handle(request: NextRequest, context: RouteContext) {
   if (result.status === 204) {
     const response = new NextResponse(null, { status: 204, headers: NO_STORE });
     clearSession(response);
+    return response;
+  }
+
+  if (path === "payouts/export" && result.ok) {
+    const response = new NextResponse(await result.text(), {
+      status: result.status,
+      headers: {
+        ...NO_STORE,
+        "Content-Type": result.headers.get("content-type") ?? "text/csv; charset=utf-8",
+        "Content-Disposition":
+          result.headers.get("content-disposition") ?? "attachment; filename=fliq-payouts.csv",
+      },
+    });
+    if (session) saveSession(response, request, session);
     return response;
   }
 

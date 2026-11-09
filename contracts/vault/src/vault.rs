@@ -1,3 +1,4 @@
+use crate::errors;
 use near_contract_standards::storage_management::{StorageBalance, StorageBalanceBounds};
 use near_sdk::collections::LookupMap;
 use near_sdk::json_types::U128;
@@ -5,6 +6,7 @@ use near_sdk::{AccountId, NearToken, Promise, env, near, require};
 
 const BALANCE_PREFIX: &[u8] = b"b";
 const RESERVATION_PREFIX: &[u8] = b"r";
+const REFUND_PREFIX: &[u8] = b"f";
 const MAX_ACCOUNT_ID_LENGTH: usize = 64;
 
 #[near(serializers = [borsh])]
@@ -26,7 +28,7 @@ impl From<Balance> for BalanceView {
     fn from(balance: Balance) -> Self {
         let total = match balance.available.checked_add(balance.reserved) {
             Some(total) => total,
-            None => env::panic_str("vault balance invariant violated"),
+            None => env::panic_str(errors::BALANCE_INVARIANT),
         };
         Self {
             available: U128(balance.available),
@@ -43,6 +45,14 @@ struct Reservation {
     amount: u128,
 }
 
+#[near(serializers = [borsh])]
+#[derive(Clone)]
+struct RefundRecord {
+    payer: AccountId,
+    outflow_amount: u128,
+    recredited_amount: u128,
+}
+
 #[allow(dead_code)]
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum ReservationError {
@@ -53,10 +63,35 @@ pub(crate) enum ReservationError {
     NotFound,
 }
 
+#[allow(dead_code)]
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum RefundError {
+    AlreadyRecredited,
+    AmountMustBePositive,
+    ArithmeticOverflow,
+    ExceedsOutflow,
+    ExceedsUnallocatedBalance,
+    NotFound,
+    PayerNotRegistered,
+    Underbacked,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum TransferError {
+    AmountMustBePositive,
+    SameAccount,
+    SenderNotRegistered,
+    RecipientNotRegistered,
+    InsufficientBalance,
+    ArithmeticOverflow,
+}
+
 #[near(serializers = [borsh])]
 pub(crate) struct Vault {
     balances: LookupMap<AccountId, Balance>,
     reservations: LookupMap<String, Reservation>,
+    refunds: LookupMap<String, RefundRecord>,
+    total_liabilities: u128,
     account_storage_usage: u64,
 }
 
@@ -68,13 +103,15 @@ impl Vault {
         balances.insert(&measurement_account, &Balance::default());
         let account_storage_usage = match env::storage_usage().checked_sub(initial_storage_usage) {
             Some(storage_usage) => storage_usage,
-            None => env::panic_str("failed to measure account storage"),
+            None => env::panic_str(errors::STORAGE_MEASUREMENT_FAILED),
         };
         balances.remove(&measurement_account);
 
         Self {
             balances,
             reservations: LookupMap::new(RESERVATION_PREFIX),
+            refunds: LookupMap::new(REFUND_PREFIX),
+            total_liabilities: 0,
             account_storage_usage,
         }
     }
@@ -93,13 +130,65 @@ impl Vault {
         if available.checked_add(balance.reserved).is_none() {
             return amount;
         }
+        let Some(total_liabilities) = self.total_liabilities.checked_add(amount.0) else {
+            return amount;
+        };
 
         let updated = Balance {
             available,
             reserved: balance.reserved,
         };
         self.balances.insert(account_id, &updated);
+        self.total_liabilities = total_liabilities;
         U128(0)
+    }
+
+    pub(crate) fn transfer_available(
+        &mut self,
+        sender: &AccountId,
+        recipient: &AccountId,
+        amount: u128,
+    ) -> Result<(), TransferError> {
+        if amount == 0 {
+            return Err(TransferError::AmountMustBePositive);
+        }
+        if sender == recipient {
+            return Err(TransferError::SameAccount);
+        }
+        let Some(sender_balance) = self.balances.get(sender) else {
+            return Err(TransferError::SenderNotRegistered);
+        };
+        let Some(recipient_balance) = self.balances.get(recipient) else {
+            return Err(TransferError::RecipientNotRegistered);
+        };
+        let Some(sender_available) = sender_balance.available.checked_sub(amount) else {
+            return Err(TransferError::InsufficientBalance);
+        };
+        let Some(recipient_available) = recipient_balance.available.checked_add(amount) else {
+            return Err(TransferError::ArithmeticOverflow);
+        };
+        if recipient_available
+            .checked_add(recipient_balance.reserved)
+            .is_none()
+        {
+            return Err(TransferError::ArithmeticOverflow);
+        }
+
+        self.balances.insert(
+            sender,
+            &Balance {
+                available: sender_available,
+                reserved: sender_balance.reserved,
+            },
+        );
+        self.balances.insert(
+            recipient,
+            &Balance {
+                available: recipient_available,
+                reserved: recipient_balance.reserved,
+            },
+        );
+        Ok(())
     }
 
     #[allow(dead_code)]
@@ -112,7 +201,9 @@ impl Vault {
         if amount == 0 {
             return Err(ReservationError::AmountMustBePositive);
         }
-        if self.reservations.get(&order_id.to_owned()).is_some() {
+        if self.reservations.get(&order_id.to_owned()).is_some()
+            || self.refunds.get(&order_id.to_owned()).is_some()
+        {
             return Err(ReservationError::AlreadyExists);
         }
 
@@ -146,10 +237,16 @@ impl Vault {
     #[allow(dead_code)]
     pub(crate) fn commit_outflow(&mut self, order_id: &str) -> Result<(), ReservationError> {
         let reservation = self.reservation(order_id)?;
+        if self.refunds.get(&order_id.to_owned()).is_some() {
+            return Err(ReservationError::AlreadyExists);
+        }
         let Some(balance) = self.balances.get(&reservation.payer) else {
             return Err(ReservationError::NotFound);
         };
         let Some(reserved) = balance.reserved.checked_sub(reservation.amount) else {
+            return Err(ReservationError::ArithmeticOverflow);
+        };
+        let Some(total_liabilities) = self.total_liabilities.checked_sub(reservation.amount) else {
             return Err(ReservationError::ArithmeticOverflow);
         };
 
@@ -160,7 +257,41 @@ impl Vault {
                 reserved,
             },
         );
+        self.refunds.insert(
+            &order_id.to_owned(),
+            &RefundRecord {
+                payer: reservation.payer,
+                outflow_amount: reservation.amount,
+                recredited_amount: 0,
+            },
+        );
+        self.total_liabilities = total_liabilities;
         self.reservations.remove(&order_id.to_owned());
+        Ok(())
+    }
+
+    /// Like commit_outflow, but a withdrawal can never be refunded, so it keeps no refund record and its key
+    /// is free for the next withdrawal.
+    pub(crate) fn commit_withdrawal(&mut self, key: &str) -> Result<(), ReservationError> {
+        let reservation = self.reservation(key)?;
+        let Some(balance) = self.balances.get(&reservation.payer) else {
+            return Err(ReservationError::NotFound);
+        };
+        let Some(reserved) = balance.reserved.checked_sub(reservation.amount) else {
+            return Err(ReservationError::ArithmeticOverflow);
+        };
+        let Some(total_liabilities) = self.total_liabilities.checked_sub(reservation.amount) else {
+            return Err(ReservationError::ArithmeticOverflow);
+        };
+        self.balances.insert(
+            &reservation.payer,
+            &Balance {
+                available: balance.available,
+                reserved,
+            },
+        );
+        self.total_liabilities = total_liabilities;
+        self.reservations.remove(&key.to_owned());
         Ok(())
     }
 
@@ -186,6 +317,81 @@ impl Vault {
         );
         self.reservations.remove(&order_id.to_owned());
         Ok(())
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn recredit_refund(
+        &mut self,
+        order_id: &str,
+        amount: u128,
+        actual_token_balance: u128,
+    ) -> Result<(), RefundError> {
+        if amount == 0 {
+            return Err(RefundError::AmountMustBePositive);
+        }
+        let Some(mut refund) = self.refunds.get(&order_id.to_owned()) else {
+            return Err(RefundError::NotFound);
+        };
+        if refund.recredited_amount != 0 {
+            return Err(RefundError::AlreadyRecredited);
+        }
+        if amount > refund.outflow_amount {
+            return Err(RefundError::ExceedsOutflow);
+        }
+        let Some(unallocated_balance) = actual_token_balance.checked_sub(self.total_liabilities)
+        else {
+            return Err(RefundError::Underbacked);
+        };
+        if amount > unallocated_balance {
+            return Err(RefundError::ExceedsUnallocatedBalance);
+        }
+        let Some(balance) = self.balances.get(&refund.payer) else {
+            return Err(RefundError::PayerNotRegistered);
+        };
+        let Some(available) = balance.available.checked_add(amount) else {
+            return Err(RefundError::ArithmeticOverflow);
+        };
+        if available.checked_add(balance.reserved).is_none() {
+            return Err(RefundError::ArithmeticOverflow);
+        }
+        let Some(total_liabilities) = self.total_liabilities.checked_add(amount) else {
+            return Err(RefundError::ArithmeticOverflow);
+        };
+
+        refund.recredited_amount = amount;
+        self.balances.insert(
+            &refund.payer,
+            &Balance {
+                available,
+                reserved: balance.reserved,
+            },
+        );
+        self.refunds.insert(&order_id.to_owned(), &refund);
+        self.total_liabilities = total_liabilities;
+        let event = near_sdk::serde_json::json!({
+            "standard": "fliq_vault",
+            "version": "1.0.0",
+            "event": "recredited",
+            "data": [{
+                "order_id": order_id,
+                "payer": refund.payer,
+                "amount": U128(amount),
+            }],
+        });
+        env::log_str(&format!("EVENT_JSON:{event}"));
+        Ok(())
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn total_liabilities(&self) -> u128 {
+        self.total_liabilities
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn recredited_amount(&self, order_id: &str) -> u128 {
+        self.refunds
+            .get(&order_id.to_owned())
+            .map_or(0, |refund| refund.recredited_amount)
     }
 
     pub(crate) fn storage_balance_bounds(&self) -> StorageBalanceBounds {
@@ -215,17 +421,11 @@ impl Vault {
             return self.registered_storage_balance();
         }
 
-        require!(
-            attached >= minimum,
-            format!(
-                "requires storage deposit of at least {} yoctoNEAR",
-                minimum.as_yoctonear()
-            )
-        );
+        require!(attached >= minimum, errors::STORAGE_DEPOSIT_REQUIRED);
         self.balances.insert(&account_id, &Balance::default());
         let refund_amount = match attached.as_yoctonear().checked_sub(minimum.as_yoctonear()) {
             Some(refund) => refund,
-            None => env::panic_str("storage deposit invariant violated"),
+            None => env::panic_str(errors::BALANCE_INVARIANT),
         };
         let refund = NearToken::from_yoctonear(refund_amount);
         Self::refund_storage_deposit(env::predecessor_account_id(), refund);
@@ -236,11 +436,11 @@ impl Vault {
         Self::require_one_yocto();
         require!(
             amount.unwrap_or(NearToken::from_yoctonear(0)).is_zero(),
-            "registered storage has no withdrawable balance"
+            errors::STORAGE_WITHDRAWAL_UNAVAILABLE
         );
         require!(
             self.balances.get(&env::predecessor_account_id()).is_some(),
-            "account is not registered"
+            errors::ACCOUNT_NOT_REGISTERED
         );
         self.registered_storage_balance()
     }
@@ -253,7 +453,7 @@ impl Vault {
         };
         require!(
             balance.available == 0 && balance.reserved == 0,
-            "cannot unregister an account with a vault balance"
+            errors::ACCOUNT_BALANCE_NONZERO
         );
 
         self.balances.remove(&account_id);
@@ -276,7 +476,7 @@ impl Vault {
             .checked_mul(u128::from(self.account_storage_usage))
         {
             Some(minimum) => minimum,
-            None => env::panic_str("storage balance calculation overflowed"),
+            None => env::panic_str(errors::STORAGE_CALCULATION_OVERFLOW),
         };
         NearToken::from_yoctonear(minimum)
     }
@@ -297,7 +497,7 @@ impl Vault {
     fn require_one_yocto() {
         require!(
             env::attached_deposit() == NearToken::from_yoctonear(1),
-            "requires attached deposit of exactly 1 yoctoNEAR"
+            errors::ONE_YOCTO_REQUIRED
         );
     }
 
@@ -305,7 +505,7 @@ impl Vault {
         let value = "a".repeat(MAX_ACCOUNT_ID_LENGTH);
         match value.parse() {
             Ok(account_id) => account_id,
-            Err(_) => env::panic_str("failed to create storage measurement account"),
+            Err(_) => env::panic_str(errors::STORAGE_MEASUREMENT_FAILED),
         }
     }
 }
@@ -566,7 +766,7 @@ mod tests {
     }
 
     #[test]
-    fn finalizing_reservation_reclaims_its_storage() {
+    fn committed_outflow_keeps_one_refund_record() {
         let mut vault = vault();
         let payer = account("ada.testnet");
         register(&mut vault, &payer);
@@ -580,7 +780,11 @@ mod tests {
         assert!(env::storage_usage() > storage_before_reservation);
 
         assert_eq!(vault.commit_outflow("po_storage"), Ok(()));
-        assert_eq!(env::storage_usage(), storage_before_reservation);
+        assert!(env::storage_usage() > storage_before_reservation);
+        assert_eq!(
+            vault.reserve_for_order("po_storage", &payer, 1),
+            Err(ReservationError::AlreadyExists)
+        );
     }
 
     #[test]
@@ -609,5 +813,131 @@ mod tests {
                 reserved: 0,
             }
         );
+        assert_eq!(vault.total_liabilities(), 80_000_000);
+    }
+
+    #[test]
+    fn refund_recredit_requires_backing_and_happens_once() {
+        let mut vault = vault();
+        let payer = account("ada.testnet");
+        register(&mut vault, &payer);
+        deposit(&mut vault, &payer, 100_000_000);
+        assert_eq!(
+            vault.reserve_for_order("po_refund", &payer, 30_000_000),
+            Ok(())
+        );
+        assert_eq!(vault.commit_outflow("po_refund"), Ok(()));
+        assert_eq!(vault.total_liabilities(), 70_000_000);
+
+        assert_eq!(
+            vault.recredit_refund("po_refund", 30_000_000, 70_000_000),
+            Err(RefundError::ExceedsUnallocatedBalance)
+        );
+        assert_eq!(
+            vault.recredit_refund("po_refund", 30_000_000, 100_000_000),
+            Ok(())
+        );
+        assert_eq!(
+            vault.recredit_refund("po_refund", 30_000_000, 100_000_000),
+            Err(RefundError::AlreadyRecredited)
+        );
+        assert_eq!(vault.total_liabilities(), 100_000_000);
+        assert_eq!(vault.recredited_amount("po_refund"), 30_000_000);
+        assert_eq!(
+            near_sdk::test_utils::get_logs(),
+            vec![
+                r#"EVENT_JSON:{"standard":"fliq_vault","version":"1.0.0","event":"recredited","data":[{"order_id":"po_refund","payer":"ada.testnet","amount":"30000000"}]}"#
+                    .to_owned()
+            ]
+        );
+        assert_eq!(
+            vault.balance_of(&payer),
+            Balance {
+                available: 100_000_000,
+                reserved: 0,
+            }
+        );
+    }
+
+    #[test]
+    fn refund_cannot_exceed_committed_outflow() {
+        let mut vault = vault();
+        let payer = account("ada.testnet");
+        register(&mut vault, &payer);
+        deposit(&mut vault, &payer, 50_000_000);
+        assert_eq!(
+            vault.reserve_for_order("po_refund", &payer, 20_000_000),
+            Ok(())
+        );
+        assert_eq!(vault.commit_outflow("po_refund"), Ok(()));
+
+        assert_eq!(
+            vault.recredit_refund("po_refund", 20_000_001, 50_000_001),
+            Err(RefundError::ExceedsOutflow)
+        );
+        assert_eq!(vault.balance_of(&payer).available, 30_000_000);
+    }
+
+    #[test]
+    fn invalid_refund_requests_do_not_change_accounting() {
+        let mut vault = vault();
+        let payer = account("ada.testnet");
+        register(&mut vault, &payer);
+        deposit(&mut vault, &payer, 50_000_000);
+        assert_eq!(
+            vault.reserve_for_order("po_refund", &payer, 20_000_000),
+            Ok(())
+        );
+        assert_eq!(vault.commit_outflow("po_refund"), Ok(()));
+        let balance_before = vault.balance_of(&payer);
+        let liabilities_before = vault.total_liabilities();
+
+        assert_eq!(
+            vault.recredit_refund("po_refund", 0, 50_000_000),
+            Err(RefundError::AmountMustBePositive)
+        );
+        assert_eq!(
+            vault.recredit_refund("unknown", 1, 50_000_000),
+            Err(RefundError::NotFound)
+        );
+
+        assert_eq!(vault.balance_of(&payer), balance_before);
+        assert_eq!(vault.total_liabilities(), liabilities_before);
+        assert_eq!(vault.recredited_amount("po_refund"), 0);
+        assert!(near_sdk::test_utils::get_logs().is_empty());
+    }
+
+    #[test]
+    fn unrelated_tokens_are_unallocated_not_automatically_credited() {
+        let mut vault = vault();
+        let payer = account("ada.testnet");
+        register(&mut vault, &payer);
+        deposit(&mut vault, &payer, 40_000_000);
+
+        assert_eq!(
+            vault.recredit_refund("unknown", 5_000_000, 45_000_000),
+            Err(RefundError::NotFound)
+        );
+        assert_eq!(vault.recredited_amount("unknown"), 0);
+        assert_eq!(vault.balance_of(&payer).available, 40_000_000);
+    }
+
+    #[test]
+    fn recredit_rejects_an_underbacked_vault() {
+        let mut vault = vault();
+        let payer = account("ada.testnet");
+        register(&mut vault, &payer);
+        deposit(&mut vault, &payer, 40_000_000);
+        assert_eq!(
+            vault.reserve_for_order("po_refund", &payer, 10_000_000),
+            Ok(())
+        );
+        assert_eq!(vault.commit_outflow("po_refund"), Ok(()));
+
+        assert_eq!(
+            vault.recredit_refund("po_refund", 1, 29_999_999),
+            Err(RefundError::Underbacked)
+        );
+        assert_eq!(vault.recredited_amount("po_refund"), 0);
     }
 }

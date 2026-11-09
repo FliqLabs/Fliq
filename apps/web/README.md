@@ -29,6 +29,12 @@ Design source of truth: fliq Web Design v4 (Claude Design canvas).
 
 Copy `.env.example` to `.env.local` to override the backend URL. The web app calls the Render API through `/api/fliq/*` so browser requests stay on the same origin. Access and refresh tokens are stored in HTTP-only cookies; the proxy rotates the refresh token when the access token expires.
 
-The connected screens cover passkey and email-link sign-in, name availability and claiming, workspace creation, profile editing, masked API keys, onboarding progress, and paginated payout listing. The sandbox key is shown once after workspace creation. Quote, account verification, payout submission, payout detail, and webhook replay remain disabled until their backend handlers are available.
+The connected screens cover passkey and email-link sign-in, name availability and claiming, workspace creation, profile editing, masked API keys and usage, onboarding progress, payout stats and listing, CSV export, payout receipts, and webhook endpoints and deliveries. The sandbox key and webhook signing secret are shown once when created. The test payout drawer requests a quote, verifies the destination, and submits payouts only when the selected provider is the mock provider.
 
-Passkeys on a deployed `fliq.cash` site require the backend `WEBAUTHN_RP_ID` and `WEBAUTHN_ORIGINS` to match that site. The current Render deployment returns `rpId: localhost`, which only supports local browser testing. The backend name-claim handler currently uses a mock NEAR provisioner, so it does not create an on-chain vault yet.
+Passkeys on a deployed `fliq.cash` site require the backend `WEBAUTHN_RP_ID` and `WEBAUTHN_ORIGINS` to match that site.
+
+## NEAR key onboarding
+
+The web claim flow creates a browser Ed25519 key pair and shows a recovery code before claiming a name. The private signing key is saved as a non-extractable `CryptoKey` in IndexedDB; the recovery code is shown once and never sent to the API. `POST /me/name` receives `{ name, public_key }` with a stable `Idempotency-Key`. A `202` response is retried with the same request and key. The full account name displayed by the page comes from `GET /names/{name}` so it follows the backend's configured NEAR root account.
+
+Users can restore the signing key on a new browser with their recovery code. The web app checks that the recovered public key is a full-access key of their claimed account through a read-only NEAR RPC query before saving it. The backend contract should mark `public_key` required for production account creation; the current OpenAPI schema marks it optional.

@@ -51,6 +51,11 @@ export class FakeNearRpc implements NearRpc {
     });
   }
 
+  setAmount(accountId: string, amount: bigint): void {
+    const account = this.#accounts.get(accountId);
+    if (account) this.#accounts.set(accountId, { ...account, amount });
+  }
+
   addKey(
     accountId: string,
     publicKey: string,
@@ -112,6 +117,11 @@ export class FakeNearRpc implements NearRpc {
       this.addAccount(tx.receiverId);
       this.addKey(tx.receiverId, publicKeyText(added.publicKey));
     }
+    const transfer = tx.raw.transaction.actions.find((action) => action.transfer)?.transfer;
+    const receiver = this.#accounts.get(tx.receiverId);
+    if (transfer && receiver && !tx.actionKinds.includes("createAccount")) {
+      this.#accounts.set(tx.receiverId, { ...receiver, amount: receiver.amount + transfer.deposit });
+    }
     const call = tx.raw.transaction.actions.find((action) => action.functionCall)?.functionCall;
     if (call?.methodName === "storage_deposit") {
       const args = JSON.parse(Buffer.from(call.args).toString()) as { account_id: string };
@@ -164,6 +174,8 @@ export function newUser(accountId: string): User {
   return { accountId, key, publicKey: key.getPublicKey().toString() };
 }
 
+export const PAYOUT_ARGS = { order_id: "po_1", amount: "50000000", deposit_address: "pay.paycrest.testnet" };
+
 export async function signDelegate(
   user: User,
   spec: DelegateSpec = {},
@@ -174,8 +186,8 @@ export async function signDelegate(
     actions: [
       actions.functionCall(
         spec.methodName ?? "payout",
-        spec.args ?? { order_id: "po_1" },
-        spec.gas ?? 30n * TGAS,
+        spec.args ?? PAYOUT_ARGS,
+        spec.gas ?? 80n * TGAS,
         spec.deposit ?? 0n,
       ),
       ...(spec.extraActions ?? []),

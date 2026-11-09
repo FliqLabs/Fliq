@@ -80,6 +80,17 @@ describe("provider http", () => {
     expect(calls).toHaveLength(1);
   });
 
+  it("keeps the provider's reason for a refusal, with account numbers masked", async () => {
+    const body = '{"status":"error","message":"Validation failed","data":[{"field":"refundAddress","message":"invalid address"},{"field":"accountIdentifier","message":"0123456789 is not valid"}]}';
+    const { fetchImpl } = scriptedFetch([{ status: 400, body }]);
+    const error = (await client(fetchImpl)
+      .request({ operation: "createOrder", method: "POST", path: "/orders", body: {} })
+      .catch((caught: unknown) => caught)) as ProviderError;
+    expect(error.httpStatus).toBe(400);
+    expect(error.reason).toBe("Validation failed; refundAddress: invalid address; accountIdentifier: [number] is not valid");
+    expect(error.message).not.toContain("Validation");
+  });
+
   it("returns accepted non-2xx statuses to the adapter", async () => {
     const { fetchImpl } = scriptedFetch([{ status: 404, body: "" }]);
     const response = await client(fetchImpl).request({

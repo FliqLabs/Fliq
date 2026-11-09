@@ -4,6 +4,7 @@ import {
   AccountError,
   checkBalance,
   DelegateError,
+  fundAgentDeposit,
   PolicyError,
   provisionAccount,
   relay,
@@ -111,6 +112,29 @@ export function buildRelayerApp(deps: RelayerAppDeps): FastifyInstance {
       const result = await provisionAccount(deps.provision, request.body.account_id, request.body.public_key);
       const code = result.status === "created" ? 201 : result.status === "pending" ? 202 : 200;
       return reply.code(code).send(accountView(result));
+    },
+  );
+
+  // Called by the API only for a pending agent the signed-in user owns; the top-up itself happens once per agent.
+  app.post<{ Body: { account_id: string; agent_id: string } }>(
+    "/v1/accounts/agent-deposit",
+    {
+      schema: {
+        body: strictBody({
+          account_id: { type: "string", maxLength: 64 },
+          agent_id: { type: "string", maxLength: 64 },
+        }),
+      },
+    },
+    async (request, reply) => {
+      const result = await fundAgentDeposit(deps.provision, request.body.account_id, request.body.agent_id);
+      return reply.code(result.status === "funded" ? 201 : result.status === "pending" ? 202 : 200).send({
+        status: result.status,
+        account_id: result.accountId,
+        agent_id: result.agentId,
+        yocto: result.yocto,
+        tx_hash: result.txHash,
+      });
     },
   );
 

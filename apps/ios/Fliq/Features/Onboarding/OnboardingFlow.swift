@@ -15,6 +15,7 @@ final class OnboardingFlow {
     }
     private(set) var status = NameStatus.empty
     private(set) var suggestions: [String] = []
+    private(set) var isClaiming = false
 
     var displayName = ""
     var bio = ""
@@ -28,28 +29,39 @@ final class OnboardingFlow {
     private let api: any FliqAPI
     private let isLive: Bool
     private let names: any NameDirectory
+    private let keys: any DeviceKeys
     private var check: Task<Void, Never>?
 
-    init(api: any FliqAPI, names: any NameDirectory, isLive: Bool = false) {
+    init(api: any FliqAPI, names: any NameDirectory, isLive: Bool = false, keys: any DeviceKeys = KeychainDeviceKeys()) {
         self.api = api
         self.isLive = isLive
         self.names = names
+        self.keys = keys
         ownAccount = AccountEntry(api: api)
     }
 
     var name: FliqName? { FliqName(nameText) }
-    var canClaim: Bool { status == .available && name != nil }
+    var canClaim: Bool { status == .available && name != nil && !isClaiming }
 
     /// Claims the name on the server before moving on, so a name taken in the meantime shows here.
     func claim() async -> Bool {
         guard canClaim, let name else { return false }
         guard isLive else { return true }
+        isClaiming = true
+        defer { isClaiming = false }
+        guard let publicKey = try? keys.publicKey() else {
+            status = .unreachable
+            return false
+        }
         do {
-            claimed = try await api.claimName(name).nearAccount
+            claimed = try await api.claimName(name, publicKey: publicKey).nearAccount
             return true
-        } catch {
+        } catch APIError.server(status: 409, _) {
             status = .taken
             suggestions = await freeAlternatives(to: name)
+            return false
+        } catch {
+            status = .unreachable
             return false
         }
     }
@@ -80,11 +92,13 @@ final class OnboardingFlow {
     func resolve(_ name: FliqName) async {
         do {
             let free = try await names.isAvailable(name)
-            guard self.name == name else { return }
+            guard !Task.isCancelled, self.name == name else { return }
             status = free ? .available : .taken
             if !free { suggestions = await freeAlternatives(to: name) }
         } catch {
-            if self.name == name { status = .unreachable }
+            // A newer keystroke cancelled this check; its own check will answer, even for the same name.
+            guard !Task.isCancelled, self.name == name else { return }
+            status = .unreachable
         }
     }
 

@@ -103,12 +103,26 @@ describe("parseVaultEvents", () => {
         payer: "ada.testnet",
         depositAddress: "0xabc",
         amount: 1n,
-        publicKey: "ed25519:abc",
+        publicKey: "ed25519:11111111111111111111111111111111",
       },
       { event: "order_released", orderId: "po_1", payer: "ada.testnet", amount: 1n },
       { event: "status_set", orderId: "po_1", status: "refunded", refs: { refundTx: "0xdef" } },
       { event: "recredited", orderId: "po_1", payer: "ada.testnet", amount: 1n },
       { event: "deposited", accountId: "ada.testnet", senderId: "intents.near", amount: 2n ** 128n - 1n },
+      {
+        event: "agent_set",
+        owner: "ada.testnet",
+        publicKey: "ed25519:11111111111111111111111111111111",
+        agentId: "agent-1.ada.testnet",
+        perPayoutCap: 1n,
+        dailyCap: 2n,
+        corridors: ["NG-NGN-bank"],
+        cooldownNs: 0n,
+        expiryNs: 3_600_000_000_000n,
+      },
+      { event: "agent_revoked", owner: "ada.testnet", agentId: "agent-1.ada.testnet", publicKey: "ed25519:11111111111111111111111111111111" },
+      { event: "agent_spend", owner: "ada.testnet", agentId: "agent-1.ada.testnet", orderId: "po_1", amount: 1n },
+      { event: "transferred", from: "ada.testnet", to: "bo.testnet", amount: 1n },
     ];
     for (const event of events) expect(parseVaultEvents(formatVaultEvent(event))).toEqual([event]);
   });
@@ -124,7 +138,8 @@ describe("receipt status transitions", () => {
   it("only moves forward", () => {
     expect(canSetStatus("paying_out", "settled")).toBe(true);
     expect(canSetStatus("paying_out", "routing")).toBe(false);
-    expect(canSetStatus("refunding", "refunded")).toBe(true);
+    expect(canSetStatus("refunding", "refunded")).toBe(false);
+    expect(canSetStatus("refunding", "failed")).toBe(true);
     expect(canSetStatus("refunding", "settled")).toBe(false);
   });
 
@@ -150,5 +165,27 @@ describe("VaultError.fromPanic", () => {
 describe("topUpMessage", () => {
   it("builds the proposed ft_transfer_call message", () => {
     expect(JSON.parse(topUpMessage("ada.testnet"))).toEqual({ top_up: { account_id: "ada.testnet" } });
+  });
+});
+
+describe("the vault's review-fix events", () => {
+  const line = (event: string, data: Record<string, unknown>) =>
+    `EVENT_JSON:${JSON.stringify({ standard: "fliq_vault", version: "1.0.0", event, data: [data] })}`;
+
+  it.each([
+    ["withdrawn", { account_id: "ada.testnet", amount: "5" }],
+    ["withdraw_failed", { account_id: "ada.testnet", amount: "5" }],
+    ["payout_failed", { order_id: "po_1", payer: "ada.testnet", amount: "5" }],
+    ["payout_resolved", { order_id: "po_1", transferred: false, resolved_by: "owner.testnet" }],
+    ["payout_timeout_set", { payout_timeout: "600000000000" }],
+    ["agent_spend_reversed", { owner: "ada.testnet", agent_id: "agent-1.ada.testnet", order_id: "po_1", amount: "5" }],
+  ])("reads %s", (event, data) => {
+    expect(parseVaultEvents(line(event, data))?.[0]?.event).toBe(event);
+  });
+
+  it("refuses a resolution whose transferred flag is not a boolean", () => {
+    expect(() =>
+      parseVaultEvents(line("payout_resolved", { order_id: "po_1", transferred: "no", resolved_by: "owner.testnet" })),
+    ).toThrow();
   });
 });

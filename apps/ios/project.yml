@@ -32,16 +32,29 @@ targets:
         FliqAPIBaseURL: $(FLIQ_API_BASE_URL)
         FliqAPIKey: $(FLIQ_API_KEY)
         FliqDataSource: $(FLIQ_DATA_SOURCE)
+        FliqNameSuffix: $(FLIQ_NAME_SUFFIX)
+        FliqNearRPCURL: $(FLIQ_NEAR_RPC_URL)
         NSFaceIDUsageDescription: fliq asks for Face ID before any money leaves your vault.
+        NSLocalNetworkUsageDescription: fliq connects to a fliq server on this network during development.
         NSCameraUsageDescription: fliq uses the camera only when you take a profile photo.
         UILaunchScreen: {}
         UIUserInterfaceStyle: Dark
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+        CFBundleURLTypes:
+          - CFBundleURLName: cash.fliq.app
+            CFBundleURLSchemes: [fliq]
+    entitlements:
+      path: Fliq/Fliq.entitlements
+      properties:
+        com.apple.developer.associated-domains:
+          - webcredentials:fliq.cash$(FLIQ_ASSOCIATED_DOMAIN_MODE)
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: cash.fliq.app
+        DEVELOPMENT_TEAM: YCKKUWB4WD
+        CODE_SIGN_STYLE: Automatic
         TARGETED_DEVICE_FAMILY: "1"
         # No AppIcon set in Assets.xcassets yet; set this to AppIcon once the icon is added.
         ASSETCATALOG_COMPILER_APPICON_NAME: ""

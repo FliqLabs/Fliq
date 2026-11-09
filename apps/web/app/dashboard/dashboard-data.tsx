@@ -7,17 +7,12 @@ import {
   fliqApi,
   type Onboarding,
   type PayoutList,
+  type PayoutStats,
+  type PublicRate,
   type User,
   type Workspace,
 } from "../lib/fliq-api";
 import { PayoutsDashboard, type DashboardSummary, type PayoutRow } from "./payouts-dashboard";
-
-const unavailableSummary: DashboardSummary = {
-  settledToday: null,
-  medianSecondsToBank: null,
-  refusedByVaultCaps: null,
-  bestRate: null,
-};
 
 export function DashboardData() {
   const account = useQuery({ queryKey: ["me"], queryFn: () => fliqApi<User>("me") });
@@ -38,6 +33,19 @@ export function DashboardData() {
     queryKey: ["onboarding", workspace.data?.workspace_id],
     queryFn: () => fliqApi<Onboarding>("onboarding"),
     enabled: workspace.isSuccess && payouts.isSuccess,
+  });
+  const stats = useQuery({
+    queryKey: ["payout-stats", workspace.data?.workspace_id],
+    queryFn: () =>
+      fliqApi<PayoutStats>(
+        `payouts/stats?tz=${encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone)}`,
+      ),
+    enabled: workspace.isSuccess,
+  });
+  const bestRate = useQuery({
+    queryKey: ["public-rate", "usdc", "ngn"],
+    queryFn: () => fliqApi<PublicRate>("rates/usdc/ngn"),
+    enabled: workspace.isSuccess,
   });
 
   if (account.isPending) return <Status message="Checking your session…" />;
@@ -74,10 +82,18 @@ export function DashboardData() {
       when: new Date(item.created_at).toLocaleDateString("en-NG"),
     })),
   );
+  const summary: DashboardSummary = {
+    settledToday: stats.data?.settled.count ?? null,
+    medianSecondsToBank: stats.data?.median_seconds_to_bank ?? null,
+    refusedByVaultCaps: stats.data?.refused.count ?? null,
+    bestRate: bestRate.data?.rate ?? null,
+  };
 
   return (
     <PayoutsDashboard
-      summary={unavailableSummary}
+      summary={summary}
+      summaryLoading={stats.isPending || bestRate.isPending}
+      summaryError={stats.error?.message ?? bestRate.error?.message}
       payouts={rows}
       onboarding={onboarding.data}
       hasMore={payouts.hasNextPage}

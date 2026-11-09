@@ -30,6 +30,7 @@ struct ClaimNameView: View {
                 HStack(spacing: 8) {
                     ForEach(flow.suggestions, id: \.self) { suggestion in
                         Button(suggestion) { flow.pick(suggestion) }
+                            .disabled(flow.isClaiming)
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(Theme.textPrimary)
                             .padding(.horizontal, 14)
@@ -46,7 +47,11 @@ struct ClaimNameView: View {
                 statusChip
                 Spacer()
                 Button(action: onContinue) {
-                    ChipLabel(text: "Continue", symbol: "chevron.right", color: flow.canClaim ? Theme.confirmed : Theme.textTertiary)
+                    if flow.isClaiming {
+                        ChipLabel(text: "Claiming", color: Theme.textMuted, working: true)
+                    } else {
+                        ChipLabel(text: "Continue", symbol: "chevron.right", color: flow.canClaim ? Theme.confirmed : Theme.textTertiary)
+                    }
                 }
                 .disabled(!flow.canClaim)
             }
@@ -55,7 +60,7 @@ struct ClaimNameView: View {
         .fliqScreen(ground: Theme.onboardingGround, aurora: Aurora(accent: accent))
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button("Skip", action: onSkip).fontWeight(.semibold)
+                Button("Skip", action: onSkip).fontWeight(.semibold).disabled(flow.isClaiming)
             }
         }
         .onAppear { focused = true }
@@ -76,6 +81,7 @@ struct ClaimNameView: View {
                         .keyboardType(.asciiCapable)
                         .submitLabel(.done)
                         .onSubmit { if flow.canClaim { onContinue() } }
+                        .disabled(flow.isClaiming)
                         .accessibilityLabel("Name")
                         .accessibilityHint("Ends in \(FliqName.suffix)")
                 }
@@ -118,7 +124,8 @@ struct ClaimNameView: View {
     }
 
     private var hint: String {
-        switch flow.status {
+        if flow.isClaiming { return "Creating your account. This can take up to a minute." }
+        return switch flow.status {
         case .invalid, .taken: "Letters, digits and hyphens, up to \(FliqName.maxLength)"
         case .checking: " "
         default: "Free · yours for life · one tap to claim"

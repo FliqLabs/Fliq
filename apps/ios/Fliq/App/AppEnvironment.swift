@@ -17,6 +17,8 @@ final class AppEnvironment {
     let deposits: any DepositAPI
     let agents: AgentStore
     let accounts: AccountBook
+    let transfers: any VaultTransfers
+    let inbox: WalletInbox
     let preferences: Preferences
     let biometrics: any Biometrics
 
@@ -31,6 +33,8 @@ final class AppEnvironment {
         deposits: any DepositAPI = FixtureDepositAPI(),
         agentAPI: any AgentAPI = FixtureAgentAPI(),
         accounts: AccountBook = AccountBook(),
+        transfers: any VaultTransfers = FixtureVaultTransfers(),
+        walletTopUp: any WalletTopUp = FixtureWalletTopUp(),
         preferences: Preferences = Preferences(),
         biometrics: any Biometrics = DeviceBiometrics()
     ) {
@@ -43,17 +47,51 @@ final class AppEnvironment {
         self.vault = vault
         self.deposits = deposits
         self.accounts = accounts
+        self.transfers = transfers
+        inbox = WalletInbox(topUp: walletTopUp)
         self.preferences = preferences
         agents = AgentStore(api: agentAPI, vault: { profile.name ?? "fliq-vault.testnet" })
         self.biometrics = biometrics
+        inbox.onAdded = { [weak self] in await self?.refreshVault() }
     }
 
     static func live(bundle: Bundle = .main) -> AppEnvironment {
         #if DEBUG
         if let testing = uiTesting(bundle: bundle) { return testing }
         #endif
-        guard let api = liveAPI(info: bundle.infoDictionary ?? [:]) else { return AppEnvironment(api: FixtureClient(bundle: bundle)) }
-        return AppEnvironment(api: api, isLive: true)
+        let info = bundle.infoDictionary ?? [:]
+        guard let api = liveAPI(info: info) else { return AppEnvironment(api: FixtureClient(bundle: bundle)) }
+        let profile = ProfileStore()
+        let rpc = (info["FliqNearRPCURL"] as? String).flatMap(URL.init(string:)) ?? URL(string: "https://rpc.testnet.near.org")!
+        let keys = KeychainDeviceKeys()
+        let transfers = RelayedVaultTransfers(
+            api: api,
+            rpc: NEARRPC(url: rpc),
+            keys: keys,
+            sender: { await profile.name },
+            vault: { try? await api.me().vault }
+        )
+        let agents = HTTPAgentAPI(
+            client: api,
+            relay: DelegateRelay(api: api, rpc: NEARRPC(url: rpc), keys: keys),
+            owner: { await profile.name }
+        )
+        let walletTopUp = RelayedWalletTopUp(
+            rpc: NEARRPC(url: rpc),
+            relay: DelegateRelay(api: api, rpc: NEARRPC(url: rpc), keys: keys),
+            owner: { await profile.name },
+            vault: { try? await api.me().vault }
+        )
+        let environment = AppEnvironment(
+            api: api, isLive: true, profile: profile, deposits: HTTPDepositAPI(client: api), agentAPI: agents,
+            transfers: transfers, walletTopUp: walletTopUp
+        )
+        Task {
+            await api.sessions.whenEnded {
+                Task { @MainActor in environment.signedOutByServer() }
+            }
+        }
+        return environment
     }
 
     static let preview = AppEnvironment(
@@ -68,6 +106,12 @@ final class AppEnvironment {
             let base = (info["FliqAPIBaseURL"] as? String).flatMap(URL.init(string:))
         else { return nil }
         return HTTPClient(baseURL: base, apiKey: info["FliqAPIKey"] as? String ?? "")
+    }
+
+    /// The API refused the session for good: back to sign-in, keeping this iPhone's saved accounts and its device key.
+    func signedOutByServer() {
+        router.reset()
+        profile.signOut()
     }
 
     /// Reads the balance from the API. On fixtures the vault mirrors this device's own top-ups and payouts.
@@ -85,10 +129,19 @@ final class AppEnvironment {
         defaults.removePersistentDomain(forName: "ui-testing")
         let profile = ProfileStore(defaults: defaults)
         if arguments.contains("--onboarded") { profile.completeOnboarding(name: nil, displayName: nil) }
+        let accounts = AccountBook(keychain: nil)
+        if arguments.contains("--sample-recipients") { seedRecipients(accounts) }
         return AppEnvironment(
-            api: FixtureClient(bundle: bundle), profile: profile, accounts: AccountBook(keychain: nil),
+            api: FixtureClient(bundle: bundle), profile: profile, accounts: accounts,
             preferences: Preferences(defaults: defaults), biometrics: AlwaysApprove()
         )
+    }
+
+    /// The people on the App Design v5 Pay to screen, for screenshots of a full list.
+    private static func seedRecipients(_ accounts: AccountBook) {
+        accounts.setOwn(VerifiedAccount(bank: "058", number: "0123456789", accountName: "DARA OKONKWO", institution: "GTBank", country: .ng, logoKey: "gtbank"))
+        accounts.save(VerifiedAccount(bank: "999992", number: "8012343301", accountName: "EMEKA STUDIOS LTD", institution: "OPay", country: .ng, logoKey: "opay"))
+        accounts.save(VerifiedAccount(bank: "mpesa", number: "0712345412", accountName: "WANJIRU K.", institution: "M-Pesa", country: .ke, logoKey: "mpesa"))
     }
     #endif
 }

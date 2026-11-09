@@ -1,0 +1,23 @@
+{
+  "deposit_id": "dep_01jbd2m5k8w3qf7v9x2c4n6h8t",
+  "state": "landed",
+  "token": "usdc",
+  "chain": "solana",
+  "address": "7xKqWmP3vRt8YhNcJ2uLdE5sBzA9fGkQe4oTiXwMk2r",
+  "memo": null,
+  "amount": "200.00",
+  "minimum": "196.00",
+  "fee": "0.02",
+  "lands": "199.98",
+  "eta_seconds": 35,
+  "reserved_until": "2026-10-29T08:12:00Z",
+  "received": "200.00",
+  "landed": "199.98",
+  "refunded": null,
+  "seen_at": "2026-10-29T08:11:40Z",
+  "bridging_at": "2026-10-29T08:11:47Z",
+  "landed_at": "2026-10-29T08:12:14Z",
+  "seconds": 34,
+  "origin_tx": "4hXq9TzV2mKcR7wYpL3nBfJ8sDgA6uEoN1iZtQvCx5WkHrMy2bPaS9eFjG7dU3lO",
+  "created_at": "2026-10-29T08:02:00Z"
+}

@@ -4,7 +4,7 @@ import { newId } from "../../../packages/db/src/ids.js";
 import { transitionPayout } from "../../../packages/domain/transition.js";
 import { InsufficientVaultBalance, postEntry, reserveVault } from "../../../packages/ledger/post.js";
 import { orderCommitted, vaultReleased } from "../../../packages/ledger/postings.js";
-import type { VaultClient } from "../../../packages/chains/vault/index.js";
+import { MAX_ORDER_TTL_MS, type VaultClient } from "../../../packages/chains/vault/index.js";
 import { ProviderError } from "../../../packages/providers/errors.js";
 import type { Asset, Chain, CreatedOrder, FiatCurrency, ProviderAdapter } from "../../../packages/providers/types.js";
 import type { Config } from "./config.js";
@@ -12,10 +12,12 @@ import { formatTokenAmount } from "./dashboard.js";
 import type { Db, Unit } from "./db.js";
 import { ApiError, conflict, invalidRequest, notFound } from "./errors.js";
 import { hashOf, type Reply } from "./idempotency.js";
-import { INSTITUTIONS } from "./institutions.js";
+import { institutionType } from "./institutions.js";
 import type { OneClickHops } from "./hop.js";
+import { isAddressOn } from "./refund-address.js";
 import { COUNTRY, developerIdFor, requestQuote, reviveHop, reviveProviderQuote, type QuoteDeps, type QuoteInput } from "./quotes.js";
 import { resolveName } from "./recipients.js";
+import { recoveryView } from "./recovery.js";
 
 export interface PayoutDeps {
   config: Config;
@@ -30,6 +32,8 @@ export interface PayoutDeps {
 export interface IntentsDeps {
   hops: OneClickHops;
   vault: VaultClient;
+  // Registers the 1Click deposit address on the vault's token, without which the vault's transfer to it fails.
+  tokenStorage: { ensure(accountId: string): Promise<unknown> };
   // Spec 10.1: the hop may cost this much more than quoted before the payout is stopped and re-quoted.
   guardBps: bigint;
   // The 1Click deadline is the provider address validity minus this margin.
@@ -48,6 +52,7 @@ export interface PayoutInput {
   client_reference?: string;
   refund_address?: string;
   account_name?: string;
+  retry_of?: string;
 }
 
 const IN_PROGRESS = 202;
@@ -73,7 +78,7 @@ function isDefiniteRejection(error: unknown): boolean {
 }
 
 // The provider's fiat reference arrives on its settled webhook and is kept on that event.
-function bankReference(events: readonly { toState: string; detail: Prisma.JsonValue }[]): string | null {
+export function bankReference(events: readonly { toState: string; detail: Prisma.JsonValue }[]): string | null {
   const detail = events.find((event) => event.toState === "settled")?.detail;
   if (!detail || typeof detail !== "object" || Array.isArray(detail)) return null;
   const reference = detail.fiat_reference;
@@ -83,7 +88,12 @@ function bankReference(events: readonly { toState: string; detail: Prisma.JsonVa
 export async function payoutView(tx: Db, config: Config, payoutId: string) {
   const payout = await tx.payout.findUniqueOrThrow({
     where: { id: payoutId },
-    include: { recipient: true, events: { orderBy: { version: "asc" } } },
+    include: {
+      recipient: true,
+      events: { orderBy: { version: "asc" } },
+      retries: { select: { id: true, createdAt: true } },
+      claims: true,
+    },
   });
   const quote = await tx.quote.findUniqueOrThrow({ where: { id: payout.quoteId } });
   const route = quote.chosenRouteId ? await tx.quoteRoute.findUnique({ where: { id: quote.chosenRouteId } }) : null;
@@ -117,6 +127,8 @@ export async function payoutView(tx: Db, config: Config, payoutId: string) {
     bank_reference: bankReference(payout.events),
     seconds: settledAt && depositAt ? Math.round((settledAt.getTime() - depositAt.getTime()) / 1000) : null,
     history: payout.events.map((event) => ({ state: event.toState, at: event.createdAt.toISOString() })),
+    agent: payout.agentId ? { agent_id: payout.agentId, name: (await tx.agent.findUnique({ where: { id: payout.agentId }, select: { name: true } }))?.name ?? payout.agentId } : null,
+    ...recoveryView(payout, bankReference(payout.events)),
   };
 }
 
@@ -128,7 +140,7 @@ export async function getPayout(unit: Unit, config: Config, userId: string, payo
   });
 }
 
-export async function createPayout(unit: Unit, deps: PayoutDeps, userId: string, key: string | undefined, input: PayoutInput): Promise<Reply> {
+export async function createPayout(unit: Unit, deps: PayoutDeps, userId: string, key: string | undefined, input: PayoutInput, options: { agentId?: string } = {}): Promise<Reply> {
   if (!key) throw new ApiError(400, "idempotency_key_required", "Idempotency-Key header is required.");
   if (!ACCOUNT_NUMBER.test(input.account.number)) throw invalidRequest("account.number must be 6 to 20 digits.");
   const requestHash = hashOf(input);
@@ -144,17 +156,23 @@ export async function createPayout(unit: Unit, deps: PayoutDeps, userId: string,
     if (quote.expiresAt <= deps.now()) throw new ApiError(422, "quote_expired", "This quote has expired. Request a new one.");
     const user = await tx.user.findUnique({ where: { id: userId } });
     const intents = route.kind === "intents";
-    // On an Intents route the sender is the vault holder and any refund goes back to them.
     if (intents && !user?.nearAccount) throw invalidRequest("Claim a fliq name before paying from your vault.");
-    const refundAddress = intents ? (user?.nearAccount as string) : (input.refund_address ?? user?.nearAccount ?? null);
-    if (!refundAddress) throw invalidRequest("refund_address is required when the account has no fliq name.");
-    return { developerId, quote, route, refundAddress, intents, hop: reviveHop(route.providerQuote) };
+    const payer = user?.nearAccount ?? null;
+    const hop = reviveHop(route.providerQuote);
+    const refundAddress = intents ? intentsRefundAddress(deps.config, hop?.chain) : directRefundAddress(quote.sourceChain, input.refund_address, payer);
+    return { developerId, quote, route, payer, refundAddress, intents, hop };
   });
 
   const adapter = deps.adapters.find((candidate) => candidate.id === prepared.route.provider);
   if (!adapter) throw new ApiError(422, "no_route", "That provider is not available right now.");
   const country = COUNTRY[prepared.quote.currency as keyof typeof COUNTRY];
-  const verification = await adapter.verifyAccount({ institutionCode: input.account.bank, accountNumber: input.account.number, country });
+  const verification = await adapter.verifyAccount({ institutionCode: input.account.bank, accountNumber: input.account.number, country }).catch((error: unknown) => {
+    if (!(error instanceof ProviderError)) throw error;
+    if (error.kind === "not_supported") throw new ApiError(422, "route_unavailable", "The provider on this route cannot check or pay this account.");
+    // A bank that does not answer in time is not a missing account: nothing has moved, so the payer can simply retry.
+    if (error.transient) throw new ApiError(422, "route_unavailable", "The bank did not answer in time. Nothing moved; try again in a moment.");
+    throw new ApiError(422, "account_not_found", "The bank could not find that account.");
+  });
   if (!verification.found) throw new ApiError(422, "account_not_found", "The bank could not find that account.");
   const accountName = resolveName(verification.accountName, input.account_name).name;
 
@@ -176,6 +194,12 @@ export async function createPayout(unit: Unit, deps: PayoutDeps, userId: string,
     const today = await tx.payout.aggregate({ where: { developerId, createdAt: { gte: dayStart } }, _count: true, _sum: { amountIn: true } });
     if (today._count >= deps.velocity.maxPerDay || (today._sum.amountIn ?? 0n) + route.amountIn > deps.velocity.maxTokenUnitsPerDay) {
       throw new ApiError(422, "velocity_limit", "Daily payout limit reached for this account.");
+    }
+
+    if (input.retry_of) {
+      const original = await tx.payout.findFirst({ where: { id: input.retry_of, developerId }, select: { state: true } });
+      if (!original) throw notFound("No such payout to retry.");
+      if (!["refunded", "failed", "expired"].includes(original.state)) throw conflict("Only a refunded, failed or expired payout can be tried again.");
     }
 
     const payoutId = newId("po");
@@ -215,6 +239,8 @@ export async function createPayout(unit: Unit, deps: PayoutDeps, userId: string,
         amountOutMinor: route.amountOutMinor,
         currency: quote.currency,
         rate: quote.rate,
+        retryOfId: input.retry_of ?? null,
+        agentId: options.agentId ?? null,
       },
     });
     await tx.payoutEvent.create({ data: { id: newId("pev"), payoutId, fromState: null, toState: "created", version: 1, cause: "created" } });
@@ -234,8 +260,7 @@ export async function createPayout(unit: Unit, deps: PayoutDeps, userId: string,
 
   // Phase two: the provider call, only after the commitment is durable.
   const { payoutId, providerQuote } = committed;
-  const institution = INSTITUTIONS.find((item) => item.code === input.account.bank);
-  const corridor = { country, currency: prepared.quote.currency.toUpperCase() as FiatCurrency, payoutType: institution?.kind ?? ("bank" as const) };
+  const corridor = { country, currency: prepared.quote.currency.toUpperCase() as FiatCurrency, payoutType: institutionType(input.account.bank) };
   const asset = prepared.quote.tokenSymbol as Asset;
 
   const opened = await openOrder({
@@ -248,6 +273,7 @@ export async function createPayout(unit: Unit, deps: PayoutDeps, userId: string,
     asset,
     prepared,
     recipient: { institutionCode: input.account.bank, accountNumber: input.account.number, accountName },
+    ...(options.agentId ? { agentId: options.agentId } : {}),
   });
 
   return unit(async (tx) => {
@@ -260,9 +286,30 @@ export async function createPayout(unit: Unit, deps: PayoutDeps, userId: string,
   });
 }
 
+// An Intents payout funds the provider on the hop's network, so the provider refunds there, to the address fliq keeps
+// on that network. The 1Click leg refunds on NEAR to the vault instead (see openHop). Without an address for the
+// network the payout is refused before any provider order exists.
+function intentsRefundAddress(config: Config, chain: string | undefined): string {
+  const address = chain ? config.providerRefundAddresses[chain] : undefined;
+  if (!chain || !address) {
+    console.warn(`[payouts] no provider refund address for ${chain ?? "an unknown network"}: set PROVIDER_REFUND_ADDRESS_${(chain ?? "").toUpperCase()}`);
+    throw new ApiError(422, "route_unavailable", "That route is not available right now. Try again.");
+  }
+  return address;
+}
+
+// A direct payout is funded on the quote's source network, so its refund address must be one there too.
+function directRefundAddress(chain: string, requested: string | undefined, payer: string | null): string {
+  const address = requested ?? (chain === "near" ? payer : null);
+  if (!address) throw invalidRequest(`refund_address is required for a payout funded on ${chain}.`);
+  if (!isAddressOn(chain, address)) throw invalidRequest(`refund_address must be an address on ${chain}.`);
+  return address;
+}
+
 type Prepared = {
   quote: { id: string; currency: string; tokenSymbol: string; sourceChain: string; mode: string; amountIn: bigint; amountOutMinor: bigint };
   route: { provider: string; amountIn: bigint };
+  payer: string | null;
   refundAddress: string;
   intents: boolean;
   hop: ReturnType<typeof reviveHop>;
@@ -288,6 +335,7 @@ interface OpenInput {
   asset: Asset;
   prepared: Prepared;
   recipient: { institutionCode: string; accountNumber: string; accountName: string };
+  agentId?: string;
 }
 
 const countryFor = (currency: string) => COUNTRY[currency as keyof typeof COUNTRY];
@@ -298,7 +346,7 @@ async function openOrder(input: OpenInput): Promise<Opened> {
   if (prepared.intents && (!intents || !prepared.hop)) return { kind: "route_unavailable" };
 
   // Fail before any provider order exists when the vault cannot cover the payout.
-  if (intents && (await intents.vault.getBalance(prepared.refundAddress)).available < prepared.route.amountIn) {
+  if (intents && (await intents.vault.getBalance(prepared.payer as string)).available < prepared.route.amountIn) {
     return { kind: "insufficient_balance", order: null };
   }
 
@@ -313,6 +361,7 @@ async function openOrder(input: OpenInput): Promise<Opened> {
       refundAddress: prepared.refundAddress,
     });
   } catch (error) {
+    logProviderFailure(payoutId, error);
     return isDefiniteRejection(error) ? { kind: "rejected" } : { kind: "unknown" };
   }
 
@@ -331,13 +380,22 @@ async function openOrder(input: OpenInput): Promise<Opened> {
   return openHop({ ...input, intents, hop: prepared.hop, order, funding });
 }
 
+// Enough to tell why a provider refused an order, without the recipient's account number or any credential.
+function logProviderFailure(payoutId: string, error: unknown): void {
+  if (!(error instanceof ProviderError)) return console.error(`[payouts] ${payoutId} createOrder failed: ${(error as Error)?.name ?? "error"}`);
+  const status = error.httpStatus === undefined ? "" : ` http ${error.httpStatus}`;
+  const reason = error.reason ? `: ${error.reason}` : "";
+  console.error(`[payouts] ${payoutId} ${error.provider} ${error.operation} ${error.kind}${status}${reason}`);
+}
+
 async function openHop(
   input: OpenInput & { intents: IntentsDeps; hop: NonNullable<Prepared["hop"]>; order: CreatedOrder; funding: Extract<CreatedOrder["funding"], { kind: "deposit_address" }> },
 ): Promise<Opened> {
   const { deps, unit, payoutId, asset, prepared, intents, hop, order, funding } = input;
+  const payer = prepared.payer as string;
   const now = deps.now();
   const validUntil = funding.validUntil ?? new Date(now.getTime() + DEFAULT_ADDRESS_VALIDITY_MS);
-  const deadline = new Date(validUntil.getTime() - intents.deadlineMarginMs);
+  const deadline = new Date(Math.min(validUntil.getTime() - intents.deadlineMarginMs, now.getTime() + MAX_ORDER_TTL_MS));
   if (deadline <= now) return { kind: "route_unavailable" };
 
   let swap;
@@ -348,7 +406,8 @@ async function openHop(
       to: hop.chain,
       amountOut: funding.units,
       recipient: funding.address,
-      refundTo: prepared.refundAddress,
+      // A swap that cannot complete is refunded on NEAR, into the vault, which holds it until recredit returns it.
+      refundTo: deps.config.vaultAccount,
       deadline,
     });
   } catch {
@@ -360,7 +419,12 @@ async function openHop(
 
   const deposit: Deposit = { chain: "near", address: swap.depositAddress, units: swap.amountIn, validUntil: deadline, memo: swap.depositMemo ?? null };
   try {
-    await unit((tx) => reserveVault(tx, payoutId, prepared.refundAddress, asset, deposit.units));
+    await intents.tokenStorage.ensure(deposit.address);
+  } catch {
+    return { kind: "route_unavailable" };
+  }
+  try {
+    await unit((tx) => reserveVault(tx, payoutId, payer, asset, deposit.units));
   } catch (error) {
     if (error instanceof InsufficientVaultBalance) return { kind: "insufficient_balance", order };
     throw error;
@@ -368,15 +432,16 @@ async function openHop(
   try {
     await intents.vault.registerOrder({
       orderId: payoutId,
-      payer: prepared.refundAddress,
+      payer,
       depositAddress: deposit.address,
       amount: deposit.units,
       expiresAtNs: BigInt(deadline.getTime()) * 1_000_000n,
       corridor: `${input.corridor.country}-${input.corridor.currency}-${input.corridor.payoutType}`,
+      ...(input.agentId ? { agentId: input.agentId } : {}),
     });
   } catch {
     // The reservation was committed first, so a refused registration must give the funds back.
-    await unit((tx) => postEntry(tx, vaultReleased(payoutId, prepared.refundAddress, asset, deposit.units)));
+    await unit((tx) => postEntry(tx, vaultReleased(payoutId, payer, asset, deposit.units)));
     return { kind: "route_unavailable" };
   }
   return { kind: "ready", order, deposit };

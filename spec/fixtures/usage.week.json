@@ -1,0 +1,93 @@
+{
+  "period": {
+    "from": "2026-10-23",
+    "to": "2026-10-29",
+    "days": 7,
+    "timezone": "UTC"
+  },
+  "totals": {
+    "requests": 12,
+    "succeeded": 10,
+    "failed": 2,
+    "rate_limited": 0,
+    "payouts_created": 1
+  },
+  "daily": [
+    {
+      "date": "2026-10-23",
+      "requests": 0,
+      "succeeded": 0,
+      "failed": 0,
+      "rate_limited": 0,
+      "payouts_created": 0
+    },
+    {
+      "date": "2026-10-24",
+      "requests": 0,
+      "succeeded": 0,
+      "failed": 0,
+      "rate_limited": 0,
+      "payouts_created": 0
+    },
+    {
+      "date": "2026-10-25",
+      "requests": 0,
+      "succeeded": 0,
+      "failed": 0,
+      "rate_limited": 0,
+      "payouts_created": 0
+    },
+    {
+      "date": "2026-10-26",
+      "requests": 0,
+      "succeeded": 0,
+      "failed": 0,
+      "rate_limited": 0,
+      "payouts_created": 0
+    },
+    {
+      "date": "2026-10-27",
+      "requests": 0,
+      "succeeded": 0,
+      "failed": 0,
+      "rate_limited": 0,
+      "payouts_created": 0
+    },
+    {
+      "date": "2026-10-28",
+      "requests": 3,
+      "succeeded": 2,
+      "failed": 1,
+      "rate_limited": 0,
+      "payouts_created": 0
+    },
+    {
+      "date": "2026-10-29",
+      "requests": 9,
+      "succeeded": 8,
+      "failed": 1,
+      "rate_limited": 0,
+      "payouts_created": 1
+    }
+  ],
+  "keys": [
+    {
+      "key_id": "key_9a40d7e2",
+      "name": "Sandbox key",
+      "environment": "test",
+      "masked": "rt_test_7Kp2...c9Qe",
+      "status": "active",
+      "created_at": "2026-10-29T12:58:00Z",
+      "last_used_at": "2026-10-29T13:02:09Z",
+      "requests": 12,
+      "succeeded": 10,
+      "failed": 2,
+      "rate_limited": 0,
+      "payouts_created": 1
+    }
+  ],
+  "rate_limit": {
+    "requests_per_minute": 300,
+    "scope": "per key"
+  }
+}

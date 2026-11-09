@@ -1,0 +1,11 @@
+{
+  "request_id": "req_01jbdb7f3a2c4e6g8j0k2m4p6r",
+  "code": "7f3a",
+  "link": "https://pay.fliq.money/frank/7f3a",
+  "amount": "1200.00",
+  "note": "Brand film, October",
+  "state": "open",
+  "cash_out_on_arrival": true,
+  "created_at": "2026-10-29T13:10:00Z",
+  "paid": null
+}

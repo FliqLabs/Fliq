@@ -18,6 +18,17 @@
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
 	<string>1.0</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>cash.fliq.app</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>fliq</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleVersion</key>
 	<string>1</string>
 	<key>FliqAPIBaseURL</key>
@@ -26,6 +37,10 @@
 	<string>$(FLIQ_API_KEY)</string>
 	<key>FliqDataSource</key>
 	<string>$(FLIQ_DATA_SOURCE)</string>
+	<key>FliqNameSuffix</key>
+	<string>$(FLIQ_NAME_SUFFIX)</string>
+	<key>FliqNearRPCURL</key>
+	<string>$(FLIQ_NEAR_RPC_URL)</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>
@@ -35,6 +50,8 @@
 	<string>fliq uses the camera only when you take a profile photo.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>fliq asks for Face ID before any money leaves your vault.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>fliq connects to a fliq server on this network during development.</string>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>
