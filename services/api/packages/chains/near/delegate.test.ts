@@ -85,6 +85,8 @@ describe("checkPolicy", () => {
     ["without its one yoctoNEAR", { methodName: "transfer", deposit: 0n, args: { to_account: "tobi.fliq.testnet", amount: "1" } }],
     ["with an extra argument", { methodName: "transfer", deposit: 1n, args: { to_account: "tobi.fliq.testnet", amount: "1", memo: "x" } }],
     ["of nothing", { methodName: "transfer", deposit: 1n, args: { to_account: "tobi.fliq.testnet", amount: "0" } }],
+    ["as a withdraw without its one yoctoNEAR", { methodName: "withdraw", deposit: 0n, args: { amount: "1" } }],
+    ["as a withdraw to someone else", { methodName: "withdraw", deposit: 1n, args: { amount: "1", receiver_id: "mallory.testnet" } }],
   ])("refuses a transfer %s", async (_, spec) => {
     const delegate = verifySignedDelegate((await signDelegate(ada, spec)).base64);
     expect(() => checkPolicy(policy, delegate)).toThrow(PolicyError);
@@ -97,6 +99,7 @@ describe("checkPolicy", () => {
       { methodName: "payout", args: { ...PAYOUT_ARGS, amount: 50_000_000 } },
     ],
     ["a vault order release", { methodName: "release_order", args: { order_id: "po_1" } }],
+    ["a withdraw to the user's own account", { methodName: "withdraw", deposit: 1n, args: { amount: "1000000" } }],
     [
       "an agent policy",
       {

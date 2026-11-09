@@ -273,6 +273,7 @@ export async function createPayout(unit: Unit, deps: PayoutDeps, userId: string,
     asset,
     prepared,
     recipient: { institutionCode: input.account.bank, accountNumber: input.account.number, accountName },
+    ...(options.agentId ? { agentId: options.agentId } : {}),
   });
 
   return unit(async (tx) => {
@@ -334,6 +335,7 @@ interface OpenInput {
   asset: Asset;
   prepared: Prepared;
   recipient: { institutionCode: string; accountNumber: string; accountName: string };
+  agentId?: string;
 }
 
 const countryFor = (currency: string) => COUNTRY[currency as keyof typeof COUNTRY];
@@ -435,6 +437,7 @@ async function openHop(
       amount: deposit.units,
       expiresAtNs: BigInt(deadline.getTime()) * 1_000_000n,
       corridor: `${input.corridor.country}-${input.corridor.currency}-${input.corridor.payoutType}`,
+      ...(input.agentId ? { agentId: input.agentId } : {}),
     });
   } catch {
     // The reservation was committed first, so a refused registration must give the funds back.
