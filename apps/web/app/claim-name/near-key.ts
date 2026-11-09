@@ -57,7 +57,7 @@ function encodeBase58(bytes: Uint8Array): string {
 }
 
 async function checksum(bytes: Uint8Array): Promise<Uint8Array> {
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  const digest = await crypto.subtle.digest("SHA-256", new Uint8Array(bytes));
   return new Uint8Array(digest).slice(0, CHECKSUM_LENGTH);
 }
 
@@ -74,7 +74,7 @@ async function importPrivateKey(secret: Uint8Array, publicBytes: Uint8Array): Pr
     false,
     ["sign"],
   );
-  const publicKey = await crypto.subtle.importKey("raw", publicBytes, "Ed25519", false, ["verify"]);
+  const publicKey = await crypto.subtle.importKey("raw", new Uint8Array(publicBytes), "Ed25519", false, ["verify"]);
   const challenge = crypto.getRandomValues(new Uint8Array(KEY_LENGTH));
   const signature = await crypto.subtle.sign("Ed25519", privateKey, challenge);
   if (!(await crypto.subtle.verify("Ed25519", publicKey, signature, challenge))) {
