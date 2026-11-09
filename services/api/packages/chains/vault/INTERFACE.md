@@ -150,11 +150,14 @@ Amounts are USDC base units as U128 strings. Timestamps are nanoseconds as U64 s
 
 | Method | Caller | Effect | Refused when |
 | --- | --- | --- | --- |
-| `register_order({ order_id, payer, deposit_address, amount, expires_at_ns, corridor })` | Registration account | Moves `amount` from the payer's `available` to `reserved`; order becomes `registered` | not the registration account; duplicate id; amount 0; insufficient available; expiry in the past or more than `MAX_ORDER_TTL` ahead |
-| `payout({ order_id })` | The payer, or an agent account the payer registered (`predecessor_account_id`), directly or by meta transaction through the relayer | Checks the agent's policy when the caller is an agent; transfers `amount` to `deposit_address`; order becomes `executed` | not the payer or one of its agents; not `registered`; expired; over the agent's per-payout cap, daily cap or corridor list |
+| `register_order({ order_id, payer, deposit_address, amount, expires_at_ns, corridor, agent_id? })` | Registration account | Moves `amount` from the payer's `available` to `reserved`; order becomes `registered`. With `agent_id`, that one agent may pay it; without, only the payer may | not the registration account; duplicate id or one starting `withdraw:`; amount 0; insufficient available; expiry in the past or more than `MAX_ORDER_TTL` ahead; `agent_id` is the payer |
+| `payout({ order_id })` | The payer, or the agent the order was registered for, holding a policy from the payer (`predecessor_account_id`), directly or by meta transaction through the relayer | Checks the agent's policy when the caller is an agent; transfers `amount` to `deposit_address`; order becomes `executed` | not the payer or the order's agent (`AGENT_NOT_BOUND`); not `registered`; expired; over the agent's per-payout cap, daily cap or corridor list |
 | `set_agent({ agent_id, per_payout_cap, daily_cap, corridors })` **new** | The payer | Creates or replaces the policy of `agent_id` for the caller | caps 0; `agent_id` already an agent of another payer |
 | `remove_agent({ agent_id })` **new** | The payer | Deletes the policy; the agent can no longer pay | no such agent for the caller |
-| `release_order({ order_id })` **new** | Registration account at any time, or the payer after expiry | Returns `reserved` to `available`; order becomes `released` | not `registered`; payer calling before expiry |
+| `release_order({ order_id })` | Registration account or owner at any time, or anyone once the order has expired | Returns `reserved` to `available`; order becomes `released` | not `registered`; anyone else calling before expiry |
+| `withdraw({ amount })` **new** | The user, with 1 yoctoNEAR, directly or through the relayer | Sends the user's own `available` USDC to their account. Reserved while in flight, then committed, or returned if the transfer fails | amount 0 or above `available`; a withdraw already in flight (`WITHDRAW_IN_PROGRESS`); less than 60 Tgas |
+| `set_payout_timeout({ payout_timeout })` | Owner | Sets how long an executing payout waits before it can be resolved | outside 10 minutes to 7 days (`PAYOUT_TIMEOUT_OUT_OF_RANGE`) |
+| `resolve_stuck_payout({ order_id, transferred })` | Owner either way; registration account only with `transferred: true` | Settles a payout whose callback never ran, after the timeout | before the timeout; not executing |
 | `set_status({ order_id, status, refs })` | Registration account | Writes the receipt status and merges in new references | transition not in the table below; changing an existing ref |
 | `recredit({ order_id, amount })` | Registration account | Credits `amount` back to the payer's `available` from the unattributed balance; status becomes `refunded` | not `executed`; status not `refunding`; already re-credited; amount 0; amount above the order amount; amount above the unattributed balance |
 
@@ -218,3 +221,8 @@ Function-call keys cannot attach a deposit, so the registration key cannot pay f
 2. Do you accept `release_order` and the 1 hour `MAX_ORDER_TTL`?
 3. Who funds order storage, and are final orders deleted?
 4. Testnet account and deployment date (needed by 6 November), and the wasm for local Docker Compose.
+
+## Review fixes (November 2026)
+
+The contract now emits `withdrawn`, `withdraw_failed`, `payout_failed`, `payout_resolved`, `payout_timeout_set` and `agent_spend_reversed`, and `events.ts` reads all of them. `createPayout` passes the paying agent's account as `agent_id`, so agent and cash-out-on-arrival payouts keep working once orders are bound. The relayer allows `withdraw` with exactly one yoctoNEAR and only an `amount`.
+
