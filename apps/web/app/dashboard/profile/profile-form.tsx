@@ -54,6 +54,11 @@ export function ProfileForm() {
             className="mt-2 h-11 w-full rounded-lg border border-zinc-200 bg-zinc-50 px-3 text-sm font-normal"
           />
         </label>
+        {account.data.near_account && (
+          <Link href="/claim-name" className="text-sm font-semibold underline">
+            Check or restore your NEAR signing key
+          </Link>
+        )}
         <label className="text-xs font-semibold">
           Display name
           <input
