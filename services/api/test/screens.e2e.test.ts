@@ -220,7 +220,7 @@ describe.skipIf(!enabled)("the app's activity, agents, requests and settings", (
     await fund(frank.account, 100_000_000n);
 
     const quote = (await send("POST", "/v1/quotes", { token: "usdc", currency: "ngn", amount: "50.00", source_chain: "base" }, frank.headers)).json();
-    const payout = (await send("POST", "/v1/payouts", { quote_id: quote.quote_id, account: { bank: "058", number: "0123456789" }, refund_address: frank.account }, frank.headers)).json();
+    const payout = (await send("POST", "/v1/payouts", { quote_id: quote.quote_id, account: { bank: "058", number: "0123456789" }, refund_address: "0x1111111111111111111111111111111111111111" }, frank.headers)).json();
 
     const deposit = (await send("POST", "/v1/deposits", { token: "usdc", chain: "solana", amount: "20" }, frank.headers)).json();
     await landDeposit(frank.headers, deposit, 20_000_000n);
@@ -256,7 +256,7 @@ describe.skipIf(!enabled)("the app's activity, agents, requests and settings", (
   it("shows a payout's public receipt to anyone, with the account holder masked", async () => {
     const frank = await holder("receipt");
     const quote = (await send("POST", "/v1/quotes", { token: "usdc", currency: "ngn", amount: "50.00", source_chain: "base" }, frank.headers)).json();
-    const payout = (await send("POST", "/v1/payouts", { quote_id: quote.quote_id, account: { bank: "058", number: "0123456789" }, refund_address: frank.account }, frank.headers)).json();
+    const payout = (await send("POST", "/v1/payouts", { quote_id: quote.quote_id, account: { bank: "058", number: "0123456789" }, refund_address: "0x1111111111111111111111111111111111111111" }, frank.headers)).json();
     const receipt = await get(`/v1/receipts/${payout.payout_id}`);
     expect(receipt.statusCode, receipt.body).toBe(200);
     expect(receipt.json()).toMatchObject({ payout_id: payout.payout_id, account_masked: "D*** O*** ···6789", institution: "058" });

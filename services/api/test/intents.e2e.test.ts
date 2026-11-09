@@ -23,6 +23,7 @@ const enabled = /@(localhost|127\.0\.0\.1)[:/]/.test(process.env.DATABASE_URL ??
 const USDC = "usdc.test.near";
 const PAYCREST_ADDRESS = "0x76b4c56085ed136a8744d52be956396624a730e8";
 const ACCOUNT = { bank: "058", number: "0123456789" };
+const BASE_REFUND = "0x2222222222222222222222222222222222222222";
 
 describe.skipIf(!enabled)("paying a bank account from the vault through NEAR Intents", () => {
   if (!enabled) {
@@ -32,7 +33,7 @@ describe.skipIf(!enabled)("paying a bank account from the vault through NEAR Int
 
   const database = createDatabase();
   const unit = unitOf(database);
-  const config = loadConfig();
+  const config = { ...loadConfig(), providerRefundAddresses: { base: BASE_REFUND } as Partial<Record<string, string>> };
   const links: string[] = [];
   const sender: EmailSender = { sendSignInLink: async (_to, link) => void links.push(link) };
   const suffix = randomBytes(3).toString("hex");
@@ -49,6 +50,7 @@ describe.skipIf(!enabled)("paying a bank account from the vault through NEAR Int
     status: (address, memo, options) => rawClient.status(address, memo, options),
     async quote(input, options) {
       if (!input.dry && trouble.failQuote) throw new OneClickError("quote", "unavailable", "simulated outage");
+      if (!input.dry) swapRefunds.push(input.refundTo);
       const quote = await rawClient.quote(input, options);
       if (input.dry || !trouble.spike) return quote;
       return { ...quote, amountIn: (quote.amountIn * 102n) / 100n, minAmountIn: (quote.minAmountIn * 102n) / 100n };
@@ -56,6 +58,8 @@ describe.skipIf(!enabled)("paying a bank account from the vault through NEAR Int
   };
 
   const orders: string[] = [];
+  const providerRefunds: string[] = [];
+  const swapRefunds: string[] = [];
   const base = sandboxAdapters()[0] as ProviderAdapter;
   // Accepts USDC on Base only, as Paycrest does, and hands back a Base deposit address that is valid for 15 minutes.
   const paycrest: ProviderAdapter = {
@@ -65,6 +69,7 @@ describe.skipIf(!enabled)("paying a bank account from the vault through NEAR Int
     capabilities: () => ({ ...base.capabilities(), provider: "paycrest", sources: [{ asset: "USDC", chain: "base" }] }),
     async createOrder(request: CreateOrderRequest) {
       orders.push(request.payoutId);
+      providerRefunds.push(request.refundAddress);
       const created = await base.createOrder(request);
       return {
         ...created,
@@ -269,5 +274,32 @@ describe.skipIf(!enabled)("paying a bank account from the vault through NEAR Int
     const reply = await pay(user.headers, `k-${suffix}-nameless`, quoted.quote_id);
     expect(reply.statusCode).toBe(400);
     expect(reply.json().error.code).toBe("invalid_request");
+  }, 60_000);
+
+  it("gives the provider a refund address on Base and the swap a refund to the vault on NEAR", async () => {
+    reset();
+    const user = await holder("refunds", 100_000_000n);
+    const quoted = await quote(user.headers);
+    const reply = await pay(user.headers, `k-${suffix}-refunds`, quoted.quote_id);
+    expect(reply.statusCode, reply.body).toBe(201);
+    expect(providerRefunds.at(-1)).toBe(BASE_REFUND);
+    expect(swapRefunds.at(-1)).toBe(config.vaultAccount);
+  }, 60_000);
+
+  it("refuses before any provider order exists when there is no refund address on the provider's network", async () => {
+    reset();
+    const user = await holder("norefund", 100_000_000n);
+    const quoted = await quote(user.headers);
+    const before = orders.length;
+    config.providerRefundAddresses = {};
+    try {
+      const reply = await pay(user.headers, `k-${suffix}-norefund`, quoted.quote_id);
+      expect(reply.statusCode).toBe(422);
+      expect(reply.json().error.code).toBe("route_unavailable");
+    } finally {
+      config.providerRefundAddresses = { base: BASE_REFUND };
+    }
+    expect(orders.length).toBe(before);
+    expect(await vault.getBalance(user.account)).toMatchObject({ available: 100_000_000n, reserved: 0n });
   }, 60_000);
 });
