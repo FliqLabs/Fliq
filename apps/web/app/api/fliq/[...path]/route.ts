@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { CORRIDORS } from "../../../lib/corridors";
 
 const API_BASE = process.env.FLIQ_API_BASE_URL ?? "https://api-production-54e10.up.railway.app/v1";
 const ACCESS_COOKIE = "fliq_access";
@@ -15,9 +16,7 @@ const publicRoutes = new Set([
   "POST auth/email-links",
   "POST auth/email-links/verify",
   "GET institutions",
-  "GET rates/usdc/ngn",
-  "GET rates/usdc/ngn/providers",
-  "GET rates/usdc/ngn/history",
+  ...CORRIDORS.flatMap(({ code }) => [`GET rates/usdc/${code}`, `GET rates/usdc/${code}/providers`, `GET rates/usdc/${code}/history`]),
 ]);
 
 const protectedRoutes = new Set([

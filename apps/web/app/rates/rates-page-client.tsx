@@ -3,10 +3,12 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { SiteHeader } from "../../components/site-header";
-import { SiteFooter } from "../../components/site-footer";
-import { siteContainer } from "../../components/site-container";
-import { fliqApi, ApiError } from "../../lib/fliq-api";
+import { SiteHeader } from "../components/site-header";
+import { SiteFooter } from "../components/site-footer";
+import { siteContainer } from "../components/site-container";
+import { fliqApi, ApiError } from "../lib/fliq-api";
+import { type Corridor, moneyFormatter, pairTitle, withTimeout } from "../lib/corridors";
+import { CorridorCards, CurrencySwitcher } from "./corridor-picker";
 
 /* -------------------------------------------------------
    TYPES
@@ -77,55 +79,14 @@ type RateHistory = {
   points: HistoryPoint[];
 };
 
-type Corridor = {
-  pair: string;
-  rate: string;
-  provider: string;
-};
-
-/* -------------------------------------------------------
-   MOCK DATA
-   These values come from the Figma design reference.
-   They are NOT live provider quotes or historical data.
-------------------------------------------------------- */
-
 /* Text for values the live rate has not filled in yet. */
 const EMPTY = "-";
-
-const MOCK_CORRIDORS: Corridor[] = [
-  {
-    pair: "USDC to KES M-Pesa",
-    rate: "KSh 129.40",
-    provider: "Busha · best of 2",
-  },
-  {
-    pair: "USDT to NGN bank",
-    rate: "₦1,374.90",
-    provider: "Paycrest · best of 3",
-  },
-  {
-    pair: "USDC to NGN OPay",
-    rate: "₦1,375.10",
-    provider: "Paycrest · best of 2",
-  },
-];
 
 /* -------------------------------------------------------
    FORMATTERS
 ------------------------------------------------------- */
 
-const naira = new Intl.NumberFormat("en-NG", {
-  style: "currency",
-  currency: "NGN",
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
-
-function formatNaira(value: number) {
-  return naira.format(value);
-}
-
-function formatTime(value: string) {
+function formatTime(value: string, corridor: Corridor) {
   const date = new Date(value);
 
   if (Number.isNaN(date.getTime())) return "Time unavailable";
@@ -135,7 +96,7 @@ function formatTime(value: string) {
     minute: "2-digit",
     second: "2-digit",
     hour12: false,
-    timeZone: "Africa/Lagos",
+    timeZone: corridor.timeZone,
   }).format(date);
 }
 
@@ -143,15 +104,18 @@ function providerName(value: string) {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
-function formatNairaOrEmpty(value: number | undefined) {
-  return value === undefined ? EMPTY : formatNaira(value);
+function formatMoneyOrEmpty(format: (value: number) => string, value: number | undefined) {
+  return value === undefined ? EMPTY : format(value);
 }
 
-/* The rates endpoint is in the spec but not live yet: a 404 or an
-   unreachable API means "coming soon", not a broken page. */
-function isRateUnavailable(error: unknown) {
-  if (!(error instanceof ApiError)) return true;
-  return error.status === 404 || error.status >= 500;
+/* A corridor the API does not pay yet answers 400, 404 or 422: that reads as "coming soon", not as a broken
+   page. A timeout or a server error on a live corridor is a temporary outage. */
+function isCorridorNotOffered(error: unknown) {
+  return error instanceof ApiError && [400, 404, 422].includes(error.status);
+}
+
+function isRetryable(error: unknown) {
+  return !(error instanceof ApiError) || error.status >= 500;
 }
 
 function relativeDifference(rate: number, reference: number) {
@@ -193,14 +157,6 @@ function SectionHeading({
   );
 }
 
-function PreviewLabel() {
-  return (
-    <span className="inline-flex rounded-full border border-[#5b4d31] bg-[#332a1b] px-2.5 py-1 text-[9px] font-semibold uppercase tracking-wider text-[#e7c98a]">
-      Design preview
-    </span>
-  );
-}
-
 function Panel({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
     <section className={`rounded-xl border border-[#303030] bg-[#141414] ${className}`}>{children}</section>
@@ -221,18 +177,19 @@ function Metric({ label, value, detail }: { label: string; value: string; detail
    RATE HISTORY
 ------------------------------------------------------- */
 
-function historyLabel(value: string, range: HistoryRange) {
-  return new Intl.DateTimeFormat("en-NG", {
-    timeZone: "Africa/Lagos",
+function historyLabel(value: string, range: HistoryRange, corridor: Corridor) {
+  return new Intl.DateTimeFormat(corridor.locale, {
+    timeZone: corridor.timeZone,
     ...(range === "24h" ? { hour: "2-digit", minute: "2-digit" } : { month: "short", day: "numeric" }),
   }).format(new Date(value));
 }
 
-function RateChart() {
+function RateChart({ corridor, format }: { corridor: Corridor; format: (value: number) => string }) {
   const [range, setRange] = useState<HistoryRange>("24h");
   const { data, isPending, isError, error } = useQuery({
-    queryKey: ["rate-history", "usdc", "ngn", range],
-    queryFn: () => fliqApi<RateHistory>("rates/usdc/ngn/history?range=" + range),
+    queryKey: ["rate-history", "usdc", corridor.code, range],
+    queryFn: () => fliqApi<RateHistory>(`rates/usdc/${corridor.code}/history?range=${range}`, withTimeout()),
+    retry: (failureCount, err) => isRetryable(err) && failureCount < 1,
     staleTime: 60_000,
     refetchInterval: 60_000,
   });
@@ -293,7 +250,7 @@ function RateChart() {
       )}
       {isError && (
         <p role="alert" className="mt-8 text-sm text-[#d6a36c]">
-          {error instanceof ApiError ? error.message : "Could not load rate history."}
+          {error instanceof ApiError ? error.message : "Rate history unavailable right now."}
         </p>
       )}
       {data?.points.length === 0 && (
@@ -313,7 +270,7 @@ function RateChart() {
               viewBox={"0 0 " + width + " " + height}
               className="h-auto w-full"
               role="img"
-              aria-label="USDC to NGN rate history"
+              aria-label={`USDC to ${corridor.currency} rate history`}
             >
               {Array.from({ length: 5 }, (_, index) => min + ((max - min) * index) / 4).map((value) => (
                 <g key={value}>
@@ -345,14 +302,14 @@ function RateChart() {
                 .filter((index, position, indices) => indices.indexOf(index) === position)
                 .map((index) => (
                   <text key={index} x={x(index)} y={height - 8} textAnchor="middle" fill="#777" fontSize="10">
-                    {historyLabel(points[index].time, range)}
+                    {historyLabel(points[index].time, range, corridor)}
                   </text>
                 ))}
             </svg>
           </div>
           <div className="mt-4 grid grid-cols-2 gap-3 border-t border-[#303030] pt-4">
-            <Metric label="Period low" value={formatNaira(low)} />
-            <Metric label="Period high" value={formatNaira(high)} />
+            <Metric label="Period low" value={format(low)} />
+            <Metric label="Period high" value={format(high)} />
           </div>
         </>
       )}
@@ -362,13 +319,15 @@ function RateChart() {
 
 /* -------------------------------------------------------
    PROVIDER COMPARISON
-   Displays live quotes from GET /rates/usdc/ngn/providers.
+   Displays live quotes from GET /rates/usdc/{currency}/providers.
 ------------------------------------------------------- */
 
-function ProviderTable({ board, isPending, isError }: {
+function ProviderTable({ board, isPending, isError, corridor, format }: {
   board?: RateBoard;
   isPending: boolean;
   isError: boolean;
+  corridor: Corridor;
+  format: (value: number) => string;
 }) {
   const providers = board?.providers ?? [];
 
@@ -387,7 +346,7 @@ function ProviderTable({ board, isPending, isError }: {
       {isPending ? (
         <p className="border-t border-[#303030] p-6 text-sm text-[#888]">Loading provider quotes…</p>
       ) : isError ? (
-        <p className="border-t border-[#303030] p-6 text-sm text-[#888]">Provider quotes are temporarily unavailable.</p>
+        <p className="border-t border-[#303030] p-6 text-sm text-[#888]">Provider quotes unavailable right now.</p>
       ) : providers.length === 0 ? (
         <p className="border-t border-[#303030] p-6 text-sm text-[#888]">No provider quotes are available for this corridor yet.</p>
       ) : (
@@ -408,14 +367,14 @@ function ProviderTable({ board, isPending, isError }: {
                 <tr key={provider.provider} className="border-b border-[#292929] last:border-0">
                   <td className="px-5 py-5 text-sm font-semibold text-white">{providerName(provider.provider)}</td>
                   <td className="px-4 py-5 text-xs tabular-nums text-[#ccc]">
-                    {provider.rate === null ? EMPTY : formatNaira(provider.rate)}
+                    {provider.rate === null ? EMPTY : format(provider.rate)}
                   </td>
                   <td className="px-4 py-5 text-xs text-[#ccc]">
-                    {provider.fee === null ? EMPTY : formatNaira(provider.fee / 100)}
+                    {provider.fee === null ? EMPTY : format(provider.fee / 100)}
                     {provider.fee_percent === null ? "" : ` (${provider.fee_percent}%)`}
                   </td>
                   <td className="px-4 py-5 text-xs font-semibold tabular-nums text-white">
-                    {provider.receive === null ? EMPTY : formatNaira(provider.receive)}
+                    {provider.receive === null ? EMPTY : format(provider.receive)}
                   </td>
                   <td className="px-4 py-5">
                     <span className={`rounded-full px-2 py-1 text-[9px] ${
@@ -431,7 +390,7 @@ function ProviderTable({ board, isPending, isError }: {
                       <p className="mt-1 max-w-36 text-[9px] text-[#777]">{provider.not_offered_reason}</p>
                     )}
                   </td>
-                  <td className="px-4 py-5 text-xs text-[#888]">{formatTime(provider.updated_at)}</td>
+                  <td className="px-4 py-5 text-xs text-[#888]">{formatTime(provider.updated_at, corridor)}</td>
                 </tr>
               ))}
             </tbody>
@@ -440,7 +399,7 @@ function ProviderTable({ board, isPending, isError }: {
       )}
 
       <p className="border-t border-[#303030] p-5 text-[10px] text-[#666]">
-        Provider rates and payout amounts are supplied by Fliq&apos;s rate board. Fees are shown in NGN.
+        Provider rates and payout amounts are supplied by Fliq&apos;s rate board. Fees are shown in {corridor.currency}.
       </p>
     </Panel>
   );
@@ -451,7 +410,7 @@ function ProviderTable({ board, isPending, isError }: {
    Uses the public after-fee rate for an indicative estimate.
 ------------------------------------------------------- */
 
-function ConversionPanel({ rate }: { rate?: number }) {
+function ConversionPanel({ rate, corridor, format }: { rate?: number; corridor: Corridor; format: (value: number) => string }) {
   const [amount, setAmount] = useState("50");
 
   const parsedAmount = Number(amount);
@@ -499,15 +458,15 @@ function ConversionPanel({ rate }: { rate?: number }) {
       </div>
 
       <div className="mt-6 rounded-xl border border-[#303030] bg-[#111] p-5">
-        <p className="text-xs text-[#888]">Estimated bank payout</p>
+        <p className="text-xs text-[#888]">Estimated {corridor.method} payout</p>
         <p className="mt-3 text-3xl font-semibold tracking-tight text-white">
-          {estimatedReceive === undefined ? EMPTY : formatNaira(estimatedReceive)}
+          {estimatedReceive === undefined ? EMPTY : format(estimatedReceive)}
         </p>
         <p className="mt-2 text-xs text-[#888]">
           {rate === undefined
             ? "Waiting for the live rate."
             : validAmount
-              ? `Based on ${formatNaira(rate)} per USDC.`
+              ? `Based on ${format(rate)} per USDC.`
               : "Enter a valid USDC amount to calculate."}
         </p>
       </div>
@@ -516,7 +475,7 @@ function ConversionPanel({ rate }: { rate?: number }) {
         <div className="flex justify-between gap-4 text-sm">
           <span className="text-[#888]">Exchange rate</span>
           <span className="tabular-nums text-white">
-            {rate === undefined ? EMPTY : formatNaira(rate)}
+            {rate === undefined ? EMPTY : format(rate)}
           </span>
         </div>
         <div className="flex justify-between gap-4 text-sm">
@@ -542,14 +501,14 @@ function ConversionPanel({ rate }: { rate?: number }) {
         </Link>
         <button
           onClick={() =>
-            navigator.clipboard?.writeText("https://fliq.cash/rates/ngn")
+            navigator.clipboard?.writeText(`https://fliq.cash/rates/${corridor.code}`)
           }
           className="rounded-lg border border-[#383838] px-4 py-3 text-xs text-white hover:bg-white/5"
         >
           Copy link
         </button>
         <a
-          href="https://twitter.com/intent/tweet?text=Compare%20USDC%20to%20NGN%20rates%20on%20fliq"
+          href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(`Compare USDC to ${corridor.currency} rates on fliq`)}&url=${encodeURIComponent(`https://fliq.cash/rates/${corridor.code}`)}`}
           target="_blank"
           rel="noreferrer"
           className="rounded-lg border border-[#383838] px-4 py-3 text-xs text-white hover:bg-white/5"
@@ -565,7 +524,10 @@ function ConversionPanel({ rate }: { rate?: number }) {
    MAIN PAGE
 ------------------------------------------------------- */
 
-export function RatesPageClient() {
+export function RatesPageClient({ corridor }: { corridor: Corridor }) {
+  const money = moneyFormatter(corridor);
+  const format = (value: number) => money.format(value);
+
   const {
     data: rate,
     isPending,
@@ -574,11 +536,11 @@ export function RatesPageClient() {
     dataUpdatedAt,
     refetch,
   } = useQuery({
-    queryKey: ["public-rate", "usdc", "ngn"],
-    queryFn: () => fliqApi<Rate>("rates/usdc/ngn"),
+    queryKey: ["public-rate", "usdc", corridor.code],
+    queryFn: () => fliqApi<Rate>(`rates/usdc/${corridor.code}`, withTimeout()),
     staleTime: 10_000,
     refetchInterval: (query) => (query.state.status === "error" ? 60_000 : 10_000),
-    retry: (failureCount, err) => !isRateUnavailable(err) && failureCount < 1,
+    retry: (failureCount, err) => isRetryable(err) && failureCount < 1,
   });
 
   const {
@@ -586,11 +548,11 @@ export function RatesPageClient() {
     isPending: providersPending,
     isError: providersError,
   } = useQuery({
-    queryKey: ["rate-board", "usdc", "ngn"],
-    queryFn: () => fliqApi<RateBoard>("rates/usdc/ngn/providers"),
+    queryKey: ["rate-board", "usdc", corridor.code],
+    queryFn: () => fliqApi<RateBoard>(`rates/usdc/${corridor.code}/providers`, withTimeout()),
     staleTime: 10_000,
     refetchInterval: 15_000,
-    retry: 1,
+    retry: (failureCount, err) => isRetryable(err) && failureCount < 1,
   });
 
   const liveRate = rate?.rate;
@@ -607,7 +569,7 @@ export function RatesPageClient() {
       ? relativeDifference(rate.rate, p2pRate)
       : null;
 
-  const comingSoon = !rate && isError && isRateUnavailable(error);
+  const comingSoon = !rate && isError && isCorridorNotOffered(error);
   const statusLine = rate
     ? `via ${providerName(rate.provider)}`
     : isPending
@@ -618,7 +580,7 @@ export function RatesPageClient() {
 
   return (
     <div className="min-h-screen bg-[#0b0b0b] text-white">
-      <SiteHeader activeHref="/rates/ngn" />
+      <SiteHeader activeHref="/rates" />
 
       <main className={`${siteContainer} pb-20 pt-28`}>
         {/* Breadcrumb */}
@@ -627,26 +589,28 @@ export function RatesPageClient() {
             Dashboard
           </Link>
           <span>/</span>
-          <Link href="/rates/ngn" className="hover:text-white">
+          <Link href="/rates" className="hover:text-white">
             Rates
           </Link>
           <span>/</span>
-          <span className="text-[#ccc]">USDC to NGN bank</span>
+          <span className="text-[#ccc]">{pairTitle(corridor)}</span>
         </div>
+
+        <CurrencySwitcher current={corridor.code} />
 
         {/* Heading */}
         <div className="mb-8 flex flex-wrap items-end justify-between gap-5">
           <div>
-            <Eyebrow>fliq rates / Nigeria</Eyebrow>
-            <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-[42px]">USDC to NGN bank</h1>
+            <Eyebrow>{`fliq rates / ${corridor.country}`}</Eyebrow>
+            <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-[42px]">{pairTitle(corridor)}</h1>
             <p className="mt-3 text-sm text-[#999]">
               You receive, after fees. Compare the best available payout route.
             </p>
           </div>
 
           <div className="text-xs text-[#777]">
-            <p>fliq.cash/rates/ngn</p>
-            <p className="mt-1">NGN · Nigerian naira</p>
+            <p>{`fliq.cash/rates/${corridor.code}`}</p>
+            <p className="mt-1">{`${corridor.currency} · ${corridor.currencyName}`}</p>
           </div>
         </div>
 
@@ -662,7 +626,7 @@ export function RatesPageClient() {
                 {liveRate === undefined ? (
                   <span className="text-[#555]">{comingSoon ? "Coming soon" : EMPTY}</span>
                 ) : (
-                  formatNaira(liveRate)
+                  format(liveRate)
                 )}
               </h2>
 
@@ -683,14 +647,14 @@ export function RatesPageClient() {
 
           <div className="mt-8 grid grid-cols-2 gap-6 border-t border-[#303030] pt-6 sm:grid-cols-4">
             <Metric
-              label="Official CBN NFEM close"
-              value={formatNairaOrEmpty(officialRate)}
+              label={`Official ${corridor.officialReference}`}
+              value={formatMoneyOrEmpty(format, officialRate)}
               detail={rate?.official?.source}
             />
 
             <Metric
-              label="P2P Bybit USDT/NGN median"
-              value={formatNairaOrEmpty(p2pRate)}
+              label={`P2P ${corridor.p2pReference}`}
+              value={formatMoneyOrEmpty(format, p2pRate)}
               detail={rate?.p2p?.source}
             />
 
@@ -702,8 +666,8 @@ export function RatesPageClient() {
 
             <Metric
               label="Last updated"
-              value={rate ? formatTime(rate.fetched_at) : EMPTY}
-              detail="Lagos time"
+              value={rate ? formatTime(rate.fetched_at, corridor) : EMPTY}
+              detail={corridor.cityTime}
             />
           </div>
 
@@ -711,11 +675,11 @@ export function RatesPageClient() {
             <p className="text-[10px] text-[#777]">
               {!rate
                 ? comingSoon
-                  ? "The public rates API is not live yet. This page fills in on its own once it is."
+                  ? `fliq does not pay out in ${corridor.currency} yet. This page fills in on its own once it does.`
                   : isPending
                     ? "Fetching the best after-fee rate."
-                    : "We could not load the live rate. It will retry on its own."
-                : `Automatically refreshed every 10 seconds · Updated ${formatTime(new Date(dataUpdatedAt).toISOString())}`}
+                    : "Rate unavailable right now. It will retry on its own."
+                : `Automatically refreshed every 10 seconds · Updated ${formatTime(new Date(dataUpdatedAt).toISOString(), corridor)}`}
             </p>
 
             <button onClick={() => refetch()} className="text-xs text-[#a594ff] hover:text-white">
@@ -727,7 +691,7 @@ export function RatesPageClient() {
             <p className="mt-3 text-xs text-[#d6a36c]">
               {error instanceof ApiError
                 ? error.message
-                : "The live rate endpoint is temporarily unavailable."}
+                : "Rate unavailable right now."}
             </p>
           )}
         </Panel>
@@ -736,8 +700,8 @@ export function RatesPageClient() {
         <div className="mb-12 grid gap-4 sm:grid-cols-2">
           <Panel className="p-5 sm:p-6">
             <Eyebrow>Official reference</Eyebrow>
-            <h3 className="mt-3 text-sm font-semibold text-white">CBN NFEM close</h3>
-            <p className="mt-4 text-2xl font-semibold tabular-nums">{formatNairaOrEmpty(officialRate)}</p>
+            <h3 className="mt-3 text-sm font-semibold text-white">{corridor.officialReference}</h3>
+            <p className="mt-4 text-2xl font-semibold tabular-nums">{formatMoneyOrEmpty(format, officialRate)}</p>
             <p className="mt-2 text-xs text-[#888]">
               {officialRate === undefined
                 ? "Official reference data is currently unavailable."
@@ -747,8 +711,8 @@ export function RatesPageClient() {
 
           <Panel className="p-5 sm:p-6">
             <Eyebrow>P2P reference</Eyebrow>
-            <h3 className="mt-3 text-sm font-semibold text-white">Bybit USDT/NGN median</h3>
-            <p className="mt-4 text-2xl font-semibold tabular-nums">{formatNairaOrEmpty(p2pRate)}</p>
+            <h3 className="mt-3 text-sm font-semibold text-white">{corridor.p2pReference}</h3>
+            <p className="mt-4 text-2xl font-semibold tabular-nums">{formatMoneyOrEmpty(format, p2pRate)}</p>
             <p className="mt-2 text-xs text-[#888]">
               {p2pRate === undefined
                 ? "P2P reference data is currently unavailable."
@@ -764,7 +728,7 @@ export function RatesPageClient() {
             title="Rate history"
             description="Best after-fee rates and provider spread across the selected period."
           />
-          <RateChart />
+          <RateChart corridor={corridor} format={format} />
         </div>
 
         {/* Provider table */}
@@ -780,12 +744,12 @@ export function RatesPageClient() {
                   : `${rateBoard?.providers.filter((provider) => provider.status === "live").length ?? 0} providers currently quoting. Availability updates automatically.`
             }
           />
-          <ProviderTable board={rateBoard} isPending={providersPending} isError={providersError} />
+          <ProviderTable board={rateBoard} isPending={providersPending} isError={providersError} corridor={corridor} format={format} />
         </div>
 
         {/* Conversion */}
         <div className="mb-12">
-          <ConversionPanel rate={liveRate} />
+          <ConversionPanel rate={liveRate} corridor={corridor} format={format} />
         </div>
 
         {/* API response */}
@@ -794,10 +758,10 @@ export function RatesPageClient() {
             <Eyebrow>For developers</Eyebrow>
             <h2 className="mt-3 text-xl font-semibold">One endpoint. One rate.</h2>
             <p className="mt-3 max-w-md text-sm leading-7 text-[#888]">
-              Retrieve the current USDC to NGN rate, provider and reference rates through the public fliq API.
+              {`Retrieve the current USDC to ${corridor.currency} rate, provider and reference rates through the public fliq API.`}
             </p>
             <p className="mt-5 inline-flex rounded-lg border border-[#303030] px-3 py-2 font-mono text-xs text-[#c5b8ff]">
-              GET /v1/rates/usdc/ngn
+              {`GET /v1/rates/usdc/${corridor.code}`}
             </p>
           </div>
 
@@ -825,29 +789,17 @@ export function RatesPageClient() {
           <SectionHeading
             eyebrow="Explore other markets"
             title="Other corridors"
-            description="More stablecoin-to-local-currency routes."
+            description="Live after-fee rates for every currency fliq pays out in."
           />
-
-          <div className="mb-4">
-            <PreviewLabel />
-          </div>
-          <div className="grid gap-3 md:grid-cols-3">
-            {MOCK_CORRIDORS.map((corridor) => (
-              <Panel key={corridor.pair} className="p-5">
-                <p className="text-sm font-semibold text-white">{corridor.pair}</p>
-                <p className="mt-4 text-xl font-semibold tabular-nums">{corridor.rate}</p>
-                <p className="mt-2 text-xs text-[#777]">{corridor.provider}</p>
-              </Panel>
-            ))}
-          </div>
+          <CorridorCards exclude={corridor.code} />
         </div>
 
         {/* Disclaimer */}
         <div className="border-t border-[#303030] pt-6">
           <p className="max-w-3xl text-[10px] leading-6 text-[#777]">
             Rates are quotes from licensed providers, polled every 10 seconds. Not financial advice. Official
-            reference published by FMDQ. P2P reference is a median of public ads. Provider comparison,
-            conversion and related corridor values are design previews until connected to verified API data.
+            references are shown when the API publishes them. P2P reference is a median of public ads. The
+            conversion is an estimate; the payout is fixed when a quote is requested.
           </p>
         </div>
       </main>

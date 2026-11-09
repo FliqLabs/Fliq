@@ -35,7 +35,7 @@ function Hero() {
         </p>
         <div className="mt-7 flex flex-wrap gap-2.5">
           <MarketingActionLink href="/create-workspace">Get started</MarketingActionLink>
-          <MarketingActionLink href="/rates/ngn" variant="secondary">
+          <MarketingActionLink href="/rates" variant="secondary">
             Explore rates
           </MarketingActionLink>
         </div>
