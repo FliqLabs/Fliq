@@ -158,7 +158,7 @@ function McpSetup() {
           <span className="text-zinc-500"> Give it Fliq.</span>
         </h2>
         <p className="mt-5 text-sm leading-6 text-zinc-400">
-          Fliq's MCP server gives compatible AI clients tools to quote
+          Fliq&apos;s MCP server gives compatible AI clients tools to quote
           cash-outs, verify bank accounts, create payments and track their
           status.
         </p>
