@@ -35,10 +35,10 @@ export function SiteHeader({ activeHref, brandClassName }: { activeHref?: string
             </Link>
           ))}
           <Link
-            href="/join-waitlist"
+            href="/create-workspace"
             className="rounded-xl bg-white px-4 py-2.5 font-semibold text-black transition-colors focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand"
           >
-            Join waitlist
+            Get started
           </Link>
         </nav>
       </div>

@@ -1,12 +1,47 @@
-import type { Metadata } from "next";
+"use client";
+
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { Suspense } from "react";
+import { useQuery } from "@tanstack/react-query";
 import type { Payout } from "../../payout-model";
 import { formatLocalAmount } from "../../payout-model";
-
-export const metadata: Metadata = { title: "Test payout sent | Fliq" };
+import { ApiError, fliqApi } from "../../../lib/fliq-api";
 
 export default function TestPayoutSentPage() {
-  return <TestPayoutSent payout={null} />;
+  return (
+    <Suspense fallback={<main className="py-16 text-center text-sm text-zinc-500">Loading payout…</main>}>
+      <SentPayoutData />
+    </Suspense>
+  );
+}
+
+function SentPayoutData() {
+  const payoutId = useSearchParams().get("payoutId");
+  const payout = useQuery({
+    queryKey: ["payout", payoutId],
+    queryFn: () => fliqApi<Payout>(`payouts/${encodeURIComponent(payoutId!)}`),
+    enabled: Boolean(payoutId),
+  });
+  if (!payoutId) return <TestPayoutSent payout={null} />;
+  if (payout.isPending)
+    return <main className="py-16 text-center text-sm text-zinc-500">Loading payout…</main>;
+  if (payout.error instanceof ApiError && payout.error.status === 401) {
+    return (
+      <main className="py-16 text-center">
+        <Link href="/sign-in" className="text-sm font-semibold underline">
+          Sign in to view this payout
+        </Link>
+      </main>
+    );
+  }
+  if (payout.isError)
+    return (
+      <main role="alert" className="py-16 text-center text-sm text-red-600">
+        {payout.error.message}
+      </main>
+    );
+  return <TestPayoutSent payout={payout.data} />;
 }
 
 export function TestPayoutSent({ payout }: { payout: Payout | null }) {
@@ -41,9 +76,9 @@ export function TestPayoutSent({ payout }: { payout: Payout | null }) {
       >
         ✓
       </div>
-      <h1 className="mt-5 text-center text-2xl font-semibold">Test payout sent</h1>
+      <h1 className="mt-5 text-center text-2xl font-semibold">Test payout created</h1>
       <p className="mt-2 text-center text-sm text-zinc-500">
-        The payout is being tracked in your sandbox workspace.
+        The payout is being tracked in your sandbox workspace. Follow its status below.
       </p>
       <section aria-label="Payout summary" className="mt-8 rounded-xl border border-zinc-200 p-6">
         <div className="flex items-start justify-between gap-4 border-b border-zinc-100 pb-5">

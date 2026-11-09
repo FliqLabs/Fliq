@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useRef } from "react";
-import { JoinWaitlistLink } from "../components/join-waitlist-link";
+import { MarketingActionLink } from "../components/marketing-action-link";
 
 const CARD_MAX_WIDTH = 1136;
 const CARD_HEIGHT = 440;
@@ -166,7 +166,7 @@ export function Finale() {
             A test key, a demo recipient, and a payout you can follow all the way.
           </p>
           <div className="mt-1 flex flex-wrap justify-center gap-2.5">
-            <JoinWaitlistLink />
+            <MarketingActionLink href="/create-workspace">Start in sandbox</MarketingActionLink>
           </div>
         </div>
       </div>

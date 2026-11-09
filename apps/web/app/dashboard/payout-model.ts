@@ -1,10 +1,18 @@
 export type PayoutState =
+  | "created"
+  | "provider_timeout"
+  | "awaiting_recon"
   | "awaiting_deposit"
   | "deposit_seen"
+  | "routing"
+  | "with_provider"
   | "paying_out"
   | "settled"
+  | "refunding"
   | "refused"
   | "refunded"
+  | "expired"
+  | "failed"
   | "not_received";
 
 export type Payout = {

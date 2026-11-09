@@ -34,6 +34,41 @@ export type PayoutSummary = {
 };
 
 export type PayoutList = { items: PayoutSummary[]; next_cursor: string | null };
+export type PayoutStats = {
+  timezone: string;
+  settled: { count: number; totals: { currency: string; amount: number }[] };
+  median_seconds_to_bank: number | null;
+  refused: { count: number; totals: { currency: string; amount: number }[] };
+};
+export type PublicRate = { rate: number };
+export type LiveAccess = { live_enabled: boolean; kyb_status: string };
+export type Usage = {
+  totals: {
+    requests: number;
+    succeeded: number;
+    failed: number;
+    rate_limited: number;
+    payouts_created: number;
+  };
+  rate_limit: { requests_per_minute: number; scope: string };
+};
+export type WebhookEndpoint = {
+  endpoint_id: string;
+  url: string;
+  status: "active" | "failing" | "disabled";
+  environment: "test" | "live";
+};
+export type WebhookEndpoints = { items: WebhookEndpoint[] };
+export type WebhookDelivery = {
+  delivery_id: string;
+  event_type: string;
+  payout_id: string | null;
+  status: "pending" | "delivered" | "failed";
+  response_status: number | null;
+  attempts: number;
+  created_at: string;
+};
+export type WebhookDeliveries = { items: WebhookDelivery[]; next_cursor: string | null };
 export type Quote = {
   quote_id: string;
   amount: string;
