@@ -14,6 +14,7 @@ import { ApiError, conflict, invalidRequest, notFound } from "./errors.js";
 import { hashOf, type Reply } from "./idempotency.js";
 import { institutionType } from "./institutions.js";
 import type { OneClickHops } from "./hop.js";
+import { isAddressOn } from "./refund-address.js";
 import { COUNTRY, developerIdFor, requestQuote, reviveHop, reviveProviderQuote, type QuoteDeps, type QuoteInput } from "./quotes.js";
 import { resolveName } from "./recipients.js";
 import { recoveryView } from "./recovery.js";
@@ -157,10 +158,9 @@ export async function createPayout(unit: Unit, deps: PayoutDeps, userId: string,
     const intents = route.kind === "intents";
     if (intents && !user?.nearAccount) throw invalidRequest("Claim a fliq name before paying from your vault.");
     const payer = user?.nearAccount ?? null;
-    // An Intents refund goes to the vault contract, which holds it unattributed until recredit returns it to the payer.
-    const refundAddress = intents ? deps.config.vaultAccount : (input.refund_address ?? payer);
-    if (!refundAddress) throw invalidRequest("refund_address is required when the account has no fliq name.");
-    return { developerId, quote, route, payer, refundAddress, intents, hop: reviveHop(route.providerQuote) };
+    const hop = reviveHop(route.providerQuote);
+    const refundAddress = intents ? intentsRefundAddress(deps.config, hop?.chain) : directRefundAddress(quote.sourceChain, input.refund_address, payer);
+    return { developerId, quote, route, payer, refundAddress, intents, hop };
   });
 
   const adapter = deps.adapters.find((candidate) => candidate.id === prepared.route.provider);
@@ -285,6 +285,26 @@ export async function createPayout(unit: Unit, deps: PayoutDeps, userId: string,
   });
 }
 
+// An Intents payout funds the provider on the hop's network, so the provider refunds there, to the address fliq keeps
+// on that network. The 1Click leg refunds on NEAR to the vault instead (see openHop). Without an address for the
+// network the payout is refused before any provider order exists.
+function intentsRefundAddress(config: Config, chain: string | undefined): string {
+  const address = chain ? config.providerRefundAddresses[chain] : undefined;
+  if (!chain || !address) {
+    console.warn(`[payouts] no provider refund address for ${chain ?? "an unknown network"}: set PROVIDER_REFUND_ADDRESS_${(chain ?? "").toUpperCase()}`);
+    throw new ApiError(422, "route_unavailable", "That route is not available right now. Try again.");
+  }
+  return address;
+}
+
+// A direct payout is funded on the quote's source network, so its refund address must be one there too.
+function directRefundAddress(chain: string, requested: string | undefined, payer: string | null): string {
+  const address = requested ?? (chain === "near" ? payer : null);
+  if (!address) throw invalidRequest(`refund_address is required for a payout funded on ${chain}.`);
+  if (!isAddressOn(chain, address)) throw invalidRequest(`refund_address must be an address on ${chain}.`);
+  return address;
+}
+
 type Prepared = {
   quote: { id: string; currency: string; tokenSymbol: string; sourceChain: string; mode: string; amountIn: bigint; amountOutMinor: bigint };
   route: { provider: string; amountIn: bigint };
@@ -339,6 +359,7 @@ async function openOrder(input: OpenInput): Promise<Opened> {
       refundAddress: prepared.refundAddress,
     });
   } catch (error) {
+    logProviderFailure(payoutId, error);
     return isDefiniteRejection(error) ? { kind: "rejected" } : { kind: "unknown" };
   }
 
@@ -355,6 +376,14 @@ async function openOrder(input: OpenInput): Promise<Opened> {
   }
   if (funding.kind !== "deposit_address") return { kind: "route_unavailable" };
   return openHop({ ...input, intents, hop: prepared.hop, order, funding });
+}
+
+// Enough to tell why a provider refused an order, without the recipient's account number or any credential.
+function logProviderFailure(payoutId: string, error: unknown): void {
+  if (!(error instanceof ProviderError)) return console.error(`[payouts] ${payoutId} createOrder failed: ${(error as Error)?.name ?? "error"}`);
+  const status = error.httpStatus === undefined ? "" : ` http ${error.httpStatus}`;
+  const reason = error.reason ? `: ${error.reason}` : "";
+  console.error(`[payouts] ${payoutId} ${error.provider} ${error.operation} ${error.kind}${status}${reason}`);
 }
 
 async function openHop(
@@ -375,7 +404,8 @@ async function openHop(
       to: hop.chain,
       amountOut: funding.units,
       recipient: funding.address,
-      refundTo: prepared.refundAddress,
+      // A swap that cannot complete is refunded on NEAR, into the vault, which holds it until recredit returns it.
+      refundTo: deps.config.vaultAccount,
       deadline,
     });
   } catch {
