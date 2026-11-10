@@ -3,11 +3,29 @@ name = "fliq-vault"
 version = "0.1.0"
 edition = "2024"
 publish = false
+# NEP-330 requires this; it is recorded in the deployed contract's source metadata.
+repository = "https://github.com/FliqLabs/Fliq"
 
 [workspace]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
+
+# NEP-330 reproducible build. The image is identified by its digest, not the tag, so two owners
+# building the same commit get the same bytes. The inner command says non-reproducible-wasm because
+# reproducibility comes from the pinned container, not from the build inside it.
+[package.metadata.near.reproducible_build]
+image = "sourcescan/cargo-near:0.22.0-rust-1.99.1"
+image_digest = "sha256:c9655eaf7436b90c87ea8b25739f91063032c5c30ba24cfeafe72c142943b5bb"
+passed_env = []
+container_build_command = [
+    "cargo",
+    "near",
+    "build",
+    "non-reproducible-wasm",
+    "--locked",
+    "--no-abi",
+]
 
 [features]
 default = []
