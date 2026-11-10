@@ -6,7 +6,7 @@ import { InsufficientVaultBalance, postEntry, reserveVault } from "../../../pack
 import { orderCommitted, vaultReleased } from "../../../packages/ledger/postings.js";
 import { MAX_ORDER_TTL_MS, type VaultClient } from "../../../packages/chains/vault/index.js";
 import { ProviderError } from "../../../packages/providers/errors.js";
-import type { Asset, Chain, CreatedOrder, FiatCurrency, ProviderAdapter } from "../../../packages/providers/types.js";
+import type { AccountCheck, Asset, Chain, CreatedOrder, FiatCurrency, ProviderAdapter } from "../../../packages/providers/types.js";
 import type { Config } from "./config.js";
 import { formatTokenAmount } from "./dashboard.js";
 import type { Db, Unit } from "./db.js";
@@ -174,7 +174,8 @@ export async function createPayout(unit: Unit, deps: PayoutDeps, userId: string,
     throw new ApiError(422, "account_not_found", "The bank could not find that account.");
   });
   if (!verification.found) throw new ApiError(422, "account_not_found", "The bank could not find that account.");
-  const accountName = resolveName(verification.accountName, input.account_name).name;
+  const bankName = verification.accountName ?? (await nameFromOtherProviders(deps.adapters, adapter, { institutionCode: input.account.bank, accountNumber: input.account.number, country }));
+  const accountName = resolveName(bankName, input.account_name).name;
 
   // Phase one: everything that must exist before the provider is called, committed together.
   const committed = await unit(async (tx) => {
@@ -267,6 +268,7 @@ export async function createPayout(unit: Unit, deps: PayoutDeps, userId: string,
     deps,
     unit,
     adapter,
+    userId,
     payoutId,
     providerQuote,
     corridor,
@@ -284,6 +286,17 @@ export async function createPayout(unit: Unit, deps: PayoutDeps, userId: string,
     });
     return reply;
   });
+}
+
+// Some providers can pay an account but cannot tell whose it is. A bank name is the same whichever provider reads it
+// (NIP in Nigeria), so another provider's answer confirms it; failing that, the sender types the name.
+async function nameFromOtherProviders(adapters: readonly ProviderAdapter[], chosen: ProviderAdapter, check: AccountCheck): Promise<string | null> {
+  for (const other of adapters) {
+    if (other === chosen) continue;
+    const found = await other.verifyAccount(check).catch(() => null);
+    if (found?.found && found.accountName) return found.accountName;
+  }
+  return null;
 }
 
 // An Intents payout funds the provider on the hop's network, so the provider refunds there, to the address fliq keeps
@@ -329,6 +342,7 @@ interface OpenInput {
   deps: PayoutDeps;
   unit: Unit;
   adapter: ProviderAdapter;
+  userId: string;
   payoutId: string;
   providerQuote: ReturnType<typeof reviveProviderQuote>;
   corridor: { country: ReturnType<typeof countryFor>; currency: FiatCurrency; payoutType: "bank" | "mobile_money" };
@@ -359,6 +373,7 @@ async function openOrder(input: OpenInput): Promise<Opened> {
       source: { asset, chain: (prepared.hop?.chain ?? prepared.quote.sourceChain) as Chain },
       recipient,
       refundAddress: prepared.refundAddress,
+      sender: { pseudonym: keyedHash(`sender:${input.userId}`, deps.config.hashKey).toString("hex") },
     });
   } catch (error) {
     logProviderFailure(payoutId, error);

@@ -6,7 +6,11 @@ import { PAYCREST_SIGNATURE_HEADER } from "./paycrest/paycrest";
 import { TRANSFI_SIGNATURE_HEADER } from "./transfi/transfi";
 import { WEBHOOK_FUND_SETTLED } from "./transfi/transfi.fixtures";
 
-const deps = { alert: () => undefined };
+// Adapters that load their catalogue at startup must not reach the network from a test.
+const deps = {
+  alert: () => undefined,
+  fetch: (async () => new Response("{}", { status: 503 })) as typeof fetch,
+};
 
 const PAYCREST: Env = { PAYCREST_API_KEY: "pk", PAYCREST_API_SECRET: "current" };
 const BITNOB: Env = {

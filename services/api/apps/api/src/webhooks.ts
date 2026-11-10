@@ -67,6 +67,46 @@ function targetState(order: OrderStatus): PayoutState | null {
 
 const ok = (outcome: string): Reply => ({ status: 200, body: { outcome } });
 
+export type StatusSignal = { payoutId: string; provider: string; eventId: string; order: OrderStatus; cause: string };
+
+// Moves a payout from a provider's order status, whether it came by webhook or by polling. The inbox makes a
+// status seen twice (a webhook and a poll, or a redelivery) apply once.
+export async function applyOrderStatus(tx: Db, signal: StatusSignal): Promise<string> {
+  const target = targetState(signal.order);
+  if (!target) return "ignored";
+  // An order expires only while it waits for its deposit. A provider that later expires a quote it already refunded
+  // (Bitnob after an underpayment) is describing the past, not a new state.
+  if (target === "expired") {
+    const { state } = await tx.payout.findUniqueOrThrow({ where: { id: signal.payoutId }, select: { state: true } });
+    if (state !== "awaiting_deposit") return "ignored";
+  }
+  const fresh = await tx.inbox.createMany({ data: [{ consumer: signal.provider, messageId: signal.eventId }], skipDuplicates: true });
+  if (fresh.count === 0) return "duplicate";
+
+  const result = await transitionPayout(tx, {
+    payoutId: signal.payoutId,
+    target,
+    cause: signal.cause,
+    detail: { event: signal.eventId, ...evidence(signal.order) },
+  });
+  if (result.outcome === "advanced" && target === "failed" && signal.order.status === "failed") {
+    await tx.payout.update({ where: { id: signal.payoutId }, data: { failureReason: `provider_${signal.order.code}` } });
+  }
+  if (result.outcome === "illegal") {
+    await tx.deadLetter.create({
+      data: {
+        id: newId("dlq"),
+        queue: `${signal.provider}_webhook`,
+        messageId: signal.eventId,
+        payload: { payoutId: signal.payoutId, state: result.state, target },
+        error: "transition_illegal",
+        attempts: 1,
+      },
+    });
+  }
+  return result.outcome;
+}
+
 export function createWebhookHandler({ unit, adapters, dataKey }: WebhookDeps) {
   return async (providerId: string, webhook: InboundWebhook): Promise<Reply> => {
     const adapter = adapters.find((candidate) => candidate.id === providerId);
@@ -107,41 +147,16 @@ export function createWebhookHandler({ unit, adapters, dataKey }: WebhookDeps) {
           OR: [...(event.providerOrderId ? [{ providerOrderId: event.providerOrderId }] : []), ...(event.reference ? [{ id: event.reference }] : [])],
         },
       });
-      // The provider can call back before our create-order transaction commits; a non-2xx makes it retry.
-      if (!payout) return { status: 404, body: { error: { code: "not_found", message: "Unknown order." } } };
+      // The provider can call back before our create-order transaction commits. 503 is the answer every provider
+      // retries; some (Bitnob) treat a 404 as final and never send the event again.
+      if (!payout) return { status: 503, body: { error: { code: "unavailable", message: "Unknown order. Retry later." } } };
 
-      const fresh = await tx.inbox.createMany({ data: [{ consumer: adapter.id, messageId: event.eventId }], skipDuplicates: true });
-      if (fresh.count === 0) return ok("duplicate");
-
-      const result = await transitionPayout(tx, {
-        payoutId: payout.id,
-        target,
-        cause: `${adapter.id}_webhook`,
-        detail: { event: event.eventId, ...evidence(event.order) },
-      });
-      if (result.outcome === "advanced" && target === "failed" && event.order.status === "failed") {
-        await tx.payout.update({
-          where: { id: payout.id },
-          data: { failureReason: `provider_${event.order.code}` },
-        });
-      }
+      const outcome = await applyOrderStatus(tx, { payoutId: payout.id, provider: adapter.id, eventId: event.eventId, order: event.order, cause: `${adapter.id}_webhook` });
       await tx.inboundEvent.updateMany({
         where: { provider: adapter.id, providerEventId: event.eventId },
-        data: { payoutId: payout.id, ...(result.outcome === "illegal" ? {} : { processedAt: new Date() }) },
+        data: { payoutId: payout.id, ...(outcome === "illegal" ? {} : { processedAt: new Date() }) },
       });
-      if (result.outcome === "illegal") {
-        await tx.deadLetter.create({
-          data: {
-            id: newId("dlq"),
-            queue: `${adapter.id}_webhook`,
-            messageId: event.eventId,
-            payload: { payoutId: payout.id, state: result.state, target },
-            error: "transition_illegal",
-            attempts: 1,
-          },
-        });
-      }
-      return ok(result.outcome);
+      return ok(outcome);
     });
   };
 }
