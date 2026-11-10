@@ -99,7 +99,8 @@ struct RootView: View {
             api: environment.deposits,
             vault: environment.vault,
             vaultAccount: environment.profile.name ?? "fliq-vault.testnet",
-            name: environment.profile.name
+            name: environment.profile.name,
+            network: environment.isLive ? .current : .mainnet
         )
     }
 

@@ -6,6 +6,8 @@ FLIQ_API_BASE_URL = https:/$()/api-production-54e10.up.railway.app/v1
 FLIQ_API_KEY =
 // Reads the device key's nonce and the latest block before a fliq-to-fliq payment is signed.
 FLIQ_NEAR_RPC_URL = https:/$()/rpc.testnet.near.org
+// testnet or mainnet. Receiving from other chains needs NEAR Intents, which only runs on mainnet.
+FLIQ_NEAR_NETWORK = testnet
 
 // Names are sub-accounts of the API's NEAR_ROOT_ACCOUNT. The fixtures use fliq.near.
 FLIQ_NAME_SUFFIX_api = .fliqaccount.testnet
