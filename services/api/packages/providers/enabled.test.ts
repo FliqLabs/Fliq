@@ -70,6 +70,15 @@ describe("enabled adapters", () => {
     );
   });
 
+  it("shows Busha's prices with no key, but needs a key and webhook secret to pay", () => {
+    const [prices] = enabledAdapters({ BUSHA_ENVIRONMENT: "production", BUSHA_PUBLIC_QUOTES: "1" }, deps);
+    expect(prices?.capabilities().funding).toEqual({ direct: false, hop: false });
+    expect(() => ids({ BUSHA_ENVIRONMENT: "production" })).toThrow(
+      "set BUSHA_SECRET_KEY, or BUSHA_PUBLIC_QUOTES=1",
+    );
+    expect(() => ids({ ...BUSHA, BUSHA_WEBHOOK_SECRET: "" })).toThrow("set BUSHA_WEBHOOK_SECRET");
+  });
+
   it("refuses an unknown environment", () => {
     expect(() => ids({ ...BUSHA, BUSHA_ENVIRONMENT: "live" })).toThrow(
       'Busha environment must be "sandbox" or "production"',
