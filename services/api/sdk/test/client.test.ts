@@ -71,25 +71,14 @@ describe("FliqClient", () => {
     });
   });
 
-  it("exposes the vault caps of a refusal and the fresh quote of quote_changed", async () => {
+  it("exposes the fresh quote of quote_changed", async () => {
     const { fliq } = client({
-      "POST /payouts": [
-        { status: 422, body: fixture("payout.refused.json") },
-        {
-          status: 409,
-          body: { error: { code: "quote_changed", message: "The rate moved. Nothing was sent." }, quote },
-        },
-      ],
+      "POST /payouts": {
+        status: 409,
+        body: { error: { code: "quote_changed", message: "The rate moved. Nothing was sent." }, quote },
+      },
     });
     const request = { quote_id: "q_31ad77e0", account: { bank: "058", number: "0123456789" } };
-    const refused = (await fliq.createPayout(request).catch((caught: unknown) => caught)) as FliqError;
-    expect(refused.code).toBe("vault_cap_exceeded");
-    expect(refused.refusal).toEqual({
-      attempted: 500000,
-      per_payout_cap: 50000,
-      daily_cap: 150000,
-      used_today: 30000,
-    });
     const changed = (await fliq.createPayout(request).catch((caught: unknown) => caught)) as FliqError;
     expect(changed.code).toBe("quote_changed");
     expect(changed.quote?.quote_id).toBe("q_31ad77e0");

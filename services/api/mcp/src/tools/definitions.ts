@@ -1,4 +1,4 @@
-// The four agent tools, defined once so the stdio package and the hosted server describe them identically.
+import { SOURCE_CHAINS } from "../config.js";
 
 export type JsonSchema = {
   type: "object" | "string";
@@ -27,10 +27,19 @@ export interface ToolDefinition {
   };
 }
 
-export type ToolName = "cashout_quote" | "cashout_verify_account" | "cashout_pay" | "cashout_status";
+export type Mode = "developer" | "agent";
+
+export type ToolName =
+  | "cashout_limits"
+  | "cashout_recipients"
+  | "cashout_quote"
+  | "cashout_verify_account"
+  | "cashout_pay"
+  | "cashout_status";
 
 const CURRENCIES = ["ngn", "kes", "ghs", "idr", "php"] as const;
 const COUNTRIES = ["ng", "ke", "gh", "id", "ph"] as const;
+const AGENT_CURRENCIES = ["ngn", "kes"] as const;
 
 const country: JsonSchema = {
   type: "string",
@@ -48,30 +57,53 @@ const number: JsonSchema = {
   pattern: "^[0-9]{6,20}$",
   description: "Account or mobile-money number, digits only.",
 };
+const amount: JsonSchema = {
+  type: "string",
+  pattern: "^[0-9]+(\\.[0-9]{1,6})?$",
+  description:
+    'Token amount as a decimal string, for example "50.00". With mode receive it is the local amount the recipient gets.',
+};
+const quoteMode: JsonSchema = {
+  type: "string",
+  enum: ["send", "receive"],
+  default: "send",
+  description: "send fixes what the sender pays, receive fixes what the recipient gets.",
+};
+const quoteId: JsonSchema = {
+  type: "string",
+  minLength: 1,
+  maxLength: 64,
+  description: "From cashout_quote.",
+};
 
-export const SERVER_INSTRUCTIONS = [
-  "fliq turns stablecoins into money in a bank or mobile-money account in Nigeria, Kenya, Ghana, Indonesia and the Philippines.",
-  "To pay someone: cashout_quote, then cashout_verify_account and read the returned name back to the person, then cashout_pay with the quote id, then cashout_status.",
-  "cashout_pay refuses a recipient that was not verified with cashout_verify_account in this session.",
-  "When an agent key is configured you pay on behalf of the person who set it up, within per-payout and daily caps that the vault contract enforces; a payout over the caps is refused by the contract and nothing moves.",
-  "Every tool returns a summary sentence you can repeat to the person as it is.",
-].join(" ");
+const READ_ONLY = { readOnlyHint: true, destructiveHint: false, openWorldHint: true };
+const PAYS = { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true };
 
-export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
+const status: ToolDefinition = {
+  name: "cashout_status",
+  title: "Where a payout is",
+  description: "The payout's state, its timeline, the transaction and bank references, and the receipt link.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      payout_id: { type: "string", minLength: 1, maxLength: 64, description: "From cashout_pay." },
+    },
+    required: ["payout_id"],
+    additionalProperties: false,
+  },
+  annotations: { title: "Payout status", ...READ_ONLY, idempotentHint: true },
+};
+
+const DEVELOPER_TOOLS: readonly ToolDefinition[] = [
   {
     name: "cashout_quote",
     title: "Quote a cash-out",
     description:
-      "Prices a payout across every licensed provider and returns the top three routes with what each one pays, its fees and how long it takes. The quote id is needed to pay and expires after expires_in seconds.",
+      "Prices a payout across every live provider and returns the top three routes with what each one pays, its fees and how long it takes. The quote id is needed to pay and expires after expires_in seconds.",
     inputSchema: {
       type: "object",
       properties: {
-        amount: {
-          type: "string",
-          pattern: "^[0-9]+(\\.[0-9]{1,6})?$",
-          description:
-            'Token amount as a decimal string, for example "50.00". With mode receive it is the local amount the recipient gets.',
-        },
+        amount,
         currency: { type: "string", enum: CURRENCIES, description: "Local currency the recipient gets." },
         token: {
           type: "string",
@@ -81,27 +113,17 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
         },
         source_chain: {
           type: "string",
-          maxLength: 32,
-          description: "Chain the funds start on. Defaults to near, where the fliq vault is.",
+          enum: SOURCE_CHAINS,
+          description:
+            "Chain the person sends the stablecoin from. Defaults to the server's FLIQ_SOURCE_CHAIN, or base.",
         },
         payout_type: { type: "string", enum: ["bank", "mobile_money"], default: "bank" },
-        mode: {
-          type: "string",
-          enum: ["send", "receive"],
-          default: "send",
-          description: "send fixes what the sender pays, receive fixes what the recipient gets.",
-        },
+        mode: quoteMode,
       },
       required: ["amount", "currency"],
       additionalProperties: false,
     },
-    annotations: {
-      title: "Quote a cash-out",
-      readOnlyHint: true,
-      destructiveHint: false,
-      idempotentHint: false,
-      openWorldHint: true,
-    },
+    annotations: { title: "Quote a cash-out", ...READ_ONLY, idempotentHint: false },
   },
   {
     name: "cashout_verify_account",
@@ -124,23 +146,17 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
       required: ["country", "bank", "number"],
       additionalProperties: false,
     },
-    annotations: {
-      title: "Verify an account",
-      readOnlyHint: true,
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: true,
-    },
+    annotations: { title: "Verify an account", ...READ_ONLY, idempotentHint: true },
   },
   {
     name: "cashout_pay",
     title: "Pay a quote to a verified account",
     description:
-      "Creates the payout for a quote. Refused unless the recipient was verified with cashout_verify_account in this session. With a vault agent key it pays from the vault within the contract's caps; without one it returns where to send the deposit.",
+      "Creates the payout for a quote and returns where to send the deposit. Refused unless the recipient was verified with cashout_verify_account in this session. Needs a refund address on the quote's source chain.",
     inputSchema: {
       type: "object",
       properties: {
-        quote_id: { type: "string", minLength: 1, maxLength: 64, description: "From cashout_quote." },
+        quote_id: quoteId,
         recipient: {
           type: "object",
           properties: { country, bank, number },
@@ -156,7 +172,8 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
         refund_address: {
           type: "string",
           maxLength: 128,
-          description: "Where a failed payout is refunded. Defaults to the person's fliq account.",
+          description:
+            "Where the stablecoin goes back if the payout fails: the person's own address on the quote's source chain. When left out, the server's FLIQ_REFUND_ADDRESS is used if it fits that chain.",
         },
         client_reference: {
           type: "string",
@@ -167,33 +184,99 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
       required: ["quote_id", "recipient"],
       additionalProperties: false,
     },
-    annotations: {
-      title: "Pay out",
-      readOnlyHint: false,
-      destructiveHint: true,
-      idempotentHint: true,
-      openWorldHint: true,
-    },
+    annotations: { title: "Pay out", ...PAYS },
+  },
+  status,
+];
+
+const AGENT_TOOLS: readonly ToolDefinition[] = [
+  {
+    name: "cashout_limits",
+    title: "This agent's limits",
+    description:
+      "What this agent may pay from its owner's fliq vault: the daily and per-payout caps, the allowed currencies, what is left today, and whether only saved accounts may be paid.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    annotations: { title: "Agent limits", ...READ_ONLY, idempotentHint: true },
   },
   {
-    name: "cashout_status",
-    title: "Where a payout is",
+    name: "cashout_recipients",
+    title: "The owner's saved accounts",
     description:
-      "The payout's state, its timeline, the transaction and bank references, and the receipt link.",
+      "The bank and mobile-money accounts the owner saved in fliq. cashout_pay pays one of them by its recipient_id.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    annotations: { title: "Saved accounts", ...READ_ONLY, idempotentHint: true },
+  },
+  {
+    name: "cashout_quote",
+    title: "Quote a cash-out from the vault",
+    description:
+      "Prices a payout of USDC from the owner's vault on NEAR and returns the top three routes. The quote id is needed to pay and expires after expires_in seconds.",
     inputSchema: {
       type: "object",
       properties: {
-        payout_id: { type: "string", minLength: 1, maxLength: 64, description: "From cashout_pay." },
+        amount: {
+          ...amount,
+          description:
+            'Dollars to send as a decimal string, for example "21.80". With mode receive it is the local amount the recipient gets.',
+        },
+        currency: {
+          type: "string",
+          enum: AGENT_CURRENCIES,
+          description: "Local currency the recipient gets.",
+        },
+        mode: quoteMode,
       },
-      required: ["payout_id"],
+      required: ["amount", "currency"],
       additionalProperties: false,
     },
-    annotations: {
-      title: "Payout status",
-      readOnlyHint: true,
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: true,
-    },
+    annotations: { title: "Quote a cash-out", ...READ_ONLY, idempotentHint: false },
   },
+  {
+    name: "cashout_pay",
+    title: "Pay a quote to a saved account",
+    description:
+      "Pays a quote from the owner's vault to one of their saved accounts. fliq refuses anything over this agent's limits before money moves; the agent then signs the vault payout and fliq relays it.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        quote_id: quoteId,
+        recipient_id: {
+          type: "string",
+          minLength: 1,
+          maxLength: 64,
+          description: "From cashout_recipients.",
+        },
+      },
+      required: ["quote_id", "recipient_id"],
+      additionalProperties: false,
+    },
+    annotations: { title: "Pay out", ...PAYS },
+  },
+  status,
 ];
+
+const SUMMARY_RULE = "Every tool returns a summary sentence you can repeat to the person as it is.";
+
+const DEVELOPER_INSTRUCTIONS = [
+  "fliq turns stablecoins into money in a bank or mobile-money account. Which currencies can be paid depends on the payout providers live at the moment; when none can pay one, cashout_quote answers no_route.",
+  "To pay someone: cashout_quote, then cashout_verify_account and read the returned name back to the person, then cashout_pay with the quote id, then cashout_status.",
+  "cashout_pay refuses a recipient that was not verified with cashout_verify_account in this session.",
+  "The person funds the payout by sending the stablecoin to the deposit address cashout_pay returns. If cashout_pay answers needs_refund_address, ask the person for their own address on the chain it names, where the money goes back if the payout fails, and call it again with refund_address.",
+  SUMMARY_RULE,
+].join(" ");
+
+const AGENT_INSTRUCTIONS = [
+  "You pay from the fliq vault on NEAR of the person who connected this agent, within the daily and per-payout limits they set.",
+  "cashout_limits shows the limits and what is left today; cashout_recipients lists the person's saved accounts.",
+  "To pay: cashout_quote, confirm the amount and the recipient with the person, then cashout_pay with the quote id and a recipient_id, then cashout_status.",
+  "A payout over a limit is refused before anything moves, and the vault checks the limits again on chain.",
+  SUMMARY_RULE,
+].join(" ");
+
+export function toolsFor(mode: Mode): readonly ToolDefinition[] {
+  return mode === "agent" ? AGENT_TOOLS : DEVELOPER_TOOLS;
+}
+
+export function instructionsFor(mode: Mode): string {
+  return mode === "agent" ? AGENT_INSTRUCTIONS : DEVELOPER_INSTRUCTIONS;
+}

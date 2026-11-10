@@ -4,9 +4,6 @@ import { base58Decode, base58Encode } from "./base58.js";
 const DELEGATE_PREFIX = 2 ** 30 + 366;
 const FUNCTION_CALL_ACTION = 2;
 const ED25519 = 0;
-const TGAS = 1_000_000_000_000n;
-// The vault forwards 30 Tgas to the USDC transfer and 20 Tgas to its callback; the relayer README asks for about 80.
-export const PAYOUT_GAS = 80n * TGAS;
 
 export interface AgentKey {
   accountId: string;
@@ -48,6 +45,18 @@ export async function agentKeyFrom(accountId: string, secretKey: string): Promis
     publicKey,
     sign: async (message) => new Uint8Array(await crypto.subtle.sign({ name: "Ed25519" }, key, message)),
   };
+}
+
+// A fresh key in the same format agentKeyFrom reads, for `fliq-mcp keygen`.
+export async function generateAgentKey(): Promise<{ secretKey: string; publicKey: string }> {
+  const pair = (await crypto.subtle.generateKey({ name: "Ed25519" }, true, [
+    "sign",
+    "verify",
+  ])) as CryptoKeyPair;
+  const jwk = await crypto.subtle.exportKey("jwk", pair.privateKey);
+  const seed = fromBase64url(jwk.d as string);
+  const publicKey = fromBase64url(jwk.x as string);
+  return { secretKey: `ed25519:${base58Encode(join(seed, publicKey))}`, publicKey: publicKeyText(publicKey) };
 }
 
 export function publicKeyText(publicKey: Uint8Array): string {
@@ -141,6 +150,10 @@ function base64(bytes: Uint8Array): string {
 
 function base64url(bytes: Uint8Array): string {
   return base64(bytes).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function fromBase64url(text: string): Uint8Array {
+  return Uint8Array.from(atob(text.replace(/-/g, "+").replace(/_/g, "/")), (char) => char.charCodeAt(0));
 }
 
 function hex(bytes: Uint8Array): string {
