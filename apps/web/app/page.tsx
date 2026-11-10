@@ -52,7 +52,7 @@ function Hero() {
 export default function HomePage() {
   return (
     <MarketingShell>
-      <div className="flow-root overflow-x-clip bg-[linear-gradient(180deg,#171717_0%,#0b0b0b_60%,#000_100%)]">
+      <div className="flow-root overflow-x-clip bg-[linear-gradient(180deg,#171717_0%,#0b0b0b_60%,#000_100%)] pt-[68px]">
         <main>
           <Hero />
           <HowItWorks />
