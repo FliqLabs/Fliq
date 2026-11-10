@@ -19,6 +19,7 @@ Branch: `Dapper-Contract`
 | `withdraw`, `on_withdraw_complete` | `lib.rs`, `integration.rs` | With exactly 1 yoctoNEAR and at least 60 Tgas, sends the caller's own available USDC to the caller's account with no order and no backend involvement. The amount is reserved while the transfer is in flight, committed on success and returned on failure, so liabilities stay exact. One withdrawal per account at a time; `withdraw:`-prefixed order IDs are reserved so a reservation key cannot collide with an order. Emits `withdrawn` or `withdraw_failed`. |
 | `set_status`, `get_receipt` | `orders.rs`, `receipts.rs` | Keeps authenticated backend status separate from verified NEAR transfer state; missing receipts return `null`. |
 | `recredit` | `orders.rs`, `vault.rs` | Requires write-once refund evidence and real unattributed USDC backing before exactly-once recredit. |
+| `get_liabilities` | `lib.rs`, `integration.rs` | Read-only total of what the ledger owes users. Against `ft_balance_of` on the approved USDC contract it gives operators an external solvency check before and after a migration, during the refund test and on mainnet. |
 | `ft_on_transfer`, `get_balance`, `transfer` | `vault.rs`, `lib.rs` | Handles approved-USDC deposits, isolated available/reserved balances and registered internal transfers. Optional validated request IDs let the backend correlate request payments from transaction arguments; agents cannot transfer the owner's balance. |
 
 ## Agent identity decision
