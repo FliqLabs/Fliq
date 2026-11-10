@@ -4,13 +4,12 @@ import { siteContainer } from "./components/site-container";
 import { IconRow, eyebrow } from "./landing/components";
 import { providerIcons } from "./landing/data";
 import { Finale } from "./landing/finale";
-import { HeroStage } from "./landing/hero-stage";
 import { Agents, Developers, HowItWorks, Trust } from "./landing/sections";
 
 function Hero() {
   return (
     <section
-      className={`${siteContainer} mt-7 grid gap-10 pb-20 pt-14 lg:min-h-[862px] lg:grid-cols-[560px_1fr] lg:gap-0 lg:pb-0 lg:pt-0`}
+      className={`${siteContainer} mt-7 pb-20 pt-14 lg:pb-28 lg:pt-0`}
     >
       <div className="lg:pt-40">
         <p
@@ -45,7 +44,6 @@ function Hero() {
         </div>
       </div>
 
-      <HeroStage />
     </section>
   );
 }
