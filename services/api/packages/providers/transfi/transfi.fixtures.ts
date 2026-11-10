@@ -98,6 +98,35 @@ export const PAYMENT_METHODS_IDR_PAGE_2 = {
   pagination: { total: 4, pages: 2, currentPage: 2, limit: 2, hasNext: false, hasPrev: true },
 };
 
+// Schema-shaped (reference/list-supported-currencies.md): IDR and PHP precision are not published; these are ours.
+export const SUPPORTED_CURRENCIES = {
+  status: "success",
+  data: [
+    {
+      currency: "IDR",
+      logoUrl: "https://common-fiat-logos.s3.ap-southeast-1.amazonaws.com/idr.svg",
+      decimalPrecision: 0,
+    },
+    {
+      currency: "PHP",
+      logoUrl: "https://common-fiat-logos.s3.ap-southeast-1.amazonaws.com/php.svg",
+      decimalPrecision: 2,
+    },
+  ],
+  pagination: { total: 2, pages: 1, currentPage: 1, limit: 100, hasNext: false, hasPrev: false },
+};
+
+// docs/webhook-events-users.md, "KYC Success" shape: user events carry entityType "user" and an empty order.
+export const WEBHOOK_KYC_SUCCESS = {
+  eventId: "EV-260824111425460",
+  entityId: "UX-251207074635111",
+  entityType: "user",
+  status: "kyc_success",
+  mid: "ABCDEF_NA_NA",
+  order: {},
+  createdAt: "2026-08-24T11:14:25.311Z",
+};
+
 // Schema-shaped (reference/get-exchange-rates.md). Fee in fiat on the gross amount, as in the off-ramp webhook
 // sample: gross 1010 PHP x 0.017 = 17.17 USDC sent, 10 PHP fee, 1000 PHP received.
 export const QUOTED_AT = new Date("2026-11-07T09:00:00.000Z");

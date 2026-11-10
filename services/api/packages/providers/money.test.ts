@@ -15,6 +15,12 @@ describe("money", () => {
     expect(toUnits("1.2300000", 6)).toBe(1_230_000n);
   });
 
+  it("rounds up only when a dropped digit is not zero, so a sender always covers the amount", () => {
+    expect(toUnits("36.42403404", 6, "up")).toBe(36_424_035n);
+    expect(toUnits("36.42403400", 6, "up")).toBe(36_424_034n);
+    expect(toUnits("0.0000001", 6, "up")).toBe(1n);
+  });
+
   it("rejects negatives, exponents and junk", () => {
     for (const bad of ["-1", "1e3", "abc", "", "1.2.3"])
       expect(() => toUnits(bad, 6)).toThrow(InvalidAmountError);

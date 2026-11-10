@@ -209,6 +209,24 @@ describe("a route through a NEAR Intents hop", () => {
     ]);
   });
 
+  it("never hops into a sandbox provider, whose deposit address is on a test network", async () => {
+    const sandbox = provider("transfi", { capabilities: { sources: [{ asset: "USDC", chain: "base" }], sandbox: true } });
+    const quoted = await quoteRoutes([sandbox], nearRequest, DEFAULT_ROUTING_CONFIG, undefined, now, hop);
+    expect(quoted.dropped).toContainEqual({ provider: "transfi", reason: "source" });
+    const shown = await quoteRoutes([sandbox], { ...nearRequest, display: true }, DEFAULT_ROUTING_CONFIG, undefined, now, hop);
+    expect(shown.routes).toHaveLength(0);
+  });
+
+  it("keeps a provider to the funding it allows, except when prices are only shown", async () => {
+    const directOnly = provider("busha", { capabilities: { sources: [{ asset: "USDC", chain: "base" }], funding: { direct: true, hop: false } } });
+    const hopOnly = provider("fonbnk", { capabilities: { sources: [{ asset: "USDC", chain: "near" }, { asset: "USDC", chain: "base" }], funding: { direct: false, hop: true } } });
+    const { routes, dropped } = await quoteRoutes([directOnly, hopOnly], nearRequest, DEFAULT_ROUTING_CONFIG, undefined, now, hop);
+    expect(routes.map((r) => [r.provider, r.kind])).toEqual([["fonbnk", "intents"]]);
+    expect(dropped).toContainEqual({ provider: "busha", reason: "source" });
+    const shown = await quoteRoutes([directOnly], { ...nearRequest, display: true }, DEFAULT_ROUTING_CONFIG, undefined, now, hop);
+    expect(shown.routes.map((r) => [r.provider, r.kind])).toEqual([["busha", "intents"]]);
+  });
+
   it("waits longer for a hopped route than for a direct one", async () => {
     const slowHop: HopPricer = {
       ...hop,

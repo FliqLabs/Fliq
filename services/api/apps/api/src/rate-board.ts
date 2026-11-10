@@ -4,6 +4,7 @@ import type { Asset, Chain, FiatCurrency } from "../../../packages/providers/typ
 import type { Unit } from "./db.js";
 import { invalidRequest } from "./errors.js";
 import { COUNTRY, rateOf, total, type QuoteDeps, type QuoteInput } from "./quotes.js";
+import { referencePayoutType } from "./rates.js";
 
 export const BOARD_TTL_MS = 10_000;
 // The same reference payout as GET /rates: 100 tokens in 6-decimal units.
@@ -16,6 +17,9 @@ export const SAMPLED_CORRIDORS: readonly { token: QuoteInput["token"]; currency:
   { token: "usdt", currency: "ngn" },
   { token: "usdc", currency: "kes" },
   { token: "usdt", currency: "kes" },
+  { token: "usdc", currency: "ghs" },
+  { token: "usdc", currency: "idr" },
+  { token: "usdc", currency: "php" },
 ];
 
 export const RANGES = {
@@ -70,10 +74,11 @@ export function createRateBoard(deps: QuoteDeps, unit: Unit) {
     const value = quoteRoutes(
       deps.adapters,
       {
-        corridor: { country: COUNTRY[currency], currency: currency.toUpperCase() as FiatCurrency, payoutType: "bank" },
+        corridor: { country: COUNTRY[currency], currency: currency.toUpperCase() as FiatCurrency, payoutType: referencePayoutType(currency) },
         source: { asset: token.toUpperCase() as Asset, chain: "near" as Chain },
         amount: { side: "send", units: REFERENCE_UNITS },
         preference: "best_rate",
+        display: true,
       },
       deps.routing,
       deps.signals,
