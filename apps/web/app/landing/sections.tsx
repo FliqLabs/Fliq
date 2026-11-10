@@ -51,7 +51,7 @@ export function Developers() {
       <div id="quickstart" className="overflow-hidden rounded-xl bg-[#0f0f0f]">
         <pre className="overflow-x-auto p-5 text-xs leading-6 text-zinc-300">
           <code>{`# quote
-curl https://api.fliq.money/v1/quote \\
+curl https://api.fliq.cash/v1/quote \\
   -H "Authorization: Bearer rt_test_…" \\
   -d "token=USDC&currency=NGN&amount=50"
 
@@ -71,7 +71,7 @@ export function Agents() {
   return (
     <section
       id="agents"
-      className={`${siteContainer} mb-16 grid gap-10 rounded-[22px] border border-[#2c2c2c] bg-[#1a1a1a] py-8 md:grid-cols-2 md:items-center lg:mb-24 lg:py-10`}
+      className={`${siteContainer} mb-16 grid gap-10 rounded-[22px] border border-black/[0.06] bg-white px-6 py-8 shadow-[0_24px_60px_-30px_rgba(20,20,40,0.25)] sm:px-10 md:grid-cols-2 md:items-center lg:mb-24 lg:py-10`}
     >
       <div>
         <p className={`${eyebrow} mb-5 flex items-center gap-3`}>
@@ -83,28 +83,30 @@ export function Agents() {
           <br />
           Within caps it cannot break.
         </h2>
-        <p className="mb-5 max-w-md text-base leading-6 text-zinc-400">
+        <p className="mb-5 max-w-md text-base leading-6 text-zinc-600">
           Give your agent a key with a daily cap, a per-payment limit, and an allowlist. Your vault enforces
           the boundaries.
         </p>
         <div className="flex flex-wrap gap-2.5">
-          <MarketingActionLink href="/create-workspace">Start building</MarketingActionLink>
+          <MarketingActionLink href="/create-workspace" variant="ink">
+            Start building
+          </MarketingActionLink>
         </div>
       </div>
       <div className="grid gap-2.5 text-sm">
-        <div className="flex gap-2 rounded-xl bg-[#111] p-3.5">
+        <div className="flex gap-2 rounded-xl bg-[#F4F4F5] p-3.5">
           <span className="text-zinc-500">You:</span>
           <p>Pay Dara for the studio.</p>
         </div>
-        <div className="flex gap-2 rounded-xl bg-[#111] p-3.5">
-          <span className="text-brand">✓</span>
+        <div className="flex gap-2 rounded-xl bg-[#F4F4F5] p-3.5">
+          <span className="text-[#5B4BE0]">✓</span>
           <p>Paid ₦68,816 to DARA OKONKWO via Paycrest.</p>
         </div>
-        <div className="flex gap-2 rounded-xl bg-[#111] p-3.5">
+        <div className="flex gap-2 rounded-xl bg-[#F4F4F5] p-3.5">
           <span className="text-zinc-500">You:</span>
           <p>Now send her ₦500,000.</p>
         </div>
-        <div className="flex gap-2 rounded-xl border border-[#5a4712] bg-[#2a2208] p-3.5">
+        <div className="flex gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3.5 text-amber-900">
           <span>⊘</span>
           <p>Refused by the vault. ₦500,000 is over the ₦50,000 per-payout cap.</p>
         </div>
@@ -119,7 +121,7 @@ export function Trust() {
       <p className={`${eyebrow} mb-6`}>Why it can be trusted</p>
       <div className="grid gap-4 md:grid-cols-3">
         {trustPoints.map((point) => (
-          <article key={point.title} className="min-h-[187px] rounded-[18px] border border-[#2c2c2c] p-6">
+          <article key={point.title} className="min-h-[187px] rounded-[18px] border border-black/[0.06] bg-white p-6 shadow-[0_10px_30px_-20px_rgba(20,20,40,0.2)]">
             <Image
               src={point.image}
               alt=""
@@ -128,7 +130,7 @@ export function Trust() {
               className="mb-3 size-9 rounded-2xl object-contain"
             />
             <h3 className="mb-3 text-base font-semibold">{point.title}</h3>
-            <p className="text-sm leading-[22px] text-zinc-400">{point.description}</p>
+            <p className="text-sm leading-[22px] text-zinc-600">{point.description}</p>
           </article>
         ))}
       </div>

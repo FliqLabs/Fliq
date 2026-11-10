@@ -9,10 +9,10 @@ const navigation = [
   { label: "Sandbox", href: "/#sandbox" },
 ];
 
-export function SiteFooter() {
+export function SiteFooter({ tone = "dark" }: { tone?: "dark" | "light" }) {
   return (
     <footer
-      className={`${siteContainer} flex flex-wrap items-center justify-between gap-5 border-t border-zinc-800 py-8 text-sm text-zinc-500`}
+      className={`${siteContainer} flex flex-wrap items-center justify-between gap-5 border-t py-8 text-sm text-zinc-500 ${tone === "light" ? "border-black/[0.08]" : "border-zinc-800"}`}
     >
       <p className="flex items-center gap-2">
         <Image src="/logo.png" alt="" width={40} height={20} className="h-5 w-auto shrink-0" />
@@ -20,7 +20,7 @@ export function SiteFooter() {
       </p>
       <nav aria-label="Footer navigation" className="flex flex-wrap gap-5">
         {navigation.map(({ label, href }) => (
-          <Link key={label} href={href} className="hover:text-white">
+          <Link key={label} href={href} className={tone === "light" ? "hover:text-zinc-950" : "hover:text-white"}>
             {label}
           </Link>
         ))}
