@@ -21,6 +21,7 @@ Branch: `Dapper-Contract`
 | `recredit` | `orders.rs`, `vault.rs` | Requires write-once refund evidence and real unattributed USDC backing before exactly-once recredit. |
 | `get_liabilities` | `lib.rs`, `integration.rs` | Read-only total of what the ledger owes users. Against `ft_balance_of` on the approved USDC contract it gives operators an external solvency check before and after a migration, during the refund test and on mainnet. |
 | `ft_on_transfer`, `get_balance`, `transfer` | `vault.rs`, `lib.rs` | Handles approved-USDC deposits, isolated available/reserved balances and registered internal transfers. Optional validated request IDs let the backend correlate request payments from transaction arguments; agents cannot transfer the owner's balance. |
+| NEP-145 storage (`storage_deposit`, `storage_withdraw`, `storage_unregister`, `storage_balance_of`, `storage_balance_bounds`) | `vault.rs`, `lib.rs` | Registration-only, with `min` equal to `max`, so there is never spendable storage credit and `storage_withdraw` accepts only a zero amount. `storage_deposit` is idempotent and refunds any excess. `storage_unregister` accepts `force` and ignores it: closing an account always requires a zero balance, so no USDC liability can be discarded. Operators should register a user only after the account exists on chain, because only the account itself can unregister and reclaim the deposit. |
 
 ## Agent identity decision
 
