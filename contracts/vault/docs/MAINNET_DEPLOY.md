@@ -73,9 +73,12 @@ near account create-account fund-myself fliq-owner.near '0.2 NEAR' \
 ### 3. Create the root account (Frank, then the backend owner)
 
 ```sh
-near account create-account fund-myself fliqcash.near '5.5 NEAR' \
+near account create-account fund-myself fliqcash.near '8.2 NEAR' \
   use-ledger sign-as <implicit> network-config mainnet sign-with-ledger send
 ```
+
+8.2 NEAR because only a parent can create its sub-accounts: `fliqcash.near` passes 2 NEAR to the relayer
+(step 4) and 3.2 NEAR to the vault (step 5), and keeps 3 NEAR for new users.
 
 Then add the hot key the server will use. The backend owner generates it on their own machine, and only
 the public key is shared:
