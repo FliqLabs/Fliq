@@ -21,9 +21,12 @@ struct MoveMoneySheet: View {
     let onPerson: (String?) -> Void
     let onNewAccount: (VerifiedAccount, Bool) -> Void
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppEnvironment.self) private var environment
     @State private var path: [Step]
     @State private var request: RequestFlow?
     @State private var detent: PresentationDetent
+    @State private var scan: ScanToPayModel?
+    @State private var afterScan: (() -> Void)?
 
     init(
         startingAt start: [Step] = [],
@@ -48,9 +51,10 @@ struct MoveMoneySheet: View {
 
     var body: some View {
         NavigationStack(path: $path) {
-            MoveMoneyMenu(onSend: { go(.payTo) }, onReceive: { go(.receive) }, onRequest: { go(.request) })
+            MoveMoneyMenu(onSend: { go(.payTo) }, onReceive: { go(.receive) }, onRequest: { go(.request) }, onScan: startScan)
                 .navigationDestination(for: Step.self, destination: screen)
         }
+        .fullScreenCover(item: $scan, onDismiss: { afterScan?(); afterScan = nil }) { scanner($0) }
         .tint(Theme.textPrimary)
         .presentationDetents(Self.detents(for: path.last).union([detent]), selection: $detent)
         .onChange(of: path) { _, path in
@@ -67,7 +71,7 @@ struct MoveMoneySheet: View {
         case .request:
             if let request { RequestView(flow: request) { dismiss() }.sheetToolbar { dismiss() } }
         case .payTo:
-            PayToView(onAccount: onAccount, onPerson: onPerson, onNew: { go(.recipientCurrency) })
+            PayToView(onAccount: onAccount, onPerson: onPerson, onNew: { go(.recipientCurrency) }, onScan: startScan)
         case .recipientCurrency:
             RecipientCurrencyView { go(.sendMethod($0)) }
         case .sendMethod(let country):
@@ -91,6 +95,25 @@ struct MoveMoneySheet: View {
         case .arriving:
             ArrivingView(flow: receive) { dismiss() }
         }
+    }
+
+    /// The camera closes first; whatever was scanned carries on once it's gone.
+    private func scanner(_ model: ScanToPayModel) -> some View {
+        ScanToPayView(
+            model: model,
+            onPay: { account in finishScan { onNewAccount(account, false) } },
+            onPerson: { name in finishScan { onPerson(name) } },
+            onTypeInstead: { finishScan { go(.recipient(.ng, .bank)) } }
+        )
+    }
+
+    private func startScan() {
+        scan = ScanToPayModel(api: environment.api)
+    }
+
+    private func finishScan(then next: @escaping () -> Void) {
+        afterScan = next
+        scan = nil
     }
 
     /// Moves on. A step that needs more room grows the sheet first, so it never appears squeezed.

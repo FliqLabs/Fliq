@@ -7,6 +7,7 @@ struct PayToView: View {
     /// Nil opens Pay a fliq user with an empty name.
     let onPerson: (String?) -> Void
     let onNew: () -> Void
+    var onScan: (() -> Void)?
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.dismiss) private var dismiss
     @State private var search = ""
@@ -154,6 +155,10 @@ struct PayToView: View {
 
     @ViewBuilder
     private var browsing: some View {
+        if let onScan, filter != .fliqUsers {
+            scanRow(onScan).padding(.top, 16)
+        }
+
         if filter == .all, !recent.isEmpty {
             sectionTitle("Recent")
             ScrollView(.horizontal) {
@@ -298,6 +303,33 @@ struct PayToView: View {
             .font(.system(size: 13, weight: .semibold))
             .foregroundStyle(Theme.textTertiary)
             .frame(width: 36, height: 36)
+    }
+
+    private func scanRow(_ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                Image(systemName: "qrcode.viewfinder")
+                    .font(.system(size: 20, weight: .medium))
+                    .frame(width: 44, height: 44)
+                    .background(Theme.surfaceRaised, in: Circle())
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Scan to pay").font(.system(size: 17, weight: .semibold))
+                    Text("A bank QR code or an account number")
+                        .font(.system(size: 14))
+                        .foregroundStyle(Theme.textSecondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Theme.textTertiary)
+            }
+            .foregroundStyle(Theme.textPrimary)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(Theme.surfaceRaised.opacity(0.7), in: RoundedRectangle(cornerRadius: 20))
+        }
+        .buttonStyle(.pressable(scale: 0.98))
+        .accessibilityIdentifier("Scan to pay")
     }
 
     private func sectionTitle(_ title: String, count: Int? = nil) -> some View {
