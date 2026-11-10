@@ -12,6 +12,14 @@ const ROTATION_SPEED = 0.06;
 const ENTRANCE_STAGGER = 0.55;
 const ENTRANCE_DURATION = 0.55;
 const ENTRANCE_LIFT = 0.2;
+const SPOT_FIRST = 2.4;
+const SPOT_LENGTH = 5.4;
+const SPOT_FADE = 0.55;
+const SPOT_GAP = 0.9;
+const SPOT_SIZE = 0.66;
+const SPOT_LIFT = 0.55;
+
+export type Spotlight = { key: string; x: number; y: number; side: 1 | -1; strength: number };
 
 export function globeProjectionDiameter(width: number, height: number) {
   const worldRadius = SPHERE_RADIUS * GROUP_SCALE;
@@ -28,8 +36,24 @@ function seededRandom(seed: number) {
   };
 }
 
-export function TileGlobe({ font, reducedMotion = false }: { font: string; reducedMotion?: boolean }) {
+export function TileGlobe({
+  font,
+  reducedMotion = false,
+  stories = [],
+  onSpotlight,
+}: {
+  font: string;
+  reducedMotion?: boolean;
+  stories?: string[];
+  onSpotlight?: (spotlight: Spotlight | null) => void;
+}) {
   const container = useRef<HTMLDivElement>(null);
+  const storyKeys = useRef(stories);
+  const report = useRef(onSpotlight);
+  useEffect(() => {
+    storyKeys.current = stories;
+    report.current = onSpotlight;
+  });
   const reduceMotion = useRef(reducedMotion);
   const invalidate = useRef<() => void>(() => {});
 
@@ -80,7 +104,20 @@ export function TileGlobe({ font, reducedMotion = false }: { font: string; reduc
         size: number;
         delay: number;
         hover: number;
+        rest: InstanceType<typeof THREE.Quaternion>;
       }[] = [];
+      const materialByKey = new Map<string, MeshBasicMaterial>();
+      const facing = new THREE.Quaternion();
+      const randomSpot = seededRandom(97);
+      let spot: {
+        card: (typeof cards)[number];
+        key: string;
+        start: number;
+        material: MeshBasicMaterial;
+        side: 1 | -1;
+      } | null = null;
+      let storyIndex = 0;
+      let nextSpot = SPOT_FIRST;
       const worldPoint = new THREE.Vector3();
       const projectedPoint = new THREE.Vector3();
       const pointer = new THREE.Vector2();
@@ -113,6 +150,74 @@ export function TileGlobe({ font, reducedMotion = false }: { font: string; reduc
           return;
         }
         if (!frame) frame = requestAnimationFrame(render);
+      }
+
+      function endSpotlight() {
+        if (!spot) return;
+        spot.card.mesh.material = spot.material;
+        spot.card.mesh.quaternion.copy(spot.card.rest);
+        spot.card.mesh.renderOrder = 0;
+        spot = null;
+        report.current?.(null);
+      }
+
+      function startSpotlight() {
+        const keys = storyKeys.current;
+        const key = keys[storyIndex % keys.length];
+        const material = key ? materialByKey.get(key) : undefined;
+        if (!material) return;
+        const preferredSide = storyIndex % 2 ? -1 : 1;
+        const candidates = cards.filter((card) => {
+          worldPoint.copy(card.position).applyMatrix4(group.matrixWorld);
+          projectedPoint.copy(worldPoint).project(camera);
+          const radius = SPHERE_RADIUS * GROUP_SCALE;
+          return (
+            worldPoint.z > radius * 0.3 &&
+            worldPoint.z < radius * 0.75 &&
+            Math.sign(projectedPoint.x) === preferredSide &&
+            Math.abs(projectedPoint.x) > 0.4 &&
+            Math.abs(projectedPoint.x) < 0.72 &&
+            Math.abs(projectedPoint.y) > 0.14 &&
+            Math.abs(projectedPoint.y) < 0.42
+          );
+        });
+        if (!candidates.length) return;
+        const card = candidates[Math.floor(randomSpot() * candidates.length)];
+        spot = { card, key, start: elapsed, material: card.mesh.material, side: preferredSide };
+        card.mesh.material = material;
+        card.mesh.renderOrder = 2;
+        storyIndex++;
+      }
+
+      function updateSpotlight(entranceFinished: boolean) {
+        if (reduceMotion.current || !storyKeys.current.length || !entranceFinished) {
+          endSpotlight();
+          return;
+        }
+        if (!spot && elapsed >= nextSpot) startSpotlight();
+        if (!spot) return;
+        const age = elapsed - spot.start;
+        if (age >= SPOT_LENGTH) {
+          endSpotlight();
+          nextSpot = elapsed + SPOT_GAP;
+          return;
+        }
+        const rise = Math.min(1, age / SPOT_FADE, (SPOT_LENGTH - age) / SPOT_FADE);
+        const strength = rise * rise * (3 - 2 * rise);
+        const { mesh, normal, rest } = spot.card;
+        facing.copy(group.quaternion).invert();
+        mesh.quaternion.slerpQuaternions(rest, facing, strength);
+        mesh.position.addScaledVector(normal, SPOT_LIFT * strength);
+        mesh.scale.setScalar(mesh.scale.x + (SPOT_SIZE - mesh.scale.x) * strength);
+        mesh.getWorldPosition(worldPoint);
+        projectedPoint.copy(worldPoint).project(camera);
+        report.current?.({
+          key: spot.key,
+          x: ((projectedPoint.x + 1) / 2) * host!.clientWidth,
+          y: ((1 - projectedPoint.y) / 2) * host!.clientHeight,
+          side: spot.side,
+          strength,
+        });
       }
 
       function render(time: number) {
@@ -177,6 +282,7 @@ export function TileGlobe({ font, reducedMotion = false }: { font: string; reduc
           card.mesh.scale.setScalar(card.size * depthScale * (1 + card.hover * 0.25));
         }
 
+        updateSpotlight(entranceFinished);
         renderer.render(scene, camera);
         host!.dataset.state = "ready";
         if (!reduceMotion.current) schedule();
@@ -255,6 +361,7 @@ export function TileGlobe({ font, reducedMotion = false }: { font: string; reduc
       invalidate.current = schedule;
       disposeScene = () => {
         stop();
+        report.current?.(null);
         observer.disconnect();
         resizeObserver.disconnect();
         window.removeEventListener("resize", resize);
@@ -278,15 +385,15 @@ export function TileGlobe({ font, reducedMotion = false }: { font: string; reduc
         texture.colorSpace = THREE.SRGBColorSpace;
         texture.anisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), 4);
         textures.push(texture);
-        materials.push(
-          new THREE.MeshBasicMaterial({
-            map: texture,
-            side: THREE.DoubleSide,
-            transparent: true,
-            alphaTest: 0.01,
-            toneMapped: false,
-          }),
-        );
+        const material = new THREE.MeshBasicMaterial({
+          map: texture,
+          side: THREE.DoubleSide,
+          transparent: true,
+          alphaTest: 0.01,
+          toneMapped: false,
+        });
+        materials.push(material);
+        materialByKey.set(tile.key, material);
       }
 
       const randomTile = seededRandom(61);
@@ -314,6 +421,7 @@ export function TileGlobe({ font, reducedMotion = false }: { font: string; reduc
           size: CARD_SIZE * (randomSize() < 0.7 ? 1 : 0.7),
           delay: 0,
           hover: 0,
+          rest: mesh.quaternion.clone(),
         });
       }
       loaded = true;

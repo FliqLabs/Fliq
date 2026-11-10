@@ -9,7 +9,7 @@ const ink: Palette = { fill: "#0d0d12", ink: "#fafaf7", stroke: "rgba(255,255,25
 const paper: Palette = { fill: "#fafaf7", ink: "#0d0d12" };
 const lilac: Palette = { fill: "#a594ff", ink: "#0d0d12" };
 const violet: Palette = { fill: "#5b4be0", ink: "#ffffff" };
-const palettes = [ink, paper, lilac, violet];
+const palettes = { ink, paper, lilac, violet };
 
 const share = { glyph: 0.42, flag: 0.26, token: 0.18, bank: 0.14 };
 
@@ -35,30 +35,36 @@ const stroke =
     context.stroke();
   };
 
-const marks: Mark[] = [
-  glyph("$", 92),
-  glyph("₦", 88),
-  glyph("€", 88),
-  glyph("£", 88),
-  glyph("¥", 88),
-  glyph("₹", 88),
-  glyph("₵", 88),
-  glyph("₱", 88),
-  glyph("₿", 88),
-  glyph("KSh", 50),
-  glyph("R", 92),
-  stroke((context) => {
-    context.moveTo(54, 106);
-    context.lineTo(106, 54);
-    context.moveTo(62, 54);
-    context.lineTo(106, 54);
-    context.lineTo(106, 98);
-  }),
-  stroke((context) => {
-    context.moveTo(50, 82);
-    context.lineTo(72, 104);
-    context.lineTo(112, 58);
-  }),
+const marks: [string, Mark][] = [
+  ["$", glyph("$", 92)],
+  ["₦", glyph("₦", 88)],
+  ["€", glyph("€", 88)],
+  ["£", glyph("£", 88)],
+  ["¥", glyph("¥", 88)],
+  ["₹", glyph("₹", 88)],
+  ["₵", glyph("₵", 88)],
+  ["₱", glyph("₱", 88)],
+  ["₿", glyph("₿", 88)],
+  ["KSh", glyph("KSh", 50)],
+  ["R", glyph("R", 92)],
+  [
+    "send",
+    stroke((context) => {
+      context.moveTo(54, 106);
+      context.lineTo(106, 54);
+      context.moveTo(62, 54);
+      context.lineTo(106, 54);
+      context.lineTo(106, 98);
+    }),
+  ],
+  [
+    "check",
+    stroke((context) => {
+      context.moveTo(50, 82);
+      context.lineTo(72, 104);
+      context.lineTo(112, 58);
+    }),
+  ],
 ];
 
 function blankTile(palette: Palette) {
@@ -136,17 +142,19 @@ function loadImage(src: string) {
   });
 }
 
-export type GlobeTile = { canvas: HTMLCanvasElement; weight: number };
+export type GlobeTile = { key: string; canvas: HTMLCanvasElement; weight: number };
+
+export const glyphKey = (name: string, palette: keyof typeof palettes) => `glyph:${name}:${palette}`;
 
 async function iconTiles(icons: GlobeIcon[]) {
   const loaded = await Promise.all(icons.map(async (icon) => ({ icon, image: await loadImage(icon.src) })));
-  const tiles: { canvas: HTMLCanvasElement; kind: GlobeIcon["kind"] }[] = [];
+  const tiles: { key: string; canvas: HTMLCanvasElement; kind: GlobeIcon["kind"] }[] = [];
   loaded.forEach(({ icon, image }, index) => {
     if (!image) return;
     const wide = Math.abs(image.naturalWidth / image.naturalHeight - 1) >= 0.05;
     const palette = wide || index % 2 ? paper : ink;
     const canvas = icon.kind === "flag" ? flagTile(image) : badgeTile(palette, image);
-    tiles.push({ canvas, kind: icon.kind });
+    tiles.push({ key: icon.src, canvas, kind: icon.kind });
   });
   return tiles;
 }
@@ -154,15 +162,20 @@ async function iconTiles(icons: GlobeIcon[]) {
 export async function createGlobeTiles(font: string): Promise<GlobeTile[]> {
   await document.fonts.load(`900 64px ${font}`, "$₦€£¥₹₵₱₿KSh").catch(() => undefined);
   const tiles: GlobeTile[] = [];
-  const glyphCount = palettes.length * marks.length;
-  for (const palette of palettes) {
-    for (const mark of marks)
-      tiles.push({ canvas: markTile(palette, mark, font), weight: share.glyph / glyphCount });
+  const glyphCount = Object.keys(palettes).length * marks.length;
+  for (const [paletteName, palette] of Object.entries(palettes)) {
+    for (const [name, mark] of marks) {
+      tiles.push({
+        key: glyphKey(name, paletteName as keyof typeof palettes),
+        canvas: markTile(palette, mark, font),
+        weight: share.glyph / glyphCount,
+      });
+    }
   }
   const images = await iconTiles(globeIcons);
   for (const kind of ["flag", "token", "bank"] as const) {
     const ofKind = images.filter((tile) => tile.kind === kind);
-    for (const tile of ofKind) tiles.push({ canvas: tile.canvas, weight: share[kind] / ofKind.length });
+    for (const tile of ofKind) tiles.push({ ...tile, weight: share[kind] / ofKind.length });
   }
   return tiles;
 }

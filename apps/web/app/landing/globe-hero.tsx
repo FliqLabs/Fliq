@@ -3,6 +3,7 @@
 import Link from "next/link";
 import localFont from "next/font/local";
 import { useEffect, useRef, useState, type RefObject } from "react";
+import { StoryGlobe } from "./globe-stories";
 import { useHeroHandoff } from "./hero-handoff";
 import { SendTicket } from "./send-ticket";
 import { TileGlobe, globeProjectionDiameter } from "./tile-globe";
@@ -160,6 +161,8 @@ function HeroSequence() {
       hint.current!.style.opacity = String(1 - portion(progress, 0.12, 0.27));
       globe.current!.style.transform = `translate3d(${target.x * contraction}px, ${target.y * contraction}px, 0) scale(${1 + (target.scale - 1) * contraction})`;
       globe.current!.style.opacity = String(1 - portion(progress, 0.42, 0.69));
+      const storyLayer = globe.current!.querySelector<HTMLElement>("[data-stories]");
+      if (storyLayer) storyLayer.style.opacity = String(1 - portion(progress, 0.02, 0.12));
       scene.current!.style.clipPath = `inset(${22 * contraction}% ${31 * contraction}% ${10 * contraction}% round ${32 * contraction}px)`;
       scene.current!.style.opacity = String(1 - portion(progress, 0.5, 0.75));
       heading.current!.style.opacity = String(portion(progress, 0.42, 0.61));
@@ -216,7 +219,7 @@ function HeroSequence() {
       <div ref={stage} className="sticky top-0 h-[100svh] min-h-[610px] overflow-hidden sm:min-h-[600px]">
         <div ref={scene} aria-hidden="true" className="absolute inset-0 bg-[#17191d]" />
         <div ref={globe} className="absolute inset-0 will-change-transform">
-          <TileGlobe font={display.style.fontFamily} />
+          <StoryGlobe font={display.style.fontFamily} />
         </div>
         <div aria-hidden={!heroVisible} inert={!heroVisible}>
           <HeroCopy copyRef={copy} />
