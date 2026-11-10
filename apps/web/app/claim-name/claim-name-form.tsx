@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { ApiError, fliqApi, type User } from "../lib/fliq-api";
+import { SignInForm } from "../sign-in/sign-in-form";
 import {
   createNearKey,
   loadNearKey,
@@ -194,12 +195,12 @@ export function ClaimNameForm() {
   }
   if (account.error instanceof ApiError && account.error.status === 401) {
     return (
-      <p className="text-sm">
-        Sign in first.{" "}
-        <Link href="/sign-in" className="font-semibold underline">
-          Go to sign in
-        </Link>
-      </p>
+      <SignInForm
+        intent="get-started"
+        onSignedIn={(user) => {
+          if (user.near_account) router.replace("/wallet");
+        }}
+      />
     );
   }
   if (account.isError || savedKey.isError) {

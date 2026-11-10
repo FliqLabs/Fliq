@@ -6,7 +6,21 @@ import { useState, type FormEvent } from "react";
 import { signInWithPasskey } from "../auth/passkey";
 import { fliqApi, type User } from "../lib/fliq-api";
 
-export function SignInForm() {
+const copy = {
+  "sign-in": { title: "Sign in", subtitle: "To your fliq wallet." },
+  "get-started": {
+    title: "Get started",
+    subtitle: "Create your fliq account with a passkey. No password, no seed phrase.",
+  },
+};
+
+export function SignInForm({
+  intent = "sign-in",
+  onSignedIn,
+}: {
+  intent?: keyof typeof copy;
+  onSignedIn?: (user: User) => void;
+}) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [email, setEmail] = useState("");
@@ -14,7 +28,8 @@ export function SignInForm() {
   function afterSignIn(user: User) {
     queryClient.clear();
     queryClient.setQueryData(["me"], user);
-    router.replace(user.near_account ? "/wallet" : "/claim-name");
+    if (onSignedIn) onSignedIn(user);
+    else router.replace(user.near_account ? "/wallet" : "/claim-name");
   }
 
   const passkey = useMutation({ mutationFn: signInWithPasskey, onSuccess: afterSignIn });
@@ -26,6 +41,15 @@ export function SignInForm() {
       }),
   });
 
+  const newcomer = intent === "get-started";
+  const primary = newcomer ? "register" : "login";
+  const secondary = newcomer ? "login" : "register";
+  const primaryLabel = newcomer ? "Create an account with passkey" : "Continue with passkey";
+  const secondaryLabel = newcomer ? "I already have a passkey" : "Create an account with passkey";
+  const hint = newcomer
+    ? "Your phone or laptop saves the passkey. Signing in later is one tap."
+    : "Already have a passkey for this site? Sign in above. New here? Create an account below.";
+
   function submitEmail(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     emailLink.mutate(email.trim());
@@ -33,28 +57,24 @@ export function SignInForm() {
 
   return (
     <>
-      <h1 className="text-3xl font-bold tracking-tight">Sign in</h1>
-      <p className="mt-1 text-sm text-zinc-500">To the fliq dashboard.</p>
+      <h1 className="text-3xl font-bold tracking-tight">{copy[intent].title}</h1>
+      <p className="mt-1 text-sm text-zinc-500">{copy[intent].subtitle}</p>
       <button
         type="button"
         disabled={passkey.isPending}
-        onClick={() => passkey.mutate("login")}
+        onClick={() => passkey.mutate(primary)}
         className="mt-7 min-h-12 rounded-lg bg-zinc-950 px-5 text-sm font-semibold text-white disabled:opacity-60"
       >
-        {passkey.isPending && passkey.variables === "login"
-          ? "Waiting for passkey…"
-          : "Continue with passkey"}
+        {passkey.isPending && passkey.variables === primary ? "Waiting for passkey…" : primaryLabel}
       </button>
-      <p className="mt-2 text-xs text-zinc-500">
-        Already have a passkey for this site? Sign in above. New here? Create an account below.
-      </p>
+      <p className="mt-2 text-xs text-zinc-500">{hint}</p>
       <button
         type="button"
         disabled={passkey.isPending}
-        onClick={() => passkey.mutate("register")}
+        onClick={() => passkey.mutate(secondary)}
         className="mt-3 min-h-12 rounded-lg border border-zinc-200 px-5 text-sm font-semibold disabled:opacity-60"
       >
-        Create an account with passkey
+        {passkey.isPending && passkey.variables === secondary ? "Waiting for passkey…" : secondaryLabel}
       </button>
       {passkey.isError && (
         <p role="alert" className="mt-3 text-sm text-red-600">
