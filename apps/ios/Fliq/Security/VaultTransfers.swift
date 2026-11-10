@@ -49,7 +49,12 @@ struct DelegateRelay: Sendable {
         async let height = rpc.finalBlockHeight()
         let action = build(try await nonce + 1, try await height, rawKey)
         let signature = try keys.sign(action.signingHash, reason: reason)
-        var result = try await api.relay(signedDelegate: action.signed(with: signature))
+        return try await follow(try await api.relay(signedDelegate: action.signed(with: signature)))
+    }
+
+    /// Polls a relayed call until the chain answers.
+    func follow(_ submitted: RelayResult) async throws -> RelayResult {
+        var result = submitted
         for _ in 0..<pollAttempts where result.status == .pending {
             try await Task.sleep(for: pollInterval)
             result = try await api.relayResult(hash: result.delegateHash)

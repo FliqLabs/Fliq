@@ -20,6 +20,7 @@ struct MoveMoneySheet: View {
     let onAccount: (VerifiedAccount) -> Void
     let onPerson: (String?) -> Void
     let onNewAccount: (VerifiedAccount, Bool) -> Void
+    var onWallet: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
     @Environment(AppEnvironment.self) private var environment
     @State private var path: [Step]
@@ -36,7 +37,8 @@ struct MoveMoneySheet: View {
         makeRequest: @escaping () -> RequestFlow,
         onAccount: @escaping (VerifiedAccount) -> Void,
         onPerson: @escaping (String?) -> Void,
-        onNewAccount: @escaping (VerifiedAccount, Bool) -> Void
+        onNewAccount: @escaping (VerifiedAccount, Bool) -> Void,
+        onWallet: (() -> Void)? = nil
     ) {
         self.name = name
         self.receive = receive
@@ -45,6 +47,7 @@ struct MoveMoneySheet: View {
         self.onAccount = onAccount
         self.onPerson = onPerson
         self.onNewAccount = onNewAccount
+        self.onWallet = onWallet
         _path = State(initialValue: start)
         _detent = State(initialValue: Self.menuHeight)
     }
@@ -72,7 +75,7 @@ struct MoveMoneySheet: View {
         case .request:
             if let request { RequestView(flow: request) { dismiss() }.sheetToolbar { dismiss() } }
         case .payTo:
-            PayToView(onAccount: onAccount, onPerson: onPerson, onNew: { go(.recipientCurrency) }, onScan: startScan)
+            PayToView(onAccount: onAccount, onPerson: onPerson, onNew: { go(.recipientCurrency) }, onScan: startScan, onWallet: onWallet)
         case .recipientCurrency:
             RecipientCurrencyView { go(.sendMethod($0)) }
         case .sendMethod(let country):

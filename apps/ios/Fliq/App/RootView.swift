@@ -16,6 +16,7 @@ struct RootView: View {
     @State private var home: HomeModel?
     @State private var flow: PayFlow?
     @State private var personFlow: PersonPayFlow?
+    @State private var withdrawFlow: WithdrawFlow?
     @State private var tab = RootTab.home
     @State private var sheet: HomeSheet?
     @State private var activityPath: [AppRoute] = []
@@ -98,7 +99,8 @@ struct RootView: View {
             makeRequest: { RequestFlow(api: environment.api, vault: environment.vault) },
             onAccount: { account in leaveSheet { startPayment(to: account) } },
             onPerson: { account in leaveSheet { startPersonPayment(to: account) } },
-            onNewAccount: { account, save in leaveSheet { startPayment(to: account, save: save) } }
+            onNewAccount: { account, save in leaveSheet { startPayment(to: account, save: save) } },
+            onWallet: { leaveSheet { startWithdraw() } }
         )
     }
 
@@ -132,6 +134,19 @@ struct RootView: View {
         environment.router.push(.payPerson)
     }
 
+    private func startWithdraw() {
+        withdrawFlow = WithdrawFlow(
+            withdrawals: environment.withdrawals,
+            vault: environment.vault,
+            network: environment.isLive ? .current : .testnet,
+            onLeftVault: {
+                await environment.refreshVault()
+                await environment.inbox.load()
+            }
+        )
+        environment.router.push(.withdraw)
+    }
+
     @ViewBuilder
     private func destination(_ route: AppRoute) -> some View {
         switch route {
@@ -147,6 +162,10 @@ struct RootView: View {
                     environment.router.reset()
                     Task { await environment.refreshVault() }
                 }
+            }
+        case .withdraw:
+            if let withdrawFlow {
+                WithdrawView(flow: withdrawFlow) { environment.router.reset() }
             }
         case .agents: AgentsView(store: environment.agents)
         case .settings: SettingsView()
@@ -170,7 +189,7 @@ struct RootView: View {
             if let payout = flow.payout {
                 RefundedView(payout: payout, quote: flow.quote, onTryAgain: { startPayment(to: flow.verified) })
             }
-        case .payPerson, .receipt, .agents, .agentConnect, .settings, .settingsAccounts, .settingsSecurity, .settingsNotifications: EmptyView()
+        case .payPerson, .withdraw, .receipt, .agents, .agentConnect, .settings, .settingsAccounts, .settingsSecurity, .settingsNotifications: EmptyView()
         }
     }
 
