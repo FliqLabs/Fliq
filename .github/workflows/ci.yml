@@ -195,8 +195,8 @@ jobs:
         with:
           workspaces: contracts/vault
       - run: cargo fmt --check
-      - run: cargo clippy --all-targets -- -D warnings
-      - run: cargo test
+      - run: cargo clippy --all-targets --features testing -- -D warnings
+      - run: cargo test --features testing
 
   ios:
     needs: changes
