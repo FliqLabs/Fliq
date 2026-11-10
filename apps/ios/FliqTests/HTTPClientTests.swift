@@ -388,7 +388,7 @@ final class HTTPClientTests: XCTestCase {
         )
 
         XCTAssertEqual(agent.id, "claude-frank.fliq.near")
-        XCTAssertEqual(agent.status, .active)
+        XCTAssertEqual(agent.status, .pending, "Pending until the vault holds the signed policy")
         let connect = try XCTUnwrap(StubProtocol.requests.first { $0.url?.path == "/v1/agents" })
         XCTAssertNotNil(connect.value(forHTTPHeaderField: "Idempotency-Key"))
         let sent = try JSONSerialization.jsonObject(with: Data(reading: connect.httpBodyStream!)) as? [String: Any]
@@ -400,6 +400,44 @@ final class HTTPClientTests: XCTestCase {
         let step = try XCTUnwrap(SignStep.steps(in: fixtures.data("agent.connect")).first)
         let expected = DelegateAction.step(step, from: "frank.fliqaccount.testnet", nonce: 42, blockHeight: 1000, publicKey: Data(count: 32))
         XCTAssertEqual(body?["signed_delegate"], expected.signed(with: AgentKeys.signature))
+    }
+
+    @MainActor
+    func testConnectingAnAgentRegistersAKeyMadeOnThePhoneAndWaitsForTheVault() async throws {
+        let client = makeClient()
+        let relayed = Data(#"{"status":"succeeded","tx_hash":"tx","delegate_hash":"dh","sender_id":"frank.fliqaccount.testnet","receiver_id":"fliq-vault.testnet"}"#.utf8)
+        StubProtocol.respond { request in
+            if request.url?.host == "rpc.test" {
+                let body = try JSONSerialization.jsonObject(with: Data(reading: request.httpBodyStream!)) as? [String: Any]
+                return body?["method"] as? String == "block"
+                    ? (200, Data(#"{"result":{"header":{"height":1000}}}"#.utf8))
+                    : (200, Data(#"{"result":{"nonce":41}}"#.utf8))
+            }
+            switch (request.httpMethod, request.url?.path) {
+            case ("POST", "/v1/agents"): return (201, try fixtures.data("agent.connect"))
+            case ("GET", "/v1/agents"): return (200, try fixtures.data("agents.list"))
+            case (_, "/v1/relays"): return (200, relayed)
+            default: return (404, Data())
+            }
+        }
+        let key = AgentKey.generate()
+        let store = AgentStore(api: makeAgentAPI(client), vault: { "fliq-vault.testnet" })
+        let flow = AgentConnectFlow(store: store, rpcURL: "https://rpc.test", activationPause: .zero, makeKey: { key })
+        flow.choose(.claude)
+
+        await flow.connect()
+
+        let connect = try XCTUnwrap(StubProtocol.requests.first { $0.httpMethod == "POST" && $0.url?.path == "/v1/agents" })
+        let sent = try JSONSerialization.jsonObject(with: Data(reading: connect.httpBodyStream!)) as? [String: Any]
+        XCTAssertEqual(sent?["public_key"] as? String, key.publicKey)
+        let relayIndex = try XCTUnwrap(StubProtocol.requests.firstIndex { $0.url?.path == "/v1/relays" })
+        let listIndex = try XCTUnwrap(StubProtocol.requests.lastIndex { $0.httpMethod == "GET" && $0.url?.path == "/v1/agents" })
+        XCTAssertLessThan(relayIndex, listIndex, "The vault is asked for the agent only after the signed step was relayed")
+        XCTAssertTrue(flow.isActive)
+        XCTAssertEqual(flow.setup?.accountId, "claude-frank.fliq.near")
+        XCTAssertFalse(StubProtocol.requests.contains { request in
+            request.httpBody.map { String(decoding: $0, as: UTF8.self).contains(key.secretKey) } ?? false
+        }, "The secret never leaves the phone through the API")
     }
 
     func testSignStepsKeepTheirArgKeysAndTheFullStorageDeposit() throws {

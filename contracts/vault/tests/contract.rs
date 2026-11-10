@@ -1458,6 +1458,12 @@ fn real_payout_then_refund_recredits_once_and_marks_refunded() {
     set_caller(accounts(1), NOW);
     contract.set_status(
         "order-1".to_string(),
+        "settled".to_string(),
+        ReceiptRefs::default(),
+    );
+    set_caller(accounts(1), NOW);
+    contract.set_status(
+        "order-1".to_string(),
         "refunding".to_string(),
         refund_refs("refund-tx"),
     );
