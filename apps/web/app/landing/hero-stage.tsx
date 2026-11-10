@@ -22,7 +22,7 @@ function prefersStill() {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
-export function HeroStage({ light = false }: { light?: boolean }) {
+export function HeroStage() {
   const [active, setActive] = useState(0);
   const [paused, setPaused] = useState(false);
   const orbit = useRef<HTMLDivElement>(null);
@@ -74,11 +74,11 @@ export function HeroStage({ light = false }: { light?: boolean }) {
       <div className="relative flex w-full justify-center">
         <span
           aria-hidden="true"
-          className={`pointer-events-none absolute top-1/2 left-1/2 size-[780px] max-w-none -translate-x-1/2 -translate-y-1/2 rounded-full motion-safe:animate-breathe ${light ? "bg-[radial-gradient(circle,#6a5cff38,#9a86ff1f_36%,transparent_66%)]" : "bg-[radial-gradient(circle,#463cff75,#7846ff33_34%,transparent_66%)]"}`}
+          className="pointer-events-none absolute top-1/2 left-1/2 size-[780px] max-w-none -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,#463cff75,#7846ff33_34%,transparent_66%)] motion-safe:animate-breathe"
         />
         <span
           aria-hidden="true"
-          className={`pointer-events-none absolute top-1/2 left-1/2 h-[200px] w-[min(640px,92%)] -translate-x-1/2 -translate-y-1/2 -rotate-[8deg] rounded-[50%] border border-dashed ${light ? "border-black/[0.12]" : "border-[#d2c4ff1f]"}`}
+          className="pointer-events-none absolute top-1/2 left-1/2 h-[200px] w-[min(640px,92%)] -translate-x-1/2 -translate-y-1/2 -rotate-[8deg] rounded-[50%] border border-dashed border-[#d2c4ff1f]"
         />
         <div ref={orbit} aria-hidden="true" className="pointer-events-none absolute inset-0">
           {tokens.map((token, index) => (
@@ -87,7 +87,7 @@ export function HeroStage({ light = false }: { light?: boolean }) {
               ref={(element) => {
                 chips.current[index] = element;
               }}
-              className={`absolute top-1/2 left-1/2 -mt-[22px] -ml-[22px] flex size-11 items-center justify-center rounded-full border will-change-transform ${light ? "border-black/[0.06] bg-white shadow-[0_10px_24px_-8px_rgba(30,20,80,0.35)]" : "border-white/10 bg-[#111] shadow-[0_8px_24px_rgba(0,0,0,0.5),0_0_18px_rgba(113,88,255,0.18)]"}`}
+              className="absolute top-1/2 left-1/2 -mt-[22px] -ml-[22px] flex size-11 items-center justify-center rounded-full border border-white/10 bg-[#111] shadow-[0_8px_24px_rgba(0,0,0,0.5),0_0_18px_rgba(113,88,255,0.18)] will-change-transform"
             >
               <Image
                 src={`/landing/tokens/${token}.webp`}
@@ -100,7 +100,7 @@ export function HeroStage({ light = false }: { light?: boolean }) {
           ))}
         </div>
 
-        <div className={`relative z-[5] aspect-[332/716] w-full max-w-[332px] overflow-hidden rounded-[44px] border border-[#2c2c2c] bg-[#0b0b0b] motion-safe:animate-float ${light ? "shadow-[0_0_0_8px_#111,0_0_0_9px_#2a2a2a,0_50px_100px_-24px_rgba(30,20,90,0.55)]" : "shadow-[0_0_0_8px_#0c0c0c,0_0_0_9px_#262626,0_40px_90px_rgba(0,0,0,0.7)]"}`}>
+        <div className="relative z-[5] aspect-[332/716] w-full max-w-[332px] overflow-hidden rounded-[44px] border border-[#2c2c2c] bg-[#0b0b0b] shadow-[0_0_0_8px_#0c0c0c,0_0_0_9px_#262626,0_40px_90px_rgba(0,0,0,0.7)] motion-safe:animate-float">
           {screens.map((screen, index) => (
             <Image
               key={screen.name}
@@ -120,7 +120,7 @@ export function HeroStage({ light = false }: { light?: boolean }) {
 
       <p
         aria-live="polite"
-        className={`relative z-[9] mt-7 flex h-[34px] items-center rounded-full border px-3.5 text-[13px] font-medium whitespace-nowrap backdrop-blur-md ${light ? "border-black/[0.06] bg-white/90 text-zinc-800 shadow-[0_6px_16px_-8px_rgba(20,20,40,0.25)]" : "border-white/10 bg-[#141414b8]"}`}
+        className="relative z-[9] mt-7 flex h-[34px] items-center rounded-full border border-white/10 bg-[#141414b8] px-3.5 text-[13px] font-medium whitespace-nowrap backdrop-blur-md"
       >
         {screens[active].caption}
       </p>
