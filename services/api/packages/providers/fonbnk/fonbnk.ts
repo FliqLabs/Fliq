@@ -17,6 +17,7 @@ import type {
   Capabilities,
   Chain,
   Corridor,
+  Country,
   CreateOrderRequest,
   Fee,
   FiatCurrency,
@@ -25,6 +26,7 @@ import type {
   OrderSnapshot,
   ProviderAdapter,
   ProviderQuote,
+  QuoteAmount,
   QuoteRequest,
   SourceAsset,
 } from "../types";
@@ -38,7 +40,7 @@ export const FONBNK_SIGNATURE_HEADER = "x-signature";
 
 export type FonbnkEnvironment = keyof typeof FONBNK_BASE_URL;
 
-// Create order requires an end user. Whose identity this is (each sender, or one for fliq) is a team decision.
+// Create order requires an end user. Each sender gets an alias on this email's domain; the email itself is the fallback.
 export type FonbnkEndUser = { email: string; ip: string };
 
 export type FonbnkOptions = {
@@ -47,6 +49,8 @@ export type FonbnkOptions = {
   webhookSecrets: readonly string[];
   environment: FonbnkEnvironment;
   endUser: FonbnkEndUser;
+  // fliq's own contact number in international digits, sent only when a quote requires a phone we were not given.
+  defaultPhone?: string;
   webhookUrl?: string;
   deps: AdapterDeps;
   baseUrl?: string;
@@ -55,10 +59,21 @@ export type FonbnkOptions = {
 
 // Fonbnk only starts checking a crypto deposit once it is told the transaction hash (POST /api/v2/order/confirm).
 export type FonbnkAdapter = ProviderAdapter & {
-  confirmDeposit(providerOrderId: string, transactionHash: string): Promise<OrderSnapshot>;
+  confirmFunding(providerOrderId: string, txHash: string): Promise<OrderSnapshot>;
 };
 
 type Route = { paymentChannel: "bank" | "mobile_money"; carrierCode?: string };
+
+type Operation = "quote" | "createOrder" | "institutions" | "verifyAccount";
+
+type QuoteField = {
+  key: string;
+  required: boolean;
+  defaultValue?: string;
+  options: { label: string; value: string }[];
+};
+
+type StoredQuote = { fields: QuoteField[]; amount?: QuoteAmount; expiresAt: number };
 
 // Ghana mobile money needs the carrier at quote time and the docs disagree on which carriers pay out, so it waits for sandbox.
 const ROUTES: Record<string, Route> = {
@@ -73,12 +88,23 @@ const NETWORKS: Partial<Record<Chain, { network: string; assets: readonly Asset[
   solana: { network: "SOLANA", assets: ["USDC", "USDT"] },
 };
 
+const MPESA: Institution = { code: "ke_safaricom", name: "M-PESA", type: "mobile_money" };
+
+const ACCOUNT_FORMATS: Partial<Record<Country, RegExp>> = { NG: /^\d{10}$/, KE: /^\d{6,20}$/ };
+
 // A quote is only used to read the bank list, so its amount just has to clear every corridor's minimum.
 const INSTITUTIONS_PROBE_UNITS = 10_000_000n;
+const BANK_LIST_TTL_MS = 10 * 60 * 1000;
+
+const LIMIT_ERRORS: Record<string, string> = {
+  AMOUNT_BELOW_MINIMUM: "amount below the minimum",
+  AMOUNT_ABOVE_MAXIMUM: "amount above the maximum",
+};
 
 export function createFonbnkAdapter(options: FonbnkOptions): FonbnkAdapter {
   const webhookSecrets = options.webhookSecrets.map((secret) => secret.trim()).filter(Boolean);
   const signingKey = Buffer.from(options.signatureSecret, "base64");
+  const now = () => (options.deps.now ? options.deps.now() : new Date()).getTime();
   const http = createProviderHttp({
     provider: "fonbnk",
     baseUrl: options.baseUrl ?? FONBNK_BASE_URL[options.environment],
@@ -94,6 +120,10 @@ export function createFonbnkAdapter(options: FonbnkOptions): FonbnkAdapter {
     },
   });
 
+  const quotes = new Map<string, StoredQuote>();
+  const bankLists = new Map<Country, { value: Promise<Institution[]>; expiresAt: number }>();
+  const alertedInvalid = new Set<string>();
+
   const sources: SourceAsset[] = Object.entries(NETWORKS).flatMap(([chain, entry]) =>
     (entry?.assets ?? []).map((asset) => ({ asset, chain: chain as Chain })),
   );
@@ -108,15 +138,18 @@ export function createFonbnkAdapter(options: FonbnkOptions): FonbnkAdapter {
     ],
     sources,
     limits: {},
+    sandbox: options.environment === "sandbox",
+    // A deposit is matched only by the hash we confirm, and only a 1Click hop tells us that hash.
+    funding: { direct: false, hop: true },
   };
 
-  function routeFor(corridor: Corridor, operation: "quote" | "createOrder" | "institutions"): Route {
+  function routeFor(corridor: Corridor, operation: Operation): Route {
     const route = ROUTES[`${corridor.country}:${corridor.payoutType}`];
     if (!route) throw new ProviderError("fonbnk", operation, "not_supported", `corridor ${corridor.country}`);
     return route;
   }
 
-  function currencyCode(source: SourceAsset, operation: "quote" | "createOrder" | "institutions"): string {
+  function currencyCode(source: SourceAsset, operation: Operation): string {
     const entry = NETWORKS[source.chain];
     if (!entry?.assets.includes(source.asset)) {
       throw new ProviderError("fonbnk", operation, "not_supported", `${source.asset} on ${source.chain}`);
@@ -124,26 +157,28 @@ export function createFonbnkAdapter(options: FonbnkOptions): FonbnkAdapter {
     return `${entry.network}_${source.asset}`;
   }
 
-  function legs(
-    corridor: Corridor,
-    source: SourceAsset,
-    operation: "quote" | "createOrder" | "institutions",
-  ) {
+  // Exactly one leg carries the amount: the deposit for a send amount, the payout for a receive amount.
+  function legs(corridor: Corridor, source: SourceAsset, quoted: QuoteAmount, operation: Operation) {
     const route = routeFor(corridor, operation);
-    return {
-      deposit: {
-        paymentChannel: "crypto",
-        currencyType: "crypto",
-        currencyCode: currencyCode(source, operation),
-      },
-      payout: {
-        paymentChannel: route.paymentChannel,
-        currencyType: "fiat",
-        currencyCode: corridor.currency,
-        countryIsoCode: corridor.country,
-        ...(route.carrierCode ? { carrierCode: route.carrierCode } : {}),
-      },
+    const deposit = {
+      paymentChannel: "crypto",
+      currencyType: "crypto",
+      currencyCode: currencyCode(source, operation),
     };
+    const payout = {
+      paymentChannel: route.paymentChannel,
+      currencyType: "fiat",
+      currencyCode: corridor.currency,
+      countryIsoCode: corridor.country,
+      ...(route.carrierCode ? { carrierCode: route.carrierCode } : {}),
+    };
+    if (quoted.side === "send") {
+      const amount = Number(toDecimalString(quoted.units, ASSET_DECIMALS[source.asset]));
+      return { deposit: { ...deposit, amount }, payout };
+    }
+    // Fiat amounts are whole units on these corridors, so round up to never pay less than asked.
+    const amount = Number(ceilToWhole(quoted.minorUnits, FIAT_DECIMALS[corridor.currency]));
+    return { deposit, payout: { ...payout, amount } };
   }
 
   // Fonbnk sends amounts as JSON numbers in major units.
@@ -180,40 +215,69 @@ export function createFonbnkAdapter(options: FonbnkOptions): FonbnkAdapter {
     });
   }
 
-  async function requestQuote(request: Omit<QuoteRequest, "quoteId">, operation: "quote" | "institutions") {
-    const { deposit, payout } = legs(request.corridor, request.source, operation);
-    const fiatDecimals = FIAT_DECIMALS[request.corridor.currency];
-    const body =
-      request.amount.side === "send"
-        ? {
-            deposit: {
-              ...deposit,
-              amount: Number(toDecimalString(request.amount.units, ASSET_DECIMALS[request.source.asset])),
-            },
-            payout,
-          }
-        : {
-            deposit,
-            // Fiat amounts are whole units on these corridors, so round up to never pay less than asked.
-            payout: { ...payout, amount: Number(ceilToWhole(request.amount.minorUnits, fiatDecimals)) },
-          };
+  async function requestQuote(request: Omit<QuoteRequest, "quoteId">, operation: Operation) {
     const response = await http.request({
       operation,
       method: "POST",
       path: "/api/v2/quote",
-      body,
+      body: legs(request.corridor, request.source, request.amount, operation),
       acceptStatuses: [404],
     });
     if (response.status === 404) throw quoteRefused(response.body, operation);
     return jsonReader("fonbnk", operation).object(response.body, "body");
   }
 
-  function quoteRefused(body: unknown, operation: "quote" | "institutions"): ProviderError {
-    const code = typeof body === "object" && body !== null ? (body as JsonObject).errorCode : undefined;
-    const errorCode = typeof code === "string" ? code : "unknown";
+  function quoteRefused(body: unknown, operation: Operation): ProviderError {
+    const record = typeof body === "object" && body !== null ? (body as JsonObject) : {};
+    const errorCode = typeof record.errorCode === "string" ? record.errorCode : "unknown";
+    const limit = LIMIT_ERRORS[errorCode];
+    if (limit) {
+      const details = typeof record.details === "object" && record.details !== null ? record.details : {};
+      const { min, max, currencyCode: currency } = details as JsonObject;
+      const range = `${errorCode}: min ${String(min)} max ${String(max)} ${String(currency)}`;
+      return new ProviderError("fonbnk", operation, "not_supported", limit, 404, range);
+    }
     // errors.md: ROUTE_NOT_AVAILABLE is the only 404 worth retrying.
     const kind = errorCode === "ROUTE_NOT_AVAILABLE" ? "unavailable" : "rejected";
     return new ProviderError("fonbnk", operation, kind, `quote refused: ${errorCode}`, 404);
+  }
+
+  function quoteFields(read: ReturnType<typeof jsonReader>, body: JsonObject): QuoteField[] {
+    const payout = read.object(body.payout, "payout");
+    return read.array(payout.fieldsToCreateOrder ?? [], "fieldsToCreateOrder").map((entry) => {
+      const field = read.object(entry, "field");
+      const defaultValue = read.optionalString(field, "defaultValue");
+      return {
+        key: read.string(field, "key"),
+        required: field.required === true,
+        ...(defaultValue ? { defaultValue } : {}),
+        options: read.array(field.options ?? [], "options").map((item) => {
+          const option = read.object(item, "option");
+          return { label: read.string(option, "label"), value: read.string(option, "value") };
+        }),
+      };
+    });
+  }
+
+  function remember(quoteId: string, stored: StoredQuote): void {
+    for (const [id, entry] of quotes) if (entry.expiresAt <= now()) quotes.delete(id);
+    quotes.set(quoteId, stored);
+  }
+
+  // The quote that prices the order also fixes its recipient fields and bank codes. After a restart it is asked again.
+  async function storedQuote(request: CreateOrderRequest): Promise<Omit<StoredQuote, "expiresAt">> {
+    const quoteId = request.quote.providerQuoteId;
+    const stored = quoteId ? quotes.get(quoteId) : undefined;
+    if (stored && stored.expiresAt > now()) return stored;
+    const body = await requestQuote(
+      {
+        corridor: request.corridor,
+        source: request.source,
+        amount: { side: "send", units: request.quote.sendUnits },
+      },
+      "createOrder",
+    );
+    return { fields: quoteFields(jsonReader("fonbnk", "createOrder"), body) };
   }
 
   function toStatus(status: string, order: JsonObject): OrderStatus | null {
@@ -248,12 +312,26 @@ export function createFonbnkAdapter(options: FonbnkOptions): FonbnkAdapter {
       // Fonbnk still accepts a late deposit on these, so they are failures only while nothing was sent.
       case "deposit_expired":
       case "deposit_canceled":
-        return { status: "failed", code: status, retryable: true };
+        return { status: "failed", code: "deposit_expired", retryable: true };
+      // Our transfer was delivered but Fonbnk would not match it. Support can walk this back, and where the funds go
+      // is undocumented, so a person has to look.
       case "deposit_invalid":
-        return { status: "failed", code: "deposit_invalid", retryable: false };
+        alertInvalidDeposit(order);
+        return { status: "refunding" };
       default:
         return null;
     }
+  }
+
+  function alertInvalidDeposit(order: JsonObject): void {
+    const id = typeof order._id === "string" ? order._id : "unknown";
+    if (alertedInvalid.has(id)) return;
+    alertedInvalid.add(id);
+    options.deps.alert({
+      provider: "fonbnk",
+      kind: "unmappable_status",
+      detail: `deposit_invalid on order ${id}: check the deposit and where Fonbnk returns it`,
+    });
   }
 
   function unmappable(operation: "getOrder" | "parseWebhook", value: string): ProviderError {
@@ -270,26 +348,64 @@ export function createFonbnkAdapter(options: FonbnkOptions): FonbnkAdapter {
     return { providerOrderId: read.string(order, "_id"), ...(reference ? { reference } : {}), ...mapped };
   }
 
-  function recipientFields(request: CreateOrderRequest, route: Route): Record<string, string> {
+  function refuse(detail: string): ProviderError {
+    return new ProviderError("fonbnk", "createOrder", "rejected", detail);
+  }
+
+  // Bank codes differ per routing provider (bank-transfer.md), so the bank is found by name in the order's own quote.
+  async function bankCodeFor(request: CreateOrderRequest, field: QuoteField): Promise<string> {
+    const banks = await cachedBanks(request.corridor);
+    const label = banks.find((bank) => bank.code === request.recipient.institutionCode)?.name;
+    const matches = label ? field.options.filter((option) => sameName(option.label, label)) : [];
+    const match = matches.length === 1 ? matches[0] : undefined;
+    if (!match) throw refuse("bank not offered by this quote");
+    return match.value;
+  }
+
+  async function recipientFields(
+    request: CreateOrderRequest,
+    route: Route,
+    fields: QuoteField[],
+  ): Promise<Record<string, string>> {
     const { recipient, corridor } = request;
-    const phone =
-      recipient.phone ?? (route.paymentChannel === "mobile_money" ? recipient.accountNumber : undefined);
-    if (route.paymentChannel === "mobile_money")
-      return { phoneNumber: internationalPhone(phone ?? "", corridor) };
-    // Nigerian bank payouts require the recipient's phone (bank-transfer.md); Kenyan bank payouts take it when present.
-    if (corridor.country === "NG" && !phone) {
-      throw new ProviderError(
-        "fonbnk",
-        "createOrder",
-        "rejected",
-        "recipient phone is required for NG bank payouts",
-      );
-    }
-    return {
-      bankCode: recipient.institutionCode,
-      bankAccountNumber: recipient.accountNumber,
-      ...(phone ? { phoneNumber: internationalPhone(phone, corridor) } : {}),
+    const phone = route.paymentChannel === "mobile_money" ? recipient.accountNumber : recipient.phone;
+    const phoneFor = (field: QuoteField): string | undefined => {
+      if (phone) return internationalPhone(phone, corridor);
+      return field.required ? options.defaultPhone?.replace(/\D/g, "") : undefined;
     };
+    const values: Record<string, string> = {};
+    for (const field of fields) {
+      let value: string | undefined;
+      switch (field.key) {
+        case "phoneNumber":
+          value = phoneFor(field);
+          break;
+        case "bankCode":
+          value = await bankCodeFor(request, field);
+          break;
+        case "bankAccountNumber":
+          value = recipient.accountNumber;
+          break;
+        case "bankAccountHolderName":
+        case "fullName":
+          value = recipient.accountName || undefined;
+          break;
+        case "carrierCode":
+          value = route.carrierCode;
+          break;
+      }
+      value = value ?? field.defaultValue;
+      if (value) values[field.key] = value;
+      else if (field.required) throw refuse(`no value for required field ${field.key}`);
+    }
+    return values;
+  }
+
+  function endUserEmail(request: CreateOrderRequest): string {
+    const pseudonym = request.sender?.pseudonym.toLowerCase() ?? "";
+    const domain = options.endUser.email.split("@")[1];
+    if (!/^[0-9a-f]{24,}$/.test(pseudonym) || !domain) return options.endUser.email;
+    return `u-${pseudonym.slice(0, 24)}@${domain}`;
   }
 
   async function cancelQuietly(orderId: string): Promise<void> {
@@ -312,6 +428,12 @@ export function createFonbnkAdapter(options: FonbnkOptions): FonbnkAdapter {
     return snapshot(jsonReader("fonbnk", "getOrder").object(response.body, "body"));
   }
 
+  function bankCorridor(country: Country): Corridor | undefined {
+    return capabilities.corridors.find(
+      (corridor) => corridor.country === country && corridor.payoutType === "bank",
+    );
+  }
+
   return {
     id: "fonbnk",
 
@@ -326,9 +448,16 @@ export function createFonbnkAdapter(options: FonbnkOptions): FonbnkAdapter {
       const payout = read.object(read.object(body.payout, "payout").cashout, "payout.cashout");
       const rate = payout.exchangeRate;
       if (typeof rate !== "number" && typeof rate !== "string") throw read.fail("exchangeRate is missing");
+      const providerQuoteId = read.string(body, "quoteId");
+      const expiresAt = read.date(body, "quoteExpiresAt");
+      remember(providerQuoteId, {
+        fields: quoteFields(read, body),
+        amount: request.amount,
+        expiresAt: expiresAt.getTime(),
+      });
       return {
         provider: "fonbnk",
-        providerQuoteId: read.string(body, "quoteId"),
+        providerQuoteId,
         // amountBeforeFees on the deposit leg is what we must send; amountAfterFees on the payout leg is what arrives.
         sendUnits: amount(read, deposit, "amountBeforeFees", ASSET_DECIMALS[asset]),
         receiveMinorUnits: amount(read, payout, "amountAfterFees", FIAT_DECIMALS[currency], "down"),
@@ -337,14 +466,17 @@ export function createFonbnkAdapter(options: FonbnkOptions): FonbnkAdapter {
           ...fees(read, deposit, asset, ASSET_DECIMALS[asset]),
           ...fees(read, payout, currency, FIAT_DECIMALS[currency]),
         ],
-        expiresAt: read.date(body, "quoteExpiresAt"),
+        expiresAt,
       };
     },
 
     async createOrder(request) {
       const read = jsonReader("fonbnk", "createOrder");
       const route = routeFor(request.corridor, "createOrder");
-      const { deposit, payout } = legs(request.corridor, request.source, "createOrder");
+      const stored = await storedQuote(request);
+      const fieldsToCreateOrder = await recipientFields(request, route, stored.fields);
+      const quoted: QuoteAmount = stored.amount ?? { side: "send", units: request.quote.sendUnits };
+      const { deposit, payout } = legs(request.corridor, request.source, quoted, "createOrder");
       const asset = request.source.asset;
       const response = await http.request({
         operation: "createOrder",
@@ -352,15 +484,12 @@ export function createFonbnkAdapter(options: FonbnkOptions): FonbnkAdapter {
         path: "/api/v2/order",
         body: {
           ...(request.quote.providerQuoteId ? { quoteId: request.quote.providerQuoteId } : {}),
-          userEmail: options.endUser.email,
+          userEmail: endUserEmail(request),
           userIp: options.endUser.ip,
           userCountryIsoCode: request.corridor.country,
-          deposit: {
-            ...deposit,
-            amount: Number(toDecimalString(request.quote.sendUnits, ASSET_DECIMALS[asset])),
-          },
+          deposit,
           payout,
-          fieldsToCreateOrder: recipientFields(request, route),
+          fieldsToCreateOrder,
           orderParams: request.payoutId,
           ...(options.webhookUrl ? { webhookUrl: options.webhookUrl } : {}),
         },
@@ -402,17 +531,25 @@ export function createFonbnkAdapter(options: FonbnkOptions): FonbnkAdapter {
       };
     },
 
-    async confirmDeposit(providerOrderId, transactionHash) {
+    // Fonbnk answers 400 to a second confirm or to any order past deposit_awaiting, so a 400 reads the order instead.
+    async confirmFunding(providerOrderId, txHash) {
       const response = await http.request({
         operation: "createOrder",
         method: "POST",
         path: "/api/v2/order/confirm",
         body: {
           orderId: providerOrderId,
-          fieldsToConfirmOrder: { blockchainTransactionHash: transactionHash },
+          fieldsToConfirmOrder: { blockchainTransactionHash: txHash },
         },
+        acceptStatuses: [400],
       });
-      return snapshot(jsonReader("fonbnk", "createOrder").object(response.body, "body"));
+      if (response.status !== 400) {
+        return snapshot(jsonReader("fonbnk", "createOrder").object(response.body, "body"));
+      }
+      const current = await findOrder({ orderId: providerOrderId });
+      if (!current)
+        throw new ProviderError("fonbnk", "getOrder", "rejected", "confirmed order not found", 400);
+      return current;
     },
 
     getOrder: (lookup) =>
@@ -420,22 +557,27 @@ export function createFonbnkAdapter(options: FonbnkOptions): FonbnkAdapter {
         "providerOrderId" in lookup ? { orderId: lookup.providerOrderId } : { orderParams: lookup.reference },
       ),
 
-    async verifyAccount() {
-      throw new ProviderError(
-        "fonbnk",
-        "verifyAccount",
-        "not_supported",
-        "no account lookup in the Fonbnk API",
-      );
+    // Fonbnk has no name lookup: a known institution and a well-formed number is all it can vouch for.
+    async verifyAccount(check) {
+      const number = check.accountNumber.replace(/\s/g, "");
+      if (check.country === "KE" && check.institutionCode === MPESA.code) {
+        const valid = /^254[17]\d{8}$/.test(internationalPhone(number, { country: "KE" }));
+        return valid ? { found: true, accountName: null } : { found: false };
+      }
+      const corridor = bankCorridor(check.country);
+      const format = ACCOUNT_FORMATS[check.country];
+      const banks = corridor ? await cachedBanks(corridor) : [];
+      if (!format || !banks.some((bank) => bank.code === check.institutionCode)) {
+        throw new ProviderError("fonbnk", "verifyAccount", "not_supported", "institution not offered");
+      }
+      return format.test(number) ? { found: true, accountName: null } : { found: false };
     },
 
     async institutions(country) {
-      if (country === "KE") {
-        const mpesa: Institution = { code: "ke_safaricom", name: "M-PESA", type: "mobile_money" };
-        return [mpesa, ...(await banksFrom({ country: "KE", currency: "KES", payoutType: "bank" }))];
-      }
-      if (country === "NG") return banksFrom({ country: "NG", currency: "NGN", payoutType: "bank" });
-      return [];
+      const corridor = bankCorridor(country);
+      if (!corridor) return [];
+      const banks = await cachedBanks(corridor);
+      return country === "KE" ? [MPESA, ...banks] : banks;
     },
 
     parseWebhook(webhook) {
@@ -490,27 +632,36 @@ export function createFonbnkAdapter(options: FonbnkOptions): FonbnkAdapter {
     },
   };
 
-  // Bank codes are specific to the quote that lists them (bank-transfer.md), so they are read from a quote.
+  function cachedBanks(corridor: Corridor): Promise<Institution[]> {
+    const cached = bankLists.get(corridor.country);
+    if (cached && cached.expiresAt > now()) return cached.value;
+    const value = banksFrom(corridor);
+    bankLists.set(corridor.country, { value, expiresAt: now() + BANK_LIST_TTL_MS });
+    value.catch(() => {
+      if (bankLists.get(corridor.country)?.value === value) bankLists.delete(corridor.country);
+    });
+    return value;
+  }
+
+  // The bank list comes from a probe quote. Its codes only name banks; orders take codes from their own quote.
   async function banksFrom(corridor: Corridor): Promise<Institution[]> {
     const read = jsonReader("fonbnk", "institutions");
     const source = sources[0];
     if (!source) return [];
     const body = await requestQuote(
-      { corridor, source, amount: { side: "send", units: INSTITUTIONS_PROBE_UNITS } },
+      {
+        corridor: { ...corridor, payoutType: "bank" },
+        source,
+        amount: { side: "send", units: INSTITUTIONS_PROBE_UNITS },
+      },
       "institutions",
     );
-    const fields = read.array(
-      read.object(body.payout, "payout").fieldsToCreateOrder ?? [],
-      "fieldsToCreateOrder",
-    );
-    const bankCode = fields
-      .map((field) => read.object(field, "field"))
-      .find((field) => field.key === "bankCode");
-    if (!bankCode) return [];
-    return read.array(bankCode.options ?? [], "options").map((entry) => {
-      const option = read.object(entry, "option");
-      return { code: read.string(option, "value"), name: read.string(option, "label"), type: "bank" };
-    });
+    const bankCode = quoteFields(read, body).find((field) => field.key === "bankCode");
+    return (bankCode?.options ?? []).map((option) => ({
+      code: option.value,
+      name: option.label,
+      type: "bank",
+    }));
   }
 
   function webhookSignature(rawBody: string, secret: string): string {
@@ -532,12 +683,17 @@ function ceilToWhole(minorUnits: bigint, decimals: number): string {
   return ((minorUnits + scale - 1n) / scale).toString();
 }
 
-// The docs' phone examples are international without "+": 2348012345678, 254712345678.
-const DIAL_CODES: Partial<Record<Corridor["country"], string>> = { NG: "234", KE: "254", GH: "233" };
+function sameName(a: string, b: string): boolean {
+  const normalise = (name: string) => name.toLowerCase().replace(/[^a-z0-9]/g, "");
+  return normalise(a) === normalise(b);
+}
 
-function internationalPhone(phone: string, corridor: Corridor): string {
+// The docs' phone examples are international without "+": 2348012345678, 254712345678.
+const DIAL_CODES: Partial<Record<Country, string>> = { NG: "234", KE: "254", GH: "233" };
+
+function internationalPhone(phone: string, place: { country: Country }): string {
   const digits = phone.replace(/\D/g, "");
-  const dial = DIAL_CODES[corridor.country] ?? "";
+  const dial = DIAL_CODES[place.country] ?? "";
   if (digits.startsWith(dial)) return digits;
   if (digits.startsWith("0")) return dial + digits.slice(1);
   return dial + digits;

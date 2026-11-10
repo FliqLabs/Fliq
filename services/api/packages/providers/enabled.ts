@@ -94,10 +94,11 @@ export function enabledAdapters(env: Env, deps: AdapterDeps): ProviderAdapter[] 
       "FONBNK_USER_EMAIL",
       "FONBNK_USER_IP",
     ],
-    ["FONBNK_WEBHOOK_URL"],
+    ["FONBNK_WEBHOOK_URL", "FONBNK_DEFAULT_PHONE"],
   );
   if (fonbnk) {
     const webhookUrl = fonbnk("FONBNK_WEBHOOK_URL");
+    const defaultPhone = fonbnk("FONBNK_DEFAULT_PHONE");
     adapters.push(
       createFonbnkAdapter({
         clientId: fonbnk("FONBNK_CLIENT_ID"),
@@ -106,6 +107,7 @@ export function enabledAdapters(env: Env, deps: AdapterDeps): ProviderAdapter[] 
         webhookSecrets: webhookSecrets(env, "FONBNK_WEBHOOK_SECRET"),
         endUser: { email: fonbnk("FONBNK_USER_EMAIL"), ip: fonbnk("FONBNK_USER_IP") },
         ...(webhookUrl ? { webhookUrl } : {}),
+        ...(defaultPhone ? { defaultPhone } : {}),
         deps,
       }),
     );

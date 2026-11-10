@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { describeAdapterContract } from "../contract/contract";
 import { replayFetch, type RecordedExchange } from "../contract/replay";
 import type { CreateOrderRequest, ProviderAlert, ProviderQuote, QuoteRequest } from "../types";
-import { FONBNK_SIGNATURE_HEADER, createFonbnkAdapter } from "./fonbnk";
+import { FONBNK_SIGNATURE_HEADER, createFonbnkAdapter, type FonbnkOptions } from "./fonbnk";
 import {
   AMOUNT_BELOW_MINIMUM,
   CONFIRM_HASH,
@@ -96,19 +96,41 @@ const withStatus = (status: string) => ({
   data: { ...WEBHOOK_PAYOUT_SUCCESSFUL.data, order: { ...WEBHOOK_PAYOUT_SUCCESSFUL.data.order, status } },
 });
 
-function setup(exchanges: RecordedExchange[] = EXCHANGES, webhookSecrets = [WEBHOOK_SECRET]) {
+type SetupOptions = {
+  webhookSecrets?: string[];
+  // Served in order to POST /api/v2/quote before the recorded quote, so one test can see two different quotes.
+  quotes?: unknown[];
+  options?: Partial<FonbnkOptions>;
+};
+
+function setup(exchanges: RecordedExchange[] = EXCHANGES, setupOptions: SetupOptions = {}) {
   const alerts: ProviderAlert[] = [];
   const replay = replayFetch(exchanges);
+  const queued = [...(setupOptions.quotes ?? [])];
+  const fetchQuotes = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    const url = new URL(typeof input === "string" || input instanceof URL ? input : input.url);
+    if (url.pathname !== "/api/v2/quote" || queued.length === 0) return replay.fetch(input, init);
+    replay.calls.push({ method: "POST", path: url.pathname, headers: {}, body: String(init?.body ?? "") });
+    return new Response(JSON.stringify(queued.shift()), { status: 200 });
+  };
   const adapter = createFonbnkAdapter({
     clientId: "test-client-id",
     signatureSecret: SIGNING_SECRET,
-    webhookSecrets,
+    webhookSecrets: setupOptions.webhookSecrets ?? [WEBHOOK_SECRET],
     environment: "sandbox",
     endUser: END_USER,
-    deps: { fetch: replay.fetch, alert: (alert) => alerts.push(alert) },
+    deps: { fetch: fetchQuotes as typeof fetch, alert: (alert) => alerts.push(alert), now: () => QUOTED_AT },
+    ...setupOptions.options,
   });
   return { adapter, alerts, replay };
 }
+
+const quoteWithFields = (fieldsToCreateOrder: unknown[]) => ({
+  ...QUOTE,
+  payout: { ...QUOTE.payout, fieldsToCreateOrder },
+});
+
+const [PHONE_FIELD, BANK_FIELD, ACCOUNT_FIELD] = QUOTE.payout.fieldsToCreateOrder;
 
 function withResponse(method: string, path: string, body: unknown, status = 200): RecordedExchange[] {
   return [{ method, path, status, body }, ...EXCHANGES.filter((exchange) => exchange.path !== path)];
@@ -201,31 +223,62 @@ describe("fonbnk adapter", () => {
     });
   });
 
-  it("treats a missing route as retryable and an amount out of range as a rejection", async () => {
+  it("treats a missing route as retryable and an amount out of range as a limit, not a rejection", async () => {
     const unavailable = setup(
       withResponse("POST", "/api/v2/quote", { errorCode: "ROUTE_NOT_AVAILABLE" }, 404),
     );
     await expect(unavailable.adapter.quote(QUOTE_REQUEST)).rejects.toMatchObject({ kind: "unavailable" });
     const belowMinimum = setup(withResponse("POST", "/api/v2/quote", AMOUNT_BELOW_MINIMUM, 404));
-    await expect(belowMinimum.adapter.quote(QUOTE_REQUEST)).rejects.toMatchObject({ kind: "rejected" });
+    await expect(belowMinimum.adapter.quote(QUOTE_REQUEST)).rejects.toMatchObject({
+      kind: "not_supported",
+      message: expect.stringContaining("below the minimum"),
+      reason: "AMOUNT_BELOW_MINIMUM: min 1494 max 747367 NGN",
+    });
+    const aboveMaximum = setup(
+      withResponse(
+        "POST",
+        "/api/v2/quote",
+        { ...AMOUNT_BELOW_MINIMUM, errorCode: "AMOUNT_ABOVE_MAXIMUM" },
+        404,
+      ),
+    );
+    await expect(aboveMaximum.adapter.quote(QUOTE_REQUEST)).rejects.toMatchObject({
+      kind: "not_supported",
+      message: expect.stringContaining("above the maximum"),
+    });
+    const badStep = setup(
+      withResponse(
+        "POST",
+        "/api/v2/quote",
+        { ...AMOUNT_BELOW_MINIMUM, errorCode: "AMOUNT_STEP_INVALID" },
+        404,
+      ),
+    );
+    await expect(badStep.adapter.quote(QUOTE_REQUEST)).rejects.toMatchObject({ kind: "rejected" });
   });
 
-  it("creates the order with our payout id, the locked quote and the recipient fields", async () => {
+  it("creates the order with our payout id, the locked quote, its quoted amount and the recipient fields", async () => {
     const { adapter, replay } = setup();
     const quote = await adapter.quote(QUOTE_REQUEST);
     const order = await adapter.createOrder(orderRequest(quote));
-    expect(bodyOf(replay.calls[1])).toEqual({
+    expect(replay.calls.map((call) => call.path)).toEqual([
+      "/api/v2/quote",
+      "/api/v2/quote",
+      "/api/v2/order",
+    ]);
+    expect(bodyOf(replay.calls[2])).toEqual({
       quoteId: QUOTE.quoteId,
       userEmail: END_USER.email,
       userIp: END_USER.ip,
       userCountryIsoCode: "NG",
-      deposit: {
-        paymentChannel: "crypto",
-        currencyType: "crypto",
-        currencyCode: "POLYGON_USDT",
-        amount: 21.272315,
+      deposit: { paymentChannel: "crypto", currencyType: "crypto", currencyCode: "POLYGON_USDT" },
+      payout: {
+        paymentChannel: "bank",
+        currencyType: "fiat",
+        currencyCode: "NGN",
+        countryIsoCode: "NG",
+        amount: 30000,
       },
-      payout: { paymentChannel: "bank", currencyType: "fiat", currencyCode: "NGN", countryIsoCode: "NG" },
       fieldsToCreateOrder: { bankCode: "1", bankAccountNumber: "1234567890", phoneNumber: "2348012345678" },
       orderParams: PAYOUT_ID,
     });
@@ -263,14 +316,34 @@ describe("fonbnk adapter", () => {
     expect(bodyOf(replay.calls.at(-1))).toEqual({ orderId: ORDER_ID });
   });
 
-  it("confirms the deposit with our transaction hash", async () => {
+  it("confirms the funding with the delivery transaction hash", async () => {
     const { adapter, replay } = setup();
-    const confirmed = await adapter.confirmDeposit(ORDER_ID, CONFIRM_HASH);
+    const confirmed = await adapter.confirmFunding(ORDER_ID, CONFIRM_HASH);
     expect(bodyOf(replay.calls[0])).toEqual({
       orderId: ORDER_ID,
       fieldsToConfirmOrder: { blockchainTransactionHash: CONFIRM_HASH },
     });
     expect(confirmed).toEqual({ providerOrderId: ORDER_ID, status: "deposit_received" });
+  });
+
+  it("reads the order instead of failing when Fonbnk refuses a second confirm", async () => {
+    const refused = { message: "Order is not in a state that allows confirmation" };
+    const { adapter, replay } = setup([
+      { method: "POST", path: "/api/v2/order/confirm", status: 400, body: refused },
+      {
+        method: "GET",
+        path: `/api/v2/order?orderId=${ORDER_ID}`,
+        status: 200,
+        body: orderWith({ status: "deposit_expired" }),
+      },
+    ]);
+    expect(await adapter.confirmFunding(ORDER_ID, CONFIRM_HASH)).toEqual({
+      providerOrderId: ORDER_ID,
+      status: "failed",
+      code: "deposit_expired",
+      retryable: true,
+    });
+    expect(replay.calls.map((call) => call.method)).toEqual(["POST", "GET"]);
   });
 
   it("maps statuses that are not final to non-final ones and reads the refund hash", async () => {
@@ -285,9 +358,10 @@ describe("fonbnk adapter", () => {
       code: "deposit_expired",
       retryable: true,
     });
-    expect(await statusOf({ status: "deposit_invalid" })).toMatchObject({
+    expect(await statusOf({ status: "deposit_canceled" })).toMatchObject({
       status: "failed",
-      retryable: false,
+      code: "deposit_expired",
+      retryable: true,
     });
     expect(
       await statusOf({
@@ -298,7 +372,7 @@ describe("fonbnk adapter", () => {
   });
 
   it("keys webhook events on order, status and update time, and accepts the previous secret", () => {
-    const { adapter } = setup(EXCHANGES, [WEBHOOK_SECRET, "previous-secret"]);
+    const { adapter } = setup(EXCHANGES, { webhookSecrets: [WEBHOOK_SECRET, "previous-secret"] });
     const event = adapter.parseWebhook(signed(WEBHOOK_PAYOUT_SUCCESSFUL, "previous-secret"));
     const order = WEBHOOK_PAYOUT_SUCCESSFUL.data.order;
     expect(event).toEqual({
@@ -324,11 +398,177 @@ describe("fonbnk adapter", () => {
     expect(await adapter.institutions("GH")).toEqual([]);
   });
 
-  it("has no account lookup and reports health from the currency list", async () => {
+  it("vouches for an offered institution and a well-formed number, never for a name", async () => {
+    const { adapter, replay } = setup();
+    const verify = (institutionCode: string, accountNumber: string, country: "NG" | "KE" | "GH") =>
+      adapter.verifyAccount({ institutionCode, accountNumber, country });
+    const vouched = { found: true, accountName: null };
+    expect(await verify("1", "1234567890", "NG")).toEqual(vouched);
+    expect(await verify("1", "12345", "NG")).toEqual({ found: false });
+    await expect(verify("99", "1234567890", "NG")).rejects.toMatchObject({ kind: "not_supported" });
+    expect(await verify("ke_safaricom", "0712345678", "KE")).toEqual(vouched);
+    expect(await verify("ke_safaricom", "+254 112 345 678", "KE")).toEqual(vouched);
+    expect(await verify("ke_safaricom", "12345", "KE")).toEqual({ found: false });
+    expect(await verify("2", "00112233", "KE")).toEqual(vouched);
+    await expect(verify("1", "0241234567", "GH")).rejects.toMatchObject({ kind: "not_supported" });
+    expect(replay.calls.filter((call) => call.path === "/api/v2/quote")).toHaveLength(2);
+  });
+
+  it("reports health from the currency list", async () => {
     const { adapter } = setup();
-    await expect(
-      adapter.verifyAccount({ institutionCode: "1", accountNumber: "1234567890", country: "NG" }),
-    ).rejects.toMatchObject({ kind: "not_supported" });
     expect(await adapter.health()).toEqual({ healthy: true });
+  });
+
+  it("declares the sandbox and that only a 1Click hop can fund it", () => {
+    expect(setup().adapter.capabilities()).toMatchObject({
+      sandbox: true,
+      funding: { direct: false, hop: true },
+    });
+    const production = setup(EXCHANGES, { options: { environment: "production" } });
+    expect(production.adapter.capabilities().sandbox).toBe(false);
+  });
+
+  it("takes the bank code from the order's own quote, matched by the bank's name", async () => {
+    const orderQuote = quoteWithFields([
+      PHONE_FIELD,
+      {
+        ...BANK_FIELD,
+        options: [
+          { label: "Sandbox Bank 2", value: "70" },
+          { label: "Sandbox Bank", value: "71" },
+        ],
+      },
+      ACCOUNT_FIELD,
+    ]);
+    const { adapter, replay } = setup(EXCHANGES, { quotes: [orderQuote] });
+    const quote = await adapter.quote(QUOTE_REQUEST);
+    await adapter.createOrder(orderRequest(quote));
+    expect(bodyOf(replay.calls.at(-1)).fieldsToCreateOrder.bankCode).toBe("71");
+  });
+
+  it("refuses before calling Fonbnk when the order's quote does not list the bank", async () => {
+    const orderQuote = quoteWithFields([
+      PHONE_FIELD,
+      { ...BANK_FIELD, options: [{ label: "Sandbox Bank 2", value: "70" }] },
+      ACCOUNT_FIELD,
+    ]);
+    const { adapter, replay } = setup(EXCHANGES, { quotes: [orderQuote] });
+    const quote = await adapter.quote(QUOTE_REQUEST);
+    await expect(adapter.createOrder(orderRequest(quote))).rejects.toMatchObject({ kind: "rejected" });
+    expect(replay.calls.map((call) => call.path)).not.toContain("/api/v2/order");
+  });
+
+  it("asks for the quote's fields again when it no longer has them, keeping the quote id", async () => {
+    const quote = await setup().adapter.quote(QUOTE_REQUEST);
+    const { adapter, replay } = setup();
+    await adapter.createOrder(orderRequest(quote));
+    expect(bodyOf(replay.calls[0]).deposit.amount).toBe(21.272315);
+    const created = bodyOf(replay.calls.at(-1));
+    expect(created.quoteId).toBe(QUOTE.quoteId);
+    expect(created.deposit.amount).toBe(21.272315);
+    expect(created.fieldsToCreateOrder.bankCode).toBe("1");
+  });
+
+  it("builds the recipient fields from the quote's list, with its default values", async () => {
+    const orderQuote = quoteWithFields([
+      ...QUOTE.payout.fieldsToCreateOrder,
+      { key: "bankAccountHolderName", label: "Account name", required: true, type: "string" },
+      {
+        key: "payoutSandboxForcedFlow",
+        label: "Flow",
+        required: false,
+        type: "enum",
+        defaultValue: "payout_success",
+      },
+      { key: "promoCode", label: "Promo", required: false, type: "string" },
+    ]);
+    const { adapter, replay } = setup(EXCHANGES, { quotes: [orderQuote] });
+    await adapter.createOrder(orderRequest(await adapter.quote(QUOTE_REQUEST)));
+    expect(bodyOf(replay.calls.at(-1)).fieldsToCreateOrder).toEqual({
+      phoneNumber: "2348012345678",
+      bankCode: "1",
+      bankAccountNumber: "1234567890",
+      bankAccountHolderName: "Ada Obi",
+      payoutSandboxForcedFlow: "payout_success",
+    });
+  });
+
+  it("refuses before calling Fonbnk when a required field has no value", async () => {
+    const orderQuote = quoteWithFields([
+      ...QUOTE.payout.fieldsToCreateOrder,
+      { key: "narration", label: "Narration", required: true, type: "string" },
+    ]);
+    const { adapter, replay } = setup(EXCHANGES, { quotes: [orderQuote] });
+    const quote = await adapter.quote(QUOTE_REQUEST);
+    await expect(adapter.createOrder(orderRequest(quote))).rejects.toMatchObject({ kind: "rejected" });
+    expect(replay.calls.map((call) => call.path)).not.toContain("/api/v2/order");
+  });
+
+  it("pays M-Pesa to the account number and sends the carrier the quote asks for", async () => {
+    const mpesaQuote = quoteWithFields([
+      { key: "phoneNumber", label: "Phone Number", required: true, type: "phone" },
+      { key: "carrierCode", label: "Carrier", required: true, type: "enum" },
+    ]);
+    const { adapter, replay } = setup(EXCHANGES, { quotes: [mpesaQuote] });
+    const corridor = { country: "KE", currency: "KES", payoutType: "mobile_money" } as const;
+    const quote = await adapter.quote({ ...QUOTE_REQUEST, corridor });
+    const mpesa = { institutionCode: "ke_safaricom", accountNumber: "0712345678", accountName: "Wanjiru" };
+    await adapter.createOrder({ ...orderRequest(quote, mpesa), corridor });
+    expect(replay.calls.map((call) => call.path)).toEqual(["/api/v2/quote", "/api/v2/order"]);
+    expect(bodyOf(replay.calls[1]).fieldsToCreateOrder).toEqual({
+      phoneNumber: "254712345678",
+      carrierCode: "ke_safaricom",
+    });
+  });
+
+  it("uses fliq's own number only when the quote requires a phone the sender did not give", async () => {
+    const { adapter, replay } = setup(EXCHANGES, { options: { defaultPhone: "+234 801 000 0000" } });
+    const { phone: _phone, ...noPhone } = RECIPIENT;
+    await adapter.createOrder(orderRequest(await adapter.quote(QUOTE_REQUEST), noPhone));
+    expect(bodyOf(replay.calls.at(-1)).fieldsToCreateOrder.phoneNumber).toBe("2348010000000");
+    const optional = quoteWithFields([{ ...PHONE_FIELD, required: false }, BANK_FIELD, ACCOUNT_FIELD]);
+    const second = setup(EXCHANGES, { quotes: [optional], options: { defaultPhone: "2348010000000" } });
+    await second.adapter.createOrder(orderRequest(await second.adapter.quote(QUOTE_REQUEST), noPhone));
+    expect(bodyOf(second.replay.calls.at(-1)).fieldsToCreateOrder.phoneNumber).toBeUndefined();
+  });
+
+  it("gives each sender a stable alias on our email domain", async () => {
+    const { adapter, replay } = setup();
+    const quote = await adapter.quote(QUOTE_REQUEST);
+    await adapter.createOrder({
+      ...orderRequest(quote),
+      sender: { pseudonym: "3F9A0C1D2E4B5A6978C0D1E2F3A4B5C6D7E8F9A0" },
+    });
+    expect(bodyOf(replay.calls.at(-1))).toMatchObject({
+      userEmail: "u-3f9a0c1d2e4b5a6978c0d1e2@fliq.example",
+      userIp: END_USER.ip,
+    });
+  });
+
+  it("moves an invalid deposit to refunding and alerts once", async () => {
+    const { adapter, alerts } = setup(
+      withResponse("GET", `/api/v2/order?orderId=${ORDER_ID}`, orderWith({ status: "deposit_invalid" })),
+    );
+    expect(await adapter.getOrder({ providerOrderId: ORDER_ID })).toMatchObject({ status: "refunding" });
+    await adapter.getOrder({ providerOrderId: ORDER_ID });
+    expect(alerts).toEqual([
+      { provider: "fonbnk", kind: "unmappable_status", detail: expect.stringContaining(ORDER_ID) },
+    ]);
+  });
+
+  it("returns the bank reference once the order is paid", async () => {
+    const paid = orderWith({
+      status: "payout_successful",
+      payout: {
+        ...CREATE_ORDER.order.payout,
+        transaction: { meta: { paymentChannelAdditionalInfo: "NIP-000123" } },
+      },
+    });
+    const { adapter } = setup(withResponse("GET", `/api/v2/order?orderId=${ORDER_ID}`, paid));
+    expect(await adapter.getOrder({ providerOrderId: ORDER_ID })).toEqual({
+      providerOrderId: ORDER_ID,
+      status: "paid",
+      fiatReference: "NIP-000123",
+    });
   });
 });
