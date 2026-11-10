@@ -52,6 +52,19 @@ These rules are PROPOSED and require backend approval:
 - Cooldown starts when a payout is authorized and remains in force after a failed transfer. Daily buckets use NEAR block timestamp nanoseconds and UTC-sized 24-hour intervals.
 - Direct payer calls do not require an agent policy. Agent payout calls require the policy owner to equal the registered order payer. Agent accounts cannot transfer the owner's balance; `transfer` always debits its predecessor's own vault balance.
 
+## Confirmed mainnet configuration
+
+- `payout_timeout` is **1 hour**, 3600000000000 ns, at initialization. The bounds are 10 minutes to 7 days
+  and the owner can change it afterwards, so this is not a one-shot choice. A healthy payout settles in
+  seconds and cannot reach the stuck state at all, because the callback holds a fixed 20 Tgas under a
+  60 Tgas floor and so cannot be starved; the timeout therefore only matters if NEAR itself drops a
+  receipt. An hour is far beyond any legitimate in-flight transfer, so an operator resolving at the timeout
+  can be confident the transfer is genuinely lost rather than merely slow, while recovery stays a short
+  wait instead of a day.
+- `max_expiry` stays at 24 hours, as on testnet.
+- The approved USDC contract is the native Circle token recorded in `HANDOFF.md`. It is stored once at
+  initialization and cannot be changed, so it is the one value that must be right first time.
+
 ## Backend-requested behavior
 
 - `transfer` accepts an optional public `request_id` made only of ASCII letters, digits, `-` and `_`, at most 64 bytes. The identifier remains visible in the transaction arguments while the frozen `transferred` event stays unchanged.

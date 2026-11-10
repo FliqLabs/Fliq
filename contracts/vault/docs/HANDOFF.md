@@ -82,6 +82,38 @@ Native USDC on NEAR mainnet is `17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31b
 
 Do not use `a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.factory.bridge.near`. That is the bridged `USDC.e` token; it also has 6 decimals, so it will not look wrong, but Circle does not support it for mint or redemption. The approved token is stored once at initialization and cannot be changed afterwards, so this is a one-shot decision. Verify the address against Circle's own documentation at deploy time rather than copying it from here.
 
+### Sizing the vault account's NEAR
+
+NEAR charges 10^19 yoctoNEAR per byte of account storage, confirmed on mainnet. Two costs follow, and the
+first is much the larger:
+
+- **The contract code.** The November artifact is 270,648 bytes, so roughly **2.71 NEAR is locked** for as
+  long as the code is deployed. It is storage staking, not a fee: it returns if the contract is ever
+  removed.
+- **Every order, permanently.** `register_order` is not payable, so the order and receipt are stored
+  against the vault account's own balance rather than the caller's. Measured on the live testnet vault with
+  `get_storage_usage`: registering an order cost 526 bytes, the backend's refs added 72 more, and
+  `release_order` gave back only the reservation, leaving **494 bytes for a completed order**, about
+  **0.005 NEAR, locked for good**. Terminal orders are never cleaned up; that is on the post-hackathon list
+  in `DECISIONS.md`.
+
+So the vault's spare balance is a cap on how many orders it can ever accept, not a running cost, and the
+failure is user-facing: once the balance cannot cover the storage stake, `register_order` fails outright.
+The vault is the first account to top up.
+
+A workable split of 8 NEAR for a first mainnet deployment:
+
+| Account | NEAR | Covers |
+| --- | ---: | --- |
+| vault | 3.6 | 2.71 code, 0.00125 USDC registration, about 0.03 deploy gas, and roughly 0.85 of order headroom, about 170 orders |
+| owner | 0.3 | Rare cold-key calls only; it does not pay agent-policy storage, which is charged to the policy owner |
+| registration account | 2.6 | Per-order gas across `register_order`, `set_status`, `recredit` and `release_order` |
+| storage payer | 1.5 | Per user: 0.00141 vault registration, 0.00125 USDC registration and about 0.02 funding |
+
+Gas was at the protocol floor of 10^8 yoctoNEAR per unit on 10 November 2026, which puts a 60 Tgas call at
+0.006 NEAR. Testnet was running about ten times that when an agent payout failed earlier the same day, so
+size gas budgets against the congested price, not the floor.
+
 ## Backend alignment
 
 The backend already verifies NEP-366 delegate signatures, sender accounts, access-key membership, nonces, receiver, method, arguments and gas sponsorship. The vault adds independent on-chain amount, destination, payer and agent-policy enforcement. The backend must send the existing confirmed payout arguments: `order_id`, `amount`, and `deposit_address`.
