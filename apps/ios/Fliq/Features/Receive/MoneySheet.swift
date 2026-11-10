@@ -63,7 +63,8 @@ struct MoveMoneySheet: View {
     private func screen(_ step: Step) -> some View {
         switch step {
         case .receive:
-            ReceiveStartView(name: name, onFliqName: { go(.fliqName) }, onWallet: { go(.currencies) })
+            ReceiveStartView(name: name, flow: receive, onFliqName: { go(.fliqName) }, onWallet: openWallet)
+                .task { await receive.loadSources() }
         case .request:
             if let request { RequestView(flow: request) { dismiss() }.sheetToolbar { dismiss() } }
         case .payTo:
@@ -109,6 +110,14 @@ struct MoveMoneySheet: View {
         Task { if await receive.reserve(source) { go(.address) } }
     }
 
+    /// With a single way to receive, as on testnet, both pickers are skipped and the address opens straight away.
+    private func openWallet() {
+        guard let only = receive.onlyOption else { return go(.currencies) }
+        Task {
+            if await receive.reserve(only) { go(.address) } else { go(.currencies) }
+        }
+    }
+
     private static func detents(for step: Step?) -> Set<PresentationDetent> {
         switch step {
         case nil, .receive: [menuHeight]
@@ -131,6 +140,7 @@ struct MoveMoneySheet: View {
 
 private struct ReceiveStartView: View {
     let name: String?
+    let flow: ReceiveFlow
     let onFliqName: () -> Void
     let onWallet: () -> Void
     @Environment(\.dismiss) private var dismiss
@@ -155,11 +165,17 @@ private struct ReceiveStartView: View {
                         NEARMark(size: 22)
                     }
                 }
-                SheetRow(title: "External wallet", detail: "Choose a coin and network", action: onWallet) {
-                    Image(systemName: "wallet.bifold").font(.system(size: 20))
+                SheetRow(title: "External wallet", detail: flow.onlyOption?.title ?? "Choose a coin and network", action: onWallet) {
+                    if flow.isReserving {
+                        ProgressView()
+                    } else {
+                        Image(systemName: "wallet.bifold").font(.system(size: 20))
+                    }
                 }
+                .disabled(flow.isReserving)
             }
             .padding(.top, 34)
+            TestNetworkNote(network: flow.network).padding(.top, 14)
             Spacer()
         }
         .padding(.horizontal, 16)
@@ -186,6 +202,9 @@ private struct CurrencyListView: View {
                 if flow.isLoading && flow.sources.isEmpty {
                     ProgressView().frame(maxWidth: .infinity).padding(.top, 60)
                 }
+                if let notice = flow.notice {
+                    Text(notice).font(.system(size: 13)).foregroundStyle(Theme.warning).padding(.top, 12)
+                }
                 ForEach(flow.currencies, id: \.group) { group in
                     Text(group.group.title)
                         .font(.system(size: 20))
@@ -203,7 +222,8 @@ private struct CurrencyListView: View {
                 }
             }
             .padding(.horizontal, 24)
-            .padding(.bottom, 32)
+            .padding(.bottom, 16)
+            TestNetworkNote(network: flow.network).padding(.horizontal, 24).padding(.bottom, 24)
         }
         .scrollIndicators(.hidden)
         .navigationTitle("Choose currency to receive")
@@ -295,6 +315,10 @@ private struct NetworkListView: View {
                 .background(Color(hex: 0x262626), in: RoundedRectangle(cornerRadius: 26))
                 .overlay(RoundedRectangle(cornerRadius: 26).strokeBorder(Color.white.opacity(0.06)))
                 .padding(.top, compact ? 14 : 24)
+                if let notice = flow.notice {
+                    Text(notice).font(.system(size: 13)).foregroundStyle(Theme.warning).padding(.top, 12)
+                }
+                TestNetworkNote(network: flow.network).padding(.top, 14)
             }
             .padding(.horizontal, 24)
             .padding(.bottom, 32)
@@ -418,6 +442,21 @@ struct FliqNameCardView: View {
 // MARK: Shared
 
 /// A tall row with a mark, two lines and a chevron, as the Receive and Move money sheets use.
+/// On testnet, one quiet line on why only NEAR is offered. Nothing on mainnet.
+struct TestNetworkNote: View {
+    let network: NearNetwork
+
+    var body: some View {
+        if !network.receivesFromOtherChains {
+            Text("Test network: receiving from other chains turns on with mainnet")
+                .font(.system(size: 13))
+                .foregroundStyle(Theme.textTertiary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+        }
+    }
+}
+
 struct SheetRow<Mark: View>: View {
     let title: String
     let detail: String

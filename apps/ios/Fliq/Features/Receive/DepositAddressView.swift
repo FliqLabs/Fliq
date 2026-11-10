@@ -36,6 +36,8 @@ struct DepositAddressView: View {
                         .padding(.top, 22)
                     details(deposit, now: now)
                         .padding(.top, 8)
+                    TestNetworkNote(network: flow.network)
+                        .padding(.top, 16)
                 }
                 .padding(.horizontal, 16)
             }
