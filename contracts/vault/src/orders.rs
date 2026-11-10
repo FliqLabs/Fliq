@@ -48,6 +48,7 @@ fn status_successors(status: &str) -> &'static [&'static str] {
         "routing" => &["with_provider", "refunding"],
         "with_provider" => &["paying_out", "refunding"],
         "paying_out" => &["settled", "refunding"],
+        "settled" => &["refunding"],
         "refunding" => &["refunded", "failed"],
         _ => &[],
     }
@@ -105,7 +106,7 @@ pub fn validate_status_transition(
     }
     if matches!(
         receipt.backend_status.as_str(),
-        "settled" | "refunded" | "expired" | "failed" | "refused" | "not_received"
+        "refunded" | "expired" | "failed" | "refused" | "not_received"
     ) {
         return Err(errors::STATUS_TERMINAL.to_string());
     }
