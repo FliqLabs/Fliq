@@ -1,15 +1,15 @@
-# @fliq/sdk
+# @fliqlabs/sdk
 
 TypeScript client for the fliq payouts API. No runtime dependencies: it uses `fetch` and Web Crypto, so it runs on Node 20+, Bun, Deno and edge runtimes.
 
 ```
-npm install @fliq/sdk
+npm install @fliqlabs/sdk
 ```
 
 ## Pay out and wait for the bank
 
 ```ts
-import { FliqClient, FliqError } from "@fliq/sdk";
+import { FliqClient, FliqError } from "@fliqlabs/sdk";
 
 const fliq = new FliqClient({ apiKey: process.env.FLIQ_API_KEY!, baseUrl: process.env.FLIQ_API_URL });
 const quote = await fliq.quote({ token: "usdc", currency: "ngn", amount: "50.00", source_chain: "base" });
@@ -56,7 +56,7 @@ Final payout states are `settled`, `refunded`, `expired`, `failed`, `refused` an
 Pass the raw request body, exactly as received, before any JSON parsing.
 
 ```ts
-import { verifyWebhook } from "@fliq/sdk";
+import { verifyWebhook } from "@fliqlabs/sdk";
 
 const event = await verifyWebhook(rawBody, request.headers, process.env.FLIQ_WEBHOOK_SECRET!);
 ```

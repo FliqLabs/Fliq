@@ -1,5 +1,5 @@
 {
-  "name": "@fliq/sdk",
+  "name": "@fliqlabs/sdk",
   "version": "0.1.0",
   "description": "TypeScript client for the fliq payouts API: quotes, payouts, account verification and webhook verification.",
   "license": "MIT",

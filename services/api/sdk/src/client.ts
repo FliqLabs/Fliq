@@ -187,7 +187,7 @@ export class FliqClient {
   }
 }
 
-// Shared with the agent client in @fliq/mcp, which signs its requests differently but reads answers the same way.
+// Shared with the agent client in @fliqlabs/mcp, which signs its requests differently but reads answers the same way.
 export async function readResponse<T>(response: Response): Promise<T> {
   const text = await response.text();
   let body: unknown = null;

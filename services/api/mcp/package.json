@@ -1,5 +1,5 @@
 {
-  "name": "@fliq/mcp",
+  "name": "@fliqlabs/mcp",
   "version": "0.1.0",
   "description": "MCP server for fliq: lets an AI agent quote, verify, pay and track stablecoin cash-outs over stdio.",
   "license": "MIT",

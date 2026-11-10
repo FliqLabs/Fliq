@@ -1,4 +1,4 @@
-# @fliq/mcp
+# @fliqlabs/mcp
 
 An MCP server that lets an AI agent quote, pay and track fliq cash-outs: stablecoins out to a bank or mobile-money account. It speaks MCP over stdio, so Claude Code, Codex and Cursor start it with `npx`. Node 20 or newer.
 
@@ -12,7 +12,7 @@ The agent variables win when both are set. With neither, the server stops at sta
 ## Developer mode
 
 ```
-claude mcp add fliq --env FLIQ_API_KEY=rt_test_... -- npx -y @fliq/mcp
+claude mcp add fliq --env FLIQ_API_KEY=rt_test_... -- npx -y @fliqlabs/mcp
 ```
 
 Or put this in `.mcp.json` (Claude Code) or `~/.cursor/mcp.json` (Cursor):
@@ -22,7 +22,7 @@ Or put this in `.mcp.json` (Claude Code) or `~/.cursor/mcp.json` (Cursor):
   "mcpServers": {
     "fliq": {
       "command": "npx",
-      "args": ["-y", "@fliq/mcp"],
+      "args": ["-y", "@fliqlabs/mcp"],
       "env": { "FLIQ_API_KEY": "rt_test_...", "FLIQ_REFUND_ADDRESS": "0x..." }
     }
   }
@@ -45,7 +45,7 @@ An API key cannot pay a vault order (a payout funded from a fliq vault on NEAR).
 1. Make the agent's key. Only the public key is printed; the private key stays in the file.
 
    ```
-   npx -y @fliq/mcp keygen ~/.fliq/claude.key
+   npx -y @fliqlabs/mcp keygen ~/.fliq/claude.key
    ```
 
 2. In the fliq app, open Agents, connect an agent with that public key, and set its limits. The app shows the agent's NEAR account, for example `claude-frank.fliq.near`.
@@ -57,7 +57,7 @@ An API key cannot pay a vault order (a payout funded from a fliq vault on NEAR).
      "mcpServers": {
        "fliq": {
          "command": "npx",
-         "args": ["-y", "@fliq/mcp"],
+         "args": ["-y", "@fliqlabs/mcp"],
          "env": {
            "FLIQ_AGENT_ID": "claude-frank.fliq.near",
            "FLIQ_AGENT_KEY_FILE": "/Users/you/.fliq/claude.key"
