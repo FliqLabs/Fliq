@@ -199,3 +199,121 @@ export const WEBHOOK_NOT_DELIVERED = {
 
 // Live GET /health on both hosts, 2026-11-02.
 export const HEALTH = { status: "success", message: "health check passed" };
+
+// Live production POST /v1/quotes/unauthenticated (no key), 2026-11-10. A public quote has no recipient, so no fees.
+export const PUBLIC_QUOTE = {
+  status: "success",
+  message: "Created quote successfully",
+  data: {
+    id: "QUO_p7eILbKu9tWc",
+    profile_id: "",
+    source_currency: "USDC",
+    target_currency: "NGN",
+    source_amount: "100",
+    target_amount: "137253",
+    rate: {
+      product: "USDCNGN",
+      rate: "1372.53",
+      rate_explained: "1 USDC = 1,372.53 NGN",
+      side: "sell",
+      type: "FIXED",
+      source_currency: "USDC",
+      target_currency: "NGN",
+    },
+    fees: [],
+    pay_in: { network: "SOL", type: "address" },
+    pay_out: { type: "balance" },
+    reference: "QUO_p7eILbKu9tWc",
+    status: "pending",
+    expires_at: "2026-11-10T08:02:13.130786279Z",
+    created_at: "2026-11-10T07:59:13.129942355Z",
+    updated_at: "2026-11-10T07:59:13.129942355Z",
+  },
+};
+
+export const PUBLIC_QUOTED_AT = new Date(PUBLIC_QUOTE.data.created_at);
+
+// Live production POST /v1/quotes/unauthenticated for a KES target, 2026-11-10: source_amount has 8 decimals.
+export const PUBLIC_QUOTE_KES_TARGET = {
+  status: "success",
+  message: "Created quote successfully",
+  data: {
+    id: "QUO_tVpRVEvkRIjK",
+    profile_id: "",
+    source_currency: "USDC",
+    target_currency: "KES",
+    source_amount: "38.74767514",
+    target_amount: "5000",
+    rate: {
+      product: "USDCKES",
+      rate: "129.04",
+      rate_explained: "1 USDC = 129.04 KES",
+      side: "sell",
+      type: "FIXED",
+      source_currency: "USDC",
+      target_currency: "KES",
+    },
+    fees: [],
+    pay_in: { network: "SOL", type: "address" },
+    pay_out: { type: "balance" },
+    reference: "QUO_tVpRVEvkRIjK",
+    status: "pending",
+    expires_at: "2026-11-10T07:58:17.396377789Z",
+    created_at: "2026-11-10T07:55:17.395411134Z",
+    updated_at: "2026-11-10T07:55:17.395411134Z",
+  },
+};
+
+// Live production GET /v1/currencies/USDC (no key), 2026-11-10, shortened to the network list.
+export const CURRENCY_USDC = {
+  status: "success",
+  message: "Fetched currency successfully",
+  data: {
+    code: "USDC",
+    supported_networks: [
+      {
+        network: "POL",
+        status: "active",
+        deposit: true,
+        is_ramp_sell_supported: false,
+        min_deposit_amount: "2",
+      },
+      {
+        network: "SOL",
+        status: "active",
+        deposit: true,
+        is_ramp_sell_supported: true,
+        min_deposit_amount: "2",
+      },
+      {
+        network: "XLM",
+        status: "active",
+        deposit: true,
+        is_ramp_sell_supported: false,
+        min_deposit_amount: "2",
+      },
+      {
+        network: "BASE",
+        status: "active",
+        deposit: true,
+        is_ramp_sell_supported: false,
+        min_deposit_amount: "2",
+      },
+    ],
+    is_ramp_sell_supported: true,
+  },
+};
+
+// Live production GET /v1/countries?country=NG, 2026-11-10, shortened.
+export const COUNTRIES_NG = {
+  status: "success",
+  message: "Fetched countries successfully",
+  data: [
+    {
+      id: "NG",
+      name: "Nigeria",
+      calling_code: "+234",
+      currency: { code: "NGN", name: "Naira", symbol: "NGN" },
+    },
+  ],
+};
