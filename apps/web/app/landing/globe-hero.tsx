@@ -3,7 +3,7 @@
 import Link from "next/link";
 import localFont from "next/font/local";
 import { useEffect, useRef, useState } from "react";
-import { PhotoGlobe } from "./photo-globe";
+import { TileGlobe } from "./tile-globe";
 
 const display = localFont({
   src: "./fonts/montserrat-display.woff2",
@@ -60,7 +60,7 @@ export function GlobeHero() {
       className={`${display.className} relative h-[100svh] min-h-[610px] overflow-hidden [--fade:0]`}
     >
       <div className="absolute inset-0 origin-center [opacity:calc(1-var(--fade)*0.6)] [transform:scale(calc(1-var(--fade)*0.18))] will-change-transform">
-        <PhotoGlobe reducedMotion={reducedMotion} />
+        <TileGlobe font={display.style.fontFamily} reducedMotion={reducedMotion} />
       </div>
       <div
         className={`relative z-[3] flex h-full flex-col items-center justify-center px-5 pt-[65px] pb-20 text-center text-[#fafaf7] [opacity:calc(1-var(--fade)*1.6)] [transform:translateY(calc(var(--fade)*-22px))] sm:px-6 sm:pb-[30px]`}

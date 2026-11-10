@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import type { Mesh, MeshBasicMaterial, PlaneGeometry, Texture } from "three";
+import { createGlobeTiles, pickTile } from "./globe-tiles";
 
 const SPHERE_RADIUS = 3.1;
 const CARD_COUNT = 400;
@@ -11,12 +12,6 @@ const ROTATION_SPEED = 0.06;
 const ENTRANCE_STAGGER = 0.55;
 const ENTRANCE_DURATION = 0.55;
 const ENTRANCE_LIFT = 0.2;
-const PHOTO_COUNT = 89;
-
-const globePhotoSources = Array.from(
-  { length: PHOTO_COUNT },
-  (_, index) => `/landing/globe/photo-${String(index).padStart(2, "0")}.avif`,
-);
 
 function globeProjectionDiameter(width: number, height: number) {
   const worldRadius = SPHERE_RADIUS * GROUP_SCALE;
@@ -33,7 +28,7 @@ function seededRandom(seed: number) {
   };
 }
 
-export function PhotoGlobe({ reducedMotion = false }: { reducedMotion?: boolean }) {
+export function TileGlobe({ font, reducedMotion = false }: { font: string; reducedMotion?: boolean }) {
   const container = useRef<HTMLDivElement>(null);
   const reduceMotion = useRef(reducedMotion);
   const invalidate = useRef<() => void>(() => {});
@@ -276,34 +271,13 @@ export function PhotoGlobe({ reducedMotion = false }: { reducedMotion?: boolean 
         invalidate.current = () => {};
       };
 
-      const loader = new THREE.TextureLoader();
-      const loadedTextures = await Promise.all(
-        globePhotoSources.map(async (url) => {
-          try {
-            const texture = await loader.loadAsync(url);
-            if (disposed) {
-              texture.dispose();
-              return null;
-            }
-            texture.colorSpace = THREE.SRGBColorSpace;
-            texture.anisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), 4);
-            textures.push(texture);
-            return texture;
-          } catch {
-            return null;
-          }
-        }),
-      );
+      const tiles = await createGlobeTiles(font);
       if (disposed) return;
-
-      const available = loadedTextures.filter(
-        (texture): texture is Texture<HTMLImageElement> => texture !== null,
-      );
-      if (!available.length) {
-        host!.dataset.state = "unavailable";
-        return;
-      }
-      for (const texture of available) {
+      for (const tile of tiles) {
+        const texture = new THREE.CanvasTexture(tile.canvas);
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.anisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), 4);
+        textures.push(texture);
         materials.push(
           new THREE.MeshBasicMaterial({
             map: texture,
@@ -315,6 +289,7 @@ export function PhotoGlobe({ reducedMotion = false }: { reducedMotion?: boolean 
         );
       }
 
+      const randomTile = seededRandom(61);
       const randomSize = seededRandom(143);
       const goldenAngle = Math.PI * (3 - Math.sqrt(5));
       for (let index = 0; index < CARD_COUNT; index++) {
@@ -327,7 +302,7 @@ export function PhotoGlobe({ reducedMotion = false }: { reducedMotion?: boolean 
           Math.sin(angle) * ringRadius,
         ).multiplyScalar(SPHERE_RADIUS);
         const normal = position.clone().normalize();
-        const mesh = new THREE.Mesh(geometry, materials[index % materials.length]);
+        const mesh = new THREE.Mesh(geometry, materials[pickTile(tiles, randomTile())]);
         mesh.position.copy(position);
         orientation.lookAt(origin, normal, up);
         mesh.quaternion.setFromRotationMatrix(orientation);
@@ -356,7 +331,7 @@ export function PhotoGlobe({ reducedMotion = false }: { reducedMotion?: boolean 
       disposed = true;
       disposeScene();
     };
-  }, []);
+  }, [font]);
 
   return (
     <div
