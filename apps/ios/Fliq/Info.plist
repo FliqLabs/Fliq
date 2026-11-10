@@ -49,7 +49,7 @@
 		<true/>
 	</dict>
 	<key>NSCameraUsageDescription</key>
-	<string>fliq uses the camera only when you take a profile photo.</string>
+	<string>fliq uses the camera to scan payment codes and take your profile photo.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>fliq asks for Face ID before any money leaves your vault.</string>
 	<key>NSLocalNetworkUsageDescription</key>
