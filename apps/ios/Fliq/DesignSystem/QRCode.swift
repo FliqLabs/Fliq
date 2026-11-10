@@ -48,7 +48,8 @@ private struct QRMatrix {
     init?(text: String) {
         let filter = CIFilter.qrCodeGenerator()
         filter.message = Data(text.utf8)
-        filter.correctionLevel = "Q"
+        // The highest level, so the mark covering the centre never stops a scan.
+        filter.correctionLevel = "H"
         guard let output = filter.outputImage,
               let image = CIContext().createCGImage(output, from: output.extent),
               let pixels = image.dataProvider?.data,

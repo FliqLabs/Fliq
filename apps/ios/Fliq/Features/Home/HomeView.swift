@@ -3,6 +3,7 @@ import SwiftUI
 struct HomeView: View {
     @State var model: HomeModel
     var onMenu: () -> Void = {}
+    var onQR: () -> Void = {}
 
     var body: some View {
         VStack(spacing: 0) {
@@ -30,13 +31,14 @@ struct HomeView: View {
             Spacer()
             Wordmark()
             Spacer()
-            Button(action: onMenu) {
-                Image(systemName: "line.3.horizontal.decrease")
-                    .font(.system(size: 18))
+            Button(action: onQR) {
+                Image(systemName: "qrcode")
+                    .font(.system(size: 18, weight: .medium))
                     .foregroundStyle(Theme.textSecondary)
                     .frame(width: 32, height: 32)
             }
-            .accessibilityLabel("Menu")
+            .accessibilityLabel("Receive with a QR code")
+            .accessibilityIdentifier("home.qr")
         }
         .padding(.horizontal, 24)
         .padding(.top, 16)
