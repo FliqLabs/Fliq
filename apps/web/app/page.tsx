@@ -6,7 +6,7 @@ import { Agents, Developers, HowItWorks, Trust } from "./landing/sections";
 export default function HomePage() {
   return (
     <MarketingShell>
-      <div className="flow-root overflow-x-clip bg-[linear-gradient(180deg,#17191d_0%,#171717_30%,#0b0b0b_70%,#000_100%)]">
+      <div className="flow-root overflow-x-clip bg-[linear-gradient(180deg,#0b0b0b_0%,#0b0b0b_40%,#000_100%)]">
         <main>
           <GlobeHero />
           <HowItWorks />

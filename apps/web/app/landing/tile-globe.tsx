@@ -13,7 +13,7 @@ const ENTRANCE_STAGGER = 0.55;
 const ENTRANCE_DURATION = 0.55;
 const ENTRANCE_LIFT = 0.2;
 
-function globeProjectionDiameter(width: number, height: number) {
+export function globeProjectionDiameter(width: number, height: number) {
   const worldRadius = SPHERE_RADIUS * GROUP_SCALE;
   const projectionDepth = Math.sqrt(12 ** 2 - worldRadius ** 2);
   const sourceDiameter = (height * worldRadius) / (projectionDepth * Math.tan((38 * Math.PI) / 360));
