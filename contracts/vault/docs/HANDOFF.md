@@ -21,6 +21,7 @@ Branch: `Dapper-Contract`
 | `recredit` | `orders.rs`, `vault.rs` | Requires write-once refund evidence and real unattributed USDC backing before exactly-once recredit. |
 | `get_liabilities` | `lib.rs`, `integration.rs` | Read-only total of what the ledger owes users. Against `ft_balance_of` on the approved USDC contract it gives operators an external solvency check before and after a migration, during the refund test and on mainnet. |
 | `ft_on_transfer`, `get_balance`, `transfer` | `vault.rs`, `lib.rs` | Handles approved-USDC deposits, isolated available/reserved balances and registered internal transfers. Optional validated request IDs let the backend correlate request payments from transaction arguments; agents cannot transfer the owner's balance. |
+| NEP-145 storage (`storage_deposit`, `storage_withdraw`, `storage_unregister`, `storage_balance_of`, `storage_balance_bounds`) | `vault.rs`, `lib.rs` | Registration-only, with `min` equal to `max`, so there is never spendable storage credit and `storage_withdraw` accepts only a zero amount. `storage_deposit` is idempotent and refunds any excess. `storage_unregister` accepts `force` and ignores it: closing an account always requires a zero balance, so no USDC liability can be discarded. Operators should register a user only after the account exists on chain, because only the account itself can unregister and reclaim the deposit. |
 
 ## Agent identity decision
 
@@ -73,7 +74,13 @@ Whether that failure is safe depends on how the deployment is sent, and the two 
 
 The `Deploy contract` workflow also only accepts a testnet account and runs in the `testnet` environment. There is no mainnet deployment workflow; the mainnet deploy in step 17 of the runbook is a manual, locally signed transaction.
 
-As of 10 November 2026 the live testnet vault is `fliq-vault.testnet`, owner `fliq-owner.testnet`, registration account `fliqaccount.testnet`, approved USDC `3e2210e1184b45b64c8a434c0a7e7b23cc04ea7eb7a6c3c32520d03d4afcb8af`, `max_expiry` 24 hours, `payout_timeout` 10 minutes. Its deployed code exports neither `withdraw` nor `migrate`, so it predates the November review fixes and the `migrate` path above is the one that applies to it.
+As of 10 November 2026 the live testnet vault is `fliq-vault.testnet`, owner `fliq-owner.testnet`, registration account `fliqaccount.testnet`, approved USDC `3e2210e1184b45b64c8a434c0a7e7b23cc04ea7eb7a6c3c32520d03d4afcb8af`, `max_expiry` 24 hours, `payout_timeout` 10 minutes. It has already taken the `migrate` path: it now runs the November review build and exports both `withdraw` and `migrate`. The mainnet vault is a fresh account, so the `new` path above is the one that applies there.
+
+### Approved USDC on mainnet
+
+Native USDC on NEAR mainnet is `17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1`, the address Circle publishes, confirmed on chain on 10 November 2026: `ft_metadata` reports spec `ft-1.0.0`, symbol `USDC` and **6 decimals**, matching the testnet stand-in, so no amount scaling changes. `storage_balance_bounds` is `min` equal to `max` at 1250000000000000000000 yoctoNEAR, so registering the vault for USDC storage costs exactly 0.00125 NEAR and is registration-only.
+
+Do not use `a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.factory.bridge.near`. That is the bridged `USDC.e` token; it also has 6 decimals, so it will not look wrong, but Circle does not support it for mint or redemption. The approved token is stored once at initialization and cannot be changed afterwards, so this is a one-shot decision. Verify the address against Circle's own documentation at deploy time rather than copying it from here.
 
 ## Backend alignment
 
