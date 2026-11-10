@@ -20,7 +20,7 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
         <p className="text-xs text-zinc-400">Sandbox needs no KYB. Live keys need a verified business.</p>
       </section>
 
-      <aside className="sticky top-0 hidden h-screen items-center overflow-hidden bg-black lg:flex">
+      <aside className="sticky top-0 hidden h-screen items-center overflow-hidden bg-black lg:order-first lg:flex">
         <BrandVideo />
       </aside>
     </main>
