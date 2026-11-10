@@ -15,6 +15,7 @@
     "qrcode-generator": "1.4.4",
     "react": "19.3.0",
     "react-dom": "19.3.0",
+    "three": "0.183.2",
     "zustand": "^5.0.16"
   },
   "devDependencies": {
@@ -22,6 +23,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/three": "0.183.1",
     "eslint": "^9",
     "eslint-config-next": "16.4.3",
     "tailwindcss": "^4",
