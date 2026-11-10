@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { HeroStage } from "../landing/hero-stage";
+import { BrandVideo } from "./brand-video";
 
 export function AuthShell({ children }: { children: React.ReactNode }) {
   return (
@@ -20,8 +20,8 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
         <p className="text-xs text-zinc-400">Sandbox needs no KYB. Live keys need a verified business.</p>
       </section>
 
-      <aside className="relative hidden min-h-screen overflow-hidden bg-[#151515] text-white lg:flex lg:items-center lg:justify-center">
-        <HeroStage />
+      <aside className="sticky top-0 hidden h-screen items-center overflow-hidden bg-black lg:flex">
+        <BrandVideo />
       </aside>
     </main>
   );
