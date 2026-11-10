@@ -37,7 +37,7 @@ test-web:
 
 test-contract:
 	@if [ -f contracts/vault/Cargo.toml ]; then \
-		cd contracts/vault && cargo fmt --check && cargo clippy --lib --test contract -- -D warnings && cargo test --lib --test contract; \
+		cd contracts/vault && cargo fmt --check && cargo clippy --lib --test contract --features testing -- -D warnings && cargo test --lib --test contract --features testing; \
 	else echo "contracts/vault not scaffolded yet"; fi
 
 build-contract:
