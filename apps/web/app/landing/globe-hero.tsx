@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import localFont from "next/font/local";
-import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
-import { ChainCard, PaidCard, VaultCard } from "./hero-cards";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { useHeroHandoff } from "./hero-handoff";
+import { SendTicket } from "./send-ticket";
 import { TileGlobe, globeProjectionDiameter } from "./tile-globe";
 
 const display = localFont({
@@ -15,11 +15,6 @@ const display = localFont({
 
 const clamp = (value: number) => Math.max(0, Math.min(1, value));
 const portion = (value: number, start: number, end: number) => clamp((value - start) / (end - start));
-
-const sideCard =
-  "relative flex min-h-[172px] min-w-0 flex-col items-center rounded-2xl border border-white/[0.08] bg-[#151515] px-3 py-5 text-center text-[#fafaf7] shadow-[0_8px_30px_rgba(0,0,0,0.35)] sm:min-h-[270px] sm:px-[27px] sm:py-[31px]";
-const centerCard =
-  "relative z-[2] col-span-2 row-start-1 min-w-0 rounded-2xl border border-black/[0.06] bg-[#fafaf7] p-[21px] text-[#0d0d12] shadow-[0_8px_30px_rgba(0,0,0,0.35)] sm:col-span-1 sm:row-start-auto sm:min-h-[324px] sm:px-[27px] sm:py-[31px]";
 
 function useStaticHero() {
   const [isStatic, setStatic] = useState(false);
@@ -92,28 +87,17 @@ function ProductHeading({
     <div
       ref={headingRef}
       style={hidden ? { opacity: 0 } : undefined}
-      className="mx-auto mb-[60px] text-center font-sans sm:mb-9"
+      className="mx-auto mb-8 text-center font-sans sm:mb-[38px]"
     >
-      <span className="mb-3 block text-[8px] text-zinc-500 sm:mb-6 sm:text-sm">
-        Global crypto. Local money.
+      <span className="mb-3 block text-[13px] text-zinc-500 sm:mb-4 sm:text-[15px]">
+        How a cash-out works
       </span>
-      <h2 className="m-0 max-w-[310px] text-[28px] leading-[0.95] font-normal tracking-[-0.02em] text-[#fafaf7] sm:max-w-none sm:text-[40px]">
-        Cash out, made simple.
+      <h2 className="m-0 text-[30px] leading-[1.05] font-normal tracking-[-0.04em] text-[#fafaf7] sm:text-[48px]">
+        Three steps. Twenty-one seconds.
       </h2>
     </div>
   );
 }
-
-function PanelRow({ children }: { children: ReactNode }) {
-  return (
-    <div className="mx-auto grid w-full max-w-[460px] grid-cols-2 items-center gap-2.5 font-sans sm:max-w-[1030px] sm:grid-cols-[1fr_1.18fr_1fr] sm:gap-[22px]">
-      {children}
-    </div>
-  );
-}
-
-const note =
-  "mt-[35px] text-center font-sans text-[8px] tracking-[0.035em] text-zinc-500 sm:mt-10 sm:text-[9px]";
 
 function ScrollHint({ hintRef }: { hintRef?: RefObject<HTMLDivElement | null> }) {
   return (
@@ -148,10 +132,8 @@ function HeroSequence() {
   const hint = useRef<HTMLDivElement>(null);
   const products = useRef<HTMLDivElement>(null);
   const heading = useRef<HTMLDivElement>(null);
-  const left = useRef<HTMLDivElement>(null);
   const center = useRef<HTMLDivElement>(null);
-  const right = useRef<HTMLDivElement>(null);
-  const caption = useRef<HTMLParagraphElement>(null);
+  const stepper = useRef<HTMLDivElement>(null);
   const destination = useRef({ x: 0, y: 50, scale: 0.62 });
   const [heroVisible, setHeroVisible] = useState(true);
   const [productVisible, setProductVisible] = useState(false);
@@ -171,23 +153,20 @@ function HeroSequence() {
       const contraction = portion(progress, 0.08, 0.61);
       const target = destination.current;
       const settle = portion(progress, 0.4, 0.7);
-      const slide = 1 - portion(progress, 0.48, 0.83);
       const companions = portion(progress, 0.52, 0.82);
 
       copy.current!.style.opacity = String(1 - portion(progress, 0.12, 0.36));
       copy.current!.style.transform = `translateY(${-22 * portion(progress, 0.12, 0.36)}px)`;
       hint.current!.style.opacity = String(1 - portion(progress, 0.12, 0.27));
       globe.current!.style.transform = `translate3d(${target.x * contraction}px, ${target.y * contraction}px, 0) scale(${1 + (target.scale - 1) * contraction})`;
-      globe.current!.style.opacity = String(1 - 0.48 * portion(progress, 0.42, 0.69));
+      globe.current!.style.opacity = String(1 - portion(progress, 0.42, 0.69));
       scene.current!.style.clipPath = `inset(${22 * contraction}% ${31 * contraction}% ${10 * contraction}% round ${32 * contraction}px)`;
       scene.current!.style.opacity = String(1 - portion(progress, 0.5, 0.75));
       heading.current!.style.opacity = String(portion(progress, 0.42, 0.61));
       center.current!.style.opacity = String(portion(progress, 0.4, 0.63));
       center.current!.style.transform = `translateY(${40 * (1 - settle)}px) scale(${0.96 + settle * 0.04})`;
-      left.current!.style.transform = `translate3d(${34 * slide}%, 0, 0)`;
-      right.current!.style.transform = `translate3d(${-34 * slide}%, 0, 0)`;
-      for (const element of [left.current!, right.current!, caption.current!])
-        element.style.opacity = String(companions);
+      stepper.current!.style.opacity = String(companions);
+      stepper.current!.style.transform = `translateY(${16 * (1 - companions)}px)`;
 
       setHeroVisible(progress < 0.3);
       setProductVisible(progress >= 0.47);
@@ -207,10 +186,7 @@ function HeroSequence() {
       }
       const width = viewport.clientWidth;
       const height = viewport.clientHeight;
-      const diameter =
-        width <= 760
-          ? Math.max(card.offsetHeight * 1.35, card.offsetWidth * 0.78)
-          : Math.max(card.offsetHeight * 1.16, card.offsetWidth * 1.1);
+      const diameter = card.offsetHeight * (width <= 760 ? 0.9 : 1.1);
       destination.current = {
         x: x - width / 2,
         y: y - height / 2,
@@ -253,20 +229,7 @@ function HeroSequence() {
           className="absolute inset-0 z-[5] flex flex-col justify-center px-5 pt-[85px] pb-[90px] sm:px-[5vw] sm:pt-[110px] sm:pb-[95px]"
         >
           <ProductHeading headingRef={heading} hidden />
-          <PanelRow>
-            <div ref={left} style={{ opacity: 0 }} className={sideCard}>
-              <ChainCard />
-            </div>
-            <div ref={center} style={{ opacity: 0 }} className={centerCard}>
-              <VaultCard />
-            </div>
-            <div ref={right} style={{ opacity: 0 }} className={sideCard}>
-              <PaidCard />
-            </div>
-          </PanelRow>
-          <p ref={caption} style={{ opacity: 0 }} className={note}>
-            An illustrative look inside fliq.
-          </p>
+          <SendTicket active={productVisible} ticketRef={center} stepperRef={stepper} hidden />
         </div>
       </div>
     </section>
@@ -287,18 +250,7 @@ function StaticHero() {
       </section>
       <section className="px-5 py-16 sm:px-[5vw] sm:py-24">
         <ProductHeading />
-        <PanelRow>
-          <div className={sideCard}>
-            <ChainCard />
-          </div>
-          <div className={centerCard}>
-            <VaultCard />
-          </div>
-          <div className={sideCard}>
-            <PaidCard />
-          </div>
-        </PanelRow>
-        <p className={note}>An illustrative look inside fliq.</p>
+        <SendTicket active />
       </section>
     </>
   );
