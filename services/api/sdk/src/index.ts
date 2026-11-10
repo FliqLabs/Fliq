@@ -8,7 +8,7 @@ export {
   type RequestOptions,
   type WaitForPayoutOptions,
 } from "./client.js";
-export { FliqError, type FliqErrorCode, type RefusalLimits } from "./errors.js";
+export { FliqError, type FliqErrorCode } from "./errors.js";
 export { FINAL_PAYOUT_STATES, PAYOUT_STATES, isFinalState } from "./states.js";
 export {
   DEFAULT_WEBHOOK_TOLERANCE_SECONDS,

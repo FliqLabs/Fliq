@@ -95,14 +95,14 @@ function headerValue(headers: WebhookHeaders, name: string): string | undefined 
 }
 
 async function hmacSha256Hex(secret: string, payload: Uint8Array): Promise<string> {
-  const key = await webCrypto().subtle.importKey(
+  const key = await globalThis.crypto.subtle.importKey(
     "raw",
     encoder.encode(secret),
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign"],
   );
-  const digest = new Uint8Array(await webCrypto().subtle.sign("HMAC", key, payload));
+  const digest = new Uint8Array(await globalThis.crypto.subtle.sign("HMAC", key, payload));
   return Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
@@ -133,14 +133,4 @@ function parseEvent(body: Uint8Array): WebhookEvent {
     throw new WebhookVerificationError("invalid_payload", "The body is not a fliq event.");
   }
   return parsed as WebhookEvent;
-}
-
-export function webCrypto(): Crypto {
-  const crypto = globalThis.crypto;
-  if (!crypto?.subtle) {
-    throw new Error(
-      "Web Crypto is not available. On Node 18 start node with --experimental-global-webcrypto.",
-    );
-  }
-  return crypto;
 }

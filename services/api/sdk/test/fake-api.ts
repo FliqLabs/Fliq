@@ -10,13 +10,20 @@ export function fixture<T = Record<string, unknown>>(name: string): T {
 export interface Recorded {
   method: string;
   path: string;
+  // The path as the API sees it, /v1 included, with the query: what an agent signs.
+  pathWithQuery: string;
   search: string;
   headers: Record<string, string>;
   body: unknown;
+  rawBody: string;
 }
 
 type Reply = { status: number; body?: unknown; headers?: Record<string, string> };
 type Responder = Reply | ((request: Recorded) => Reply);
+
+// The real API lets an API key reach only the developer endpoints, and an agent route only a signed request.
+const KEY_FORBIDDEN = /^\/(relays|agent)(\/|$)/;
+const AGENT_ROUTE = /^\/agent(\/|$)/;
 
 // A fetch that answers from a table of "METHOD /path" routes and records every request it was sent.
 export function fakeApi(routes: Record<string, Responder | Responder[]>) {
@@ -28,14 +35,39 @@ export function fakeApi(routes: Record<string, Responder | Responder[]>) {
   const fetch = async (input: string | URL | Request, init: RequestInit = {}): Promise<Response> => {
     const url = new URL(String(input));
     const path = url.pathname.replace(/^\/v1/, "");
+    const rawBody = typeof init.body === "string" ? init.body : "";
     const recorded: Recorded = {
       method: init.method ?? "GET",
       path,
+      pathWithQuery: `${url.pathname}${url.search}`,
       search: url.search,
       headers: Object.fromEntries(new Headers(init.headers).entries()),
-      body: typeof init.body === "string" ? JSON.parse(init.body) : undefined,
+      body: rawBody ? JSON.parse(rawBody) : undefined,
+      rawBody,
     };
     requests.push(recorded);
+    if (recorded.headers.authorization?.startsWith("Bearer ") && KEY_FORBIDDEN.test(path)) {
+      return json({
+        status: 403,
+        body: {
+          error: {
+            code: "forbidden",
+            message: "API keys cannot call this endpoint. Sign in to the dashboard instead.",
+          },
+        },
+      });
+    }
+    if (AGENT_ROUTE.test(path) && !recorded.headers["x-fliq-signature"]) {
+      return json({
+        status: 401,
+        body: {
+          error: {
+            code: "unauthorized",
+            message: "Sign agent requests with X-Fliq-Agent, X-Fliq-Timestamp and X-Fliq-Signature.",
+          },
+        },
+      });
+    }
     const entry = queues.get(`${recorded.method} ${path}`);
     const responder = Array.isArray(entry) ? (entry.length > 1 ? entry.shift() : entry[0]) : entry;
     if (!responder)

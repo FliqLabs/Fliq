@@ -1,4 +1,4 @@
-import type { Quote, Refusal } from "./types.js";
+import type { Quote } from "./types.js";
 
 export type FliqErrorCode =
   | "invalid_request"
@@ -11,22 +11,23 @@ export type FliqErrorCode =
   | "quote_changed"
   | "route_unavailable"
   | "insufficient_balance"
-  | "vault_cap_exceeded"
   | "unauthorized"
   | "forbidden"
+  | "live_not_enabled"
+  | "environment_unavailable"
+  | "limit_reached"
   | "not_found"
   | "conflict"
   | "idempotency_key_required"
   | "idempotency_mismatch"
   | "rate_limited"
   | "chain_unavailable"
+  | "agent_limit"
   | "internal"
   | "network_error"
   | "invalid_response"
   | "timeout"
   | (string & {});
-
-export type RefusalLimits = Omit<Refusal, "error">;
 
 export class FliqError extends Error {
   override readonly name = "FliqError";
@@ -55,13 +56,6 @@ export class FliqError extends Error {
   // Only with quote_changed: the fresh quote to confirm, since the rate moved and nothing was sent.
   get quote(): Quote | null {
     return isRecord(this.body) && isRecord(this.body.quote) ? (this.body.quote as Quote) : null;
-  }
-
-  // Only when the vault caps refused the payout.
-  get refusal(): RefusalLimits | null {
-    if (!isRecord(this.body) || typeof this.body.daily_cap !== "number") return null;
-    const { attempted, per_payout_cap, daily_cap, used_today } = this.body as Refusal;
-    return { attempted, per_payout_cap, daily_cap, used_today };
   }
 
   // Worth sending again unchanged: the network, a rate limit or a server-side hiccup.
