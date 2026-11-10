@@ -14,7 +14,7 @@ export function SignInForm() {
   function afterSignIn(user: User) {
     queryClient.clear();
     queryClient.setQueryData(["me"], user);
-    router.replace(user.near_account ? "/dashboard" : "/claim-name");
+    router.replace(user.near_account ? "/wallet" : "/claim-name");
   }
 
   const passkey = useMutation({ mutationFn: signInWithPasskey, onSuccess: afterSignIn });

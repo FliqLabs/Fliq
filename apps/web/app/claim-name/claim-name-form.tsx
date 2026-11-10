@@ -103,7 +103,7 @@ export function ClaimNameForm() {
       if (isPendingClaim(result)) return;
       await saveNearKey({ ...key, claim: undefined });
       queryClient.setQueryData(["me"], result);
-      router.replace("/create-workspace");
+      router.replace("/wallet");
     },
   });
   const restore = useMutation({
@@ -334,8 +334,8 @@ export function ClaimNameForm() {
       <div className="flex flex-col gap-3">
         <h1 className="text-3xl font-bold tracking-tight">Your NEAR key is on this device</h1>
         <p className="text-sm text-zinc-600">{account.data.near_account}</p>
-        <Link href="/dashboard" className="text-sm font-semibold underline">
-          Continue to dashboard
+        <Link href="/wallet" className="text-sm font-semibold underline">
+          Continue to your wallet
         </Link>
       </div>
     );
@@ -355,8 +355,8 @@ export function ClaimNameForm() {
         >
           Restore with recovery code
         </button>
-        <Link href="/dashboard" className="text-sm underline">
-          Continue to dashboard
+        <Link href="/wallet" className="text-sm underline">
+          Continue to your wallet
         </Link>
       </div>
     );
