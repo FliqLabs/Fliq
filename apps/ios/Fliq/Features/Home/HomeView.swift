@@ -27,7 +27,7 @@ struct HomeView: View {
                         WalletArrivedCard(inbox: model.inbox)
                     }
                     .padding(.horizontal, 16)
-                    .padding(.bottom, 16)
+                    .padding(.bottom, 40)
                     .animation(.smooth(duration: 0.3), value: activity?.rows)
                 }
                 .frame(minHeight: proxy.size.height)
