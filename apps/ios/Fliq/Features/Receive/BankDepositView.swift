@@ -59,6 +59,9 @@ private enum Layout {
     static let cardPadding: CGFloat = 20
     static let cardRadius: CGFloat = 28
     static let groupRadius: CGFloat = 20
+    static let card = Color.white.opacity(0.025)
+    static let cardEdge = Color.white.opacity(0.08)
+    static let inset = Color.white.opacity(0.05)
 }
 
 private struct DepositCard<Content: View>: View {
@@ -68,8 +71,8 @@ private struct DepositCard<Content: View>: View {
         VStack(alignment: .leading, spacing: 0) { content }
             .padding(Layout.cardPadding)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Theme.surface, in: RoundedRectangle(cornerRadius: Layout.cardRadius, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: Layout.cardRadius, style: .continuous).strokeBorder(Color.white.opacity(0.06)))
+            .background(Layout.card, in: RoundedRectangle(cornerRadius: Layout.cardRadius, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Layout.cardRadius, style: .continuous).strokeBorder(Layout.cardEdge))
     }
 }
 
@@ -195,7 +198,7 @@ private struct PresetChip: View {
                 .minimumScaleFactor(0.8)
                 .foregroundStyle(picked ? .black : Theme.textPrimary)
                 .frame(maxWidth: .infinity, minHeight: 44)
-                .background(picked ? Color.white : Theme.surfaceRaised, in: Capsule())
+                .background(picked ? Color.white : Layout.inset, in: Capsule())
         }
         .buttonStyle(.pressable)
         .animation(.snappy(duration: 0.25), value: picked)
@@ -259,7 +262,7 @@ private struct SignInStep: View {
             .font(.system(size: 17))
             .padding(.horizontal, 18)
             .frame(height: 56)
-            .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .background(Layout.inset, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private var codeField: some View {
@@ -272,7 +275,7 @@ private struct SignInStep: View {
             .monospacedDigit()
             .padding(.horizontal, 18)
             .frame(height: 64)
-            .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .background(Layout.inset, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .onChange(of: flow.code) { _, typed in
                 let digits = String(typed.filter(\.isNumber).prefix(8))
                 if digits != typed { flow.code = digits }
@@ -322,7 +325,7 @@ private struct PayStep: View {
                         CopyRow(label: "Account name", value: order.accountName)
                     }
                     .padding(.vertical, 6)
-                    .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: Layout.groupRadius, style: .continuous))
+                    .background(Layout.inset, in: RoundedRectangle(cornerRadius: Layout.groupRadius, style: .continuous))
                     .padding(.top, 18)
 
                     Text("You get about \(NairaFormat.dollars(order.usdc)) in your vault.")
@@ -460,7 +463,7 @@ private struct DoneStep: View {
                         SummaryRow(label: "Through", value: "Paj, by bank transfer")
                     }
                     .padding(.vertical, 6)
-                    .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: Layout.groupRadius, style: .continuous))
+                    .background(Layout.inset, in: RoundedRectangle(cornerRadius: Layout.groupRadius, style: .continuous))
                     .padding(.top, 18)
                 }
                 Button("Done", action: onDone)
