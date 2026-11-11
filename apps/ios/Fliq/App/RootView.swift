@@ -143,7 +143,7 @@ struct RootView: View {
     }
 
     private func startPayment(to account: VerifiedAccount? = nil, save: Bool = true) {
-        let flow = PayFlow(api: environment.api, activity: environment.activity, vault: environment.vault, accounts: environment.accounts)
+        let flow = PayFlow(api: environment.api, activity: environment.activity, vault: environment.vault, accounts: environment.accounts, transfers: environment.transfers)
         flow.saveAccount = save
         self.flow = flow
         guard let account else { return environment.router.push(.payNew) }

@@ -7,6 +7,7 @@ final class PersonPayTests: XCTestCase {
     private struct Refusing: VaultTransfers {
         let reason: String
         func send(_ amount: TokenAmount, to recipient: String) async throws -> RelayResult? { throw TransferError.refused(reason) }
+        func release(_ payout: Payout) async throws -> RelayResult? { throw TransferError.refused(reason) }
     }
 
     private func flow(transfers: any VaultTransfers = FixtureVaultTransfers(), balance: Int64 = 100_000_000) -> PersonPayFlow {
