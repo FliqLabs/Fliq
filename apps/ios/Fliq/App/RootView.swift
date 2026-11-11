@@ -24,7 +24,7 @@ struct RootView: View {
     var body: some View {
         @Bindable var router = environment.router
 
-        TabView(selection: $tab) {
+        TabView(selection: tabSelection) {
             NavigationStack(path: $router.path) {
                 Group {
                     if let home { HomeView(model: home, onMenu: { router.push(.settings) }, onQR: { sheet = .qr }) }
@@ -50,11 +50,6 @@ struct RootView: View {
         }
         .tint(Theme.textPrimary)
         .minimizesTabBarOnScroll()
-        .onChange(of: tab) { old, new in
-            guard new == .transfer else { return }
-            tab = old
-            sheet = .menu
-        }
         .sheet(item: $sheet) { sheet in
             content(of: sheet)
                 .presentationDragIndicator(.visible)
@@ -69,6 +64,17 @@ struct RootView: View {
             await environment.refreshVault()
             await environment.inbox.load()
         }
+    }
+
+    /// Transfer opens the money sheet without ever becoming the selected tab. Selecting it and flipping back left
+    /// the Home stack with no safe area, so screens pushed from the sheet drew under the status bar.
+    private var tabSelection: Binding<RootTab> {
+        Binding(
+            get: { tab },
+            set: { picked in
+                if picked == .transfer { sheet = .menu } else { tab = picked }
+            }
+        )
     }
 
     /// Pushed screens own the whole display, so the tab bar steps aside for them.

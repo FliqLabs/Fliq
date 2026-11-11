@@ -56,7 +56,7 @@ struct PersonPayView: View {
     private var compactAmount: some View {
         VStack(spacing: 4) {
             HeroAmount(symbol: "$", value: Money.dollars(flow.amount ?? .zero), size: 48)
-            Text("\(firstName) receives · in your vault $\(Money.dollars(flow.available))")
+            Text("\(receives) · in your vault $\(Money.dollars(flow.available))")
                 .font(.system(size: 14))
                 .foregroundStyle(Theme.textSecondary)
                 .lineLimit(1)
@@ -66,7 +66,7 @@ struct PersonPayView: View {
 
     private var amount: some View {
         VStack(spacing: 12) {
-            Text("\(firstName) receives")
+            Text(receives)
                 .font(.system(size: 15))
                 .foregroundStyle(Theme.textSecondary)
             HeroAmount(symbol: "$", value: Money.dollars(flow.amount ?? .zero))
@@ -150,8 +150,9 @@ struct PersonPayView: View {
         }
     }
 
-    private var firstName: String {
-        flow.person?.displayName?.split(separator: " ").first.map(String.init) ?? "They"
+    private var receives: String {
+        guard let first = flow.person?.displayName?.split(separator: " ").first else { return "They receive" }
+        return "\(first) receives"
     }
 }
 

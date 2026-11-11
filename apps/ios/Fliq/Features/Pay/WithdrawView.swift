@@ -102,15 +102,18 @@ struct WithdrawView: View {
                     Image(systemName: "wifi.exclamationmark").foregroundStyle(Theme.warning)
                     Text("Couldn't check the address. Try again in a moment.").foregroundStyle(Theme.warning)
                 default:
-                    Text("USDC on NEAR only. Sending to another network loses the money.")
-                        .foregroundStyle(Theme.textTertiary)
+                    Image(systemName: "info.circle.fill").foregroundStyle(Theme.warning)
+                    Text("Only send to a NEAR address. Money sent to another network can't come back.")
+                        .fontWeight(.medium)
+                        .foregroundStyle(Theme.warning)
                 }
             }
             Spacer(minLength: 0)
         }
         .font(.system(size: 14))
         .fixedSize(horizontal: false, vertical: true)
-        .padding(.horizontal, 4)
+        .padding(flow.check == nil && !flow.isChecking ? 14 : 4)
+        .background(flow.check == nil && !flow.isChecking ? Theme.warning.opacity(0.1) : .clear, in: RoundedRectangle(cornerRadius: 14))
     }
 
     private var amount: some View {
@@ -156,15 +159,16 @@ struct WithdrawView: View {
                 .foregroundStyle(.black)
                 .frame(width: 72, height: 72)
                 .background(Theme.confirmed, in: Circle())
-            HeroAmount(symbol: "$", value: Money.dollars(sent.amount))
-            Text("Sent as USDC on NEAR to")
+            Text("Sent")
                 .font(.system(size: 16))
                 .foregroundStyle(Theme.textSecondary)
-            Text(sent.address)
-                .font(.system(size: 13, design: .monospaced))
-                .foregroundStyle(Theme.textTertiary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 24)
+            HeroAmount(symbol: "$", value: Money.dollars(sent.amount))
+            DetailCard {
+                DetailRow("To", Self.short(sent.address))
+                DetailRow("Network", "USDC on NEAR")
+                DetailRow("Fee", "Under $0.01", isLast: true)
+            }
+            .padding(.top, 12)
             if let explorer = sent.explorer {
                 Link(destination: explorer) {
                     Label("View on NEAR", systemImage: "arrow.up.right.square")
@@ -178,6 +182,10 @@ struct WithdrawView: View {
                 .buttonStyle(PrimaryButtonStyle())
                 .padding(.bottom, 12)
         }
+    }
+
+    private static func short(_ address: String) -> String {
+        address.count > 22 ? "\(address.prefix(10))…\(address.suffix(8))" : address
     }
 
     private var isReady: Bool {
