@@ -10,29 +10,29 @@ const stories: { key: string; label: string; title: string; detail: string; visu
   {
     key: "/landing/icons/flags/ng.svg",
     label: "Payout",
-    title: "₦68,816 landed at GTBank",
-    detail: "DARA OKONKWO, via Paycrest",
+    title: "Payout status updated",
+    detail: "Recipient and provider details from your quote",
     visual: "payout",
   },
   {
     key: "/landing/icons/tokens/sol.svg",
     label: "Deposit",
-    title: "+$199.98 from Solana",
-    detail: "200 USDC in, landed in 34 seconds",
+    title: "Deposit received",
+    detail: "Track funds from a supported chain",
     visual: "deposit",
   },
   {
     key: "/landing/icons/tokens/usdc.svg",
     label: "Rate",
-    title: "₦1,376.32 per $1",
-    detail: "Best of 4 providers, after fees",
+    title: "After-fee route comparison",
+    detail: "Compare current provider quotes",
     visual: "rate",
   },
   {
     key: glyphKey("₦", "violet"),
     label: "Agent",
-    title: "Claude paid ₦30,000",
-    detail: "Inside its ₦150,000 daily cap",
+    title: "Agent within policy",
+    detail: "Activity stays within configured limits",
     visual: "agent",
   },
 ];
@@ -75,7 +75,7 @@ function StoryVisual({ visual, seconds }: { visual: Visual; seconds: number }) {
         <div className="mt-1.5 flex justify-between text-[10px] text-zinc-500">
           <span>Quote</span>
           <span>Route</span>
-          <span className="tabular-nums text-zinc-300">Paid in {Math.round(ease(seconds / 2.1) * 21)}s</span>
+          <span className="text-zinc-300">Status updates</span>
         </div>
       </div>
     );
@@ -85,9 +85,7 @@ function StoryVisual({ visual, seconds }: { visual: Visual; seconds: number }) {
     return (
       <div className="flex items-center gap-3">
         <Bar fill={progress} />
-        <span className="text-[13px] font-semibold text-white tabular-nums">
-          ${(199.98 * progress).toFixed(2)}
-        </span>
+        <span className="text-[13px] font-semibold text-white">Funds tracked</span>
       </div>
     );
   }
@@ -109,7 +107,7 @@ function StoryVisual({ visual, seconds }: { visual: Visual; seconds: number }) {
           />
           <circle cx="118" cy="4" r="3" fill="#a594ff" opacity={draw} />
         </svg>
-        <span className="text-[10px] text-zinc-500 tabular-nums">1,375.90 → 1,376.32</span>
+        <span className="text-[10px] text-zinc-500">Current quote</span>
       </div>
     );
   }
@@ -117,8 +115,8 @@ function StoryVisual({ visual, seconds }: { visual: Visual; seconds: number }) {
     <div>
       <Bar fill={ease(seconds / 1.4) * 0.2} />
       <div className="mt-1.5 flex justify-between text-[10px] text-zinc-500 tabular-nums">
-        <span>₦30,000 used</span>
-        <span>₦150,000 a day</span>
+        <span>Activity tracked</span>
+        <span>Configured limit</span>
       </div>
     </div>
   );

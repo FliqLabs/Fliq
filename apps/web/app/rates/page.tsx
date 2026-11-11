@@ -7,7 +7,7 @@ import { CorridorCards } from "./corridor-picker";
 
 export const metadata: Metadata = {
   title: "USDC to local currency rates | fliq",
-  description: "Live after-fee USDC rates for every currency fliq pays out in.",
+  description: "Compare after-fee USDC rates for the currencies fliq supports.",
 };
 
 export default function RatesIndexPage() {
@@ -37,9 +37,8 @@ export default function RatesIndexPage() {
 
         <div className="mt-12 border-t border-[#303030] pt-6">
           <p className="max-w-3xl text-[10px] leading-6 text-[#777]">
-            Rates are quotes from licensed providers, refreshed every minute here and every 10 seconds on each
-            currency&apos;s page. Not financial advice. Currencies marked coming soon turn live on their own once
-            fliq can pay out in them.
+            Rates are quotes from licensed providers and are refreshed automatically. Not financial advice.
+            Currencies marked coming soon turn live on their own once fliq can pay out in them.
           </p>
         </div>
       </main>

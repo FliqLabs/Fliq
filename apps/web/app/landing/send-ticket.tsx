@@ -16,23 +16,23 @@ const steps = [
   {
     badge: "Draft",
     title: "Pick who gets paid",
-    body: "DARA OKONKWO at GTBank, name checked before you pay.",
+    body: "Recipient details checked before you pay.",
     via: "—",
-    amount: "$50.00",
+    amount: "Amount from quote",
   },
   {
     badge: "Routing",
-    title: "Best of four rates",
-    body: "Four providers quote at once. Paycrest wins at ₦1,376.32 per $1.",
-    via: "Paycrest",
-    amount: "₦68,816",
+    title: "Compare available routes",
+    body: "Available providers quote before you pay.",
+    via: "Selected provider",
+    amount: "Recipient amount",
   },
   {
-    badge: "Paid",
-    title: "In the bank in 21 seconds",
-    body: "Settled with a bank reference DARA can check.",
-    via: "Paycrest",
-    amount: "₦68,816",
+    badge: "Status",
+    title: "Track settlement status",
+    body: "Follow the receipt and provider reference when available.",
+    via: "Selected provider",
+    amount: "Recipient amount",
   },
 ] as const;
 
@@ -141,7 +141,7 @@ export function SendTicket({
             <span
               className={`mt-1 block text-[26px] font-medium tracking-[-0.03em] transition-opacity duration-500 sm:text-[34px] ${index === 0 ? "opacity-40" : "opacity-100"}`}
             >
-              ₦344
+              Fee breakdown
             </span>
           </div>
           <div className="size-[76px] overflow-hidden rounded-xl bg-white p-1 sm:my-5 sm:size-[100px] sm:rounded-2xl sm:p-1.5 [&_svg]:size-full">

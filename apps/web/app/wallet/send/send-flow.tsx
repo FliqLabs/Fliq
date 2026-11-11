@@ -51,7 +51,6 @@ function Steps({ step }: { step: Step }) {
     </div>
   );
 }
-
 function useRecipientCurrency() {
   const kenya = useInstitutions("ke");
   const nigeria = useInstitutions("ng");
@@ -87,7 +86,6 @@ function TargetAvatar({ target, size }: { target: Target; size?: "sm" | "xs" }) 
     <Avatar name={targetName(target)} photo={target.person.photo_url} badge="/landing/tokens/near.webp" size={size} />
   );
 }
-
 function WhoStep({ onPick }: { onPick: (target: Target) => void }) {
   const recipients = useRecipients();
   const people = useRecentPeople();
@@ -728,4 +726,3 @@ export function SendFlow() {
     </div>
   );
 }
-

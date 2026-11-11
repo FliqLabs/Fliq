@@ -49,7 +49,7 @@ type ProviderRate = {
   receive: number | null;
   eta_seconds: number | null;
   on_time_percent: number | null;
-  updated_at: string;
+  updated_at: string | null;
   not_offered_reason: string | null;
 };
 
@@ -86,7 +86,8 @@ const EMPTY = "-";
    FORMATTERS
 ------------------------------------------------------- */
 
-function formatTime(value: string, corridor: Corridor) {
+function formatTime(value: string | null | undefined, corridor: Corridor) {
+  if (!value) return "Time unavailable";
   const date = new Date(value);
 
   if (Number.isNaN(date.getTime())) return "Time unavailable";
@@ -108,10 +109,10 @@ function formatMoneyOrEmpty(format: (value: number) => string, value: number | u
   return value === undefined ? EMPTY : format(value);
 }
 
-/* A corridor the API does not pay yet answers 400, 404 or 422: that reads as "coming soon", not as a broken
-   page. A timeout or a server error on a live corridor is a temporary outage. */
+/* The API uses invalid_request for a corridor it does not support. A no_route response is a temporary lack of
+   provider capacity, not proof that the corridor is coming soon. */
 function isCorridorNotOffered(error: unknown) {
-  return error instanceof ApiError && [400, 404, 422].includes(error.status);
+  return error instanceof ApiError && error.code === "invalid_request";
 }
 
 function isRetryable(error: unknown) {
@@ -370,7 +371,7 @@ function ProviderTable({ board, isPending, isError, corridor, format }: {
                     {provider.rate === null ? EMPTY : format(provider.rate)}
                   </td>
                   <td className="px-4 py-5 text-xs text-[#ccc]">
-                    {provider.fee === null ? EMPTY : format(provider.fee / 100)}
+                    {provider.fee === null ? EMPTY : format(provider.fee)}
                     {provider.fee_percent === null ? "" : ` (${provider.fee_percent}%)`}
                   </td>
                   <td className="px-4 py-5 text-xs font-semibold tabular-nums text-white">
@@ -789,7 +790,7 @@ export function RatesPageClient({ corridor }: { corridor: Corridor }) {
           <SectionHeading
             eyebrow="Explore other markets"
             title="Other corridors"
-            description="Live after-fee rates for every currency fliq pays out in."
+            description="Compare after-fee rates for the currencies fliq supports."
           />
           <CorridorCards exclude={corridor.code} />
         </div>

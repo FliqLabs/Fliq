@@ -13,7 +13,6 @@ const payoutDetail: Record<string, { flag: string; methods: string }> = {
 };
 
 export function Countries() {
-  const live = CORRIDORS.filter((corridor) => corridor.live).map((corridor) => corridor.country);
   return (
     <section id="countries" className={`${siteContainer} pt-10 pb-16 lg:pt-16 lg:pb-24`}>
       <p className="text-[15px] text-zinc-500">Cash out</p>
@@ -21,8 +20,8 @@ export function Countries() {
         Pay a bank or mobile wallet in their own currency.
       </h2>
       <p className="mt-5 max-w-[520px] text-[17px] leading-7 text-zinc-400 sm:text-[19px] sm:leading-[30px]">
-        Pick who you&rsquo;re paying and send from your dollar balance. Live in {live.join(" and ")}, with
-        more corridors on the way.
+        Pick who you&rsquo;re paying and send from your dollar balance. Compare available corridors below, with
+        more on the way.
       </p>
       <ul className="mt-10 grid gap-3.5 sm:grid-cols-2 lg:mt-12 lg:grid-cols-3">
         {CORRIDORS.map((corridor) => {
@@ -48,8 +47,7 @@ export function Countries() {
                   href={`/rates/${corridor.code}`}
                   className="inline-flex items-center gap-1.5 rounded-full bg-[#a594ff]/15 px-2.5 py-1 text-[12px] font-medium text-[#c4b8ff] hover:bg-[#a594ff]/25"
                 >
-                  <span className="size-1.5 rounded-full bg-[#a594ff]" />
-                  Live
+                  Explore rates
                 </Link>
               ) : (
                 <span className="rounded-full bg-white/[0.06] px-2.5 py-1 text-[12px] text-zinc-400">

@@ -44,7 +44,7 @@ function HeroCopy({ copyRef }: { copyRef?: RefObject<HTMLDivElement | null> }) {
         <span className="block">account out.</span>
       </h1>
       <p className="mx-0 mt-[22px] mb-[23px] max-w-[min(74vw,270px)] text-xs leading-[1.6] tracking-[-0.035em] text-balance sm:mt-6 sm:mb-[26px] sm:max-w-[430px] sm:text-[clamp(13px,1.28vw,18px)] sm:leading-normal">
-        Any chain in. Any bank or mobile money out. Live now at ₦1,376.32 per $1 after fees.
+        Any chain in. Any bank or mobile money out. Compare current payout routes after fees.
       </p>
       <div className="flex flex-wrap items-center justify-center gap-2.5">
         <Link
@@ -94,7 +94,7 @@ function ProductHeading({
         How a cash-out works
       </span>
       <h2 className="m-0 text-[30px] leading-[1.05] font-normal tracking-[-0.04em] text-[#fafaf7] sm:text-[48px]">
-        Three steps. Twenty-one seconds.
+        Three steps. Track every payout.
       </h2>
     </div>
   );

@@ -12,7 +12,7 @@ export async function generateMetadata({ params }: { params: Promise<{ currency:
   if (!corridor) return {};
   return {
     title: `USDC to ${corridor.currency} Rates | fliq`,
-    description: `Compare the live after-fee USDC to ${corridor.currencyName} exchange rate on fliq.`,
+    description: `Compare the after-fee USDC to ${corridor.currencyName} exchange rate on fliq.`,
   };
 }
 

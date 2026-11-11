@@ -27,7 +27,7 @@ export function BrandVideo() {
       loop
       playsInline
       preload="none"
-      aria-label="fliq: pay any bank in seconds, best rate every time, your agent pays only what you allow"
+      aria-label="Illustrative Fliq payout and agent controls"
       className="aspect-video w-full scale-110 object-cover [mask-image:linear-gradient(to_bottom,transparent,#000_14%,#000_86%,transparent)]"
     />
   );
