@@ -377,7 +377,6 @@
 .fliq-app .app{min-height:100dvh}
 .fliq-app .pick-person{display:flex;flex-direction:column;align-items:center;gap:8px;width:76px;flex:none;text-decoration:none}
 .fliq-app .pick-person>span:last-child{font-size:12px;font-weight:500;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%}
-.fliq-app .flag-emoji{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:var(--panel2);font-size:15px;flex:none}
 .fliq-app a.live,.fliq-app a.btn,.fliq-app a.row,.fliq-app a.tile{text-decoration:none}
 .fliq-app div.route{cursor:default}
 .fliq-app .route[aria-current="true"]{border-color:var(--fg);box-shadow:0 0 0 1px var(--fg) inset}

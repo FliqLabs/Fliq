@@ -8,7 +8,14 @@ import { Icon } from "../components/app/icons";
 import { Avatar, BigMoney, Chip, IconBubble, PageState } from "../components/app/ui";
 import { CORRIDORS } from "../lib/corridors";
 import { bankLogo, providerName } from "../lib/assets";
-import { CURRENCIES, formatMoney, formatRate, isLocalCurrency, toCurrency, type LocalCurrency } from "../lib/money";
+import {
+  CURRENCIES,
+  formatMoney,
+  formatRate,
+  isLocalCurrency,
+  toCurrency,
+  type LocalCurrency,
+} from "../lib/money";
 import { explorerAccountUrl } from "../lib/near-explorer";
 import type { ActivityItem, RateBoard } from "../lib/wallet-api";
 import {
@@ -120,11 +127,12 @@ function LivePayout({ item }: { item: ActivityItem }) {
       <ActivityAvatar item={item} />
       <div className="t">
         <b className="num">
-          {item.local ? formatMoney(item.local.amount, toCurrency(item.local.currency)) : `$${item.usd}`} to {item.party.name}
+          {item.local ? formatMoney(item.local.amount, toCurrency(item.local.currency)) : `$${item.usd}`} to{" "}
+          {item.party.name}
         </b>
         <span>
-          {item.provider ? `${providerName(item.provider)} is paying` : "Moving"} · {Math.floor(seconds / 60)}:
-          {String(seconds % 60).padStart(2, "0")}
+          {item.provider ? `${providerName(item.provider)} is paying` : "Moving"} · {Math.floor(seconds / 60)}
+          :{String(seconds % 60).padStart(2, "0")}
         </span>
         <div className="bar" style={{ marginTop: 8 }}>
           <i style={{ width: `${Math.min(92, 20 + seconds * 3)}%` }} />
@@ -194,10 +202,12 @@ function RecentActivity() {
       <div className="rows">
         {activity.isPending && <LoadingRows />}
         {activity.isError && <div className="empty">{activity.error.message}</div>}
-        {activity.data?.items.length === 0 && <div className="empty">Nothing yet. Add money to get started.</div>}
-        {activity.data?.items.slice(0, 5).map((item) => (
-          <ActivityRow key={item.activity_id} item={item} onOpen={setOpen} />
-        ))}
+        {activity.data?.items.length === 0 && (
+          <div className="empty">Nothing yet. Add money to get started.</div>
+        )}
+        {activity.data?.items
+          .slice(0, 5)
+          .map((item) => <ActivityRow key={item.activity_id} item={item} onOpen={setOpen} />)}
       </div>
       {open && <ReceiptDrawer item={open} onClose={() => setOpen(null)} />}
     </section>
@@ -211,13 +221,14 @@ function RateRow({ code }: { code: string }) {
   const currency = corridor.currency.toUpperCase();
   return (
     <div className="rate-row">
-      {isLocalCurrency(currency) ? (
-        <img src={CURRENCIES[currency].flag} alt="" />
-      ) : (
-        <span className="flag-emoji" aria-hidden="true">
-          {corridor.flag}
-        </span>
-      )}
+      <img
+        src={
+          isLocalCurrency(currency)
+            ? CURRENCIES[currency].flag
+            : `/landing/icons/flags/${corridor.code.slice(0, 2)}.svg`
+        }
+        alt=""
+      />
       <div className="t">
         <b>{corridor.currency}</b>
         <span>{corridor.country}</span>
@@ -226,7 +237,9 @@ function RateRow({ code }: { code: string }) {
         {best?.rate && isLocalCurrency(currency) ? (
           <>
             {formatRate(best.rate, currency)}
-            <span style={{ display: "block", fontSize: 12, color: "var(--muted)" }}>{providerName(best.provider)}</span>
+            <span style={{ display: "block", fontSize: 12, color: "var(--muted)" }}>
+              {providerName(best.provider)}
+            </span>
           </>
         ) : corridor.live && board.isPending ? (
           <span className="muted">···</span>
@@ -283,7 +296,11 @@ function AgentsToday() {
           return (
             <div key={agent.agent_id} className="agent-mini">
               <div className="top">
-                {agent.name.toLowerCase().includes("claude") ? <img src="/app/claude.webp" alt="" /> : <IconBubble name="bot" size="xs" />}
+                {agent.name.toLowerCase().includes("claude") ? (
+                  <img src="/app/claude.webp" alt="" />
+                ) : (
+                  <IconBubble name="bot" size="xs" />
+                )}
                 <b>{agent.name}</b>
                 <span className="amt">
                   {formatMoney(spent, currency)} of {formatMoney(cap, currency)}
@@ -334,7 +351,10 @@ export function WalletHome() {
   if (me.isError) return <PageState message={me.error.message} />;
   const home: LocalCurrency = me.data.home_currency ?? "NGN";
   const inFlight = activity.data?.items.find(
-    (item) => item.status === "pending" && item.kind === "payout" && activity.dataUpdatedAt - new Date(item.at).getTime() < 3_600_000,
+    (item) =>
+      item.status === "pending" &&
+      item.kind === "payout" &&
+      activity.dataUpdatedAt - new Date(item.at).getTime() < 3_600_000,
   );
   return (
     <div className="page">
