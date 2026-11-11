@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import UIKit
 
 /// The composition root. The app builds one from Info.plist; tests and previews pass
 /// their own parts, so no screen ever constructs a client itself.
@@ -21,6 +22,10 @@ final class AppEnvironment {
     let withdrawals: any Withdrawals
     /// Nil when no Cloudinary preset is configured: the photo then stays on this iPhone.
     let photos: (any PhotoUploads)?
+    let paj: any PajAPI
+    let pajSignIn: any PajSignIn
+    /// A testnet build's stand-in destination for Paj deposits; nil on mainnet, where they land in the vault.
+    let pajTestRecipient: String?
     let inbox: WalletInbox
     let preferences: Preferences
     let biometrics: any Biometrics
@@ -40,6 +45,9 @@ final class AppEnvironment {
         transfers: any VaultTransfers = FixtureVaultTransfers(),
         withdrawals: any Withdrawals = FixtureWithdrawals(),
         photos: (any PhotoUploads)? = FixturePhotoUploads(),
+        paj: (any PajAPI)? = nil,
+        pajSignIn: (any PajSignIn)? = nil,
+        pajTestRecipient: String? = "demo-wallet",
         walletTopUp: any WalletTopUp = FixtureWalletTopUp(),
         preferences: Preferences = Preferences(),
         biometrics: any Biometrics = DeviceBiometrics(),
@@ -57,6 +65,10 @@ final class AppEnvironment {
         self.transfers = transfers
         self.withdrawals = withdrawals
         self.photos = photos
+        let demoPaj = FixturePaj()
+        self.paj = paj ?? demoPaj
+        self.pajSignIn = pajSignIn ?? demoPaj
+        self.pajTestRecipient = pajTestRecipient
         inbox = WalletInbox(topUp: walletTopUp)
         self.preferences = preferences
         agents = AgentStore(api: agentAPI, vault: { profile.name ?? "fliq-vault.testnet" })
@@ -101,7 +113,10 @@ final class AppEnvironment {
         )
         let environment = AppEnvironment(
             api: api, isLive: true, profile: profile, deposits: HTTPDepositAPI(client: api), agentAPI: agents,
-            transfers: transfers, withdrawals: withdrawals, photos: cloudinary(info: info), walletTopUp: walletTopUp
+            transfers: transfers, withdrawals: withdrawals, photos: cloudinary(info: info),
+            paj: HTTPPaj(), pajSignIn: pajSignIn(info: info, api: api),
+            pajTestRecipient: (info["FliqPajTestRecipient"] as? String).flatMap { $0.isEmpty ? nil : $0 },
+            walletTopUp: walletTopUp
         )
         Task {
             await api.sessions.whenEnded {
@@ -117,6 +132,12 @@ final class AppEnvironment {
         biometrics: AlwaysApprove(),
         lock: .off()
     )
+
+    private static func pajSignIn(info: [String: Any], api: HTTPClient) -> WebPajSignIn {
+        let web = (info["FliqWebBaseURL"] as? String).flatMap(URL.init(string:)) ?? URL(string: "https://fliq.cash")!
+        let device = UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString
+        return WebPajSignIn(base: web, bearer: { await api.sessions.tokens?.accessToken }, deviceID: device)
+    }
 
     private static func cloudinary(info: [String: Any]) -> CloudinaryUploads? {
         guard
