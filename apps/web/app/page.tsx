@@ -18,7 +18,7 @@ function Hero() {
           className="mb-5 inline-flex flex-wrap items-center gap-2 rounded-full border border-zinc-700 px-3 py-2 text-xs text-zinc-400"
         >
           <span className="size-1.5 rounded-full bg-brand" />
-          Live now: <strong className="font-medium text-zinc-100">₦1,376.32 per $1</strong>
+          <strong className="font-medium text-zinc-100">Compare current payout routes</strong>
           <span>after fees ↗</span>
         </p>
         <p className={`${eyebrow} mb-4`}>Global crypto. Local money.</p>
@@ -41,7 +41,7 @@ function Hero() {
         </div>
         <div className="mt-8 flex flex-wrap items-center gap-4">
           <IconRow icons={providerIcons} label="Payout providers" />
-          <p className="text-sm text-zinc-500">Routed across 4 providers</p>
+          <p className="text-sm text-zinc-500">See provider availability on the rates page</p>
         </div>
       </div>
 

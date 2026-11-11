@@ -16,14 +16,14 @@ const limits = [
   {
     number: "01",
     title: "Daily cap",
-    value: "₦150,000",
+    value: "Configurable",
     description:
       "Set the maximum an agent can spend in a day. The vault enforces the limit.",
   },
   {
     number: "02",
     title: "Per-payout cap",
-    value: "₦50,000",
+    value: "Configurable",
     description:
       "Limit the size of each individual payment, regardless of the remaining daily budget.",
   },

@@ -17,7 +17,7 @@ const plans = [
     price: "0.5%",
     suffix: "per payout",
     description: "Live routing to every provider. Free until $50,000 a month, then the fee applies above it.",
-    features: ["Best of 4 routing", "Account name verification", "Receipts with bank references", "Agent keys with on-chain caps", "60 requests a minute"],
+    features: ["Available-provider routing", "Account name verification", "Receipts with bank references", "Agent keys with on-chain caps", "Plan-based usage limits"],
     action: "Go live after KYB",
     href: "/create-workspace",
   },

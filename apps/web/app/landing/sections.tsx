@@ -53,14 +53,14 @@ export function Developers() {
           <code>{`# quote
 curl https://api.fliq.money/v1/quote \\
   -H "Authorization: Bearer rt_test_…" \\
-  -d "token=USDC&currency=NGN&amount=50"
+  -d "token=USDC&currency=NGN&amount=<amount>"
 
-{ "rate": 1376.32, "receive": 68816,
-  "provider": "paycrest", "best_of": 4 }
+{ "rate": "<quote rate>", "receive": "<recipient amount>",
+  "provider": "<selected provider>", "routes": "<available routes>" }
 
 # pay, then the webhook brings the bank reference
 { "event": "payout.settled",
-  "bank_reference": "000013251029140213" }`}</code>
+  "bank_reference": "<bank reference>" }`}</code>
         </pre>
       </div>
     </section>
@@ -98,15 +98,15 @@ export function Agents() {
         </div>
         <div className="flex gap-2 rounded-xl bg-[#111] p-3.5">
           <span className="text-brand">✓</span>
-          <p>Paid ₦68,816 to DARA OKONKWO via Paycrest.</p>
+          <p>Payout settled to the recipient through the selected provider.</p>
         </div>
         <div className="flex gap-2 rounded-xl bg-[#111] p-3.5">
           <span className="text-zinc-500">You:</span>
-          <p>Now send her ₦500,000.</p>
+          <p>Now send another payout over the configured cap.</p>
         </div>
         <div className="flex gap-2 rounded-xl border border-[#5a4712] bg-[#2a2208] p-3.5">
           <span>⊘</span>
-          <p>Refused by the vault. ₦500,000 is over the ₦50,000 per-payout cap.</p>
+          <p>The vault refuses it before anything moves.</p>
         </div>
       </div>
     </section>

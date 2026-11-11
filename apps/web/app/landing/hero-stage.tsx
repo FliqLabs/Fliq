@@ -4,12 +4,11 @@ import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 
 const screens = [
-  { name: "home", caption: "Meet fliq.", alt: "fliq Home: vault balance $128.18" },
-  { name: "quote", caption: "Pay any bank in seconds.", alt: "Confirm: DARA OKONKWO receives ₦68,816" },
-  { name: "routes", caption: "Best rate, every time.", alt: "Routes for $50: Paycrest best at ₦68,816" },
-  { name: "sending", caption: "Watch it land.", alt: "Sending ₦68,816 to DARA OKONKWO" },
-  { name: "paid", caption: "Proof, not promises.", alt: "Paid: ₦68,816 landed in 21 seconds" },
-  { name: "agents", caption: "Only what you allow.", alt: "Agents: Claude spent ₦30,000 of ₦150,000 today" },
+  { name: "home", caption: "Meet fliq.", alt: "Illustrative fliq home screen" },
+  { name: "quote", caption: "Preview a bank payout.", alt: "Illustrative payout confirmation" },
+  { name: "routes", caption: "Compare available routes.", alt: "Illustrative provider route comparison" },
+  { name: "sending", caption: "Watch the status change.", alt: "Illustrative payout in progress" },
+  { name: "agents", caption: "Only what you allow.", alt: "Illustrative agent activity within configured caps" },
 ];
 
 const tokens = ["usdc", "solana", "usdt", "base", "near", "tron", "ethereum", "arbitrum", "btc"];

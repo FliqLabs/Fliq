@@ -2,13 +2,16 @@
 
 import Link from "next/link";
 import { useQueries } from "@tanstack/react-query";
-import { fliqApi } from "../lib/fliq-api";
+import { ApiError, fliqApi } from "../lib/fliq-api";
 import { CORRIDORS, type Corridor, moneyFormatter, pairTitle, withTimeout } from "../lib/corridors";
 
 type PublicRate = { rate: number; provider: string; providers_quoting: number; fetched_at: string };
 
-/* One rate per corridor, shared with the corridor page through the same query key. A corridor the config calls
-   coming soon still turns live here once the API answers for it. */
+function isNotOffered(error: unknown) {
+  return error instanceof ApiError && error.code === "invalid_request";
+}
+
+/* One rate per corridor, shared with the corridor page through the same query key. */
 function useCorridorRates() {
   return useQueries({
     queries: CORRIDORS.map((corridor) => ({
@@ -18,7 +21,13 @@ function useCorridorRates() {
       refetchInterval: 60_000,
       retry: false,
     })),
-  }).map((query, index) => ({ corridor: CORRIDORS[index], rate: query.data, isPending: query.isPending }));
+  }).map((query, index) => ({
+    corridor: CORRIDORS[index],
+    rate: query.data,
+    isPending: query.isPending,
+    isError: query.isError,
+    error: query.error,
+  }));
 }
 
 function updatedAt(value: string, corridor: Corridor) {
@@ -32,11 +41,12 @@ export function CurrencySwitcher({ current }: { current: string }) {
 
   return (
     <nav aria-label="Choose a currency" className="mb-9 flex flex-wrap gap-2">
-      {corridors.map(({ corridor, rate }) => {
+      {corridors.map(({ corridor, rate, isError, error }) => {
         const live = corridor.live || rate !== undefined;
+        const unavailable = !live && isError && !isNotOffered(error);
         const selected = corridor.code === current;
         const pill = "inline-flex items-center gap-2 rounded-full border px-3.5 py-2 text-xs transition";
-        if (!live) {
+        if (!live && !unavailable) {
           return (
             <span
               key={corridor.code}
@@ -71,8 +81,9 @@ export function CorridorCards({ exclude }: { exclude?: string }) {
 
   return (
     <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
-      {corridors.map(({ corridor, rate, isPending }) => {
+      {corridors.map(({ corridor, rate, isPending, isError, error }) => {
         const live = corridor.live || rate !== undefined;
+        const unavailable = !live && isError && !isNotOffered(error);
         const body = (
           <>
             <div className="flex items-center justify-between gap-3">
@@ -80,19 +91,25 @@ export function CorridorCards({ exclude }: { exclude?: string }) {
                 <span aria-hidden="true">{corridor.flag} </span>
                 {pairTitle(corridor)}
               </p>
-              {!live && (
+              {!live && !unavailable && (
                 <span className="rounded-full border border-[#303030] px-2 py-0.5 text-[9px] uppercase tracking-wider text-[#777]">
                   Coming soon
                 </span>
               )}
             </div>
             <p className="mt-4 text-xl font-semibold tabular-nums">
-              {rate ? moneyFormatter(corridor).format(rate.rate) : live && isPending ? "-" : live ? "Rate unavailable right now" : corridor.currencyName}
+              {rate
+                ? moneyFormatter(corridor).format(rate.rate)
+                : live && isPending
+                  ? "-"
+                  : live || unavailable
+                    ? "Rate unavailable right now"
+                    : corridor.currencyName}
             </p>
             <p className="mt-2 text-xs text-[#777]">
               {rate
                 ? `${rate.provider.charAt(0).toUpperCase() + rate.provider.slice(1)} · best of ${rate.providers_quoting} · ${updatedAt(rate.fetched_at, corridor)} ${corridor.cityTime}`
-                : live
+                : live || unavailable
                   ? "Best rate after fees, per 1 USDC"
                   : `Payouts to ${corridor.country} are on the way`}
             </p>

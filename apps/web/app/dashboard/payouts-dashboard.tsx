@@ -23,7 +23,6 @@ export type DashboardSummary = {
   settledToday: number | null;
   medianSecondsToBank: number | null;
   refusedByVaultCaps: number | null;
-  bestRate: number | null;
 };
 
 type Props = {
@@ -93,7 +92,7 @@ export function PayoutsDashboard({
         </div>
       </div>
 
-      <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         <SummaryCard label="Settled today" value={summary.settledToday?.toString() ?? "—"} tone="success" />
         <SummaryCard
           label="Median time to bank"
@@ -103,11 +102,6 @@ export function PayoutsDashboard({
           label="Refused by vault caps"
           value={summary.refusedByVaultCaps?.toString() ?? "—"}
           tone="danger"
-        />
-        <SummaryCard
-          label="Best rate now"
-          value={summary.bestRate === null ? "—" : `₦${summary.bestRate.toFixed(2)}`}
-          tone="progress"
         />
       </div>
       {summaryLoading && <p className="mt-2 text-xs text-zinc-500">Loading summary metrics…</p>}
