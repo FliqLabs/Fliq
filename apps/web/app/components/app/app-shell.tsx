@@ -134,9 +134,9 @@ export function AppShell({ mode, children }: { mode: "wallet" | "developer"; chi
                 {DEVELOPER.map((item) => (
                   <NavLink key={item.href} item={item} pathname={pathname} onNavigate={close} />
                 ))}
-                <Link href="/#developers">
+                <Link href="/docs/quickstart" onClick={close}>
                   <Icon name="ext" />
-                  <span>API reference</span>
+                  <span>Docs</span>
                 </Link>
               </nav>
             </>

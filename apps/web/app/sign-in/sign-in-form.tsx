@@ -3,6 +3,9 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
+import { createPortal } from "react-dom";
+import { AuthShell } from "../auth/auth-shell";
+import { EmailLinkSent } from "./email-link-sent";
 import { labelPasskey, signInWithPasskey } from "../auth/passkey";
 import { fliqApi, type User } from "../lib/fliq-api";
 
@@ -18,13 +21,17 @@ const copy = {
 export function SignInForm({
   intent = "sign-in",
   onSignedIn,
+  standalone = false,
 }: {
   intent?: keyof typeof copy;
   onSignedIn?: (user: User) => void;
+  standalone?: boolean;
 }) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [email, setEmail] = useState("");
+  const [sentEmail, setSentEmail] = useState("");
+  const [resendAt, setResendAt] = useState(0);
 
   function afterSignIn(user: User) {
     queryClient.clear();
@@ -41,6 +48,10 @@ export function SignInForm({
         method: "POST",
         body: JSON.stringify({ email: address }),
       }),
+    onSuccess: (_, address) => {
+      setSentEmail(address);
+      setResendAt(Date.now() + 60_000);
+    },
   });
 
   function submitEmail(event: FormEvent<HTMLFormElement>) {
@@ -48,7 +59,29 @@ export function SignInForm({
     emailLink.mutate(email.trim());
   }
 
-  return (
+  if (sentEmail) {
+    const confirmation = (
+      <EmailLinkSent
+        email={sentEmail}
+        resendAt={resendAt}
+        pending={emailLink.isPending}
+        error={emailLink.error?.message}
+        onResend={() => emailLink.mutate(sentEmail)}
+        onChangeEmail={() => {
+          setSentEmail("");
+          emailLink.reset();
+        }}
+      />
+    );
+    return standalone
+      ? confirmation
+      : createPortal(
+          <div className="fixed inset-0 z-[100] overflow-y-auto">{confirmation}</div>,
+          document.body,
+        );
+  }
+
+  const form = (
     <>
       <h1 className="text-3xl font-bold tracking-tight">{copy[intent].title}</h1>
       <p className="mt-1 text-sm text-zinc-500">{copy[intent].subtitle}</p>
@@ -112,11 +145,6 @@ export function SignInForm({
           {emailLink.isPending ? "Sending link…" : "Email me a sign-in link"}
         </button>
       </form>
-      {emailLink.isSuccess && (
-        <p role="status" className="mt-3 text-sm text-emerald-700">
-          If the address can receive mail, a sign-in link is on its way.
-        </p>
-      )}
       {emailLink.isError && (
         <p role="alert" className="mt-3 text-sm text-red-600">
           {emailLink.error.message}
@@ -124,4 +152,5 @@ export function SignInForm({
       )}
     </>
   );
+  return standalone ? <AuthShell>{form}</AuthShell> : form;
 }
