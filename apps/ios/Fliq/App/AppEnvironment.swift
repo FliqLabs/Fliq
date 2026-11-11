@@ -176,7 +176,7 @@ final class AppEnvironment {
 
     #if DEBUG
     /// `--ui-testing` runs on fixtures with a fresh profile and no Face ID prompt.
-    /// Add `--onboarded` to start on Home.
+    /// Add `--onboarded` to start on Home, and `--funded` for $100 in the vault so a cash-out can be quoted.
     private static func uiTesting(bundle: Bundle) -> AppEnvironment? {
         let arguments = ProcessInfo.processInfo.arguments
         guard arguments.contains("--ui-testing"), let defaults = UserDefaults(suiteName: "ui-testing") else { return nil }
@@ -186,7 +186,7 @@ final class AppEnvironment {
         let accounts = AccountBook(keychain: nil)
         if arguments.contains("--sample-recipients") { seedRecipients(accounts) }
         return AppEnvironment(
-            api: FixtureClient(bundle: bundle), profile: profile, accounts: accounts,
+            api: FixtureClient(bundle: bundle), profile: profile, vault: VaultStore(balance: TokenAmount(baseUnits: arguments.contains("--funded") ? 100_000_000 : 0)), accounts: accounts,
             preferences: Preferences(defaults: defaults), biometrics: AlwaysApprove(), lock: uiTestingLock(arguments, defaults: defaults)
         )
     }
