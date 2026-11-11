@@ -3,6 +3,8 @@ import UIKit
 
 enum PasskeyError: Error, Equatable {
     case cancelled
+    /// Asked for a saved passkey only, and this iPhone has none for fliq.cash.
+    case noneSaved
     case badOptions
     case failed(String)
 }
@@ -13,6 +15,8 @@ enum PasskeyError: Error, Equatable {
 final class PasskeyAuthenticator: NSObject {
     private var pending: CheckedContinuation<ASAuthorization, any Error>?
     private var controller: ASAuthorizationController?
+    /// Set while asking for saved passkeys only: iOS answers "cancelled" at once when there are none.
+    private var quietSince: Date?
 
     func register(_ options: PasskeyOptions) async throws -> Data {
         guard
@@ -35,12 +39,14 @@ final class PasskeyAuthenticator: NSObject {
         ])
     }
 
-    func signIn(_ options: PasskeyOptions, relyingParty: String = "fliq.cash") async throws -> Data {
+    /// With `onlySaved`, iOS shows the sheet only if this iPhone already holds a fliq.cash passkey, and
+    /// otherwise fails at once with `PasskeyError.noneSaved` so the caller can create one instead.
+    func signIn(_ options: PasskeyOptions, relyingParty: String = "fliq.cash", onlySaved: Bool = false) async throws -> Data {
         guard let challenge = Data(base64URL: options.options.challenge) else { throw PasskeyError.badOptions }
 
         let provider = ASAuthorizationPlatformPublicKeyCredentialProvider(relyingPartyIdentifier: options.options.rp?.id ?? relyingParty)
         let request = provider.createCredentialAssertionRequest(challenge: challenge)
-        guard let credential = try await perform(request).credential as? ASAuthorizationPlatformPublicKeyCredentialAssertion else {
+        guard let credential = try await perform(request, onlySaved: onlySaved).credential as? ASAuthorizationPlatformPublicKeyCredentialAssertion else {
             throw PasskeyError.failed("No passkey was used.")
         }
 
@@ -52,21 +58,36 @@ final class PasskeyAuthenticator: NSObject {
         ])
     }
 
-    private func perform(_ request: ASAuthorizationRequest) async throws -> ASAuthorization {
+    private func perform(_ request: ASAuthorizationRequest, onlySaved: Bool = false) async throws -> ASAuthorization {
         let controller = ASAuthorizationController(authorizationRequests: [request])
         controller.delegate = self
         controller.presentationContextProvider = self
         self.controller = controller
         defer { self.controller = nil }
+        quietSince = onlySaved ? .now : nil
         return try await withCheckedThrowingContinuation { continuation in
             pending = continuation
-            controller.performRequests()
+            if onlySaved {
+                controller.performRequests(options: .preferImmediatelyAvailableCredentials)
+            } else {
+                controller.performRequests()
+            }
         }
     }
 
     private func finish(_ result: Result<ASAuthorization, any Error>) {
         pending?.resume(with: result)
         pending = nil
+        quietSince = nil
+    }
+
+    /// A cancel that arrives within a moment of a saved-only request means no sheet was shown: there is nothing saved.
+    private func failure(_ error: any Error) -> any Error {
+        let code = (error as? ASAuthorizationError)?.code
+        if let quietSince, code == .canceled || code == .notInteractive, Date.now.timeIntervalSince(quietSince) < 1 {
+            return PasskeyError.noneSaved
+        }
+        return code == .canceled ? PasskeyError.cancelled : PasskeyError.failed(error.localizedDescription)
     }
 
     private static func json(id: Data, response: [String: Any]) throws -> Data {
@@ -87,10 +108,7 @@ extension PasskeyAuthenticator: ASAuthorizationControllerDelegate, ASAuthorizati
     }
 
     nonisolated func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: any Error) {
-        let mapped: any Error = (error as? ASAuthorizationError)?.code == .canceled
-            ? PasskeyError.cancelled
-            : PasskeyError.failed(error.localizedDescription)
-        MainActor.assumeIsolated { finish(.failure(mapped)) }
+        MainActor.assumeIsolated { finish(.failure(failure(error))) }
     }
 
     nonisolated func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {

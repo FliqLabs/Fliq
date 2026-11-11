@@ -74,8 +74,45 @@ struct OnboardingView: View {
     }
 
     private func start() {
-        if isLive { return usePasskey(.register) }
+        if isLive { return continueWithPasskey() }
         path.append(.claimName)
+    }
+
+    /// Signs in with a passkey this iPhone already holds; creates an account only when there is none, or when the
+    /// chosen passkey belongs to no account on this server (a testnet passkey in the mainnet app, for example).
+    private func continueWithPasskey() {
+        guard !passkeyWorking else { return }
+        passkeyWorking = true
+        passkeyMessage = nil
+        Task {
+            defer { passkeyWorking = false }
+            do {
+                let options = try await api.passkeyOptions(.login)
+                let response = try await passkeys.signIn(options, onlySaved: true)
+                do {
+                    return signedIn(try await api.finishPasskey(.login, challengeId: options.challengeId, credential: response))
+                } catch APIError.server(let status, _) where (400..<500).contains(status) {
+                    try await createWithPasskey()
+                }
+            } catch PasskeyError.noneSaved {
+                do { try await createWithPasskey() } catch { couldNotCreate(error) }
+            } catch PasskeyError.cancelled {
+                return
+            } catch {
+                couldNotCreate(error)
+            }
+        }
+    }
+
+    private func createWithPasskey() async throws {
+        let options = try await api.passkeyOptions(.register)
+        let response = try await passkeys.register(options)
+        signedIn(try await api.finishPasskey(.register, challengeId: options.challengeId, credential: response))
+    }
+
+    private func couldNotCreate(_ error: any Error) {
+        if case PasskeyError.cancelled = error { return }
+        passkeyMessage = "We couldn't create your passkey. Try again or use email."
     }
 
     private func usePasskey(_ purpose: PasskeyPurpose) {
