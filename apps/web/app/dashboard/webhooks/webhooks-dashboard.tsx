@@ -82,22 +82,22 @@ export function WebhooksDashboard({
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold">Webhooks</h1>
-          <p className="mt-1 text-sm text-zinc-500">Track events sent to your workspace endpoint.</p>
+          <p className="mt-1 text-sm text-app-muted">Track events sent to your workspace endpoint.</p>
         </div>
       </div>
 
       <section
         aria-label="Webhook endpoint"
-        className="mt-6 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-zinc-200 p-5"
+        className="mt-6 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-app-line p-5"
       >
         <div>
-          <p className="text-xs font-semibold text-zinc-500">Endpoint URL</p>
+          <p className="text-xs font-semibold text-app-muted">Endpoint URL</p>
           {endpoints.length === 0 ? (
-            <p className="mt-1 text-sm text-zinc-500">No endpoint configured</p>
+            <p className="mt-1 text-sm text-app-muted">No endpoint configured</p>
           ) : (
             endpoints.map((endpoint) => (
               <p key={endpoint.endpoint_id} className="mt-1 break-all text-sm font-medium">
-                {endpoint.url} <span className="text-xs font-normal text-zinc-500">({endpoint.status})</span>
+                {endpoint.url} <span className="text-xs font-normal text-app-muted">({endpoint.status})</span>
               </p>
             ))
           )}
@@ -109,24 +109,24 @@ export function WebhooksDashboard({
             placeholder="https://your-site.com/webhook"
             value={url}
             onChange={(event) => setUrl(event.target.value)}
-            className="min-w-0 flex-1 rounded-lg border border-zinc-200 px-3 py-2.5 text-xs sm:w-64"
+            className="min-w-0 flex-1 rounded-lg border border-app-line px-3 py-2.5 text-xs sm:w-64"
           />
           <button
             type="submit"
             disabled={creating || !onCreate}
-            className="rounded-lg border border-zinc-200 px-4 py-2.5 text-xs font-semibold disabled:opacity-50"
+            className="rounded-lg border border-app-line px-4 py-2.5 text-xs font-semibold disabled:opacity-50"
           >
             {creating ? "Adding…" : "Add endpoint"}
           </button>
         </form>
       </section>
       {createError && (
-        <p role="alert" className="mt-3 text-sm text-red-600">
+        <p role="alert" className="mt-3 text-sm text-app-bad">
           {createError}
         </p>
       )}
       {createdSecret && (
-        <div role="status" className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-xs">
+        <div role="status" className="mt-3 rounded-lg border border-app-warn-soft bg-app-warn-soft p-4 text-xs">
           <p className="font-semibold">Save this signing secret now. It is shown only once.</p>
           <p className="mt-2 break-all font-mono">{createdSecret}</p>
         </div>
@@ -135,7 +135,7 @@ export function WebhooksDashboard({
       <div className="mt-7 flex flex-wrap items-center justify-between gap-4">
         <div>
           <h2 className="text-sm font-semibold">Recent deliveries</h2>
-          <p className="mt-1 text-xs text-zinc-500">Replay a delivery from its row.</p>
+          <p className="mt-1 text-xs text-app-muted">Replay a delivery from its row.</p>
         </div>
         <label className="sr-only" htmlFor="webhook-search">
           Search deliveries
@@ -145,20 +145,20 @@ export function WebhooksDashboard({
           value={search}
           onChange={(event) => setSearch(event.target.value)}
           placeholder="Search by event or payout ID"
-          className="h-10 w-full max-w-xs rounded-lg border border-zinc-200 px-4 text-sm outline-none placeholder:text-zinc-400 focus:border-zinc-500"
+          className="h-10 w-full max-w-xs rounded-lg border border-app-line px-4 text-sm outline-none placeholder:text-app-dim focus:border-app-accent"
         />
       </div>
       {replayError && (
-        <p role="alert" className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+        <p role="alert" className="mt-4 rounded-lg bg-app-bad-soft p-3 text-sm text-app-bad">
           {replayError}
         </p>
       )}
 
       <section
         aria-label="Webhook deliveries"
-        className="mt-4 overflow-hidden rounded-xl border border-zinc-200"
+        className="mt-4 overflow-hidden rounded-xl border border-app-line"
       >
-        <div className="hidden grid-cols-[2fr_1.4fr_1fr_1fr_1fr_auto] gap-4 border-b border-zinc-200 px-4 py-3 text-[11px] font-semibold uppercase text-zinc-500 md:grid">
+        <div className="hidden grid-cols-[2fr_1.4fr_1fr_1fr_1fr_auto] gap-4 border-b border-app-line px-4 py-3 text-[11px] font-semibold uppercase text-app-muted md:grid">
           <span>Event</span>
           <span>Payout</span>
           <span>Status</span>
@@ -170,21 +170,21 @@ export function WebhooksDashboard({
           <div className="flex min-h-[320px] flex-col items-center justify-center px-5 py-14 text-center">
             <div
               aria-hidden="true"
-              className="mb-4 grid size-10 place-items-center rounded-full bg-zinc-100 text-zinc-500"
+              className="mb-4 grid size-10 place-items-center rounded-full bg-app-panel2 text-app-muted"
             >
               ↗
             </div>
             <h3 className="text-lg font-semibold">
               {deliveries.length === 0 ? "No webhook deliveries yet" : "No matching deliveries"}
             </h3>
-            <p className="mt-2 max-w-sm text-sm text-zinc-500">
+            <p className="mt-2 max-w-sm text-sm text-app-muted">
               {deliveries.length === 0
                 ? "Events will appear here after a payout sends a webhook to your endpoint."
                 : "Try a different event or payout ID."}
             </p>
           </div>
         ) : (
-          <div className="divide-y divide-zinc-100">
+          <div className="divide-y divide-app-line">
             {visibleDeliveries.map((delivery) => (
               <div
                 key={delivery.id}
@@ -192,23 +192,23 @@ export function WebhooksDashboard({
               >
                 <div>
                   <p className="font-medium">{delivery.event}</p>
-                  <p className="text-xs text-zinc-500">{delivery.id}</p>
+                  <p className="text-xs text-app-muted">{delivery.id}</p>
                 </div>
-                <span className="truncate text-zinc-600">{delivery.payoutId}</span>
+                <span className="truncate text-app-fg2">{delivery.payoutId}</span>
                 <span
-                  className={`w-fit rounded-full px-2 py-1 text-xs font-semibold capitalize ${delivery.status === "delivered" ? "bg-emerald-50 text-emerald-700" : delivery.status === "failed" ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-700"}`}
+                  className={`w-fit rounded-full px-2 py-1 text-xs font-semibold capitalize ${delivery.status === "delivered" ? "bg-app-good-soft text-app-good" : delivery.status === "failed" ? "bg-app-bad-soft text-app-bad" : "bg-app-warn-soft text-app-warn"}`}
                 >
                   {delivery.status}
                 </span>
                 <span>{delivery.responseCode ?? "—"}</span>
-                <time dateTime={delivery.createdAt} className="text-xs text-zinc-500">
+                <time dateTime={delivery.createdAt} className="text-xs text-app-muted">
                   {new Date(delivery.createdAt).toLocaleString("en-NG")}
                 </time>
                 <button
                   type="button"
                   disabled={!onReplay || pendingId !== null}
                   onClick={() => setSelectedReplayId(delivery.id)}
-                  className="w-fit rounded-lg border border-zinc-200 px-3 py-2 text-xs font-semibold disabled:cursor-not-allowed disabled:text-zinc-400"
+                  className="w-fit rounded-lg border border-app-line px-3 py-2 text-xs font-semibold disabled:cursor-not-allowed disabled:text-app-dim"
                 >
                   {pendingId === delivery.id ? "Replaying…" : "Replay"}
                 </button>
@@ -222,7 +222,7 @@ export function WebhooksDashboard({
           type="button"
           disabled={loadingMore}
           onClick={onLoadMore}
-          className="mt-4 rounded-lg border border-zinc-200 px-4 py-2.5 text-sm font-semibold disabled:opacity-50"
+          className="mt-4 rounded-lg border border-app-line px-4 py-2.5 text-sm font-semibold disabled:opacity-50"
         >
           {loadingMore ? "Loading…" : "Load more deliveries"}
         </button>

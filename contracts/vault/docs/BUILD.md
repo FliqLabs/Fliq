@@ -48,14 +48,29 @@ gate, and have both owners reproduce the hash from the same commit before they a
 
 ## Currently deployed on testnet
 
-Measured from chain on 10 November 2026, kept as the rollback reference for the upgrade of
-`fliq-vault.testnet`:
+`fliq-vault.testnet`, deployed 10 November 2026 with `migrate` in the same transaction
+(`6Tt1o2EPzDSxPyJ6bW8vKx2ZLYd6pSUwkwwa3jd8r8VB`). The on-chain code hash was checked against the built
+artifact and matches.
 
-| Account | Size | SHA-256 |
-| --- | ---: | --- |
-| `fliq-vault.testnet` | 259320 bytes | `8d5e6be5d2569b892d472f333e53810484adf2b752edbaed13878c7db5aa41e2` |
+| Field | Value |
+| --- | --- |
+| Commit | `2b0b385` |
+| Size | 270648 bytes |
+| SHA-256 | `38e1de4e948bb4a3ad194a864cadbaa62ef2ca09865f9042d1e2e3e248b0728c` |
+| bs58 | `4q3bEW9AqiRgSeQb2RvXjiNh1b5D69bKXi6nEgEsq1RV` |
 
-That build exports neither `withdraw` nor `migrate`, so it predates the November review fixes.
+Because the Wasm embeds its own commit in NEP-330 source metadata, the hash is bound to the commit: the
+same tree built at a different commit produces a different artifact. An approved hash therefore belongs to
+exactly one commit, and no commit may land between approval and deployment.
+
+### Previous build, kept for rollback
+
+| Size | SHA-256 |
+| ---: | --- |
+| 259320 bytes | `8d5e6be5d2569b892d472f333e53810484adf2b752edbaed13878c7db5aa41e2` |
+
+That build exports neither `withdraw` nor `migrate`, so it predates the November review fixes. Redeploying
+it restores the old code over old-layout state; it does not undo a migration that succeeded.
 
 ## mock_usdc
 

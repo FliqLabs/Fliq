@@ -68,6 +68,9 @@ Architecture diagrams: [docs/architecture.md](docs/architecture.md).
 | near-api-js, borsh | services/api | NEAR transaction and delegate-action encoding, signing and verification for the relayer and account creation |
 | @simplewebauthn/server | services/api | Verify passkey registration and sign-in (WebAuthn) |
 | ioredis | services/api | Redis client for the atomic token-bucket rate limiter |
+| qrcode-generator | apps/web | Draw scannable QR codes for deposit addresses in the wallet, with no runtime dependencies |
+| three | apps/web | Render the rotating tile globe in the landing hero with WebGL, loaded only on the landing page |
+| lenis | apps/web | Run the landing hero's scroll handoff as one eased, reversible scroll that native scrolling cannot interrupt |
 | yaml | services/api | Read spec/openapi.yaml at startup to register routes |
 | prettier | root | Formatting |
 

@@ -18,6 +18,7 @@ final class AppEnvironment {
     let agents: AgentStore
     let accounts: AccountBook
     let transfers: any VaultTransfers
+    let withdrawals: any Withdrawals
     let inbox: WalletInbox
     let preferences: Preferences
     let biometrics: any Biometrics
@@ -35,6 +36,7 @@ final class AppEnvironment {
         agentAPI: any AgentAPI = FixtureAgentAPI(),
         accounts: AccountBook = AccountBook(),
         transfers: any VaultTransfers = FixtureVaultTransfers(),
+        withdrawals: any Withdrawals = FixtureWithdrawals(),
         walletTopUp: any WalletTopUp = FixtureWalletTopUp(),
         preferences: Preferences = Preferences(),
         biometrics: any Biometrics = DeviceBiometrics(),
@@ -50,6 +52,7 @@ final class AppEnvironment {
         self.deposits = deposits
         self.accounts = accounts
         self.transfers = transfers
+        self.withdrawals = withdrawals
         inbox = WalletInbox(topUp: walletTopUp)
         self.preferences = preferences
         agents = AgentStore(api: agentAPI, vault: { profile.name ?? "fliq-vault.testnet" })
@@ -85,9 +88,16 @@ final class AppEnvironment {
             owner: { await profile.name },
             vault: { try? await api.me().vault }
         )
+        let withdrawals = RelayedWithdrawals(
+            api: api,
+            rpc: NEARRPC(url: rpc),
+            keys: keys,
+            owner: { await profile.name },
+            vault: { try? await api.me().vault }
+        )
         let environment = AppEnvironment(
             api: api, isLive: true, profile: profile, deposits: HTTPDepositAPI(client: api), agentAPI: agents,
-            transfers: transfers, walletTopUp: walletTopUp
+            transfers: transfers, withdrawals: withdrawals, walletTopUp: walletTopUp
         )
         Task {
             await api.sessions.whenEnded {

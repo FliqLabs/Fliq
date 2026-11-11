@@ -28,11 +28,26 @@ These rules are PROPOSED and require backend approval:
 - A partial refund is allowed, but each order has at most one recredit. Only a successful callback changes the receipt status to `refunded`.
 - Failed transfers and `resolve_stuck_payout(..., false)` release the reservation, enter terminal `TransferFailed`, and create no refund record.
 
+## Confirmed NEP-145 storage behaviour
+
+- The vault is registration-only: `storage_balance_bounds` reports `min` equal to `max`, there is never
+  spendable storage credit, and `storage_withdraw` accepts only a zero or absent amount.
+- `storage_unregister` accepts `force` and ignores it. Closing an account always requires a zero available
+  and zero reserved balance. This deviates from NEP-145, which permits `force: true` to close an account and
+  discard its tokens; the vault refuses instead, because discarding a user's USDC to satisfy a standard is
+  not a trade this contract should make. Any NEP-145 client we publish must document that `force` will not
+  override a balance.
+- `storage_deposit` is idempotent and refunds the whole attachment for an already registered account, so a
+  provisioner retrying a registration never pays twice.
+- Per-account storage is measured once at initialization against a 64-character account ID, the longest
+  NEAR allows, so registration never under-collects.
+
 ## Agent policy behavior
 
 - Policies are keyed by (owner, agent account). The public key is a label for the backend. Naming an account as your agent never affects that account's own funds or anyone else's policy for it.
 - `set_agent` creates or updates caps, optional exact-match corridors, cooldown and expiry without resetting same-day spend, charges the policy storage to the owner and refunds the rest of the deposit. `remove_agent` marks the policy revoked and keeps it. A deposit is required for both, so an ordinary function-call key cannot change agent permissions.
 - New user accounts are funded with approximately 0.02 NEAR by the account provisioner. This covers one maximum-size policy, tested at no more than 0.01 NEAR, 1 yocto calls and ordinary gas without making the vault subsidize unrelated accounts.
+- That 0.02 NEAR does **not** cover a direct `payout` call. The signer must hold the prepaid gas up front, and the 60 Tgas floor cost about 0.06 NEAR at the gas price observed on testnet on 10 November 2026; an agent account holding 0.08 NEAR failed a 150 Tgas payout outright. This does not affect the intended production path, where an agent's call is NEP-366 relayed and the relayer sponsors the gas, but any agent expected to call `payout` directly needs funding sized to the gas floor, not to storage.
 - Daily spend includes pending and successful payouts. Parallel attempts therefore cannot race past the limit. A failed transfer releases its same-day amount; a successful payout remains counted even if it is later refunded.
 - Cooldown starts when a payout is authorized and remains in force after a failed transfer. Daily buckets use NEAR block timestamp nanoseconds and UTC-sized 24-hour intervals.
 - Direct payer calls do not require an agent policy. Agent payout calls require the policy owner to equal the registered order payer. Agent accounts cannot transfer the owner's balance; `transfer` always debits its predecessor's own vault balance.
