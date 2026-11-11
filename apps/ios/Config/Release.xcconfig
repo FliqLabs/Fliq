@@ -8,5 +8,9 @@ FLIQ_NEAR_NETWORK = testnet
 // preset, set up in the Cloudinary dashboard, limits the folder, size and formats. Empty turns photo upload off.
 FLIQ_CLOUDINARY_CLOUD = dz9nzikbp
 FLIQ_CLOUDINARY_PRESET = fliq_avatars
+// fliq's web server, which signs users in to Paj for bank deposits without the app holding Paj's key.
+FLIQ_WEB_BASE_URL = https:/$()/fliq.cash
+// A testnet build has no vault address on Solana, so Paj deposits go to this team wallet instead. Empty on mainnet.
+FLIQ_PAJ_TEST_RECIPIENT =
 FLIQ_NAME_SUFFIX = .fliqaccount.testnet
 FLIQ_ASSOCIATED_DOMAIN_MODE =

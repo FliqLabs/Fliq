@@ -17,6 +17,7 @@ struct RootView: View {
     @State private var flow: PayFlow?
     @State private var personFlow: PersonPayFlow?
     @State private var withdrawFlow: WithdrawFlow?
+    @State private var bankDeposit: BankDepositFlow?
     @State private var tab = RootTab.home
     @State private var sheet: HomeSheet?
     @State private var activityPath: [AppRoute] = []
@@ -107,7 +108,8 @@ struct RootView: View {
             onAccount: { account in leaveSheet { startPayment(to: account) } },
             onPerson: { account in leaveSheet { startPersonPayment(to: account) } },
             onNewAccount: { account, save in leaveSheet { startPayment(to: account, save: save) } },
-            onWallet: { leaveSheet { startWithdraw() } }
+            onWallet: { leaveSheet { startWithdraw() } },
+            onBankDeposit: { leaveSheet { startBankDeposit() } }
         )
     }
 
@@ -154,6 +156,23 @@ struct RootView: View {
         environment.router.push(.withdraw)
     }
 
+    private func startBankDeposit() {
+        let deposits = environment.deposits
+        let network: NearNetwork = environment.isLive ? .current : .testnet
+        let vault = environment.profile.name ?? "fliq-vault.testnet"
+        let testWallet = environment.pajTestRecipient
+        bankDeposit = BankDepositFlow(paj: environment.paj, signIn: environment.pajSignIn, deposits: deposits) {
+            if network.receivesFromOtherChains {
+                let solana = DepositSource(tokenId: "usdc", chainId: "solana", group: .dollars)
+                let reserved = try await deposits.reserve(solana, vault: vault)
+                return BankDepositDestination(address: reserved.address, deposit: reserved)
+            }
+            guard let testWallet else { throw Paj.Failure(message: "Bank deposits land in your vault on mainnet. This test build has no wallet set for them.") }
+            return BankDepositDestination(address: testWallet, isTestWallet: true)
+        }
+        environment.router.push(.bankDeposit)
+    }
+
     @ViewBuilder
     private func destination(_ route: AppRoute) -> some View {
         switch route {
@@ -172,6 +191,13 @@ struct RootView: View {
             }
         case .withdraw, .withdrawTo, .withdrawReview:
             if let withdrawFlow { withdrawStep(route, withdrawFlow) }
+        case .bankDeposit:
+            if let bankDeposit {
+                BankDepositView(flow: bankDeposit) {
+                    environment.router.reset()
+                    Task { await environment.refreshVault() }
+                }
+            }
         case .agents: AgentsView(store: environment.agents)
         case .settings: SettingsView()
         case .settingsAccounts: AccountsView(onAdd: { startPayment() })
@@ -203,7 +229,7 @@ struct RootView: View {
             if let payout = flow.payout {
                 RefundedView(payout: payout, quote: flow.quote, onTryAgain: { startPayment(to: flow.verified) })
             }
-        case .payPerson, .withdraw, .withdrawTo, .withdrawReview, .receipt, .agents, .agentConnect, .settings, .settingsAccounts, .settingsSecurity, .settingsNotifications: EmptyView()
+        case .payPerson, .withdraw, .withdrawTo, .withdrawReview, .bankDeposit, .receipt, .agents, .agentConnect, .settings, .settingsAccounts, .settingsSecurity, .settingsNotifications: EmptyView()
         }
     }
 

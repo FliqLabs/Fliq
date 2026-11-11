@@ -47,6 +47,10 @@
 	<string>$(FLIQ_NEAR_NETWORK)</string>
 	<key>FliqNearRPCURL</key>
 	<string>$(FLIQ_NEAR_RPC_URL)</string>
+	<key>FliqPajTestRecipient</key>
+	<string>$(FLIQ_PAJ_TEST_RECIPIENT)</string>
+	<key>FliqWebBaseURL</key>
+	<string>$(FLIQ_WEB_BASE_URL)</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>

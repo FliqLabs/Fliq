@@ -17,6 +17,7 @@ enum AppRoute: Hashable {
     case withdraw
     case withdrawTo
     case withdrawReview
+    case bankDeposit
     case receipt(payoutId: String)
 }
 

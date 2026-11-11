@@ -21,6 +21,7 @@ struct MoveMoneySheet: View {
     let onPerson: (String?) -> Void
     let onNewAccount: (VerifiedAccount, Bool) -> Void
     var onWallet: (() -> Void)?
+    var onBankDeposit: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
     @Environment(AppEnvironment.self) private var environment
     @State private var path: [Step]
@@ -38,7 +39,8 @@ struct MoveMoneySheet: View {
         onAccount: @escaping (VerifiedAccount) -> Void,
         onPerson: @escaping (String?) -> Void,
         onNewAccount: @escaping (VerifiedAccount, Bool) -> Void,
-        onWallet: (() -> Void)? = nil
+        onWallet: (() -> Void)? = nil,
+        onBankDeposit: (() -> Void)? = nil
     ) {
         self.name = name
         self.receive = receive
@@ -48,6 +50,7 @@ struct MoveMoneySheet: View {
         self.onPerson = onPerson
         self.onNewAccount = onNewAccount
         self.onWallet = onWallet
+        self.onBankDeposit = onBankDeposit
         _path = State(initialValue: start)
         _detent = State(initialValue: Self.menuHeight)
     }
@@ -70,7 +73,7 @@ struct MoveMoneySheet: View {
     private func screen(_ step: Step) -> some View {
         switch step {
         case .receive:
-            ReceiveStartView(name: name, flow: receive, onFliqName: { go(.fliqName) }, onWallet: openWallet)
+            ReceiveStartView(name: name, flow: receive, onFliqName: { go(.fliqName) }, onWallet: openWallet, onBankDeposit: onBankDeposit)
                 .task { await receive.loadSources() }
         case .request:
             if let request { RequestView(flow: request) { dismiss() }.sheetToolbar { dismiss() } }
@@ -169,6 +172,7 @@ private struct ReceiveStartView: View {
     let flow: ReceiveFlow
     let onFliqName: () -> Void
     let onWallet: () -> Void
+    var onBankDeposit: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -186,6 +190,11 @@ private struct ReceiveStartView: View {
                 .multilineTextAlignment(.center)
                 .padding(.top, 18)
             VStack(spacing: 10) {
+                if let onBankDeposit {
+                    SheetRow(title: "Bank transfer", detail: "Pay in naira from any Nigerian bank", action: onBankDeposit) {
+                        Icon("building.columns", size: 24)
+                    }
+                }
                 if let name {
                     SheetRow(title: "Your fliq name", detail: "Share \(name)", action: onFliqName) {
                         NEARMark(size: 22)
