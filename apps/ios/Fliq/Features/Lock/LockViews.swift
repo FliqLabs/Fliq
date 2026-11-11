@@ -9,8 +9,7 @@ struct SecureFliqView: View {
         NavigationStack {
             VStack(spacing: 0) {
                 Spacer()
-                Image(systemName: LockBiometry.symbol)
-                    .font(.system(size: 56, weight: .light))
+                Icon(LockBiometry.symbol, size: 67)
                     .foregroundStyle(Theme.brand)
                     .padding(.bottom, 28)
                 Text("Secure fliq")
@@ -28,7 +27,7 @@ struct SecureFliqView: View {
                         Button {
                             Task { if await LockBiometry.unlock(allowDevicePasscode: false) { lock.useBiometrics(true) } }
                         } label: {
-                            Label("Use \(LockBiometry.name)", systemImage: LockBiometry.symbol)
+                            IconLabel("Use \(LockBiometry.name)", icon: LockBiometry.symbol)
                         }
                         .buttonStyle(PrimaryButtonStyle(filled: true))
                     }
@@ -115,7 +114,7 @@ struct LockScreen: View {
             VStack(spacing: 12) {
                 if lock.usesBiometrics {
                     Button { Task { await tryBiometrics() } } label: {
-                        Label("Unlock with \(LockBiometry.name)", systemImage: LockBiometry.symbol)
+                        IconLabel("Unlock with \(LockBiometry.name)", icon: LockBiometry.symbol)
                     }
                     .buttonStyle(PrimaryButtonStyle(filled: true))
                 }

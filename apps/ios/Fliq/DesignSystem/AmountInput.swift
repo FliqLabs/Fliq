@@ -52,7 +52,7 @@ struct AmountKeypad: View {
     @ViewBuilder
     private func label(_ key: String) -> some View {
         if key == "delete" {
-            Image(systemName: "delete.left").font(.system(size: 24, weight: .light))
+            BackspaceGlyph(size: 30)
         } else {
             Text(key).font(.system(size: 32, weight: .light))
         }

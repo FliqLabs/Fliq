@@ -10,8 +10,7 @@ struct PaidView: View {
     var body: some View {
         VStack(spacing: 0) {
             VStack(spacing: 8) {
-                Image(systemName: "checkmark")
-                    .font(.system(size: 30, weight: .semibold))
+                Icon("checkmark", size: 36)
                     .foregroundStyle(Theme.confirmed)
                     .frame(width: 72, height: 72)
                     .background(Color(hex: 0x0F2E19), in: Circle())
@@ -42,7 +41,7 @@ struct PaidView: View {
             .padding(.top, 30)
 
             ShareLink(item: receipt) {
-                Label("Share receipt", systemImage: "square.and.arrow.up")
+                IconLabel("Share receipt", icon: "square.and.arrow.up")
                     .font(.system(size: 15, weight: .medium))
                     .frame(maxWidth: .infinity, minHeight: 50)
                     .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14))
@@ -69,7 +68,7 @@ struct PaidView: View {
         .toolbar {
             if onPayAgain != nil {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { environment.router.reset() } label: { Image(systemName: "xmark") }
+                    Button { environment.router.reset() } label: { Icon("xmark") }
                         .accessibilityLabel("Close")
                 }
             }

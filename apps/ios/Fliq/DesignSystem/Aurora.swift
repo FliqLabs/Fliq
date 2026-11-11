@@ -47,7 +47,6 @@ struct ChipLabel: View {
     let text: String
     var symbol: String?
     var color: Color = Theme.textPrimary
-    var badge = false
     var working = false
 
     var body: some View {
@@ -55,9 +54,8 @@ struct ChipLabel: View {
             if working {
                 ProgressView().controlSize(.small).tint(color)
             } else if let symbol {
-                Image(systemName: symbol)
-                    .symbolRenderingMode(badge ? .palette : .monochrome)
-                    .foregroundStyle(badge ? Color.black : color, color)
+                Icon(symbol, size: 16)
+                    .foregroundStyle(color)
             }
             Text(text)
         }

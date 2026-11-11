@@ -62,8 +62,7 @@ private struct AppChoice: View {
                                     Text(app.detail).font(.system(size: 13)).foregroundStyle(Theme.textSecondary)
                                 }
                                 Spacer()
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 13, weight: .semibold))
+                                Icon("chevron.right", size: 16)
                                     .foregroundStyle(Theme.textTertiary)
                             }
                             .contentShape(Rectangle())
@@ -142,7 +141,7 @@ private struct LimitsStep: View {
                 Button {
                     if flow.blocker == nil { onConnect() } else { withAnimation { showBlocker = true } }
                 } label: {
-                    Label("Connect with Face ID", systemImage: "faceid")
+                    IconLabel("Connect with Face ID", icon: "faceid")
                 }
                 .buttonStyle(PrimaryButtonStyle(filled: true))
             }
@@ -214,7 +213,7 @@ private struct DoneStep: View {
                                                       options: [.expirationDate: Date.now.addingTimeInterval(300)])
                         withAnimation { copied = true }
                     } label: {
-                        Label(copied ? "Copied" : "Copy setup", systemImage: copied ? "checkmark" : "doc.on.doc")
+                        IconLabel(copied ? "Copied" : "Copy setup", icon: copied ? "checkmark" : "doc.on.doc")
                     }
                     .buttonStyle(CompactButtonStyle(prominent: true))
                     .padding(.top, 10)
@@ -257,7 +256,7 @@ private struct DoneStep: View {
 
     private func notice(icon: String, text: String, tint: Color) -> some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: icon).foregroundStyle(tint)
+            Icon(icon).foregroundStyle(tint)
             Text(text).font(.system(size: 13)).foregroundStyle(Theme.textSecondary)
             Spacer(minLength: 0)
         }
@@ -273,7 +272,7 @@ private struct FailedStep: View {
     var body: some View {
         VStack(spacing: 14) {
             Spacer()
-            Image(systemName: "exclamationmark.circle").font(.system(size: 34)).foregroundStyle(Theme.warning)
+            Icon("exclamationmark.circle", size: 41).foregroundStyle(Theme.warning)
             Text(message)
                 .font(.system(size: 16))
                 .multilineTextAlignment(.center)

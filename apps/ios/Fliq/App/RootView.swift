@@ -31,12 +31,12 @@ struct RootView: View {
                 }
                 .navigationDestination(for: AppRoute.self) { pushed($0) }
             }
-            .tabItem { Label("Home", systemImage: "house.fill") }
+            .tabItem { IconLabel("Home", icon: "house.fill") }
             .tag(RootTab.home)
 
             // An action, not a page: picking it opens the money sheet and leaves the current tab selected.
             Color.clear
-                .tabItem { Label("Transfer", systemImage: "arrow.up.arrow.down") }
+                .tabItem { IconLabel("Transfer", icon: "arrow.up.arrow.down") }
                 .tag(RootTab.transfer)
 
             NavigationStack(path: $activityPath) {
@@ -45,7 +45,7 @@ struct RootView: View {
                     .background(Theme.ground.ignoresSafeArea())
                     .navigationDestination(for: AppRoute.self) { pushed($0) }
             }
-            .tabItem { Label("Activity", systemImage: "clock.arrow.circlepath") }
+            .tabItem { IconLabel("Activity", icon: "clock.arrow.circlepath") }
             .tag(RootTab.activity)
         }
         .tint(Theme.textPrimary)
@@ -63,6 +63,7 @@ struct RootView: View {
             guard router.path.isEmpty else { return }
             await environment.refreshVault()
             await environment.inbox.load()
+            await home?.loadProfile()
         }
     }
 

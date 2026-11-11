@@ -195,7 +195,7 @@ private struct ReceiveStartView: View {
                     if flow.isReserving {
                         ProgressView()
                     } else {
-                        Image(systemName: "wallet.bifold").font(.system(size: 20))
+                        Icon("wallet.bifold", size: 24)
                     }
                 }
                 .disabled(flow.isReserving)
@@ -265,7 +265,7 @@ private struct CurrencyListView: View {
             if flow.isReserving, flow.source?.tokenId == token {
                 ProgressView()
             } else {
-                Image(systemName: "chevron.right").font(.system(size: 15, weight: .medium)).foregroundStyle(Theme.textSecondary)
+                Icon("chevron.right", size: 18).foregroundStyle(Theme.textSecondary)
             }
         }
         .foregroundStyle(Theme.textPrimary)
@@ -315,7 +315,7 @@ private struct NetworkListView: View {
 
                 if !compact {
                     HStack(spacing: 18) {
-                        Image(systemName: "exclamationmark.circle").font(.system(size: 22)).foregroundStyle(Color(hex: 0xF5C542))
+                        Icon("exclamationmark.circle", size: 26).foregroundStyle(Color(hex: 0xF5C542))
                         Text("Your receiving address depends on the coin and network.")
                             .font(.system(size: 17))
                             .foregroundStyle(Theme.textPrimary)
@@ -373,7 +373,7 @@ private struct NetworkListView: View {
             if flow.isReserving && flow.source == source {
                 ProgressView()
             } else if reason == nil {
-                Image(systemName: "chevron.right").font(.system(size: 16, weight: .medium)).foregroundStyle(Theme.textSecondary)
+                Icon("chevron.right", size: 19).foregroundStyle(Theme.textSecondary)
             }
         }
         .foregroundStyle(Theme.textPrimary)
@@ -437,12 +437,11 @@ struct FliqNameCardView: View {
                     UIPasteboard.general.string = name
                     copied = true
                 } label: {
-                    Label(copied ? "Copied" : "Copy NEAR address", systemImage: copied ? "checkmark" : "doc.on.doc")
+                    IconLabel(copied ? "Copied" : "Copy NEAR address", icon: copied ? "checkmark" : "doc.on.doc")
                 }
                 .buttonStyle(PrimaryButtonStyle(filled: true))
                 ShareLink(item: "Pay me on fliq: \(FliqName.display(name))\nFrom a NEAR wallet, send USDC to \(name)") {
-                    Image(systemName: "square.and.arrow.up")
-                        .font(.system(size: 18, weight: .semibold))
+                    Icon("square.and.arrow.up", size: 22)
                         .frame(width: 56, height: 56)
                         .fliqGlass(Circle(), interactive: true)
                 }
@@ -498,8 +497,7 @@ struct SheetRow<Mark: View>: View {
                     Text(detail).font(.system(size: 15)).foregroundStyle(Theme.textSecondary).lineLimit(1)
                 }
                 Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 15, weight: .semibold))
+                Icon("chevron.right", size: 18)
                     .foregroundStyle(Theme.textTertiary)
             }
             .foregroundStyle(Theme.textPrimary)
@@ -521,7 +519,7 @@ struct Callout: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
-            Image(systemName: symbol).font(.system(size: 20)).foregroundStyle(tint)
+            Icon(symbol, size: 24).foregroundStyle(tint)
             Text(text).font(.system(size: 15)).foregroundStyle(Theme.textPrimary)
             Spacer(minLength: 0)
         }
@@ -598,7 +596,7 @@ extension View {
     func sheetToolbar(onClose: @escaping () -> Void) -> some View {
         toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button(action: onClose) { Image(systemName: "xmark") }
+                Button(action: onClose) { Icon("xmark") }
                     .accessibilityLabel("Close")
             }
         }

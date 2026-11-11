@@ -51,7 +51,7 @@ struct AccountsView: View {
             HStack {
                 Spacer()
                 Button(action: onAdd) {
-                    Label("Add account", systemImage: "plus")
+                    IconLabel("Add account", icon: "plus")
                         .font(.system(size: 15, weight: .medium))
                         .foregroundStyle(.black)
                         .padding(.horizontal, 18)

@@ -113,9 +113,9 @@ struct ClaimNameView: View {
         case .checking:
             ChipLabel(text: "Checking…", symbol: "hourglass", color: Theme.textMuted)
         case .available:
-            ChipLabel(text: "Available", symbol: "checkmark.circle.fill", color: Theme.confirmed, badge: true)
+            ChipLabel(text: "Available", symbol: "checkmark.circle.fill", color: Theme.confirmed)
         case .taken:
-            ChipLabel(text: "Taken", symbol: "xmark.circle.fill", color: Theme.danger, badge: true)
+            ChipLabel(text: "Taken", symbol: "xmark.circle.fill", color: Theme.danger)
         case .unreachable:
             ChipLabel(text: "Can't check right now", symbol: "wifi.exclamationmark", color: Theme.warning)
         }

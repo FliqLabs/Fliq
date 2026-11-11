@@ -123,8 +123,7 @@ struct ReceiveTokensView: View {
             }
             Spacer()
             Button(action: onClose) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 15, weight: .bold))
+                Icon("xmark", size: 18)
                     .foregroundStyle(.black)
                     .frame(width: 36, height: 36)
                     .background(Color.white, in: Circle())
@@ -161,7 +160,7 @@ struct ReceiveTokensView: View {
 
     private func banner(_ source: DepositSource) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: "info.circle.fill").font(.system(size: 18)).foregroundStyle(Theme.warning)
+            Icon("info.circle.fill", size: 22).foregroundStyle(Theme.warning)
             Text("To avoid loss of funds, only send \(source.token) on \(source.chain) to this address.")
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(Theme.warning)
@@ -212,8 +211,7 @@ struct ReceiveTokensView: View {
                 if let address = model.address {
                     CopyButton(text: address.address)
                     ShareLink(item: address.address, message: Text("My \(source.token) on \(source.chain) address")) {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.system(size: 17, weight: .semibold))
+                        Icon("square.and.arrow.up", size: 20)
                             .frame(width: 48, height: 48)
                             .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 14))
                     }
@@ -251,7 +249,7 @@ private struct PickerRow<Logo: View>: View {
             Text(title).font(.system(size: 17, weight: .medium)).foregroundStyle(Theme.textPrimary)
             Spacer()
             if pickable {
-                Image(systemName: "chevron.down").font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.textSecondary)
+                Icon("chevron.down", size: 18).foregroundStyle(Theme.textSecondary)
             }
         }
         .padding(.horizontal, 16)
@@ -276,8 +274,7 @@ private struct CopyButton: View {
                 copied = false
             }
         } label: {
-            Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                .font(.system(size: 17, weight: .semibold))
+            Icon(copied ? "checkmark" : "doc.on.doc", size: 20)
                 .frame(width: 48, height: 48)
                 .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 14))
         }

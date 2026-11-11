@@ -13,7 +13,7 @@ struct NotReceivedSheet: View {
                 Spacer()
                 Text("Not received yet?").font(.system(size: 17, weight: .semibold))
                 Spacer()
-                Button { dismiss() } label: { Image(systemName: "xmark") }
+                Button { dismiss() } label: { Icon("xmark") }
                     .frame(width: 32, height: 32)
                     .accessibilityLabel("Close")
             }
@@ -39,7 +39,7 @@ struct NotReceivedSheet: View {
                             UIPasteboard.general.string = reference
                             copied = true
                         } label: {
-                            Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                            Icon(copied ? "checkmark" : "doc.on.doc", size: 18)
                                 .frame(width: 36, height: 36)
                                 .background(Color(hex: 0x2A2A2A), in: RoundedRectangle(cornerRadius: 10))
                         }

@@ -60,7 +60,7 @@ struct SendingView: View {
         .navigationBarBackButtonHidden()
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button { environment.router.reset() } label: { Image(systemName: "xmark") }
+                Button { environment.router.reset() } label: { Icon("xmark") }
                     .accessibilityLabel("Close")
             }
         }
@@ -127,8 +127,7 @@ private struct StepRow: View {
     private var indicator: some View {
         switch progress {
         case .done:
-            Image(systemName: "checkmark")
-                .font(.system(size: 12, weight: .bold))
+            Icon("checkmark", size: 14)
                 .frame(width: 28, height: 28)
                 .background(Theme.confirmed, in: Circle())
         case .active:

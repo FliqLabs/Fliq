@@ -121,8 +121,7 @@ struct ProviderMark: View {
     var size: CGFloat = 40
 
     var body: some View {
-        Image(systemName: symbol)
-            .font(.system(size: size * 0.42, weight: .bold))
+        Icon(symbol, size: size * 0.48)
             .foregroundStyle(.white)
             .frame(width: size * 0.72, height: size * 0.72)
             .background(color, in: RoundedRectangle(cornerRadius: size * 0.2, style: .continuous))

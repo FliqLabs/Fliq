@@ -78,8 +78,7 @@ struct RequestView: View {
 
             VStack(spacing: 16) {
                 if let paid = request.paid {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 34, weight: .semibold))
+                    Icon("checkmark", size: 41)
                         .foregroundStyle(.black)
                         .frame(width: 96, height: 96)
                         .background(Theme.confirmed, in: Circle())
@@ -90,8 +89,7 @@ struct RequestView: View {
                         .foregroundStyle(Theme.textSecondary)
                 } else {
                     QRCode(text: request.link, color: .white) {
-                        Image(systemName: "link")
-                            .font(.system(size: 18, weight: .semibold))
+                        Icon("link", size: 22)
                             .foregroundStyle(.white)
                             .frame(width: 44, height: 44)
                             .background(Color(hex: 0x1C1C1C), in: Circle())
@@ -123,12 +121,11 @@ struct RequestView: View {
                         UIPasteboard.general.string = request.link
                         copied = true
                     } label: {
-                        Label(copied ? "Copied" : "Copy link", systemImage: copied ? "checkmark" : "doc.on.doc")
+                        IconLabel(copied ? "Copied" : "Copy link", icon: copied ? "checkmark" : "doc.on.doc")
                     }
                     .buttonStyle(PrimaryButtonStyle(filled: true))
                     ShareLink(item: URL(string: request.link) ?? URL(string: "https://fliq.cash")!, message: Text(request.note.isEmpty ? "Pay me on fliq" : request.note)) {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.system(size: 18, weight: .semibold))
+                        Icon("square.and.arrow.up", size: 22)
                             .frame(width: 56, height: 56)
                             .fliqGlass(Circle(), interactive: true)
                     }
