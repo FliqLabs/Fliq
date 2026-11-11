@@ -102,9 +102,15 @@ final class WithdrawFlowTests: XCTestCase {
 
     private func vault() -> VaultStore { VaultStore(balance: TokenAmount(baseUnits: 20_000_000)) }
 
+    private func recents() -> SentAddresses {
+        let defaults = UserDefaults(suiteName: "withdraw-tests")!
+        defaults.removePersistentDomain(forName: "withdraw-tests")
+        return SentAddresses(defaults: defaults)
+    }
+
     func testACheckedAddressAndAnAmountInTheVaultCanBeSent() async {
         let vault = vault()
-        let flow = WithdrawFlow(withdrawals: FixtureWithdrawals(), vault: vault)
+        let flow = WithdrawFlow(withdrawals: FixtureWithdrawals(), vault: vault, recents: recents())
         flow.addressText = "bob.testnet"
         await flow.checkAddress()
         flow.enterAmount("25")
@@ -118,7 +124,7 @@ final class WithdrawFlowTests: XCTestCase {
     }
 
     func testEditingTheAddressDropsTheOldCheck() async {
-        let flow = WithdrawFlow(withdrawals: FixtureWithdrawals(), vault: vault())
+        let flow = WithdrawFlow(withdrawals: FixtureWithdrawals(), vault: vault(), recents: recents())
         flow.addressText = "bob.testnet"
         await flow.checkAddress()
         XCTAssertEqual(flow.check, .ready(needsSetup: false))
@@ -126,8 +132,29 @@ final class WithdrawFlowTests: XCTestCase {
         XCTAssertNil(flow.check)
     }
 
+    func testASentAddressBecomesARecentWithItsCount() async {
+        let store = recents()
+        for _ in 0..<2 {
+            let flow = WithdrawFlow(withdrawals: FixtureWithdrawals(), vault: vault(), recents: store)
+            flow.pick("bob.testnet")
+            await flow.checkAddress()
+            flow.enterAmount("1")
+            _ = await flow.send()
+        }
+        let flow = WithdrawFlow(withdrawals: FixtureWithdrawals(), vault: vault(), recents: store)
+        XCTAssertEqual(flow.recentAddresses.map(\.address), ["bob.testnet"])
+        XCTAssertEqual(flow.recentAddresses.first?.count, 2)
+    }
+
+    func testSendAllNeverRoundsAboveTheVault() {
+        let flow = WithdrawFlow(withdrawals: FixtureWithdrawals(), vault: VaultStore(balance: TokenAmount(baseUnits: 1_587_999)), recents: recents())
+        flow.useEverything()
+        XCTAssertEqual(flow.amountText, "1.58")
+        XCTAssertTrue(flow.hasAmount)
+    }
+
     func testSendAllFillsTheVaultBalance() {
-        let flow = WithdrawFlow(withdrawals: FixtureWithdrawals(), vault: vault())
+        let flow = WithdrawFlow(withdrawals: FixtureWithdrawals(), vault: vault(), recents: recents())
         flow.useEverything()
         XCTAssertEqual(flow.amount, TokenAmount(baseUnits: 20_000_000))
     }
@@ -135,7 +162,7 @@ final class WithdrawFlowTests: XCTestCase {
     func testAnUndeliveredTransferSaysWhereTheMoneyWaits() async {
         let vault = vault()
         var refreshed = false
-        let flow = WithdrawFlow(withdrawals: Undelivered(), vault: vault, onLeftVault: { refreshed = true })
+        let flow = WithdrawFlow(withdrawals: Undelivered(), vault: vault, recents: recents(), onLeftVault: { refreshed = true })
         flow.addressText = "bob.testnet"
         await flow.checkAddress()
         XCTAssertTrue(flow.needsSetup)

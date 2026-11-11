@@ -38,6 +38,10 @@ enum WithdrawAddress {
         address.range(of: pattern, options: .regularExpression) != nil
     }
 
+    static func short(_ address: String) -> String {
+        address.count > 22 ? "\(address.prefix(10))…\(address.suffix(8))" : address
+    }
+
     static func normalized(_ typed: String) -> String {
         typed.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }

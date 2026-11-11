@@ -169,16 +169,23 @@ struct RootView: View {
                     Task { await environment.refreshVault() }
                 }
             }
-        case .withdraw:
-            if let withdrawFlow {
-                WithdrawView(flow: withdrawFlow) { environment.router.reset() }
-            }
+        case .withdraw, .withdrawTo, .withdrawReview:
+            if let withdrawFlow { withdrawStep(route, withdrawFlow) }
         case .agents: AgentsView(store: environment.agents)
         case .settings: SettingsView()
         case .settingsAccounts: AccountsView(onAdd: { startPayment() })
         case .settingsSecurity: SecurityView()
         case .settingsNotifications: NotificationsView()
         case .agentConnect: AgentConnectView(store: environment.agents)
+        }
+    }
+
+    @ViewBuilder
+    private func withdrawStep(_ route: AppRoute, _ flow: WithdrawFlow) -> some View {
+        switch route {
+        case .withdrawTo: WithdrawToView(flow: flow)
+        case .withdrawReview: WithdrawReviewView(flow: flow) { environment.router.reset() }
+        default: WithdrawAmountView(flow: flow)
         }
     }
 
@@ -195,7 +202,7 @@ struct RootView: View {
             if let payout = flow.payout {
                 RefundedView(payout: payout, quote: flow.quote, onTryAgain: { startPayment(to: flow.verified) })
             }
-        case .payPerson, .withdraw, .receipt, .agents, .agentConnect, .settings, .settingsAccounts, .settingsSecurity, .settingsNotifications: EmptyView()
+        case .payPerson, .withdraw, .withdrawTo, .withdrawReview, .receipt, .agents, .agentConnect, .settings, .settingsAccounts, .settingsSecurity, .settingsNotifications: EmptyView()
         }
     }
 

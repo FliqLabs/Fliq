@@ -1,90 +1,114 @@
 import SwiftUI
 import UIKit
 
-struct WithdrawView: View {
-    @Bindable var flow: WithdrawFlow
-    let onDone: () -> Void
-    @FocusState private var addressFocused: Bool
+/// Step 1 of Send to a wallet: how much.
+struct WithdrawAmountView: View {
+    let flow: WithdrawFlow
+    @Environment(AppEnvironment.self) private var environment
     @FocusState private var amountFocused: Bool
 
     var body: some View {
-        Group {
-            if let sent = flow.sent {
-                done(sent)
-            } else {
-                sending
-            }
-        }
-        .fliqScreen("Send to a wallet", aurora: Aurora(strength: 0.55))
-    }
-
-    private var sending: some View {
         VStack(spacing: 0) {
-            addressField.padding(.top, 20)
-            statusLine.frame(minHeight: 44).padding(.top, 8)
-            Spacer(minLength: 8)
+            Spacer()
             AmountInput(text: flow.amountText, onType: flow.enterAmount, isFocused: $amountFocused) {
-                ViewThatFits(in: .vertical) {
-                    amount
-                    compactAmount
+                VStack(spacing: 10) {
+                    HeroAmount(symbol: "$", value: Money.dollars(flow.amount ?? .zero))
+                    Text("\(WithdrawFlow.cents(flow.amount ?? .zero)) USDC")
+                        .font(.system(size: 15, design: .monospaced))
+                        .foregroundStyle(Theme.textTertiary)
                 }
             }
-            Spacer(minLength: 8)
-            if let message = flow.errorMessage {
-                Text(message)
-                    .font(.system(size: 13))
-                    .foregroundStyle(Theme.warning)
-                    .multilineTextAlignment(.center)
-                    .padding(.bottom, 8)
-            }
-            Button { Task { await flow.send() } } label: {
-                if flow.isSending {
-                    ProgressView().tint(.black)
-                } else {
-                    Label("Send $\(Money.dollars(flow.amount ?? .zero)) with Face ID", systemImage: "faceid")
+            Spacer()
+            Button(action: flow.useEverything) {
+                HStack(spacing: 8) {
+                    Circle().fill(flow.isOverBalance ? Theme.warning : Theme.textPrimary).frame(width: 7, height: 7)
+                    Text(flow.isOverBalance ? "More than your vault" : "Vault").foregroundStyle(Theme.textSecondary)
+                    Text("·").foregroundStyle(Theme.textTertiary)
+                    Text("$\(WithdrawFlow.cents(flow.available))").fontWeight(.semibold)
                 }
+                .font(.system(size: 15))
+                .foregroundStyle(Theme.textPrimary)
+                .padding(.horizontal, 16)
+                .frame(height: 40)
+                .overlay(Capsule().strokeBorder(flow.isOverBalance ? Theme.warning : Theme.hairline))
             }
-            .buttonStyle(PrimaryButtonStyle())
-            .disabled(!flow.canSend)
-            .padding(.bottom, 12)
+            .accessibilityHint("Sends everything in your vault")
+            .padding(.bottom, 16)
+            Button("Next") { environment.router.push(.withdrawTo) }
+                .buttonStyle(PrimaryButtonStyle())
+                .disabled(!flow.hasAmount)
+                .padding(.bottom, 12)
         }
+        .fliqScreen("Send")
+        .onAppear { amountFocused = true }
+    }
+}
+
+/// Step 2: which wallet. Paste or type an address, or pick one sent to before.
+struct WithdrawToView: View {
+    @Bindable var flow: WithdrawFlow
+    @Environment(AppEnvironment.self) private var environment
+    @FocusState private var addressFocused: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            toCard.padding(.top, 16)
+            status.padding(.top, 12)
+            if !flow.recentAddresses.isEmpty {
+                Text("Recent")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(Theme.textSecondary)
+                    .padding(.top, 28)
+                    .padding(.leading, 4)
+                recents.padding(.top, 10)
+            }
+            Spacer(minLength: 12)
+            Button("Next") { environment.router.push(.withdrawReview) }
+                .buttonStyle(PrimaryButtonStyle())
+                .disabled(!flow.hasAddress)
+                .padding(.bottom, 12)
+        }
+        .fliqScreen("Send to")
         .task(id: flow.addressText) { await flow.checkAddress() }
-        .onAppear { addressFocused = true }
+        .onAppear { if flow.addressText.isEmpty { addressFocused = true } }
     }
 
-    private var addressField: some View {
-        HStack(spacing: 10) {
-            TextField("NEAR address", text: $flow.addressText)
-                .focused($addressFocused)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .keyboardType(.asciiCapable)
-                .submitLabel(.next)
-                .onSubmit { amountFocused = true }
-                .font(.system(size: 17, weight: .medium, design: .monospaced))
-                .lineLimit(1)
-            if flow.addressText.isEmpty {
-                Button("Paste") {
-                    flow.addressText = UIPasteboard.general.string ?? ""
-                    amountFocused = true
+    private var toCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("To")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Theme.textSecondary)
+            HStack(spacing: 10) {
+                TextField("name.near or address", text: $flow.addressText)
+                    .focused($addressFocused)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .keyboardType(.asciiCapable)
+                    .textContentType(.none)
+                    .submitLabel(.next)
+                    .onSubmit { if flow.hasAddress { environment.router.push(.withdrawReview) } }
+                    .font(.system(size: 17, weight: .medium, design: .monospaced))
+                    .lineLimit(1)
+                if flow.addressText.isEmpty {
+                    Button("Paste") { flow.pick(UIPasteboard.general.string ?? "") }
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Theme.textPrimary)
+                        .padding(.horizontal, 12)
+                        .frame(height: 32)
+                        .background(Theme.surfaceRaised, in: Capsule())
                 }
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(Theme.textPrimary)
-                .padding(.horizontal, 12)
-                .frame(height: 32)
-                .background(Theme.surfaceRaised, in: Capsule())
             }
         }
         .padding(.horizontal, 18)
-        .frame(height: 60)
-        .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 16))
+        .padding(.vertical, 14)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 20))
         .overlay {
-            RoundedRectangle(cornerRadius: 16).strokeBorder(isReady ? Theme.confirmed : Theme.hairline)
+            RoundedRectangle(cornerRadius: 20).strokeBorder(flow.hasAddress ? Theme.confirmed : Theme.hairline)
         }
     }
 
     @ViewBuilder
-    private var statusLine: some View {
+    private var status: some View {
         HStack(alignment: .top, spacing: 10) {
             if flow.isChecking {
                 ProgressView().controlSize(.small)
@@ -112,43 +136,95 @@ struct WithdrawView: View {
         }
         .font(.system(size: 14))
         .fixedSize(horizontal: false, vertical: true)
-        .padding(flow.check == nil && !flow.isChecking ? 14 : 4)
-        .background(flow.check == nil && !flow.isChecking ? Theme.warning.opacity(0.1) : .clear, in: RoundedRectangle(cornerRadius: 14))
+        .padding(isWarning ? 14 : 4)
+        .background(isWarning ? Theme.warning.opacity(0.1) : .clear, in: RoundedRectangle(cornerRadius: 14))
     }
 
-    private var amount: some View {
-        VStack(spacing: 12) {
-            Text("They receive")
-                .font(.system(size: 15))
-                .foregroundStyle(Theme.textSecondary)
-            HeroAmount(symbol: "$", value: Money.dollars(flow.amount ?? .zero))
-            Label("USDC on NEAR · fee under $0.01", systemImage: "arrow.up.right")
-                .font(.system(size: 15))
-                .foregroundStyle(Theme.textSecondary)
-                .padding(.horizontal, 16)
-                .frame(height: 40)
-                .overlay(Capsule().strokeBorder(Theme.hairline))
-            vaultLine.padding(.top, 4)
+    private var recents: some View {
+        VStack(spacing: 0) {
+            ForEach(flow.recentAddresses) { entry in
+                Button { flow.pick(entry.address) } label: {
+                    HStack(spacing: 14) {
+                        WalletAvatar(address: entry.address)
+                        Text(WithdrawAddress.short(entry.address))
+                            .font(.system(size: 15, design: .monospaced))
+                            .foregroundStyle(Theme.textPrimary)
+                            .lineLimit(1)
+                        Spacer()
+                        Text("\(entry.count) sent")
+                            .font(.system(size: 13))
+                            .foregroundStyle(Theme.textTertiary)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .overlay(alignment: .bottom) {
+                    if entry != flow.recentAddresses.last {
+                        Rectangle().fill(Theme.hairline).frame(height: 1).padding(.leading, 74)
+                    }
+                }
+            }
         }
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 20))
     }
 
-    private var compactAmount: some View {
-        VStack(spacing: 4) {
-            HeroAmount(symbol: "$", value: Money.dollars(flow.amount ?? .zero), size: 48)
-            vaultLine
+    private var isWarning: Bool { flow.check == nil && !flow.isChecking }
+}
+
+/// Step 3: check everything, then sign once with Face ID.
+struct WithdrawReviewView: View {
+    let flow: WithdrawFlow
+    let onDone: () -> Void
+
+    var body: some View {
+        Group {
+            if let sent = flow.sent {
+                done(sent)
+            } else {
+                review
+            }
         }
+        .fliqScreen(flow.sent == nil ? "Review" : "")
+        .navigationBarBackButtonHidden(flow.sent != nil)
     }
 
-    private var vaultLine: some View {
-        HStack(spacing: 8) {
-            Text("In your vault $\(Money.dollars(flow.available))")
-                .foregroundStyle(Theme.textTertiary)
-            Button("Send all", action: flow.useEverything)
-                .fontWeight(.semibold)
-                .foregroundStyle(Theme.textPrimary)
-                .disabled(flow.available == .zero)
+    private var review: some View {
+        VStack(spacing: 0) {
+            VStack(spacing: 8) {
+                Text("You send")
+                    .font(.system(size: 15))
+                    .foregroundStyle(Theme.textSecondary)
+                HeroAmount(symbol: "$", value: Money.dollars(flow.amount ?? .zero))
+            }
+            .padding(.top, 36)
+            DetailCard {
+                DetailRow("To", WithdrawAddress.short(flow.address))
+                DetailRow("Network", "USDC on NEAR")
+                DetailRow("Fee", flow.needsSetup ? "Under $0.01 + wallet setup" : "Under $0.01")
+                DetailRow("Arrives", "In a few seconds", isLast: true)
+            }
+            .padding(.top, 32)
+            Spacer(minLength: 12)
+            if let message = flow.errorMessage {
+                Text(message)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.warning)
+                    .multilineTextAlignment(.center)
+                    .padding(.bottom, 8)
+            }
+            Button { Task { await flow.send() } } label: {
+                if flow.isSending {
+                    ProgressView().tint(.black)
+                } else {
+                    Label("Send with Face ID", systemImage: "faceid")
+                }
+            }
+            .buttonStyle(PrimaryButtonStyle())
+            .disabled(!flow.canSend)
+            .padding(.bottom, 12)
         }
-        .font(.system(size: 14))
     }
 
     private func done(_ sent: WithdrawFlow.Sent) -> some View {
@@ -164,9 +240,8 @@ struct WithdrawView: View {
                 .foregroundStyle(Theme.textSecondary)
             HeroAmount(symbol: "$", value: Money.dollars(sent.amount))
             DetailCard {
-                DetailRow("To", Self.short(sent.address))
-                DetailRow("Network", "USDC on NEAR")
-                DetailRow("Fee", "Under $0.01", isLast: true)
+                DetailRow("To", WithdrawAddress.short(sent.address))
+                DetailRow("Network", "USDC on NEAR", isLast: true)
             }
             .padding(.top, 12)
             if let explorer = sent.explorer {
@@ -183,19 +258,27 @@ struct WithdrawView: View {
                 .padding(.bottom, 12)
         }
     }
+}
 
-    private static func short(_ address: String) -> String {
-        address.count > 22 ? "\(address.prefix(10))…\(address.suffix(8))" : address
-    }
+/// A colour drawn from the address, so the same wallet always looks the same in Recent.
+private struct WalletAvatar: View {
+    let address: String
 
-    private var isReady: Bool {
-        if case .ready = flow.check { true } else { false }
+    var body: some View {
+        let hue = Double(address.unicodeScalars.reduce(0) { ($0 &* 31 &+ Int($1.value)) & 0xFFFF } % 360) / 360
+        Circle()
+            .fill(LinearGradient(
+                colors: [Color(hue: hue, saturation: 0.55, brightness: 0.85), Color(hue: (hue + 0.12).truncatingRemainder(dividingBy: 1), saturation: 0.7, brightness: 0.6)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ))
+            .frame(width: 44, height: 44)
     }
 }
 
 #Preview {
     NavigationStack {
-        WithdrawView(flow: WithdrawFlow(withdrawals: FixtureWithdrawals(), vault: VaultStore(balance: TokenAmount(baseUnits: 20_000_000))), onDone: {})
+        WithdrawAmountView(flow: WithdrawFlow(withdrawals: FixtureWithdrawals(), vault: VaultStore(balance: TokenAmount(baseUnits: 20_000_000))))
     }
     .environment(AppEnvironment.preview)
 }
