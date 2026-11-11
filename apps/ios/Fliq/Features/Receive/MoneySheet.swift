@@ -11,7 +11,7 @@ struct MoveMoneySheet: View {
 
     static let menuHeight = PresentationDetent.height(470)
     /// Amount, note, cash-out switch and button, sitting above the decimal pad with nothing cut off.
-    static let requestHeight = PresentationDetent.height(480)
+    static let requestHeight = PresentationDetent.large
 
     let name: String?
     let receive: ReceiveFlow
