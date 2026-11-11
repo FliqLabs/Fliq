@@ -33,8 +33,10 @@ final class ActivityUITests: XCTestCase {
         number.typeText("0123456789")
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "DARA OKONKWO")).firstMatch.waitForExistence(timeout: 3))
         app.buttons["Continue"].tap()
-        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3), "The amount field opens the keyboard by itself")
-        app.typeText("13")
+        XCTAssertTrue(app.buttons["Delete"].waitForExistence(timeout: 3), "The amount screen has its own keypad")
+        XCTAssertFalse(app.keyboards.firstMatch.exists, "No system keyboard for amounts")
+        app.buttons["1"].tap()
+        app.buttons["3"].tap()
         app.buttons["Get quote"].tap()
 
         XCTAssertTrue(app.staticTexts["Best of 4"].waitForExistence(timeout: 3))

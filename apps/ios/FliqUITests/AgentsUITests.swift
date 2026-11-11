@@ -12,7 +12,7 @@ final class AgentsUITests: XCTestCase {
         app.launchArguments = ["--ui-testing", "--onboarded"]
         app.launch()
 
-        app.buttons["Menu"].tap()
+        app.buttons["Profile"].tap()
         let agentsRow = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Agents")).firstMatch
         XCTAssertTrue(agentsRow.waitForExistence(timeout: 3))
         agentsRow.tap()

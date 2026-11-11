@@ -3,15 +3,14 @@ import SwiftUI
 struct AmountView: View {
     let flow: PayFlow
     @Environment(AppEnvironment.self) private var environment
-    @FocusState private var amountFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
             Spacer()
-            AmountInput(text: flow.amountText, onType: flow.enterAmount, isFocused: $amountFocused) {
-                amount
-            }
+            amount
             Spacer()
+            AmountKeypad(text: flow.amountText, onType: flow.enterAmount)
+                .padding(.bottom, 12)
 
             if let message = flow.errorMessage {
                 Text(message)
@@ -36,7 +35,6 @@ struct AmountView: View {
             ToolbarItem(placement: .principal) { recipientChip }
         }
         .task { await flow.loadRate() }
-        .onAppear { amountFocused = true }
     }
 
     private var amount: some View {

@@ -4,7 +4,6 @@ struct PersonPayView: View {
     @Bindable var flow: PersonPayFlow
     let onDone: () -> Void
     @FocusState private var nameFocused: Bool
-    @FocusState private var amountFocused: Bool
 
     var body: some View {
         Group {
@@ -22,15 +21,17 @@ struct PersonPayView: View {
             nameField.padding(.top, 20)
             whoLine.frame(height: 44).padding(.top, 8)
             Spacer(minLength: 8)
-            AmountInput(text: flow.amountText, onType: flow.enterAmount, isFocused: $amountFocused) {
-                // With a keyboard up on a small iPhone the full block does not fit; overflowing would push the
-                // name field under the navigation bar and the pay button under the keyboard.
-                ViewThatFits(in: .vertical) {
-                    amount
-                    compactAmount
-                }
+            ViewThatFits(in: .vertical) {
+                amount
+                compactAmount
             }
+            .contentShape(Rectangle())
+            .onTapGesture { nameFocused = false }
             Spacer(minLength: 8)
+            if !nameFocused {
+                AmountKeypad(text: flow.amountText, onType: flow.enterAmount)
+                    .padding(.bottom, 8)
+            }
             if let message = flow.errorMessage {
                 Text(message)
                     .font(.system(size: 13))
@@ -50,7 +51,7 @@ struct PersonPayView: View {
             .padding(.bottom, 12)
         }
         .task(id: flow.nameText) { await flow.lookUp() }
-        .onAppear { if flow.nameText.isEmpty { nameFocused = true } else { amountFocused = true } }
+        .onAppear { if flow.nameText.isEmpty { nameFocused = true } }
     }
 
     private var compactAmount: some View {
@@ -94,7 +95,7 @@ struct PersonPayView: View {
                 .autocorrectionDisabled()
                 .keyboardType(.asciiCapable)
                 .submitLabel(.next)
-                .onSubmit { amountFocused = true }
+                .onSubmit { nameFocused = false }
                 .font(.system(size: 19, weight: .medium))
         }
         .padding(.horizontal, 18)

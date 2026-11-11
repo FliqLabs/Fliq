@@ -5,7 +5,7 @@ struct RequestView: View {
     @Bindable var flow: RequestFlow
     let onDone: () -> Void
     @State private var copied = false
-    @FocusState private var amountFocused: Bool
+    @FocusState private var noteFocused: Bool
 
     var body: some View {
         Group {
@@ -25,9 +25,9 @@ struct RequestView: View {
             Spacer()
             VStack(spacing: 12) {
                 Text("You ask for").font(.system(size: 15)).foregroundStyle(Theme.textSecondary)
-                AmountInput(text: flow.amountText, onType: flow.enterAmount, isFocused: $amountFocused) {
-                    HeroAmount(symbol: "$", value: flow.amountText.isEmpty ? "0" : flow.amountText)
-                }
+                HeroAmount(symbol: "$", value: flow.amountText.isEmpty ? "0" : flow.amountText)
+                    .contentShape(Rectangle())
+                    .onTapGesture { noteFocused = false }
                 TextField("", text: $flow.note, prompt: Text("What's it for?").foregroundStyle(Theme.textTertiary))
                     .multilineTextAlignment(.center)
                     .font(.system(size: 16))
@@ -36,9 +36,14 @@ struct RequestView: View {
                     .fliqGlass(Capsule())
                     .frame(maxWidth: 280)
                     .onChange(of: flow.note) { if flow.note.count > 120 { flow.note = String(flow.note.prefix(120)) } }
+                    .focused($noteFocused)
                     .submitLabel(.done)
             }
             Spacer()
+            if !noteFocused {
+                AmountKeypad(text: flow.amountText, onType: flow.enterAmount)
+                    .padding(.bottom, 8)
+            }
             Toggle("Cash out to my bank when it lands", isOn: $flow.cashOutOnArrival)
                 .tint(Theme.confirmed)
                 .font(.system(size: 15))
@@ -56,7 +61,6 @@ struct RequestView: View {
             .disabled(!flow.canCreate)
             .padding(.bottom, 12)
         }
-        .onAppear { if flow.amountText.isEmpty { amountFocused = true } }
     }
 
     private func link(_ request: PaymentRequest) -> some View {

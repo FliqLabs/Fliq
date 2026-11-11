@@ -5,18 +5,15 @@ import UIKit
 struct WithdrawAmountView: View {
     let flow: WithdrawFlow
     @Environment(AppEnvironment.self) private var environment
-    @FocusState private var amountFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
             Spacer()
-            AmountInput(text: flow.amountText, onType: flow.enterAmount, isFocused: $amountFocused) {
-                VStack(spacing: 10) {
-                    HeroAmount(symbol: "$", value: Money.dollars(flow.amount ?? .zero))
-                    Text("\(WithdrawFlow.cents(flow.amount ?? .zero)) USDC")
-                        .font(.system(size: 15, design: .monospaced))
-                        .foregroundStyle(Theme.textTertiary)
-                }
+            VStack(spacing: 10) {
+                HeroAmount(symbol: "$", value: flow.amountText.isEmpty ? "0" : flow.amountText)
+                Text("\(WithdrawFlow.cents(flow.amount ?? .zero)) USDC")
+                    .font(.system(size: 15, design: .monospaced))
+                    .foregroundStyle(Theme.textTertiary)
             }
             Spacer()
             Button(action: flow.useEverything) {
@@ -33,14 +30,15 @@ struct WithdrawAmountView: View {
                 .overlay(Capsule().strokeBorder(flow.isOverBalance ? Theme.warning : Theme.hairline))
             }
             .accessibilityHint("Sends everything in your vault")
-            .padding(.bottom, 16)
+            .padding(.bottom, 8)
+            AmountKeypad(text: flow.amountText, onType: flow.enterAmount)
+                .padding(.bottom, 12)
             Button("Next") { environment.router.push(.withdrawTo) }
                 .buttonStyle(PrimaryButtonStyle())
                 .disabled(!flow.hasAmount)
                 .padding(.bottom, 12)
         }
         .fliqScreen("Send")
-        .onAppear { amountFocused = true }
     }
 }
 

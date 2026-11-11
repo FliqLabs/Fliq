@@ -22,34 +22,66 @@ enum AmountTyping {
     }
 }
 
-/// An amount shown in the screen's own style and typed on the system decimal pad. The field itself is hidden;
-/// tapping the amount brings the keyboard back.
-struct AmountInput<Content: View>: View {
+/// The number pad that sits on the amount screens, so typing a price never brings up the system keyboard.
+/// Each key sends the whole new text through `onType`, which applies `AmountTyping` and returns what it kept.
+struct AmountKeypad: View {
     let text: String
     let onType: (String) -> String
-    var isFocused: FocusState<Bool>.Binding
-    @ViewBuilder let content: () -> Content
-    @State private var typed = ""
+    @State private var taps = 0
+
+    private static let rows = [["1", "2", "3"], ["4", "5", "6"], ["7", "8", "9"], [".", "0", "delete"]]
 
     var body: some View {
-        content()
+        Grid(horizontalSpacing: 0, verticalSpacing: 0) {
+            ForEach(Self.rows, id: \.self) { row in
+                GridRow {
+                    ForEach(row, id: \.self) { key in
+                        Button { press(key) } label: { label(key) }
+                            .buttonStyle(KeyStyle())
+                            .accessibilityLabel(key == "delete" ? "Delete" : key)
+                            .simultaneousGesture(LongPressGesture(minimumDuration: 0.5).onEnded { _ in
+                                if key == "delete" { clear() }
+                            })
+                    }
+                }
+            }
+        }
+        .sensoryFeedback(.selection, trigger: taps)
+    }
+
+    @ViewBuilder
+    private func label(_ key: String) -> some View {
+        if key == "delete" {
+            Image(systemName: "delete.left").font(.system(size: 24, weight: .light))
+        } else {
+            Text(key).font(.system(size: 32, weight: .light))
+        }
+    }
+
+    private func press(_ key: String) {
+        let next = key == "delete" ? String(text.dropLast()) : text + key
+        if onType(next) != text { taps += 1 }
+    }
+
+    private func clear() {
+        guard !text.isEmpty else { return }
+        _ = onType("")
+        taps += 1
+    }
+}
+
+private struct KeyStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(Theme.textPrimary)
+            .frame(maxWidth: .infinity, minHeight: 62)
             .contentShape(Rectangle())
-            .onTapGesture { isFocused.wrappedValue = true }
-            .accessibilityElement(children: .combine)
-            .accessibilityAddTraits(.isButton)
-            .accessibilityHint("Type an amount")
             .background {
-                TextField("Amount", text: $typed)
-                    .keyboardType(.decimalPad)
-                    .focused(isFocused)
-                    .opacity(0)
-                    .frame(width: 1, height: 1)
+                Circle()
+                    .fill(Color.white.opacity(configuration.isPressed ? 0.08 : 0))
+                    .frame(width: 64, height: 64)
             }
-            .onAppear { typed = text }
-            .onChange(of: typed) { _, new in
-                let accepted = onType(new)
-                if accepted != new { typed = accepted }
-            }
-            .onChange(of: text) { _, new in if new != typed { typed = new } }
+            .scaleEffect(configuration.isPressed ? 0.94 : 1)
+            .animation(.spring(duration: 0.18), value: configuration.isPressed)
     }
 }
