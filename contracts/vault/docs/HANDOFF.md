@@ -78,6 +78,19 @@ The `Deploy contract` workflow also only accepts a testnet account and runs in t
 
 As of 10 November 2026 the live testnet vault is `fliq-vault.testnet`, owner `fliq-owner.testnet`, registration account `fliqaccount.testnet`, approved USDC `3e2210e1184b45b64c8a434c0a7e7b23cc04ea7eb7a6c3c32520d03d4afcb8af`, `max_expiry` 24 hours, `payout_timeout` 10 minutes. It has already taken the `migrate` path: it now runs the November review build and exports both `withdraw` and `migrate`. The mainnet vault is a fresh account, so the `new` path above is the one that applies there.
 
+### The live mainnet vault
+
+Deployed 11 November 2026: vault `fliq-vault.near`, owner `fliq-owner.near`, registration account
+`fliqaccount.near`, approved USDC `17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1`,
+`max_expiry` 24 hours, `payout_timeout` 1 hour. Code hash
+`4q3bEW9AqiRgSeQb2RvXjiNh1b5D69bKXi6nEgEsq1RV` from commit `2b0b385`. Transaction hashes are in
+`BUILD.md`.
+
+Still outstanding on mainnet: no relayer account exists yet, so an agent cannot have its gas sponsored
+through NEP-366 and would have to pay the 60 Tgas floor itself; the registration account has only its
+full-access key and not the scoped function-call key the backend uses; and the write path has never been
+exercised with real USDC.
+
 ### Approved USDC on mainnet
 
 Native USDC on NEAR mainnet is `17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1`, the address Circle publishes, confirmed on chain on 10 November 2026: `ft_metadata` reports spec `ft-1.0.0`, symbol `USDC` and **6 decimals**, matching the testnet stand-in, so no amount scaling changes. `storage_balance_bounds` is `min` equal to `max` at 1250000000000000000000 yoctoNEAR, so registering the vault for USDC storage costs exactly 0.00125 NEAR and is registration-only.

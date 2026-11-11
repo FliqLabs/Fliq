@@ -46,6 +46,52 @@ gate, and have both owners reproduce the hash from the same commit before they a
 | --- | --- | ---: | --- |
 | `contracts/vault/target/near/fliq_vault.wasm` | | | |
 
+## Deployed on mainnet
+
+`fliq-vault.near`, 11 November 2026. The artifact was built at commit `2b0b385` and reproduced
+independently on two machines before deployment, both reaching
+`38e1de4e948bb4a3ad194a864cadbaa62ef2ca09865f9042d1e2e3e248b0728c`. The on-chain code hash matches it.
+
+| Field | Value |
+| --- | --- |
+| Account | `fliq-vault.near` |
+| Commit | `2b0b385` |
+| Size | 270648 bytes |
+| SHA-256 | `38e1de4e948bb4a3ad194a864cadbaa62ef2ca09865f9042d1e2e3e248b0728c` |
+| On-chain code hash | `4q3bEW9AqiRgSeQb2RvXjiNh1b5D69bKXi6nEgEsq1RV` |
+
+| Step | Transaction |
+| --- | --- |
+| Deploy and `new`, one transaction | `DPZugrNDkTCBNq8Dypu7gLWL7T9xo4QRmP8jsTuzccut` |
+| `storage_deposit` registering the vault on USDC | `Hv6AZcYg18sZCeDhH6FEo9cnXerc6VyBFCbfxAPTThAZ` |
+| Owner `set_payout_timeout` to 1 hour | `2mCsJncmf4zSRcbzcZGJSiNviNr9K2PzREVyi4NCqKbb` |
+
+Live configuration, read back from `get_config`:
+
+| Field | Value |
+| --- | --- |
+| `owner` | `fliq-owner.near` |
+| `registration_account` | `fliqaccount.near` |
+| `approved_usdc_token_contract` | `17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1` |
+| `max_expiry` | 86400000000000 ns, 24 hours |
+| `payout_timeout` | 3600000000000 ns, 1 hour |
+
+The first three are fixed at `new` and have no setter. `payout_timeout` initialized to the 10-minute
+default and was moved to 1 hour by the owner immediately afterwards, which is why that transaction is part
+of the deployment rather than an afterthought.
+
+`contract_source_metadata` reports
+`git+https://github.com/FliqLabs/Fliq?rev=2b0b3858124fa95f7e1f7e4fa7b5409f664e5b31`, so anyone can check
+which source produced the deployed bytes.
+
+Verified immediately after deployment: `get_liabilities` 0 against `ft_balance_of` 0 on the approved USDC
+contract, the vault registered for USDC storage, `storage_balance_bounds` min equal to max at
+1410000000000000000000 yoctoNEAR, an unknown order returning `null`, and an unregistered account reporting
+a zero balance. The write path has not been exercised on mainnet yet; it needs real USDC.
+
+Account balances at deployment: vault 3.598 NEAR, of which 2.711 is locked against 271,140 bytes of code
+and state, leaving about 0.886 of order headroom. Owner 0.3. Registration 4.14.
+
 ## Currently deployed on testnet
 
 `fliq-vault.testnet`, deployed 10 November 2026 with `migrate` in the same transaction
