@@ -27,7 +27,7 @@ final class PasskeyAuthenticator: NSObject {
         else { throw PasskeyError.badOptions }
 
         let provider = ASAuthorizationPlatformPublicKeyCredentialProvider(relyingPartyIdentifier: rp)
-        let request = provider.createCredentialRegistrationRequest(challenge: challenge, name: "fliq", userID: userID)
+        let request = provider.createCredentialRegistrationRequest(challenge: challenge, name: Self.label, userID: userID)
         guard let credential = try await perform(request).credential as? ASAuthorizationPlatformPublicKeyCredentialRegistration,
               let attestation = credential.rawAttestationObject
         else { throw PasskeyError.failed("No passkey was created.") }
@@ -57,6 +57,9 @@ final class PasskeyAuthenticator: NSObject {
             "userHandle": credential.userID.base64URL,
         ])
     }
+
+    /// What the passkey sheet shows for this passkey. Testnet and mainnet share fliq.cash, so the label tells them apart.
+    static var label: String { NearNetwork.current == .testnet ? "fliq testnet" : "fliq" }
 
     private func perform(_ request: ASAuthorizationRequest, onlySaved: Bool = false) async throws -> ASAuthorization {
         let controller = ASAuthorizationController(authorizationRequests: [request])

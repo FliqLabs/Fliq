@@ -82,4 +82,11 @@ private struct CancellableDirectory: NameDirectory {
         if Task.isCancelled { throw URLError(.cancelled) }
         return true
     }
+
+    func testAPasskeyTheServerDoesNotKnowLeadsToCreatingAnAccount() {
+        let detail = ErrorBody.Detail(code: "unauthorized", message: "Unknown passkey.")
+        XCTAssertTrue(OnboardingView.isRejectedPasskey(.unexpected(status: 401)))
+        XCTAssertTrue(OnboardingView.isRejectedPasskey(.server(status: 401, detail)))
+        XCTAssertFalse(OnboardingView.isRejectedPasskey(.unexpected(status: 503)))
+    }
 }

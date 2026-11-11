@@ -13,6 +13,7 @@ struct OnboardingView: View {
     @State private var passkeys = PasskeyAuthenticator()
     @State private var passkeyWorking = false
     @State private var passkeyMessage: String?
+    @State private var offerNewAccount = false
     @State private var flow: OnboardingFlow
     @State private var signIn: SignInFlow
     @State private var path: [OnboardingStep] = []
@@ -34,7 +35,8 @@ struct OnboardingView: View {
                 onSkip: skip,
                 isWorking: passkeyWorking,
                 message: passkeyMessage,
-                onEmail: email
+                onEmail: email,
+                onCreateAccount: offerNewAccount ? { createAccount() } : nil
             )
             .navigationDestination(for: OnboardingStep.self, destination: screen)
         }
@@ -84,6 +86,7 @@ struct OnboardingView: View {
         guard !passkeyWorking else { return }
         passkeyWorking = true
         passkeyMessage = nil
+        offerNewAccount = false
         Task {
             defer { passkeyWorking = false }
             do {
@@ -91,8 +94,9 @@ struct OnboardingView: View {
                 let response = try await passkeys.signIn(options, onlySaved: true)
                 do {
                     return signedIn(try await api.finishPasskey(.login, challengeId: options.challengeId, credential: response))
-                } catch APIError.server(let status, _) where (400..<500).contains(status) {
-                    try await createWithPasskey()
+                } catch let error as APIError where Self.isRejectedPasskey(error) {
+                    passkeyMessage = "That passkey isn't for a fliq account here. Pick the one named \(PasskeyAuthenticator.label), or create a new account."
+                    offerNewAccount = true
                 }
             } catch PasskeyError.noneSaved {
                 do { try await createWithPasskey() } catch { couldNotCreate(error) }
@@ -101,6 +105,25 @@ struct OnboardingView: View {
             } catch {
                 couldNotCreate(error)
             }
+        }
+    }
+
+    /// The API answers a passkey it has no account for with 401 "Unknown passkey", whose body may not decode.
+    static func isRejectedPasskey(_ error: APIError) -> Bool {
+        switch error {
+        case .server(let status, _), .unexpected(let status): (400..<500).contains(status)
+        case .refused: false
+        }
+    }
+
+    private func createAccount() {
+        guard !passkeyWorking else { return }
+        passkeyWorking = true
+        passkeyMessage = nil
+        offerNewAccount = false
+        Task {
+            defer { passkeyWorking = false }
+            do { try await createWithPasskey() } catch { couldNotCreate(error) }
         }
     }
 
