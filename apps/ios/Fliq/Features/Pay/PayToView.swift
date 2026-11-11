@@ -8,6 +8,7 @@ struct PayToView: View {
     let onPerson: (String?) -> Void
     let onNew: () -> Void
     var onScan: (() -> Void)?
+    var onWallet: (() -> Void)?
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.dismiss) private var dismiss
     @State private var search = ""
@@ -156,7 +157,12 @@ struct PayToView: View {
     @ViewBuilder
     private var browsing: some View {
         if let onScan, filter != .fliqUsers {
-            scanRow(onScan).padding(.top, 16)
+            actionRow("Scan to pay", detail: "A bank QR code or an account number", icon: "qrcode.viewfinder", action: onScan)
+                .padding(.top, 16)
+        }
+        if let onWallet, filter == .all {
+            actionRow("Send to a wallet", detail: "USDC to any NEAR address", icon: "arrow.up.right", action: onWallet)
+                .padding(.top, 10)
         }
 
         if filter == .all, !recent.isEmpty {
@@ -305,16 +311,16 @@ struct PayToView: View {
             .frame(width: 36, height: 36)
     }
 
-    private func scanRow(_ action: @escaping () -> Void) -> some View {
+    private func actionRow(_ title: String, detail: String, icon: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 14) {
-                Image(systemName: "qrcode.viewfinder")
+                Image(systemName: icon)
                     .font(.system(size: 20, weight: .medium))
                     .frame(width: 44, height: 44)
                     .background(Theme.surfaceRaised, in: Circle())
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Scan to pay").font(.system(size: 17, weight: .semibold))
-                    Text("A bank QR code or an account number")
+                    Text(title).font(.system(size: 17, weight: .semibold))
+                    Text(detail)
                         .font(.system(size: 14))
                         .foregroundStyle(Theme.textSecondary)
                 }
@@ -329,7 +335,7 @@ struct PayToView: View {
             .background(Theme.surfaceRaised.opacity(0.7), in: RoundedRectangle(cornerRadius: 20))
         }
         .buttonStyle(.pressable(scale: 0.98))
-        .accessibilityIdentifier("Scan to pay")
+        .accessibilityIdentifier(title)
     }
 
     private func sectionTitle(_ title: String, count: Int? = nil) -> some View {
