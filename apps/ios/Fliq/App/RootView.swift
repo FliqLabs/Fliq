@@ -6,7 +6,7 @@ enum RootTab: Hashable {
 
 /// Transfer opens on its menu; Receive from Activity opens straight on "How do you want to get paid?".
 enum HomeSheet: Identifiable {
-    case menu, receive
+    case menu, receive, qr
 
     var id: Self { self }
 }
@@ -16,6 +16,7 @@ struct RootView: View {
     @State private var home: HomeModel?
     @State private var flow: PayFlow?
     @State private var personFlow: PersonPayFlow?
+    @State private var withdrawFlow: WithdrawFlow?
     @State private var tab = RootTab.home
     @State private var sheet: HomeSheet?
     @State private var activityPath: [AppRoute] = []
@@ -26,7 +27,7 @@ struct RootView: View {
         TabView(selection: $tab) {
             NavigationStack(path: $router.path) {
                 Group {
-                    if let home { HomeView(model: home, onMenu: { router.push(.settings) }) }
+                    if let home { HomeView(model: home, onMenu: { router.push(.settings) }, onQR: { sheet = .qr }) }
                 }
                 .navigationDestination(for: AppRoute.self) { pushed($0) }
             }
@@ -75,7 +76,21 @@ struct RootView: View {
         destination(route).toolbar(.hidden, for: .tabBar)
     }
 
+    @ViewBuilder
     private func content(of sheet: HomeSheet) -> some View {
+        if sheet == .qr {
+            ReceiveTokensView(
+                model: ReceiveTokensModel(flow: makeReceive()),
+                inbox: environment.inbox,
+                name: environment.profile.name
+            ) { self.sheet = nil }
+            .presentationDetents([.large])
+        } else {
+            moveMoney(sheet)
+        }
+    }
+
+    private func moveMoney(_ sheet: HomeSheet) -> some View {
         MoveMoneySheet(
             startingAt: sheet == .receive ? [.receive] : [],
             name: environment.profile.name,
@@ -84,7 +99,8 @@ struct RootView: View {
             makeRequest: { RequestFlow(api: environment.api, vault: environment.vault) },
             onAccount: { account in leaveSheet { startPayment(to: account) } },
             onPerson: { account in leaveSheet { startPersonPayment(to: account) } },
-            onNewAccount: { account, save in leaveSheet { startPayment(to: account, save: save) } }
+            onNewAccount: { account, save in leaveSheet { startPayment(to: account, save: save) } },
+            onWallet: { leaveSheet { startWithdraw() } }
         )
     }
 
@@ -99,7 +115,8 @@ struct RootView: View {
             api: environment.deposits,
             vault: environment.vault,
             vaultAccount: environment.profile.name ?? "fliq-vault.testnet",
-            name: environment.profile.name
+            name: environment.profile.name,
+            network: environment.isLive ? .current : .mainnet
         )
     }
 
@@ -117,6 +134,19 @@ struct RootView: View {
         environment.router.push(.payPerson)
     }
 
+    private func startWithdraw() {
+        withdrawFlow = WithdrawFlow(
+            withdrawals: environment.withdrawals,
+            vault: environment.vault,
+            network: environment.isLive ? .current : .testnet,
+            onLeftVault: {
+                await environment.refreshVault()
+                await environment.inbox.load()
+            }
+        )
+        environment.router.push(.withdraw)
+    }
+
     @ViewBuilder
     private func destination(_ route: AppRoute) -> some View {
         switch route {
@@ -132,6 +162,10 @@ struct RootView: View {
                     environment.router.reset()
                     Task { await environment.refreshVault() }
                 }
+            }
+        case .withdraw:
+            if let withdrawFlow {
+                WithdrawView(flow: withdrawFlow) { environment.router.reset() }
             }
         case .agents: AgentsView(store: environment.agents)
         case .settings: SettingsView()
@@ -155,7 +189,7 @@ struct RootView: View {
             if let payout = flow.payout {
                 RefundedView(payout: payout, quote: flow.quote, onTryAgain: { startPayment(to: flow.verified) })
             }
-        case .payPerson, .receipt, .agents, .agentConnect, .settings, .settingsAccounts, .settingsSecurity, .settingsNotifications: EmptyView()
+        case .payPerson, .withdraw, .receipt, .agents, .agentConnect, .settings, .settingsAccounts, .settingsSecurity, .settingsNotifications: EmptyView()
         }
     }
 

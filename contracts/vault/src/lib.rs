@@ -160,6 +160,12 @@ impl Contract {
         integration::get_balance(&self.vault, &account_id)
     }
 
+    /// Everything the ledger owes users. Compare it with `ft_balance_of` on the approved USDC contract to
+    /// check the vault is solvent; the difference is the unattributed balance `recredit` draws on.
+    pub fn get_liabilities(&self) -> U128 {
+        U128(integration::get_liabilities(&self.vault))
+    }
+
     pub fn get_storage_usage(&self) -> u64 {
         env::storage_usage()
     }
@@ -1064,6 +1070,27 @@ mod tests {
         assert!(withdraw_settles(&mut contract, &user, 60, true));
         assert_eq!(contract.get_balance(user).total, U128(0));
         assert_eq!(contract.vault.total_liabilities(), 0);
+    }
+
+    #[test]
+    fn get_liabilities_reports_everything_the_ledger_owes() {
+        let mut contract = contract();
+        let user = account("ada.testnet");
+        assert_eq!(contract.get_liabilities(), U128(0));
+
+        funded(&mut contract, &user, 100);
+        assert_eq!(contract.get_liabilities(), U128(100));
+
+        testing_env!(context(&user, NearToken::from_yoctonear(1)));
+        drop(contract.withdraw(U128(40)));
+        assert_eq!(contract.get_liabilities(), U128(100));
+
+        assert!(withdraw_settles(&mut contract, &user, 40, true));
+        assert_eq!(contract.get_liabilities(), U128(60));
+        assert_eq!(
+            contract.get_liabilities().0,
+            contract.vault.total_liabilities()
+        );
     }
 
     #[test]

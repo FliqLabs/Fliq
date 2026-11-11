@@ -98,11 +98,11 @@ export function DashboardData() {
 function Status({ message, href, action }: { message: string; href?: string; action?: string }) {
   return (
     <main className="mx-auto max-w-lg py-16 text-center">
-      <p className="text-sm text-zinc-500">{message}</p>
+      <p className="text-sm text-app-muted">{message}</p>
       {href && action && (
         <Link
           href={href}
-          className="mt-5 inline-flex rounded-lg bg-zinc-950 px-4 py-2.5 text-sm font-semibold text-white"
+          className="mt-5 inline-flex rounded-lg bg-app-ink px-4 py-2.5 text-sm font-semibold text-app-ink-fg"
         >
           {action}
         </Link>

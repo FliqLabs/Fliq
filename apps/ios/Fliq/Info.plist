@@ -39,6 +39,8 @@
 	<string>$(FLIQ_DATA_SOURCE)</string>
 	<key>FliqNameSuffix</key>
 	<string>$(FLIQ_NAME_SUFFIX)</string>
+	<key>FliqNearNetwork</key>
+	<string>$(FLIQ_NEAR_NETWORK)</string>
 	<key>FliqNearRPCURL</key>
 	<string>$(FLIQ_NEAR_RPC_URL)</string>
 	<key>NSAppTransportSecurity</key>
@@ -47,7 +49,7 @@
 		<true/>
 	</dict>
 	<key>NSCameraUsageDescription</key>
-	<string>fliq uses the camera only when you take a profile photo.</string>
+	<string>fliq uses the camera to scan payment codes and take your profile photo.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>fliq asks for Face ID before any money leaves your vault.</string>
 	<key>NSLocalNetworkUsageDescription</key>

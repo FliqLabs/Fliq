@@ -7,6 +7,8 @@ struct PayToView: View {
     /// Nil opens Pay a fliq user with an empty name.
     let onPerson: (String?) -> Void
     let onNew: () -> Void
+    var onScan: (() -> Void)?
+    var onWallet: (() -> Void)?
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.dismiss) private var dismiss
     @State private var search = ""
@@ -154,6 +156,15 @@ struct PayToView: View {
 
     @ViewBuilder
     private var browsing: some View {
+        if let onScan, filter != .fliqUsers {
+            actionRow("Scan to pay", detail: "A bank QR code or an account number", icon: "qrcode.viewfinder", action: onScan)
+                .padding(.top, 16)
+        }
+        if let onWallet, filter == .all {
+            actionRow("Send to a wallet", detail: "USDC to any NEAR address", icon: "arrow.up.right", action: onWallet)
+                .padding(.top, 10)
+        }
+
         if filter == .all, !recent.isEmpty {
             sectionTitle("Recent")
             ScrollView(.horizontal) {
@@ -298,6 +309,33 @@ struct PayToView: View {
             .font(.system(size: 13, weight: .semibold))
             .foregroundStyle(Theme.textTertiary)
             .frame(width: 36, height: 36)
+    }
+
+    private func actionRow(_ title: String, detail: String, icon: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                Image(systemName: icon)
+                    .font(.system(size: 20, weight: .medium))
+                    .frame(width: 44, height: 44)
+                    .background(Theme.surfaceRaised, in: Circle())
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.system(size: 17, weight: .semibold))
+                    Text(detail)
+                        .font(.system(size: 14))
+                        .foregroundStyle(Theme.textSecondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Theme.textTertiary)
+            }
+            .foregroundStyle(Theme.textPrimary)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(Theme.surfaceRaised.opacity(0.7), in: RoundedRectangle(cornerRadius: 20))
+        }
+        .buttonStyle(.pressable(scale: 0.98))
+        .accessibilityIdentifier(title)
     }
 
     private func sectionTitle(_ title: String, count: Int? = nil) -> some View {

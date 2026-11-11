@@ -2,8 +2,10 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useRef, useState, type FormEvent } from "react";
 import { ApiError, fliqApi, type User, type Workspace, type WorkspaceCreated } from "../lib/fliq-api";
+import { SignInForm } from "../sign-in/sign-in-form";
 
 const productTypes = [
   { label: "Wallet", value: "wallet" },
@@ -23,6 +25,7 @@ const payoutCountries = [
 type UseCase = (typeof productTypes)[number]["value"];
 
 export function CreateWorkspaceForm() {
+  const router = useRouter();
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
   const [useCase, setUseCase] = useState<UseCase | null>(null);
@@ -63,12 +66,12 @@ export function CreateWorkspaceForm() {
   if (account.isPending) return <p className="text-sm text-zinc-500">Checking your account…</p>;
   if (account.error instanceof ApiError && account.error.status === 401) {
     return (
-      <p className="text-sm">
-        Sign in first.{" "}
-        <Link href="/sign-in" className="font-semibold underline">
-          Go to sign in
-        </Link>
-      </p>
+      <SignInForm
+        intent="get-started"
+        onSignedIn={(user) => {
+          if (!user.near_account) router.replace("/claim-name");
+        }}
+      />
     );
   }
   if (account.isError)

@@ -5,6 +5,7 @@ struct MoveMoneyMenu: View {
     let onSend: () -> Void
     let onReceive: () -> Void
     let onRequest: () -> Void
+    var onScan: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -35,5 +36,13 @@ struct MoveMoneyMenu: View {
         }
         .padding(.horizontal, 16)
         .sheetToolbar { dismiss() }
+        .toolbar {
+            if let onScan {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button(action: onScan) { Image(systemName: "qrcode.viewfinder") }
+                        .accessibilityLabel("Scan to pay")
+                }
+            }
+        }
     }
 }

@@ -6,7 +6,8 @@ Branch: `Dapper-Contract`
 
 | Method or area | Owner module | Behavior |
 | --- | --- | --- |
-| `new`, `get_config` | `lib.rs` | Stores immutable owner, registration account and approved USDC token plus expiry and stuck-payout limits. Initialization is vault-account-only and one-time. |
+| `new`, `get_config` | `lib.rs` | Stores immutable owner, registration account and approved USDC token plus expiry and stuck-payout limits. Initialization is vault-account-only and one-time. Only `payout_timeout` can be changed afterwards; owner, registration account and token have no setter. |
+| `migrate` | `lib.rs` | Vault-account-only, state-replacing initializer that reads the pre-`order_agents` layout (`ContractV1`) and carries balances, orders, receipts, refund evidence, payout keys and policies forward. Must run in the same transaction as the code deployment. |
 | `register_order` | `orders.rs`, `vault.rs` | Registration-account-only immutable order creation with immediate balance reservation. |
 | `payout` | `orders.rs`, `policies.rs`, `vault.rs` | Requires exact registered amount and destination, authorizes the payer or an agent account with an active policy from that payer, counts pending policy spend, changes state before sending USDC, and resolves through a private callback. |
 | `set_agent` | `policies.rs` | With a deposit covering storage, creates or updates the (owner, agent account) policy: per-payout cap, daily cap, optional exact corridors, cooldown and expiry, without resetting same-day spend. Emits `agent_set`. |
@@ -14,10 +15,13 @@ Branch: `Dapper-Contract`
 | `get_policy(owner, agent_id)` | `policies.rs` | Returns owner, agent, public key label, caps, current-day spend, corridors, cooldown, expiry, last payout time and the revoked flag. |
 | Policy lifecycle | `policies.rs`, `integration.rs` | Counts pending plus successful spend, releases same-day spend after failed transfers, retains successful spend, rolls daily buckets, and makes parallel-limit bypass fail. |
 | `on_payout_complete`, `resolve_stuck_payout` | `orders.rs` | Commits a confirmed transfer or releases the reservation and enters terminal `TransferFailed`; policy pending state follows the same outcome. After timeout, either the owner or registration account may resolve it. |
-| `release_order` | `lib.rs`, `vault.rs` | Registration account or contract owner restores a reservation and moves a never-executed order to terminal `Released`. |
+| `release_order` | `lib.rs`, `vault.rs` | Restores a reservation and moves a never-executed order to terminal `Released`. The registration account or the owner may release any `Registered` order; once an order has expired, anyone may release it, so an outage or a leaked registration key cannot freeze a balance beyond its expiry. |
+| `withdraw`, `on_withdraw_complete` | `lib.rs`, `integration.rs` | With exactly 1 yoctoNEAR and at least 60 Tgas, sends the caller's own available USDC to the caller's account with no order and no backend involvement. The amount is reserved while the transfer is in flight, committed on success and returned on failure, so liabilities stay exact. One withdrawal per account at a time; `withdraw:`-prefixed order IDs are reserved so a reservation key cannot collide with an order. Emits `withdrawn` or `withdraw_failed`. |
 | `set_status`, `get_receipt` | `orders.rs`, `receipts.rs` | Keeps authenticated backend status separate from verified NEAR transfer state; missing receipts return `null`. |
 | `recredit` | `orders.rs`, `vault.rs` | Requires write-once refund evidence and real unattributed USDC backing before exactly-once recredit. |
+| `get_liabilities` | `lib.rs`, `integration.rs` | Read-only total of what the ledger owes users. Against `ft_balance_of` on the approved USDC contract it gives operators an external solvency check before and after a migration, during the refund test and on mainnet. |
 | `ft_on_transfer`, `get_balance`, `transfer` | `vault.rs`, `lib.rs` | Handles approved-USDC deposits, isolated available/reserved balances and registered internal transfers. Optional validated request IDs let the backend correlate request payments from transaction arguments; agents cannot transfer the owner's balance. |
+| NEP-145 storage (`storage_deposit`, `storage_withdraw`, `storage_unregister`, `storage_balance_of`, `storage_balance_bounds`) | `vault.rs`, `lib.rs` | Registration-only, with `min` equal to `max`, so there is never spendable storage credit and `storage_withdraw` accepts only a zero amount. `storage_deposit` is idempotent and refunds any excess. `storage_unregister` accepts `force` and ignores it: closing an account always requires a zero balance, so no USDC liability can be discarded. Operators should register a user only after the account exists on chain, because only the account itself can unregister and reclaim the deposit. |
 
 ## Agent identity decision
 
@@ -55,7 +59,28 @@ Policy coverage includes:
 
 ## Deployment migration
 
-This release targets a fresh testnet vault. Deploy the Wasm and call the private `new(owner, registration_account, approved_usdc_token_contract)` initializer from the vault account itself. There is no migration path in this release.
+There are two paths, and which one applies depends on whether the target account already holds vault state.
+
+**A fresh account, including the mainnet vault.** Deploy the Wasm and call the private `new(owner, registration_account, approved_usdc_token_contract)` initializer from the vault account itself, in the same transaction as the deployment. Deployment needs a full-access key on the vault account.
+
+**An account that already runs a pre-`order_agents` build, including the live testnet vault.** Deploy the new Wasm and call `migrate` in the same transaction, again from the vault account itself. Balances, orders, receipts, refund evidence, payout keys and policies are kept; `order_agents` starts empty, so orders registered before the upgrade can be paid by their payer alone. `new` cannot be used here: it is `#[init]` and guarded by `ALREADY_INITIALIZED`.
+
+`migrate` reads exactly one old layout, `ContractV1`. Confirm the deployed build is pre-`order_agents` before relying on it; against any other layout the state read fails.
+
+Whether that failure is safe depends on how the deployment is sent, and the two are not equivalent:
+
+- **One transaction** (`cargo near deploy ... with-init-call migrate`, signed by the vault account, which needs a full-access key on it). A failing `migrate` rolls the deployment back with it, so the account keeps its working code.
+- **Two transactions**, which is what the `Deploy contract` workflow does: it deploys `without-init-call`, so `migrate` is a separate call afterwards. Between the two the account runs new code over old state and every call fails. If `migrate` then fails, the old code is already gone and the only way back is redeploying the previous Wasm, so keep those exact bytes to hand before starting.
+
+The `Deploy contract` workflow also only accepts a testnet account and runs in the `testnet` environment. There is no mainnet deployment workflow; the mainnet deploy in step 17 of the runbook is a manual, locally signed transaction.
+
+As of 10 November 2026 the live testnet vault is `fliq-vault.testnet`, owner `fliq-owner.testnet`, registration account `fliqaccount.testnet`, approved USDC `3e2210e1184b45b64c8a434c0a7e7b23cc04ea7eb7a6c3c32520d03d4afcb8af`, `max_expiry` 24 hours, `payout_timeout` 10 minutes. It has already taken the `migrate` path: it now runs the November review build and exports both `withdraw` and `migrate`. The mainnet vault is a fresh account, so the `new` path above is the one that applies there.
+
+### Approved USDC on mainnet
+
+Native USDC on NEAR mainnet is `17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1`, the address Circle publishes, confirmed on chain on 10 November 2026: `ft_metadata` reports spec `ft-1.0.0`, symbol `USDC` and **6 decimals**, matching the testnet stand-in, so no amount scaling changes. `storage_balance_bounds` is `min` equal to `max` at 1250000000000000000000 yoctoNEAR, so registering the vault for USDC storage costs exactly 0.00125 NEAR and is registration-only.
+
+Do not use `a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.factory.bridge.near`. That is the bridged `USDC.e` token; it also has 6 decimals, so it will not look wrong, but Circle does not support it for mint or redemption. The approved token is stored once at initialization and cannot be changed afterwards, so this is a one-shot decision. Verify the address against Circle's own documentation at deploy time rather than copying it from here.
 
 ## Backend alignment
 

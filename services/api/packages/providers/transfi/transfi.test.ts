@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { hmac } from "../../webhooks/hmac";
 import { describeAdapterContract } from "../contract/contract";
 import { replayFetch, type RecordedExchange } from "../contract/replay";
-import type { CreateOrderRequest, ProviderAlert, ProviderQuote, QuoteRequest } from "../types";
+import type { Country, CreateOrderRequest, ProviderAlert, ProviderQuote, QuoteRequest } from "../types";
 import { TRANSFI_SIGNATURE_HEADER, createTransfiAdapter } from "./transfi";
 import {
   CREATE_ORDER_OFFRAMP,
@@ -18,8 +18,10 @@ import {
   QUOTED_AT,
   QUOTE_PAYIN_UNWRAPPED,
   QUOTE_PHP,
+  SUPPORTED_CURRENCIES,
   TRANSFER_NOT_FOUND,
   WEBHOOK_FUND_SETTLED,
+  WEBHOOK_KYC_SUCCESS,
 } from "./transfi.fixtures";
 
 const WEBHOOK_SECRET = "transfi-test-webhook-secret";
@@ -42,6 +44,7 @@ const QUOTE_REQUEST: QuoteRequest = {
 
 const methodsPath = (currency: string, page = 1) =>
   `/v3/config/payment-methods?direction=withdraw&currency=${currency}&headlessMode=true&userType=individual&limit=100&page=${page}`;
+const CURRENCIES_PATH = "/v3/config/supported-currencies?direction=withdraw&limit=100&page=1";
 const ratesPath = (amount: string, direction: string) =>
   `/v3/exchange-rates?amount=${amount}&sourceCurrency=USDCPOLYGON&destinationCurrency=PHP&orderType=offramp&direction=${direction}`;
 
@@ -49,6 +52,7 @@ const EXCHANGES: RecordedExchange[] = [
   { method: "GET", path: methodsPath("IDR"), status: 200, body: PAYMENT_METHODS_IDR_PAGE_1 },
   { method: "GET", path: methodsPath("IDR", 2), status: 200, body: PAYMENT_METHODS_IDR_PAGE_2 },
   { method: "GET", path: methodsPath("PHP"), status: 200, body: PAYMENT_METHODS_PHP },
+  { method: "GET", path: CURRENCIES_PATH, status: 200, body: SUPPORTED_CURRENCIES },
   { method: "GET", path: ratesPath("1000", "reverse"), status: 200, body: QUOTE_PHP },
   { method: "GET", path: ratesPath("17.17", "forward"), status: 200, body: QUOTE_PHP },
   { method: "POST", path: "/v3/orders", status: 200, body: CREATE_ORDER_OFFRAMP },
@@ -129,7 +133,7 @@ describeAdapterContract("transfi", async () => {
     validWebhook: signed(WEBHOOK_FUND_SETTLED),
     expectedWebhookStatus: "paid",
     unmappableWebhook: signed(webhookWith("fund_teleported")),
-    pii: [RECIPIENT.accountNumber, RECIPIENT.accountName, RECIPIENT.phone, "639171234567"],
+    pii: [RECIPIENT.accountNumber, RECIPIENT.accountName, RECIPIENT.phone, "9171234567"],
     quotedAt: QUOTED_AT,
   };
 });
@@ -147,6 +151,7 @@ describe("transfi adapter", () => {
     const { adapter, replay } = await loaded();
     const capabilities = adapter.capabilities();
     expect(capabilities.custody).toBe("one_time_address");
+    expect(capabilities.sandbox).toBe(true);
     expect(capabilities.corridors).toEqual([
       { country: "ID", currency: "IDR", payoutType: "bank" },
       { country: "ID", currency: "IDR", payoutType: "mobile_money" },
@@ -159,23 +164,45 @@ describe("transfi adapter", () => {
     });
     expect(capabilities.sources).toContainEqual({ asset: "USDT", chain: "tron" });
     expect(capabilities.sources).not.toContainEqual({ asset: "USDT", chain: "base" });
+    expect(capabilities.sources.slice(0, 4).map((source) => source.chain)).toEqual([
+      "base",
+      "polygon",
+      "polygon",
+      "solana",
+    ]);
     expect(pathsOf(replay.calls)).toEqual([
       `GET ${methodsPath("IDR")}`,
       `GET ${methodsPath("IDR", 2)}`,
       `GET ${methodsPath("PHP")}`,
+      `GET ${CURRENCIES_PATH}`,
     ]);
   });
 
-  it("offers no corridor until the methods load, then refreshes them once a day", async () => {
+  it("starts loading methods when created, then refreshes them once a day", async () => {
     const { adapter, replay, clock } = setup();
     expect(adapter.capabilities().corridors).toEqual([]);
     await adapter.refreshCapabilities();
     expect(adapter.capabilities().corridors).toHaveLength(4);
-    expect(replay.calls).toHaveLength(3);
+    expect(replay.calls).toHaveLength(4);
+    adapter.capabilities();
+    expect(replay.calls).toHaveLength(4);
     clock.now = new Date(QUOTED_AT.getTime() + 25 * 60 * 60 * 1000);
     adapter.capabilities();
     await adapter.refreshCapabilities();
-    expect(replay.calls).toHaveLength(6);
+    expect(replay.calls).toHaveLength(8);
+  });
+
+  it("keeps the currencies that loaded when another fails, and retries the failed one sooner", async () => {
+    const { adapter, replay, clock } = await loaded(
+      withResponse("GET", methodsPath("IDR"), { status: "failure" }, 401),
+    );
+    expect(adapter.capabilities().corridors.map((corridor) => corridor.currency)).toEqual(["PHP", "PHP"]);
+    expect(await adapter.institutions("PH")).toHaveLength(3);
+    await expect(adapter.institutions("ID")).rejects.toMatchObject({ kind: "unavailable" });
+    const calls = replay.calls.length;
+    clock.now = new Date(QUOTED_AT.getTime() + 6 * 60 * 1000);
+    await adapter.institutions("ID").catch(() => undefined);
+    expect(replay.calls.length).toBeGreaterThan(calls);
   });
 
   it("drops a currency TransFi has no payout methods for", async () => {
@@ -231,6 +258,35 @@ describe("transfi adapter", () => {
     expect(replay.calls).toHaveLength(calls);
   });
 
+  it("floors the receive amount to the currency's precision and reports a partner fee on its own line", async () => {
+    const forward = ratesPath("17.17", "forward");
+    const sendRequest: QuoteRequest = { ...QUOTE_REQUEST, amount: { side: "send", units: 17_170_000n } };
+    const { adapter } = await loaded(
+      withResponse("GET", forward, {
+        ...QUOTE_PHP,
+        data: { ...QUOTE_PHP.data, destinationAmount: 1000.75, customerFee: "2.5", totalFee: 12.5 },
+      }),
+    );
+    const precise = await adapter.quote(sendRequest);
+    expect(precise.receiveMinorUnits).toBe(100_075n);
+    expect(precise.fees).toEqual([
+      { kind: "provider", amount: 1_000n, unit: "PHP" },
+      { kind: "provider", amount: 250n, unit: "PHP" },
+    ]);
+    const wholePesos = {
+      ...SUPPORTED_CURRENCIES,
+      data: [{ currency: "PHP", logoUrl: "", decimalPrecision: 0 }],
+    };
+    const whole = await loaded([
+      { method: "GET", path: CURRENCIES_PATH, status: 200, body: wholePesos },
+      ...withResponse("GET", forward, {
+        ...QUOTE_PHP,
+        data: { ...QUOTE_PHP.data, destinationAmount: 1000.75 },
+      }),
+    ]);
+    expect((await whole.adapter.quote(sendRequest)).receiveMinorUnits).toBe(100_000n);
+  });
+
   it("creates an off-ramp order fixed on the fiat side with our payout id as partnerId", async () => {
     const { adapter, replay } = await loaded();
     const quote = await adapter.quote(QUOTE_REQUEST);
@@ -242,13 +298,13 @@ describe("transfi adapter", () => {
       partnerId: PAYOUT_ID,
       headlessMode: true,
       deviceDetails: { userAgent: "fliq-api", ipInfo: { ip: SENDER.ip } },
-      source: { currency: "USDCPOLYGON" },
+      source: { currency: "USDCPOLYGON", sendersWalletAddress: "0x5b7ae3c6c87f4a3f94b35c77233b13191ebfad20" },
       destination: {
         currency: "PHP",
         amount: 1000,
         paymentType: "local_wallet",
         paymentCode: "gcash",
-        additionalPaymentDetails: { phone: "639171234567" },
+        additionalPaymentDetails: { phone: "9171234567" },
       },
     });
     expect(order).toEqual({
@@ -275,15 +331,33 @@ describe("transfi adapter", () => {
     expect(order.funding.units).toBe(17_160_001n);
   });
 
-  it("cancels and refuses an order that asks for more crypto than quoted or has no address", async () => {
+  it("accepts a firm price within 30 bps of the quote and funds the firm amount", async () => {
+    const { adapter } = await loaded(
+      withResponse("POST", "/v3/orders", {
+        ...CREATE_ORDER_OFFRAMP,
+        data: { ...CREATE_ORDER_OFFRAMP.data, cryptoAmount: 17.22151 },
+      }),
+    );
+    const order = await adapter.createOrder(orderRequest(await adapter.quote(QUOTE_REQUEST)));
+    expect(order.funding.units).toBe(17_221_510n);
+  });
+
+  it("cancels and refuses an order beyond the tolerance, on another network or with a bad address", async () => {
     for (const data of [
-      { ...CREATE_ORDER_OFFRAMP.data, cryptoAmount: 17.180001 },
+      { ...CREATE_ORDER_OFFRAMP.data, cryptoAmount: 17.221511 },
       { ...CREATE_ORDER_OFFRAMP.data, walletAddress: "" },
+      { ...CREATE_ORDER_OFFRAMP.data, walletAddress: "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf" },
+      { ...CREATE_ORDER_OFFRAMP.data, cryptoNetwork: "arbitrum" },
+      { ...CREATE_ORDER_OFFRAMP.data, cryptoCurrency: "USDTPOLYGON" },
     ]) {
       const { adapter, replay } = await loaded(
         withResponse("POST", "/v3/orders", { ...CREATE_ORDER_OFFRAMP, data }),
       );
-      await expect(adapter.createOrder(orderRequest(await adapter.quote(QUOTE_REQUEST)))).rejects.toThrow();
+      await expect(
+        adapter.createOrder(orderRequest(await adapter.quote(QUOTE_REQUEST))),
+      ).rejects.toMatchObject({
+        kind: "rejected",
+      });
       expect(replay.calls.at(-1)).toMatchObject({ method: "POST", path: "/v3/orders/cancel" });
       expect(bodyOf(replay.calls.at(-1)).orderId).toBe(ORDER_ID);
     }
@@ -297,6 +371,7 @@ describe("transfi adapter", () => {
     await expect(adapter.createOrder(orderRequest(quote))).rejects.toMatchObject({
       kind: "rejected",
       message: expect.stringContaining("PARTNER_ID_ALREADY_USED") as string,
+      reason: "PARTNER_ID_ALREADY_USED",
     });
     expect(replay.calls.filter((call) => call.path === "/v3/orders")).toHaveLength(1);
   });
@@ -308,17 +383,66 @@ describe("transfi adapter", () => {
     expect(replay.calls.filter((call) => call.path === "/v3/orders")).toHaveLength(1);
   });
 
-  it("refuses unknown codes, mismatched payout types and banks without an account field before calling", async () => {
+  it("lets the payment method decide the payout type", async () => {
+    const { adapter, replay } = await loaded();
+    const bank = { country: "PH", currency: "PHP", payoutType: "bank" } as const;
+    await adapter.createOrder(orderRequest(await adapter.quote(QUOTE_REQUEST), RECIPIENT, bank));
+    expect(bodyOf(replay.calls.at(-1)).destination.paymentType).toBe("local_wallet");
+  });
+
+  it("normalises wallet phone numbers by country and refuses ones it cannot read before calling", async () => {
     const { adapter, replay } = await loaded();
     const quote = await adapter.quote(QUOTE_REQUEST);
-    const bank = { country: "PH", currency: "PHP", payoutType: "bank" } as const;
+    const detailsSent = () => bodyOf(replay.calls.at(-1)).destination.additionalPaymentDetails;
+    for (const phone of ["+63 917 123 4567", "639171234567", "09171234567", "9171234567"]) {
+      await adapter.createOrder(orderRequest(quote, { ...RECIPIENT, phone }));
+      expect(detailsSent()).toEqual({ phone: "9171234567" });
+    }
+    const idWallet = { country: "ID", currency: "IDR", payoutType: "mobile_money" } as const;
+    const ovo = { ...RECIPIENT, institutionCode: "ovo", phone: "+62 812-3456-7890" };
+    await adapter.createOrder(orderRequest(quote, ovo, idWallet));
+    expect(detailsSent()).toEqual({ phoneNumber: "81234567890" });
+    const creates = replay.calls.filter((call) => call.path === "/v3/orders").length;
+    for (const phone of ["+1 415 555 0100", "0817123", "phone"]) {
+      await expect(adapter.createOrder(orderRequest(quote, { ...RECIPIENT, phone }))).rejects.toMatchObject({
+        kind: "rejected",
+      });
+    }
+    expect(replay.calls.filter((call) => call.path === "/v3/orders")).toHaveLength(creates);
+  });
+
+  it("sends phoneCode and split names when a method lists them, and refuses fields it cannot fill", async () => {
+    const [gcash, maya] = PAYMENT_METHODS_PHP.data;
+    const methods = {
+      ...PAYMENT_METHODS_PHP,
+      data: [
+        { ...gcash, additionalDetails: { phoneCode: {}, phone: {}, firstName: {}, lastName: {} } },
+        { ...maya, additionalDetails: { phone: {}, email: {} } },
+      ],
+    };
+    const { adapter, replay } = await loaded(withResponse("GET", methodsPath("PHP"), methods));
+    const quote = await adapter.quote(QUOTE_REQUEST);
+    await adapter.createOrder(orderRequest(quote, { ...RECIPIENT, accountName: "Maria Clara Santos" }));
+    expect(bodyOf(replay.calls.at(-1)).destination.additionalPaymentDetails).toEqual({
+      phoneCode: "+63",
+      phone: "9171234567",
+      firstName: "Maria Clara",
+      lastName: "Santos",
+    });
+    const creates = replay.calls.filter((call) => call.path === "/v3/orders").length;
+    await expect(
+      adapter.createOrder(orderRequest(quote, { ...RECIPIENT, institutionCode: "paymaya" })),
+    ).rejects.toMatchObject({ kind: "not_supported" });
+    expect(replay.calls.filter((call) => call.path === "/v3/orders")).toHaveLength(creates);
+  });
+
+  it("refuses unknown codes and banks without an account field before calling", async () => {
+    const { adapter, replay } = await loaded();
+    const quote = await adapter.quote(QUOTE_REQUEST);
     const idrBank = { country: "ID", currency: "IDR", payoutType: "bank" } as const;
     await expect(
       adapter.createOrder(orderRequest(quote, { ...RECIPIENT, institutionCode: "nope" })),
     ).rejects.toMatchObject({ kind: "rejected" });
-    await expect(adapter.createOrder(orderRequest(quote, RECIPIENT, bank))).rejects.toMatchObject({
-      kind: "rejected",
-    });
     await expect(
       adapter.createOrder(orderRequest(quote, { ...RECIPIENT, institutionCode: "bjb_syr" }, idrBank)),
     ).rejects.toMatchObject({ kind: "not_supported" });
@@ -329,34 +453,44 @@ describe("transfi adapter", () => {
     const { adapter, replay } = await loaded();
     const quote = await adapter.quote(QUOTE_REQUEST);
     const bank = { country: "PH", currency: "PHP", payoutType: "bank" } as const;
-    await adapter.createOrder(orderRequest(quote, { ...RECIPIENT, institutionCode: "bdo" }, bank));
+    const bdo = { ...RECIPIENT, institutionCode: "bdo", accountNumber: "001234567890" };
+    await adapter.createOrder(orderRequest(quote, bdo, bank));
     expect(bodyOf(replay.calls.at(-1)).destination).toMatchObject({
       paymentType: "bank_transfer",
       paymentCode: "bdo",
       additionalPaymentDetails: {
-        accountNumber: RECIPIENT.accountNumber,
+        accountNumber: "001234567890",
         accountName: RECIPIENT.accountName,
       },
     });
   });
 
   it("reads orders by partnerId, treats only TRANSFER_NOT_FOUND as absent and maps fund_failed to a refund", async () => {
-    const { adapter, replay } = setup();
+    const { adapter, replay } = await loaded();
     expect(await adapter.getOrder({ reference: PAYOUT_ID })).toEqual({
       providerOrderId: ORDER_ID,
       reference: PAYOUT_ID,
       status: "awaiting_deposit",
     });
-    expect(replay.calls[0]?.path).toBe(`/v3/orders/${PAYOUT_ID}`);
+    expect(replay.calls.at(-1)?.path).toBe(`/v3/orders/${PAYOUT_ID}`);
     const failed = setup(withResponse("GET", `/v3/orders/${ORDER_ID}`, ORDER_FAILED));
     expect(await failed.adapter.getOrder({ providerOrderId: ORDER_ID })).toMatchObject({
       status: "refunding",
     });
+    await failed.adapter.getOrder({ providerOrderId: ORDER_ID });
+    expect(failed.alerts).toEqual([
+      {
+        provider: "transfi",
+        kind: "custodial_refund",
+        detail: `${ORDER_FAILED.data.id} DECLINED_BY_BANK_SUSPECTED_FRAUD`,
+      },
+    ]);
     const refused = setup(
       withResponse("GET", "/v3/orders/po_missing_reference", PARTNER_ID_ALREADY_USED, 400),
     );
     await expect(refused.adapter.getOrder({ reference: "po_missing_reference" })).rejects.toMatchObject({
       kind: "rejected",
+      reason: "PARTNER_ID_ALREADY_USED",
     });
     const missing = setup(withResponse("GET", "/v3/orders/po_missing_reference", { status: "failure" }, 404));
     await expect(missing.adapter.getOrder({ reference: "po_missing_reference" })).rejects.toMatchObject({
@@ -365,7 +499,7 @@ describe("transfi adapter", () => {
   });
 
   it("maps every off-ramp webhook status and keys events on order and status", () => {
-    const { adapter } = setup();
+    const { adapter, alerts } = setup();
     const statusOf = (status: string, order?: Record<string, unknown>) =>
       adapter.parseWebhook(signed(webhookWith(status, order))).order;
     expect(statusOf("initiated")).toEqual({ status: "awaiting_deposit" });
@@ -374,7 +508,20 @@ describe("transfi adapter", () => {
     expect(statusOf("fund_failed", { failureCode: "INVALID_ACCOUNT_DETAILS" })).toEqual({
       status: "refunding",
     });
-    expect(statusOf("expired")).toEqual({ status: "failed", code: "expired", retryable: true });
+    expect(alerts).toEqual([]);
+    expect(statusOf("fund_failed", { failureCode: "BANK_UNDER_MAINTENANCE" })).toEqual({
+      status: "refunding",
+    });
+    expect(alerts).toEqual([
+      {
+        provider: "transfi",
+        kind: "custodial_refund",
+        detail: "OR-260824111423413832397538943 BANK_UNDER_MAINTENANCE",
+      },
+    ]);
+    for (const status of ["expired", "cancelled"]) {
+      expect(statusOf(status)).toEqual({ status: "failed", code: "deposit_expired", retryable: true });
+    }
     expect(statusOf("fund_settled", { bankTxnId: ["BTX-2041"] })).toEqual({
       status: "paid",
       fiatReference: "BTX-2041",
@@ -391,7 +538,7 @@ describe("transfi adapter", () => {
     for (const body of [
       webhookWith("asset_settle_failed"),
       webhookWith("fund_settled", { type: "buy" }),
-      { ...WEBHOOK_FUND_SETTLED, entityType: "user", status: "kyc_success" },
+      { ...WEBHOOK_FUND_SETTLED, entityType: "prefund" },
     ]) {
       expect(() => adapter.parseWebhook(signed(body))).toThrowError(
         expect.objectContaining({ kind: "unmappable_status" }) as Error,
@@ -400,8 +547,17 @@ describe("transfi adapter", () => {
     expect(alerts.map((alert) => alert.detail)).toEqual([
       "parseWebhook asset_settle_failed",
       "parseWebhook order type buy",
-      "parseWebhook entityType user",
+      "parseWebhook entityType prefund",
     ]);
+  });
+
+  it("acknowledges sender KYC webhooks quietly as a no-op", () => {
+    const { adapter, alerts } = setup();
+    expect(adapter.parseWebhook(signed(WEBHOOK_KYC_SUCCESS))).toEqual({
+      eventId: "UX-251207074635111:kyc_success",
+      order: { status: "awaiting_deposit" },
+    });
+    expect(alerts).toEqual([]);
   });
 
   it("accepts the previous webhook secret and an upper-case signature, and rejects an unsigned body", () => {
@@ -417,7 +573,7 @@ describe("transfi adapter", () => {
     );
   });
 
-  it("lists institutions from the payment methods, has no account lookup and reports health", async () => {
+  it("lists institutions from the payment methods and reports health", async () => {
     const { adapter } = setup();
     expect(await adapter.institutions("PH")).toEqual([
       { code: "gcash", name: "GCash", type: "mobile_money" },
@@ -430,9 +586,26 @@ describe("transfi adapter", () => {
       "ovo",
     ]);
     expect(await adapter.institutions("NG")).toEqual([]);
-    await expect(
-      adapter.verifyAccount({ institutionCode: "gcash", accountNumber: "09171234567", country: "PH" }),
-    ).rejects.toMatchObject({ kind: "not_supported" });
     expect(await adapter.health()).toEqual({ healthy: true });
+  });
+
+  it("confirms an account only by a known method and a valid number format, with no name", async () => {
+    const { adapter } = setup();
+    const check = (institutionCode: string, accountNumber: string, country: Country = "PH") =>
+      adapter.verifyAccount({ institutionCode, accountNumber, country });
+    const unnamed = { found: true, accountName: null };
+    expect(await check("gcash", "09171234567")).toEqual(unnamed);
+    expect(await check("bdo", "001234567890")).toEqual(unnamed);
+    expect(await check("ovo", "081234567890", "ID")).toEqual(unnamed);
+    for (const [code, number, country] of [
+      ["gcash", "0817123", "PH"],
+      ["bdo", "12345", "PH"],
+      ["bdo", "0012-3456", "PH"],
+      ["nope", "001234567890", "PH"],
+      ["ovo", "09171234567", "ID"],
+      ["bdo", "001234567890", "NG"],
+    ] as const) {
+      expect(await check(code, number, country)).toEqual({ found: false });
+    }
   });
 });

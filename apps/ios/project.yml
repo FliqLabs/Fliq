@@ -34,9 +34,10 @@ targets:
         FliqDataSource: $(FLIQ_DATA_SOURCE)
         FliqNameSuffix: $(FLIQ_NAME_SUFFIX)
         FliqNearRPCURL: $(FLIQ_NEAR_RPC_URL)
+        FliqNearNetwork: $(FLIQ_NEAR_NETWORK)
         NSFaceIDUsageDescription: fliq asks for Face ID before any money leaves your vault.
         NSLocalNetworkUsageDescription: fliq connects to a fliq server on this network during development.
-        NSCameraUsageDescription: fliq uses the camera only when you take a profile photo.
+        NSCameraUsageDescription: fliq uses the camera to scan payment codes and take your profile photo.
         UILaunchScreen: {}
         UIUserInterfaceStyle: Dark
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]

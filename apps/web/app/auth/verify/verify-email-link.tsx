@@ -20,7 +20,7 @@ export function VerifyEmailLink() {
     onSuccess: ({ user }) => {
       queryClient.clear();
       queryClient.setQueryData(["me"], user);
-      router.replace(user.near_account ? "/dashboard" : "/claim-name");
+      router.replace(user.near_account ? "/wallet" : "/claim-name");
     },
   });
 

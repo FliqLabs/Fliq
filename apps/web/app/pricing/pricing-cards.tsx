@@ -3,7 +3,15 @@
 import { useState } from "react";
 import Link from "next/link";
 
-const plans = [
+const plans: {
+  name: string;
+  price: string;
+  suffix?: string;
+  description: string;
+  features: string[];
+  action: string;
+  href: string;
+}[] = [
   {
     name: "Sandbox",
     price: "$0",
@@ -14,9 +22,8 @@ const plans = [
   },
   {
     name: "Build",
-    price: "0.5%",
-    suffix: "per payout",
-    description: "Live routing to every provider. Free until $50,000 a month, then the fee applies above it.",
+    price: "To be confirmed",
+    description: "Live routing to available providers. Contact us for pricing.",
     features: ["Available-provider routing", "Account name verification", "Receipts with bank references", "Agent keys with on-chain caps", "Plan-based usage limits"],
     action: "Go live after KYB",
     href: "/create-workspace",

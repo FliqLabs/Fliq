@@ -16,6 +16,8 @@ final class ReceiveFlow {
     private(set) var errorMessage: String?
     /// Sources the API refused to open an address for this session, with its reason.
     private(set) var unavailable: [String: String] = [:]
+    /// A short note after a source dropped out because the server refused it.
+    private(set) var notice: String?
 
     /// The user's fliq name, which is also their direct NEAR address.
     let name: String?
@@ -23,19 +25,34 @@ final class ReceiveFlow {
     private let api: any DepositAPI
     private let vault: VaultStore
     private let vaultAccount: String
+    let network: NearNetwork
 
-    init(api: any DepositAPI, vault: VaultStore, vaultAccount: String, name: String? = nil) {
+    init(api: any DepositAPI, vault: VaultStore, vaultAccount: String, name: String? = nil, network: NearNetwork = .mainnet) {
         self.api = api
         self.vault = vault
         self.vaultAccount = vaultAccount
         self.name = name
+        self.network = network
+    }
+
+    /// Only what can work right now: nothing the API marks unavailable or refused this session, and on testnet only
+    /// the user's own NEAR account.
+    var offered: [DepositSource] {
+        sources.filter { source in
+            source.available && unavailable[source.id] == nil && (network.receivesFromOtherChains || source.isDirect)
+        }
+    }
+
+    /// The one way to receive when there is no choice to make, so the pickers can be skipped.
+    var onlyOption: DepositSource? {
+        offered.count == 1 ? offered.first : nil
     }
 
     /// One row per token, grouped the way Choose currency shows them. USDC on NEAR is one of USDC's networks.
     var currencies: [(group: DepositSource.Group, tokens: [String])] {
         [DepositSource.Group.dollars, .bitcoin].compactMap { group in
             var tokens: [String] = []
-            for source in sources where (source.isDirect ? .dollars : source.group) == group && !tokens.contains(source.tokenId) {
+            for source in offered where (source.isDirect ? .dollars : source.group) == group && !tokens.contains(source.tokenId) {
                 tokens.append(source.tokenId)
             }
             return tokens.isEmpty ? nil : (group, tokens)
@@ -43,7 +60,7 @@ final class ReceiveFlow {
     }
 
     func networks(for token: String) -> [DepositSource] {
-        sources.filter { $0.tokenId == token }.sorted { lhs, rhs in
+        offered.filter { $0.tokenId == token }.sorted { lhs, rhs in
             if lhs.isDirect != rhs.isDirect { return lhs.isDirect }
             return lhs.etaSeconds < rhs.etaSeconds
         }
@@ -107,6 +124,7 @@ final class ReceiveFlow {
             return true
         } catch let refusal as DepositUnavailable {
             unavailable[source.id] = refusal.message
+            notice = "\(source.title) isn't available right now."
             return false
         } catch {
             errorMessage = "Couldn't get an address. Check your connection and try again."

@@ -1,5 +1,5 @@
 import { quoteRoutes } from "../../../packages/domain/routing.js";
-import type { Asset, Chain, FiatCurrency } from "../../../packages/providers/types.js";
+import type { Asset, Chain, FiatCurrency, PayoutType } from "../../../packages/providers/types.js";
 import { ApiError, invalidRequest } from "./errors.js";
 import { COUNTRY, logTimeouts, rateOf, total, type QuoteDeps, type QuoteInput } from "./quotes.js";
 
@@ -9,6 +9,11 @@ export const RATE_DEADLINE_MS = 8_000;
 // Fees are partly flat, so a rate only means something for a stated size. 100 tokens in 6-decimal units.
 const REFERENCE_UNITS = 100_000_000n;
 const TOKENS: readonly string[] = ["usdc", "usdt"];
+
+// The payout a public rate is for: Ghana's providers pay mobile money, everywhere else is priced for a bank account.
+export function referencePayoutType(currency: QuoteInput["currency"]): PayoutType {
+  return currency === "ghs" ? "mobile_money" : "bank";
+}
 
 export interface Rate {
   token: QuoteInput["token"];
@@ -37,7 +42,7 @@ export function createRates(deps: QuoteDeps) {
     const priced = quoteRoutes(
       deps.adapters,
       {
-        corridor: { country: COUNTRY[currency], currency: currency.toUpperCase() as FiatCurrency, payoutType: "bank" },
+        corridor: { country: COUNTRY[currency], currency: currency.toUpperCase() as FiatCurrency, payoutType: referencePayoutType(currency) },
         source: { asset: token.toUpperCase() as Asset, chain: "near" as Chain },
         amount: { side: "send", units: REFERENCE_UNITS },
         preference: "best_rate",

@@ -14,7 +14,7 @@ export class InvalidAmountError extends Error {
   }
 }
 
-export type Rounding = "exact" | "down";
+export type Rounding = "exact" | "down" | "up";
 
 export function toUnits(value: string | number, decimals: number, rounding: Rounding = "exact"): bigint {
   const text = typeof value === "number" ? numberToPlainString(value) : value.trim();
@@ -28,6 +28,7 @@ export function toUnits(value: string | number, decimals: number, rounding: Roun
       throw new InvalidAmountError(`more than ${decimals} decimal places`);
     }
     fraction = fraction.slice(0, decimals);
+    if (rounding === "up" && /[1-9]/.test(dropped)) return BigInt(whole + fraction) + 1n;
   }
   return BigInt(whole + fraction.padEnd(decimals, "0"));
 }
