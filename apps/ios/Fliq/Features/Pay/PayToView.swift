@@ -81,8 +81,7 @@ struct PayToView: View {
 
     private var searchField: some View {
         HStack(spacing: 10) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 16, weight: .medium))
+            Icon("magnifyingglass", size: 19)
                 .foregroundStyle(searching ? Theme.textPrimary : Theme.textTertiary)
             TextField("", text: $search, prompt: Text("Name, bank, account number or fliq name").foregroundStyle(Theme.textTertiary))
                 .focused($searching)
@@ -92,7 +91,7 @@ struct PayToView: View {
                 .accessibilityLabel("Search")
             if !search.isEmpty {
                 Button { search = "" } label: {
-                    Image(systemName: "xmark.circle.fill").foregroundStyle(Theme.textTertiary)
+                    Icon("xmark.circle.fill", size: 18).foregroundStyle(Theme.textTertiary)
                 }
                 .accessibilityLabel("Clear search")
             }
@@ -112,7 +111,7 @@ struct PayToView: View {
         ScrollView(.horizontal) {
             HStack(spacing: 8) {
                 chip(.all, count: nil) {
-                    Image(systemName: "globe").font(.system(size: 14, weight: .semibold))
+                    Icon("globe", size: 17)
                     Text("All")
                 }
                 ForEach(Country.allCases, id: \.self) { country in
@@ -276,12 +275,11 @@ struct PayToView: View {
 
     private func menu(for account: VerifiedAccount) -> some View {
         Menu {
-            Button { onAccount(account) } label: { Label("Pay", systemImage: "paperplane") }
-            Button { UIPasteboard.general.string = account.number } label: { Label("Copy account number", systemImage: "doc.on.doc") }
-            Button(role: .destructive) { removing = account } label: { Label("Remove", systemImage: "trash") }
+            Button { onAccount(account) } label: { IconLabel("Pay", icon: "paperplane") }
+            Button { UIPasteboard.general.string = account.number } label: { IconLabel("Copy account number", icon: "doc.on.doc") }
+            Button(role: .destructive) { removing = account } label: { IconLabel("Remove", icon: "trash") }
         } label: {
-            Image(systemName: "ellipsis")
-                .font(.system(size: 16, weight: .semibold))
+            Icon("ellipsis", size: 19)
                 .foregroundStyle(Theme.textSecondary)
                 .frame(width: 36, height: 36)
                 .contentShape(Rectangle())
@@ -293,20 +291,19 @@ struct PayToView: View {
     private func contextActions(for payee: Payee, isOwn: Bool) -> some View {
         switch payee {
         case .account(let account):
-            Button { onAccount(account) } label: { Label("Pay", systemImage: "paperplane") }
-            Button { UIPasteboard.general.string = account.number } label: { Label("Copy account number", systemImage: "doc.on.doc") }
+            Button { onAccount(account) } label: { IconLabel("Pay", icon: "paperplane") }
+            Button { UIPasteboard.general.string = account.number } label: { IconLabel("Copy account number", icon: "doc.on.doc") }
             if !isOwn {
-                Button(role: .destructive) { removing = account } label: { Label("Remove", systemImage: "trash") }
+                Button(role: .destructive) { removing = account } label: { IconLabel("Remove", icon: "trash") }
             }
         case .person(let person):
-            Button { onPerson(person.nearAccount) } label: { Label("Pay", systemImage: "paperplane") }
-            Button { UIPasteboard.general.string = FliqName.display(person.nearAccount) } label: { Label("Copy fliq name", systemImage: "doc.on.doc") }
+            Button { onPerson(person.nearAccount) } label: { IconLabel("Pay", icon: "paperplane") }
+            Button { UIPasteboard.general.string = FliqName.display(person.nearAccount) } label: { IconLabel("Copy fliq name", icon: "doc.on.doc") }
         }
     }
 
     private var chevron: some View {
-        Image(systemName: "chevron.right")
-            .font(.system(size: 13, weight: .semibold))
+        Icon("chevron.right", size: 16)
             .foregroundStyle(Theme.textTertiary)
             .frame(width: 36, height: 36)
     }
@@ -314,8 +311,7 @@ struct PayToView: View {
     private func actionRow(_ title: String, detail: String, icon: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 14) {
-                Image(systemName: icon)
-                    .font(.system(size: 20, weight: .medium))
+                Icon(icon, size: 24)
                     .frame(width: 44, height: 44)
                     .background(Theme.surfaceRaised, in: Circle())
                 VStack(alignment: .leading, spacing: 2) {
@@ -325,8 +321,7 @@ struct PayToView: View {
                         .foregroundStyle(Theme.textSecondary)
                 }
                 Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 14, weight: .semibold))
+                Icon("chevron.right", size: 17)
                     .foregroundStyle(Theme.textTertiary)
             }
             .foregroundStyle(Theme.textPrimary)
@@ -359,8 +354,7 @@ struct PayToView: View {
 
     private var emptyList: some View {
         VStack(spacing: 10) {
-            Image(systemName: filter == .fliqUsers ? "person.2" : "building.columns")
-                .font(.system(size: 22))
+            Icon(filter == .fliqUsers ? "person.2" : "building.columns", size: 26)
                 .foregroundStyle(Theme.textTertiary)
                 .frame(width: 60, height: 60)
                 .background(Theme.surfaceRaised, in: Circle())
@@ -389,7 +383,7 @@ struct PayToView: View {
 
     private var newRecipient: some View {
         Button { filter == .fliqUsers ? onPerson(nil) : onNew() } label: {
-            Label("New recipient", systemImage: "plus")
+            IconLabel("New recipient", icon: "plus")
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(.black)
                 .padding(.horizontal, 22)

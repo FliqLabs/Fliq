@@ -22,7 +22,7 @@ struct OnboardingView: View {
         accounts = environment.accounts
         isLive = environment.isLive
         api = environment.api
-        _flow = State(initialValue: OnboardingFlow(api: environment.api, names: environment.names, isLive: environment.isLive))
+        _flow = State(initialValue: OnboardingFlow(api: environment.api, names: environment.names, isLive: environment.isLive, photos: environment.photos))
         _signIn = State(initialValue: SignInFlow(api: environment.api))
     }
 

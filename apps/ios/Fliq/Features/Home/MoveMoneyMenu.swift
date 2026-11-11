@@ -10,8 +10,7 @@ struct MoveMoneyMenu: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Image(systemName: "arrow.up.arrow.down")
-                .font(.system(size: 30, weight: .medium))
+            Icon("arrow.up.arrow.down", size: 36)
                 .foregroundStyle(Theme.textSecondary)
                 .frame(width: 72, height: 72)
                 .fliqGlass(Circle())
@@ -22,13 +21,13 @@ struct MoveMoneyMenu: View {
 
             VStack(spacing: 10) {
                 SheetRow(title: "Send", detail: "Bank, mobile money or fliq", action: onSend) {
-                    Image(systemName: "paperplane").font(.system(size: 20))
+                    Icon("paperplane", size: 24)
                 }
                 SheetRow(title: "Receive", detail: "Your name, or any coin", action: onReceive) {
-                    Image(systemName: "square.and.arrow.down").font(.system(size: 20))
+                    Icon("square.and.arrow.down", size: 24)
                 }
                 SheetRow(title: "Request", detail: "A link anyone can pay", action: onRequest) {
-                    Image(systemName: "link").font(.system(size: 20))
+                    Icon("link", size: 24)
                 }
             }
             .padding(.top, 28)
@@ -39,7 +38,7 @@ struct MoveMoneyMenu: View {
         .toolbar {
             if let onScan {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button(action: onScan) { Image(systemName: "qrcode.viewfinder") }
+                    Button(action: onScan) { Icon("qrcode.viewfinder") }
                         .accessibilityLabel("Scan to pay")
                 }
             }

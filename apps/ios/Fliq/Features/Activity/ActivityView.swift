@@ -57,8 +57,7 @@ struct ActivityView: View {
     private var empty: some View {
         VStack(spacing: 14) {
             Spacer()
-            Image(systemName: "clock.arrow.circlepath")
-                .font(.system(size: 24))
+            Icon("clock.arrow.circlepath", size: 29)
                 .foregroundStyle(Theme.textTertiary)
                 .frame(width: 64, height: 64)
                 .background(Theme.surface, in: Circle())

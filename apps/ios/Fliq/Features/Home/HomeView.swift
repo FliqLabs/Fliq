@@ -22,18 +22,21 @@ struct HomeView: View {
     private var header: some View {
         HStack {
             Button(action: onMenu) {
-                Circle()
-                    .fill(Theme.surfaceRaised)
-                    .frame(width: 32, height: 32)
-                    .overlay(Image(systemName: "person.fill").font(.system(size: 14)).foregroundStyle(Theme.textSecondary))
+                if let photo = model.photoURL {
+                    PersonAvatar(name: model.me?.displayName ?? "f", photoURL: photo, size: 36)
+                } else {
+                    Circle()
+                        .fill(Theme.surfaceRaised)
+                        .frame(width: 36, height: 36)
+                        .overlay(Icon("person.fill", size: 18).foregroundStyle(Theme.textSecondary))
+                }
             }
             .accessibilityLabel("Profile")
             Spacer()
             Wordmark()
             Spacer()
             Button(action: onQR) {
-                Image(systemName: "qrcode")
-                    .font(.system(size: 18, weight: .medium))
+                Icon("qrcode", size: 22)
                     .foregroundStyle(Theme.textSecondary)
                     .frame(width: 32, height: 32)
             }
@@ -46,7 +49,7 @@ struct HomeView: View {
 
     private var balance: some View {
         VStack(spacing: 14) {
-            Label("Vault balance", systemImage: "eye")
+            IconLabel("Vault balance", icon: "eye")
                 .labelStyle(TrailingIconLabelStyle())
                 .font(.system(size: 14))
                 .foregroundStyle(Theme.textSecondary)
