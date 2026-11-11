@@ -1,6 +1,9 @@
 // api: the app calls FLIQ_API_BASE_URL, the testnet API on Render.
 // fixtures: the app reads spec/fixtures from its bundle, no server needed.
 // For `make dev-mock`, set FLIQ_API_BASE_URL = http:/$()/localhost:4000/v1 and FLIQ_API_KEY = rt_test_7Kp2demo00c9Qe in Debug.xcconfig.local.
+// The testnet app. Config/Mainnet.xcconfig builds a second app beside it.
+FLIQ_BUNDLE_ID = cash.fliq.app
+FLIQ_DISPLAY_NAME = fliq
 FLIQ_DATA_SOURCE = api
 FLIQ_API_BASE_URL = https:/$()/api-production-54e10.up.railway.app/v1
 FLIQ_API_KEY =

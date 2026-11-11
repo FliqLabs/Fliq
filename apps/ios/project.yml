@@ -1,5 +1,10 @@
 name: Fliq
 
+configs:
+  Debug: debug
+  Release: release
+  Mainnet: debug
+
 options:
   bundleIdPrefix: cash.fliq
   deploymentTarget:
@@ -25,10 +30,11 @@ targets:
     configFiles:
       Debug: Config/Debug.xcconfig
       Release: Config/Release.xcconfig
+      Mainnet: Config/Mainnet.xcconfig
     info:
       path: Fliq/Info.plist
       properties:
-        CFBundleDisplayName: fliq
+        CFBundleDisplayName: $(FLIQ_DISPLAY_NAME)
         FliqAPIBaseURL: $(FLIQ_API_BASE_URL)
         FliqAPIKey: $(FLIQ_API_KEY)
         FliqDataSource: $(FLIQ_DATA_SOURCE)
@@ -57,7 +63,7 @@ targets:
           - webcredentials:fliq.cash$(FLIQ_ASSOCIATED_DOMAIN_MODE)
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: cash.fliq.app
+        PRODUCT_BUNDLE_IDENTIFIER: $(FLIQ_BUNDLE_ID)
         DEVELOPMENT_TEAM: YCKKUWB4WD
         CODE_SIGN_STYLE: Automatic
         TARGETED_DEVICE_FAMILY: "1"
@@ -90,3 +96,15 @@ targets:
       base:
         GENERATE_INFOPLIST_FILE: YES
         TEST_TARGET_NAME: Fliq
+
+schemes:
+  Fliq Mainnet:
+    build:
+      targets:
+        Fliq: all
+    run:
+      config: Mainnet
+    profile:
+      config: Mainnet
+    archive:
+      config: Mainnet

@@ -1,0 +1,11 @@
+// A second app, "fliq main", on NEAR mainnet with real money, installed beside the testnet app.
+// Its passkeys work because fliq.cash's apple-app-site-association lists cash.fliq.app.mainnet too.
+#include "Debug.xcconfig"
+
+FLIQ_BUNDLE_ID = cash.fliq.app.mainnet
+FLIQ_DISPLAY_NAME = fliq main
+FLIQ_API_BASE_URL = https:/$()/api-mainnet-64d65ef4.up.railway.app/v1
+FLIQ_NEAR_RPC_URL = https:/$()/rpc.mainnet.fastnear.com
+FLIQ_NEAR_NETWORK = mainnet
+FLIQ_NAME_SUFFIX_api = .fliqaccount.near
+FLIQ_PAJ_TEST_RECIPIENT =

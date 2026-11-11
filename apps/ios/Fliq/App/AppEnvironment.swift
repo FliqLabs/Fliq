@@ -71,7 +71,7 @@ final class AppEnvironment {
         self.pajTestRecipient = pajTestRecipient
         inbox = WalletInbox(topUp: walletTopUp)
         self.preferences = preferences
-        agents = AgentStore(api: agentAPI, vault: { profile.name ?? "fliq-vault.testnet" })
+        agents = AgentStore(api: agentAPI, vault: { profile.name ?? NearNetwork.current.vault })
         self.biometrics = biometrics
         self.lock = lock
         inbox.onAdded = { [weak self] in await self?.refreshVault() }

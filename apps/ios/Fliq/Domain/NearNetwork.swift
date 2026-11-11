@@ -15,6 +15,9 @@ enum NearNetwork: String, Sendable {
 
     var receivesFromOtherChains: Bool { self == .mainnet }
 
+    /// The fliq vault contract on this network.
+    var vault: String { self == .testnet ? "fliq-vault.testnet" : "fliq-vault.near" }
+
     func explorer(transaction hash: String) -> URL? {
         URL(string: "https://\(self == .testnet ? "testnet." : "")nearblocks.io/txns/\(hash)")
     }

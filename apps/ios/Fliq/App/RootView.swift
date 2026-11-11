@@ -123,7 +123,7 @@ struct RootView: View {
         ReceiveFlow(
             api: environment.deposits,
             vault: environment.vault,
-            vaultAccount: environment.profile.name ?? "fliq-vault.testnet",
+            vaultAccount: environment.profile.name ?? NearNetwork.current.vault,
             name: environment.profile.name,
             network: environment.isLive ? .current : .mainnet
         )
@@ -159,7 +159,7 @@ struct RootView: View {
     private func startBankDeposit() {
         let deposits = environment.deposits
         let network: NearNetwork = environment.isLive ? .current : .testnet
-        let vault = environment.profile.name ?? "fliq-vault.testnet"
+        let vault = environment.profile.name ?? NearNetwork.current.vault
         let testWallet = environment.pajTestRecipient
         bankDeposit = BankDepositFlow(paj: environment.paj, signIn: environment.pajSignIn, deposits: deposits) {
             if network.receivesFromOtherChains {
