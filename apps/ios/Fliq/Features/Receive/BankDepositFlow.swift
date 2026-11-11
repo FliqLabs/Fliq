@@ -54,6 +54,7 @@ final class BankDepositFlow {
         self.deposits = deposits
         destinationFor = destination
         session = sessions?.load()
+        contact = sessions?.lastContact() ?? ""
     }
 
     var naira: Int { Int(nairaText) ?? 0 }
@@ -125,6 +126,12 @@ final class BankDepositFlow {
             session = fresh
         }
         if let session { await createOrder(session) }
+    }
+
+    func changeContact() {
+        codeSent = false
+        code = ""
+        errorMessage = nil
     }
 
     /// Paj has no cancel call: the account simply goes unused, so the screen tells the user not to pay into it.
