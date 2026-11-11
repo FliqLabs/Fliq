@@ -59,9 +59,26 @@ final class ActivityStore {
         entries.first { $0.id == id }
     }
 
+    /// Bank and mobile money names and logos by code, so a row can say "Access Bank" and show its logo.
+    private(set) var institutions: [String: Institution] = [:]
+
     func load(from api: any FliqAPI) async {
+        await loadInstitutions(from: api)
         guard let list = try? await api.activity() else { return }
         history = list.items
+    }
+
+    private func loadInstitutions(from api: any FliqAPI) async {
+        guard institutions.isEmpty else { return }
+        for country in Country.allCases {
+            for institution in (try? await api.institutions(in: country)) ?? [] {
+                institutions[institution.code] = institution
+            }
+        }
+    }
+
+    var lines: [ActivityLine] {
+        rows.map { ActivityLine($0, institutions: institutions) }
     }
 
     /// A payout started here stays as its live local row until the server lists it.
