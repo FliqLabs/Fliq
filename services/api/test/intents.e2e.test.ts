@@ -42,7 +42,7 @@ describe.skipIf(!enabled)("paying a bank account from the vault through NEAR Int
 
   let server: Server;
   let rawClient: OneClickClient;
-  const trouble = { spike: false, failQuote: false, failRegister: false };
+  const trouble = { spike: false, failQuote: false, failRegister: false, providerFee: 0n };
   // The real client, with switches to make the swap quote worse or fail after the provider order exists.
   const client: OneClickClient = {
     tokens: (options) => rawClient.tokens(options),
@@ -73,7 +73,7 @@ describe.skipIf(!enabled)("paying a bank account from the vault through NEAR Int
       const created = await base.createOrder(request);
       return {
         ...created,
-        funding: { kind: "deposit_address", chain: "base", asset: "USDC", address: PAYCREST_ADDRESS, units: request.quote.sendUnits, validUntil: new Date(Date.now() + 15 * 60_000) },
+        funding: { kind: "deposit_address", chain: "base", asset: "USDC", address: PAYCREST_ADDRESS, units: request.quote.sendUnits + trouble.providerFee, validUntil: new Date(Date.now() + 15 * 60_000) },
       };
     },
   };
@@ -169,7 +169,7 @@ describe.skipIf(!enabled)("paying a bank account from the vault through NEAR Int
   };
   const pay = (headers: Record<string, string>, key: string, quoteId: string) =>
     app.inject({ method: "POST", url: "/v1/payouts", payload: { quote_id: quoteId, account: ACCOUNT }, headers: { ...headers, "idempotency-key": key } });
-  const reset = () => Object.assign(trouble, { spike: false, failQuote: false, failRegister: false });
+  const reset = () => Object.assign(trouble, { spike: false, failQuote: false, failRegister: false, providerFee: 0n });
 
   it("quotes a NEAR to bank route as an Intents route that costs the hop and takes longer", async () => {
     const user = await holder("quote", 0n);
@@ -206,6 +206,26 @@ describe.skipIf(!enabled)("paying a bank account from the vault through NEAR Int
     const stored = await database.payout.findUniqueOrThrow({ where: { id: payout.payout_id } });
     expect(stored.routeKind).toBe("intents");
     expect((await pay(user.headers, `k-${suffix}-ok`, quoted.quote_id)).json()).toEqual(payout);
+  }, 120_000);
+
+  it("pays a small payout when the provider's order adds its network fee", async () => {
+    reset();
+    trouble.providerFee = 50_000n;
+    const user = await holder("fee", 100_000_000n);
+    const quoted = await quote(user.headers, "3");
+    const reply = await pay(user.headers, `k-${suffix}-fee`, quoted.quote_id);
+    expect(reply.statusCode, reply.body).toBe(201);
+    expect(Number(reply.json().deposit.amount)).toBeGreaterThan(3.05);
+  }, 120_000);
+
+  it("stops when the provider's order adds more than the fee cap", async () => {
+    reset();
+    trouble.providerFee = 1_000_000n;
+    const user = await holder("bigfee", 100_000_000n);
+    const quoted = await quote(user.headers, "3");
+    const reply = await pay(user.headers, `k-${suffix}-bigfee`, quoted.quote_id);
+    expect(reply.statusCode).toBe(409);
+    expect(reply.json().error.code).toBe("quote_changed");
   }, 120_000);
 
   it("stops and returns a fresh quote when the hop costs more than 30 bps over what was quoted", async () => {
