@@ -4,5 +4,9 @@ FLIQ_API_BASE_URL = https:/$()/api-production-54e10.up.railway.app/v1
 FLIQ_API_KEY =
 FLIQ_NEAR_RPC_URL = https:/$()/rpc.testnet.near.org
 FLIQ_NEAR_NETWORK = testnet
+// Profile photos go to Cloudinary through an unsigned upload preset. Both values are public by design; the
+// preset, set up in the Cloudinary dashboard, limits the folder, size and formats. Empty turns photo upload off.
+FLIQ_CLOUDINARY_CLOUD =
+FLIQ_CLOUDINARY_PRESET =
 FLIQ_NAME_SUFFIX = .fliqaccount.testnet
 FLIQ_ASSOCIATED_DOMAIN_MODE =

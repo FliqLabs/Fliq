@@ -89,6 +89,11 @@ struct FixtureClient: FliqAPI {
         try load("user.new")
     }
 
+    func updateProfilePhoto(_ url: URL) async throws -> User {
+        let user: User = try load("user.new")
+        return user.photographed(url)
+    }
+
     func institutions(in country: Country) async throws -> [Institution] {
         let list: InstitutionList = try load("institutions.ng")
         return country == .ng ? list.items : []
@@ -177,6 +182,10 @@ private actor FixtureLedger {
 private extension User {
     func named(_ account: String) -> User {
         User(userId: userId, nearAccount: account, displayName: displayName, occupation: occupation, vault: vault, photoUrl: photoUrl)
+    }
+
+    func photographed(_ url: URL) -> User {
+        User(userId: userId, nearAccount: nearAccount, displayName: displayName, occupation: occupation, vault: vault, photoUrl: url.absoluteString)
     }
 }
 
