@@ -12,7 +12,7 @@ struct RoutesSheet: View {
                 Spacer()
                 Text("Routes for $\(quote.amount.decimalString)").font(.system(size: 17, weight: .semibold))
                 Spacer()
-                Button { dismiss() } label: { Image(systemName: "xmark") }
+                Button { dismiss() } label: { Icon("xmark") }
                     .frame(width: 32, height: 32)
                     .accessibilityLabel("Close")
             }

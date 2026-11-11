@@ -13,7 +13,7 @@ struct AgentLogo: View {
                     .scaledToFit()
                     .padding(size * (app == .claude ? 0.2 : 0.24))
             } else {
-                Image(systemName: "sparkles")
+                Icon("sparkles")
                     .font(.system(size: size * 0.4, weight: .semibold))
                     .foregroundStyle(Theme.textPrimary)
             }
@@ -42,7 +42,7 @@ struct AgentAvatar: View {
             .saturation(revoked ? 0 : 1)
             .overlay(alignment: .bottomTrailing) {
                 if revoked {
-                    Image(systemName: "xmark")
+                    Icon("xmark")
                         .font(.system(size: size * 0.16, weight: .heavy))
                         .foregroundStyle(.black)
                         .frame(width: size / 3, height: size / 3)
@@ -112,8 +112,7 @@ struct LimitStepper: View {
 
     private func round(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
         Button(action: { withAnimation(.snappy) { action() } }) {
-            Image(systemName: symbol)
-                .font(.system(size: 13, weight: .bold))
+            Icon(symbol, size: 16)
                 .frame(width: 32, height: 32)
                 .background(Color(hex: 0x262626), in: Circle())
         }
@@ -158,7 +157,7 @@ struct SheetHeader: View {
             Spacer()
             Text(title).font(.system(size: 17, weight: .semibold))
             Spacer()
-            Button(action: onClose) { Image(systemName: "xmark") }
+            Button(action: onClose) { Icon("xmark") }
                 .frame(width: 32, height: 32)
                 .accessibilityLabel("Close")
         }

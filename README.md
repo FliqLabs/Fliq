@@ -73,6 +73,7 @@ Architecture diagrams: [docs/architecture.md](docs/architecture.md).
 | lenis | apps/web | Run the landing hero's scroll handoff as one eased, reversible scroll that native scrolling cannot interrupt |
 | yaml | services/api | Read spec/openapi.yaml at startup to register routes |
 | prettier | root | Formatting |
+| Hugeicons free icons (SVG files, MIT) | apps/ios | The app's icon set, bundled as template vectors; notice in apps/ios/THIRD_PARTY_NOTICES.md |
 
 ## Contributing
 

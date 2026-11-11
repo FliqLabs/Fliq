@@ -5,7 +5,7 @@ struct RequestView: View {
     @Bindable var flow: RequestFlow
     let onDone: () -> Void
     @State private var copied = false
-    @FocusState private var amountFocused: Bool
+    @FocusState private var noteFocused: Bool
 
     var body: some View {
         Group {
@@ -25,9 +25,9 @@ struct RequestView: View {
             Spacer()
             VStack(spacing: 12) {
                 Text("You ask for").font(.system(size: 15)).foregroundStyle(Theme.textSecondary)
-                AmountInput(text: flow.amountText, onType: flow.enterAmount, isFocused: $amountFocused) {
-                    HeroAmount(symbol: "$", value: flow.amountText.isEmpty ? "0" : flow.amountText)
-                }
+                HeroAmount(symbol: "$", value: flow.amountText.isEmpty ? "0" : flow.amountText)
+                    .contentShape(Rectangle())
+                    .onTapGesture { noteFocused = false }
                 TextField("", text: $flow.note, prompt: Text("What's it for?").foregroundStyle(Theme.textTertiary))
                     .multilineTextAlignment(.center)
                     .font(.system(size: 16))
@@ -36,9 +36,14 @@ struct RequestView: View {
                     .fliqGlass(Capsule())
                     .frame(maxWidth: 280)
                     .onChange(of: flow.note) { if flow.note.count > 120 { flow.note = String(flow.note.prefix(120)) } }
+                    .focused($noteFocused)
                     .submitLabel(.done)
             }
             Spacer()
+            if !noteFocused {
+                AmountKeypad(text: flow.amountText, onType: flow.enterAmount)
+                    .padding(.bottom, 8)
+            }
             Toggle("Cash out to my bank when it lands", isOn: $flow.cashOutOnArrival)
                 .tint(Theme.confirmed)
                 .font(.system(size: 15))
@@ -56,7 +61,6 @@ struct RequestView: View {
             .disabled(!flow.canCreate)
             .padding(.bottom, 12)
         }
-        .onAppear { if flow.amountText.isEmpty { amountFocused = true } }
     }
 
     private func link(_ request: PaymentRequest) -> some View {
@@ -74,8 +78,7 @@ struct RequestView: View {
 
             VStack(spacing: 16) {
                 if let paid = request.paid {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 34, weight: .semibold))
+                    Icon("checkmark", size: 41)
                         .foregroundStyle(.black)
                         .frame(width: 96, height: 96)
                         .background(Theme.confirmed, in: Circle())
@@ -86,8 +89,7 @@ struct RequestView: View {
                         .foregroundStyle(Theme.textSecondary)
                 } else {
                     QRCode(text: request.link, color: .white) {
-                        Image(systemName: "link")
-                            .font(.system(size: 18, weight: .semibold))
+                        Icon("link", size: 22)
                             .foregroundStyle(.white)
                             .frame(width: 44, height: 44)
                             .background(Color(hex: 0x1C1C1C), in: Circle())
@@ -119,12 +121,11 @@ struct RequestView: View {
                         UIPasteboard.general.string = request.link
                         copied = true
                     } label: {
-                        Label(copied ? "Copied" : "Copy link", systemImage: copied ? "checkmark" : "doc.on.doc")
+                        IconLabel(copied ? "Copied" : "Copy link", icon: copied ? "checkmark" : "doc.on.doc")
                     }
                     .buttonStyle(PrimaryButtonStyle(filled: true))
                     ShareLink(item: URL(string: request.link) ?? URL(string: "https://fliq.cash")!, message: Text(request.note.isEmpty ? "Pay me on fliq" : request.note)) {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.system(size: 18, weight: .semibold))
+                        Icon("square.and.arrow.up", size: 22)
                             .frame(width: 56, height: 56)
                             .fliqGlass(Circle(), interactive: true)
                     }

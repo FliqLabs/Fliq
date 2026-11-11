@@ -136,7 +136,7 @@ struct RecipientCurrencyView: View {
             .opacity(currency.isLive ? 1 : 0.55)
             Spacer()
             if currency.isLive {
-                Image(systemName: "chevron.right").font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.textTertiary)
+                Icon("chevron.right", size: 17).foregroundStyle(Theme.textTertiary)
             } else {
                 Text("Soon")
                     .font(.system(size: 12, weight: .semibold))
@@ -186,8 +186,7 @@ struct SendMethodView: View {
     private func option(_ method: SendMethod, symbol: String, title: String, detail: String) -> some View {
         Button { onPick(method) } label: {
             HStack(alignment: .top, spacing: 16) {
-                Image(systemName: symbol)
-                    .font(.system(size: 19, weight: .semibold))
+                Icon(symbol, size: 23)
                     .foregroundStyle(Color(hex: 0x8FB4FF))
                     .frame(width: 48, height: 48)
                     .background(Color(hex: 0x8FB4FF).opacity(0.14), in: Circle())
@@ -197,7 +196,7 @@ struct SendMethodView: View {
                 }
                 .padding(.top, 3)
                 Spacer(minLength: 0)
-                Image(systemName: "chevron.right").font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.textTertiary).padding(.top, 16)
+                Icon("chevron.right", size: 17).foregroundStyle(Theme.textTertiary).padding(.top, 16)
             }
             .foregroundStyle(Theme.textPrimary)
             .padding(.vertical, 14)
@@ -286,7 +285,7 @@ struct RecipientFormView: View {
                 Text(providers(entry).contains(entry.institution) ? entry.institution.name : "Choose")
                     .font(.system(size: 17))
                 Spacer()
-                Image(systemName: "chevron.down").font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.textTertiary)
+                Icon("chevron.down", size: 17).foregroundStyle(Theme.textTertiary)
             }
             .foregroundStyle(Theme.textPrimary)
             .padding(.horizontal, 16)
@@ -321,7 +320,7 @@ struct RecipientFormView: View {
         Group {
             if let verified = entry.verified {
                 Label { Text(verified.accountName).fontWeight(.semibold) + Text("  ·  confirmed by \(verified.institution)").foregroundStyle(Theme.textTertiary) } icon: {
-                    Image(systemName: "checkmark.circle.fill")
+                    Icon("checkmark.circle.fill", size: 18)
                 }
                 .foregroundStyle(Theme.confirmed)
             } else if entry.isVerifying {
@@ -334,7 +333,7 @@ struct RecipientFormView: View {
         .font(.system(size: 14))
         .padding(.top, 10)
 
-        Label("Check the details. A payout to the wrong account can't be pulled back.", systemImage: "exclamationmark.shield.fill")
+        IconLabel("Check the details. A payout to the wrong account can't be pulled back.", icon: "exclamationmark.shield.fill")
             .font(.system(size: 14))
             .foregroundStyle(Theme.warning)
             .padding(14)
@@ -380,7 +379,7 @@ private struct ProviderPicker: View {
                             Text(institution.name).font(.system(size: 16))
                             Spacer()
                             if institution == entry.institution {
-                                Image(systemName: "checkmark").font(.system(size: 14, weight: .bold)).foregroundStyle(Theme.confirmed)
+                                Icon("checkmark", size: 17).foregroundStyle(Theme.confirmed)
                             }
                         }
                         .foregroundStyle(Theme.textPrimary)
@@ -410,13 +409,13 @@ struct SearchField: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: "magnifyingglass").foregroundStyle(Theme.textTertiary)
+            Icon("magnifyingglass", size: 18).foregroundStyle(Theme.textTertiary)
             TextField("", text: $text, prompt: Text(prompt).foregroundStyle(Theme.textTertiary))
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .accessibilityLabel("Search")
             if !text.isEmpty {
-                Button { text = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(Theme.textTertiary) }
+                Button { text = "" } label: { Icon("xmark.circle.fill", size: 18).foregroundStyle(Theme.textTertiary) }
                     .accessibilityLabel("Clear search")
             }
         }
