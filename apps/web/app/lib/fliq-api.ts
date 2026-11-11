@@ -27,6 +27,9 @@ export type User = {
   photo_url: string | null;
   occupation: string | null;
   vault: string | null;
+  home_currency?: "NGN" | "KES";
+  daily_limit?: Money;
+  verified?: boolean;
 };
 
 export type Workspace = {

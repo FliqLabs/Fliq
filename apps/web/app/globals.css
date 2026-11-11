@@ -1,6 +1,28 @@
 @import "tailwindcss";
 
 @theme inline {
+  --color-app-bg: var(--bg);
+  --color-app-panel: var(--panel);
+  --color-app-panel2: var(--panel2);
+  --color-app-hover: var(--hover);
+  --color-app-line: var(--line);
+  --color-app-line2: var(--line2);
+  --color-app-fg: var(--fg);
+  --color-app-fg2: var(--fg2);
+  --color-app-muted: var(--muted);
+  --color-app-dim: var(--dim);
+  --color-app-accent: var(--accent);
+  --color-app-accent-soft: var(--accent-soft);
+  --color-app-ink: var(--ink);
+  --color-app-ink-fg: var(--ink-fg);
+  --color-app-good: var(--good);
+  --color-app-good-soft: var(--good-soft);
+  --color-app-warn: var(--warn);
+  --color-app-warn-soft: var(--warn-soft);
+  --color-app-bad: var(--bad);
+  --color-app-bad-soft: var(--bad-soft);
+  --color-app-code: var(--code-bg);
+  --color-app-code-fg: var(--code-fg);
   --color-canvas: #0b0b0b;
   --color-surface: #151515;
   --color-brand: #a594ff;

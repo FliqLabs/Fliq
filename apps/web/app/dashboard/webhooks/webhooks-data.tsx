@@ -46,7 +46,7 @@ export function WebhooksData() {
   });
 
   if (endpoints.isPending || deliveries.isPending) {
-    return <main className="py-16 text-center text-sm text-zinc-500">Loading webhooks…</main>;
+    return <main className="py-16 text-center text-sm text-app-muted">Loading webhooks…</main>;
   }
   const error = endpoints.error ?? deliveries.error;
   if (error instanceof ApiError && error.status === 401) {
@@ -69,13 +69,13 @@ export function WebhooksData() {
   }
   if (error)
     return (
-      <main role="alert" className="py-16 text-center text-sm text-red-600">
+      <main role="alert" className="py-16 text-center text-sm text-app-bad">
         {error.message}
       </main>
     );
   if (!endpoints.data || !deliveries.data) {
     return (
-      <main role="alert" className="py-16 text-center text-sm text-red-600">
+      <main role="alert" className="py-16 text-center text-sm text-app-bad">
         Unexpected webhook response.
       </main>
     );

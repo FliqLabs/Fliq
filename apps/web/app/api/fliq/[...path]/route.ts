@@ -40,7 +40,38 @@ const protectedRoutes = new Set([
   "POST accounts/verify",
   "POST payouts",
   "POST auth/logout",
+  "GET vault",
+  "GET activity",
+  "GET recipients",
+  "POST recipients",
+  "GET people/recent",
+  "POST relays",
+  "GET deposits/sources",
+  "GET deposits/estimate",
+  "POST deposits",
+  "GET requests",
+  "POST requests",
+  "GET passkeys",
+  "GET sessions",
+  "POST agents",
+  "GET me/notification-settings",
+  "PUT me/notification-settings",
 ]);
+
+const protectedPatterns: [string, RegExp][] = [
+  ["GET", /^payouts\/[^/]+$/],
+  ["GET", /^webhook-deliveries\/[^/]+$/],
+  ["POST", /^webhook-deliveries\/[^/]+\/replay$/],
+  ["GET", /^names\/[a-z0-9-]+$/],
+  ["GET", /^people\/[a-z0-9._-]+$/],
+  ["GET", /^relays\/[A-Za-z0-9_-]+$/],
+  ["GET", /^deposits\/[A-Za-z0-9_-]+$/],
+  ["DELETE", /^recipients\/[A-Za-z0-9_-]+$/],
+  ["PATCH", /^agents\/[A-Za-z0-9._-]+$/],
+  ["DELETE", /^agents\/[A-Za-z0-9._-]+$/],
+  ["DELETE", /^requests\/[A-Za-z0-9_-]+$/],
+  ["DELETE", /^sessions\/[A-Za-z0-9_-]+$/],
+];
 
 // Payment request links are opened by people with no fliq account, so these need no session.
 const publicPatterns: [string, RegExp][] = [
@@ -62,10 +93,7 @@ function isAllowed(method: string, path: string) {
   return (
     isPublic(method, path) ||
     protectedRoutes.has(route) ||
-    (method === "GET" && /^payouts\/[^/]+$/.test(path)) ||
-    (method === "GET" && /^webhook-deliveries\/[^/]+$/.test(path)) ||
-    (method === "POST" && /^webhook-deliveries\/[^/]+\/replay$/.test(path)) ||
-    (method === "GET" && /^names\/[a-z0-9-]+$/.test(path))
+    protectedPatterns.some(([allowed, pattern]) => allowed === method && pattern.test(path))
   );
 }
 
@@ -110,7 +138,7 @@ async function upstream(
       headers: {
         ...(body ? { "Content-Type": "application/json" } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(method === "POST" && ["me/name", "workspaces", "payouts"].includes(path)
+        ...(method === "POST" && ["me/name", "workspaces", "payouts", "requests", "deposits"].includes(path)
           ? { "Idempotency-Key": idempotencyKey ?? crypto.randomUUID() }
           : {}),
       },
@@ -184,7 +212,8 @@ async function handle(request: NextRequest, context: RouteContext) {
 
   if (result.status === 204) {
     const response = new NextResponse(null, { status: 204, headers: NO_STORE });
-    clearSession(response);
+    if (path === "auth/logout") clearSession(response);
+    else if (session) saveSession(response, request, session);
     return response;
   }
 
@@ -226,5 +255,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
 }
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
+  return handle(request, context);
+}
+
+export async function PUT(request: NextRequest, context: RouteContext) {
+  return handle(request, context);
+}
+
+export async function DELETE(request: NextRequest, context: RouteContext) {
   return handle(request, context);
 }
