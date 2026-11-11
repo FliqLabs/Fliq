@@ -80,8 +80,8 @@ struct OnboardingView: View {
         path.append(.claimName)
     }
 
-    /// Signs in with a passkey this iPhone already holds; creates an account only when there is none, or when the
-    /// chosen passkey belongs to no account on this server (a testnet passkey in the mainnet app, for example).
+    /// Signs in with a passkey this iPhone already holds and creates an account only when there is none. A passkey this
+    /// server does not know (a testnet one in the mainnet app) gets a message and a Create a new account button.
     private func continueWithPasskey() {
         guard !passkeyWorking else { return }
         passkeyWorking = true
