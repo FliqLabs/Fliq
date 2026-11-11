@@ -1,21 +1,39 @@
 "use client";
 
-export function ReceiptActions({ payoutId }: { payoutId: string }) {
+import type { Payout } from "../../payout-model";
+import { useState } from "react";
+
+export function ReceiptActions({ payout }: { payout: Payout }) {
+  const [copied, setCopied] = useState<string | null>(null);
+
+  async function copy(label: string, value: string) {
+    await navigator.clipboard.writeText(value);
+    setCopied(label);
+    window.setTimeout(() => setCopied(null), 1600);
+  }
+
   return (
-    <div className="mt-6 flex flex-wrap gap-2 border-t border-app-line pt-6 print:hidden">
+    <div className="flex flex-wrap gap-2 print:hidden">
       <button
         type="button"
-        onClick={() => window.print()}
-        className="rounded-lg bg-app-ink px-4 py-2.5 text-xs font-semibold text-app-ink-fg"
+        onClick={() => copy("link", window.location.href)}
+        className="rounded-lg border border-app-line px-4 py-2.5 text-xs font-semibold hover:bg-app-hover"
       >
-        Print receipt
+        {copied === "link" ? "Link copied" : "Copy link"}
       </button>
       <button
         type="button"
-        onClick={() => navigator.clipboard.writeText(payoutId)}
-        className="rounded-lg border border-app-line px-4 py-2.5 text-xs font-semibold"
+        onClick={() => copy("json", JSON.stringify(payout, null, 2))}
+        className="rounded-lg border border-app-line px-4 py-2.5 text-xs font-semibold hover:bg-app-hover"
       >
-        Copy payout ID
+        {copied === "json" ? "JSON copied" : "Raw JSON"}
+      </button>
+      <button
+        type="button"
+        onClick={() => window.print()}
+        className="rounded-lg border border-app-line px-4 py-2.5 text-xs font-semibold hover:bg-app-hover"
+      >
+        Print receipt
       </button>
     </div>
   );
