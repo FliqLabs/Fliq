@@ -177,9 +177,10 @@ final class AppEnvironment {
         vault.sync(balance)
     }
 
-    /// Loads the account's history. Fixture builds keep Activity to what this device did, as the UI tests expect.
+    /// Loads the account's history. Fixture builds keep Activity to what this device did, as the UI tests expect,
+    /// unless `--sample-activity` asks for the fixture history.
     func refreshActivity() async {
-        guard isLive else { return }
+        guard isLive || ProcessInfo.processInfo.arguments.contains("--sample-activity") else { return }
         await activity.load(from: api)
     }
 
@@ -226,14 +227,10 @@ final class AppEnvironment {
         if arguments.contains("--onboarded") { profile.completeOnboarding(name: nil, displayName: nil) }
         let accounts = AccountBook(keychain: nil)
         if arguments.contains("--sample-recipients") { seedRecipients(accounts) }
-        let environment = AppEnvironment(
+        return AppEnvironment(
             api: FixtureClient(bundle: bundle), profile: profile, accounts: accounts,
             preferences: Preferences(defaults: defaults), biometrics: AlwaysApprove(), lock: uiTestingLock(arguments, defaults: defaults)
         )
-        if arguments.contains("--sample-activity") {
-            Task { await environment.activity.load(from: FixtureClient(bundle: bundle)) }
-        }
-        return environment
     }
 
     /// The lock stays out of UI tests unless `--lock-setup` asks for the Secure fliq screen
