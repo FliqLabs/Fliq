@@ -239,7 +239,7 @@ actor FixturePaj: PajAPI, PajSignIn {
 
     func order(_ id: String, session: Paj.Session) async throws -> Paj.Order {
         polls += 1
-        return Self.demoOrder(naira: 5000, status: polls < 2 ? .paid : .completed)
+        return Self.demoOrder(naira: 5000, status: polls < 2 ? .initiated : polls < 3 ? .paid : .completed)
     }
 
     private static func demoOrder(naira: Int, status: Paj.Order.Status) -> Paj.Order {

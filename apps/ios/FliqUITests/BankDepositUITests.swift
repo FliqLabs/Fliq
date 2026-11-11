@@ -20,12 +20,12 @@ final class BankDepositUITests: XCTestCase {
         XCTAssertTrue(bank.waitForExistence(timeout: 3))
         bank.tap()
 
-        XCTAssertTrue(app.staticTexts["Add money"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "lands in your vault")).firstMatch.waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Amount in naira"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "in your vault")).firstMatch.waitForExistence(timeout: 3))
         snap("d1-amount")
-        app.buttons["Continue"].tap()
+        app.buttons["Get bank details"].tap()
 
-        if app.staticTexts["One quick check"].waitForExistence(timeout: 3) {
+        if app.staticTexts["Confirm it's you"].waitForExistence(timeout: 3) {
             let contact = app.textFields.firstMatch
             contact.tap()
             contact.typeText("gift@entrypointlabs.xyz")
@@ -36,17 +36,18 @@ final class BankDepositUITests: XCTestCase {
             code.tap()
             code.typeText("2350")
             snap("d3-code")
-            app.buttons["Confirm"].tap()
+            app.buttons["Confirm and get bank details"].tap()
         }
 
         XCTAssertTrue(app.staticTexts["Transfer exactly"].waitForExistence(timeout: 5))
         snap("d4-pay")
-        app.buttons["I've sent ₦5,000"].tap()
+        app.buttons["I've sent the money"].tap()
 
-        XCTAssertTrue(app.staticTexts["On its way"].waitForExistence(timeout: 3))
-        snap("d5-tracking")
+        XCTAssertTrue(app.staticTexts["Checking with the bank"].waitForExistence(timeout: 3))
+        snap("d5-checking")
+        if app.staticTexts["Transfer received"].waitForExistence(timeout: 8) { snap("d5b-received") }
 
-        XCTAssertTrue(app.buttons["Done"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.buttons["Done"].waitForExistence(timeout: 25))
         XCTAssertTrue(app.staticTexts["You paid"].waitForExistence(timeout: 3))
         Thread.sleep(forTimeInterval: 1)
         snap("d6-done")
