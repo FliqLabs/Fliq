@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 
 struct SettingsView: View {
@@ -6,6 +7,9 @@ struct SettingsView: View {
     @State private var showingCustody = false
     @State private var confirmingSignOut = false
     @State private var user: User?
+    @State private var photoPick: PhotosPickerItem?
+    @State private var isSavingPhoto = false
+    @State private var photoFailed = false
     @State private var passkeys: [Passkey] = []
     @State private var devices: [DeviceSession] = []
 
@@ -96,18 +100,54 @@ struct SettingsView: View {
         await agents
     }
 
+    /// Shrinks the picked photo, puts it on Cloudinary, then records the URL with `PATCH /me`.
+    private func savePhoto(_ item: PhotosPickerItem) async {
+        defer { photoPick = nil }
+        guard let photos = environment.photos else { return }
+        isSavingPhoto = true
+        photoFailed = false
+        defer { isSavingPhoto = false }
+        guard
+            let raw = try? await item.loadTransferable(type: Data.self),
+            let jpeg = ProfilePhoto.prepare(raw),
+            let url = try? await photos.upload(jpeg),
+            let updated = try? await environment.api.updateProfilePhoto(url)
+        else {
+            photoFailed = true
+            return
+        }
+        user = updated
+    }
+
     private var profileCard: some View {
         HStack(spacing: 16) {
-            PersonAvatar(name: profile.displayName ?? profile.name ?? "f", photoURL: user?.photoUrl.flatMap(URL.init(string:)), size: 64)
-                .overlay(alignment: .bottomTrailing) {
-                    Icon("camera", size: 12)
-                        .foregroundStyle(.black)
-                        .frame(width: 22, height: 22)
-                        .background(.white, in: Circle())
-                        .overlay(Circle().strokeBorder(Theme.surface, lineWidth: 2))
-                }
+            PhotosPicker(selection: $photoPick, matching: .images) {
+                PersonAvatar(name: profile.displayName ?? profile.name ?? "f", photoURL: user?.photoUrl.flatMap(URL.init(string:)), size: 64)
+                    .overlay {
+                        if isSavingPhoto {
+                            Circle().fill(.black.opacity(0.5))
+                            ProgressView().tint(.white)
+                        }
+                    }
+                    .overlay(alignment: .bottomTrailing) {
+                        Icon("camera", size: 12)
+                            .foregroundStyle(.black)
+                            .frame(width: 22, height: 22)
+                            .background(.white, in: Circle())
+                            .overlay(Circle().strokeBorder(Theme.surface, lineWidth: 2))
+                    }
+            }
+            .disabled(environment.photos == nil || isSavingPhoto)
+            .accessibilityLabel("Change profile photo")
+            .onChange(of: photoPick) { _, item in
+                guard let item else { return }
+                Task { await savePhoto(item) }
+            }
             VStack(alignment: .leading, spacing: 4) {
                 Text(user?.displayName ?? profile.displayName ?? "Your profile").font(.system(size: 19, weight: .semibold))
+                if photoFailed {
+                    Text("Photo didn't save. Try again.").font(.system(size: 13)).foregroundStyle(Theme.warning)
+                }
                 Text((user?.nearAccount ?? profile.name).map(FliqName.display) ?? "No fliq name yet")
                     .font(.system(size: 13, design: .monospaced))
                     .foregroundStyle(Theme.textSecondary)

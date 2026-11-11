@@ -63,6 +63,7 @@ struct RootView: View {
             guard router.path.isEmpty else { return }
             await environment.refreshVault()
             await environment.inbox.load()
+            await home?.loadProfile()
         }
     }
 

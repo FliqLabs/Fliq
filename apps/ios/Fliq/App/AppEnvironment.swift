@@ -19,6 +19,8 @@ final class AppEnvironment {
     let accounts: AccountBook
     let transfers: any VaultTransfers
     let withdrawals: any Withdrawals
+    /// Nil when no Cloudinary preset is configured: the photo then stays on this iPhone.
+    let photos: (any PhotoUploads)?
     let inbox: WalletInbox
     let preferences: Preferences
     let biometrics: any Biometrics
@@ -37,6 +39,7 @@ final class AppEnvironment {
         accounts: AccountBook = AccountBook(),
         transfers: any VaultTransfers = FixtureVaultTransfers(),
         withdrawals: any Withdrawals = FixtureWithdrawals(),
+        photos: (any PhotoUploads)? = FixturePhotoUploads(),
         walletTopUp: any WalletTopUp = FixtureWalletTopUp(),
         preferences: Preferences = Preferences(),
         biometrics: any Biometrics = DeviceBiometrics(),
@@ -53,6 +56,7 @@ final class AppEnvironment {
         self.accounts = accounts
         self.transfers = transfers
         self.withdrawals = withdrawals
+        self.photos = photos
         inbox = WalletInbox(topUp: walletTopUp)
         self.preferences = preferences
         agents = AgentStore(api: agentAPI, vault: { profile.name ?? "fliq-vault.testnet" })
@@ -97,7 +101,7 @@ final class AppEnvironment {
         )
         let environment = AppEnvironment(
             api: api, isLive: true, profile: profile, deposits: HTTPDepositAPI(client: api), agentAPI: agents,
-            transfers: transfers, withdrawals: withdrawals, walletTopUp: walletTopUp
+            transfers: transfers, withdrawals: withdrawals, photos: cloudinary(info: info), walletTopUp: walletTopUp
         )
         Task {
             await api.sessions.whenEnded {
@@ -113,6 +117,14 @@ final class AppEnvironment {
         biometrics: AlwaysApprove(),
         lock: .off()
     )
+
+    private static func cloudinary(info: [String: Any]) -> CloudinaryUploads? {
+        guard
+            let cloud = info["FliqCloudinaryCloud"] as? String, !cloud.isEmpty,
+            let preset = info["FliqCloudinaryPreset"] as? String, !preset.isEmpty
+        else { return nil }
+        return CloudinaryUploads(cloud: cloud, preset: preset)
+    }
 
     private static func liveAPI(info: [String: Any]) -> HTTPClient? {
         guard

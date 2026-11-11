@@ -8,6 +8,10 @@ FLIQ_API_KEY =
 FLIQ_NEAR_RPC_URL = https:/$()/rpc.testnet.near.org
 // testnet or mainnet. Receiving from other chains needs NEAR Intents, which only runs on mainnet.
 FLIQ_NEAR_NETWORK = testnet
+// Profile photos go to Cloudinary through an unsigned upload preset. Both values are public by design; the
+// preset, set up in the Cloudinary dashboard, limits the folder, size and formats. Empty turns photo upload off.
+FLIQ_CLOUDINARY_CLOUD = dz9nzikbp
+FLIQ_CLOUDINARY_PRESET = fliq_avatars
 
 // Names are sub-accounts of the API's NEAR_ROOT_ACCOUNT. The fixtures use fliq.near.
 FLIQ_NAME_SUFFIX_api = .fliqaccount.testnet

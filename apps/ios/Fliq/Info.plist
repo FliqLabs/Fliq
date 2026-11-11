@@ -35,6 +35,10 @@
 	<string>$(FLIQ_API_BASE_URL)</string>
 	<key>FliqAPIKey</key>
 	<string>$(FLIQ_API_KEY)</string>
+	<key>FliqCloudinaryCloud</key>
+	<string>$(FLIQ_CLOUDINARY_CLOUD)</string>
+	<key>FliqCloudinaryPreset</key>
+	<string>$(FLIQ_CLOUDINARY_PRESET)</string>
 	<key>FliqDataSource</key>
 	<string>$(FLIQ_DATA_SOURCE)</string>
 	<key>FliqNameSuffix</key>

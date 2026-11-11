@@ -22,10 +22,14 @@ struct HomeView: View {
     private var header: some View {
         HStack {
             Button(action: onMenu) {
-                Circle()
-                    .fill(Theme.surfaceRaised)
-                    .frame(width: 32, height: 32)
-                    .overlay(Icon("person.fill", size: 17).foregroundStyle(Theme.textSecondary))
+                if let photo = model.photoURL {
+                    PersonAvatar(name: model.me?.displayName ?? "f", photoURL: photo, size: 36)
+                } else {
+                    Circle()
+                        .fill(Theme.surfaceRaised)
+                        .frame(width: 36, height: 36)
+                        .overlay(Icon("person.fill", size: 18).foregroundStyle(Theme.textSecondary))
+                }
             }
             .accessibilityLabel("Profile")
             Spacer()
