@@ -177,6 +177,12 @@ final class AppEnvironment {
         vault.sync(balance)
     }
 
+    /// Loads the account's history. Fixture builds keep Activity to what this device did, as the UI tests expect.
+    func refreshActivity() async {
+        guard isLive else { return }
+        await activity.load(from: api)
+    }
+
     /// Deposits land minutes after the person has left the screen they started on, and nothing pushes the news to
     /// the phone, so once a deposit starts the app checks the balance quietly until it rises or the window closes.
     func watchForArrival(every interval: Duration = .seconds(5), for window: Duration = .seconds(900)) {
@@ -193,6 +199,7 @@ final class AppEnvironment {
                 let now = vault.balance.baseUnits
                 if now > floor {
                     announceArrival(TokenAmount(baseUnits: now - floor))
+                    await refreshActivity()
                     return
                 }
                 floor = min(floor, now)

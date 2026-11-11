@@ -2,6 +2,7 @@ import Foundation
 
 protocol FliqAPI: Sendable {
     func health() async throws -> Health
+    func activity() async throws -> ActivityList
     func rate(_ token: Token, _ currency: Currency) async throws -> Rate
     func quote(_ request: QuoteRequest) async throws -> Quote
     func verify(_ account: Account) async throws -> VerifiedAccount

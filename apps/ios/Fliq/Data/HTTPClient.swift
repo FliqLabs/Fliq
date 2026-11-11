@@ -44,6 +44,10 @@ struct HTTPClient: FliqAPI {
         try await send("GET", "payouts")
     }
 
+    func activity() async throws -> ActivityList {
+        try await send("GET", "activity", query: ["limit": "50"])
+    }
+
     var needsSignIn: Bool {
         get async { await !sessions.isSignedIn }
     }

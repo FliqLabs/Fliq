@@ -43,6 +43,10 @@ struct FixtureClient: FliqAPI {
         return path.with(id: id).upTo(step: min(step, path.history.count - 1))
     }
 
+    func activity() async throws -> ActivityList {
+        try load("activity.list")
+    }
+
     func payouts() async throws -> PayoutList {
         try load("payouts.list")
     }

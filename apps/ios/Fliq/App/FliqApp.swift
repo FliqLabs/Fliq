@@ -36,7 +36,10 @@ struct FliqApp: App {
                 case .background: environment.lock.movedToBackground()
                 case .active:
                     environment.lock.cameToForeground()
-                    Task { await environment.refreshVault() }
+                    Task {
+                        await environment.refreshVault()
+                        await environment.refreshActivity()
+                    }
                 default: break
                 }
             }

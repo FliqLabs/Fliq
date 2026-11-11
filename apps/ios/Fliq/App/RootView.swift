@@ -41,7 +41,7 @@ struct RootView: View {
                 .tag(RootTab.transfer)
 
             NavigationStack(path: $activityPath) {
-                ActivityView(store: environment.activity) { sheet = .receive }
+                ActivityView(store: environment.activity, onReceive: { sheet = .receive }, onRefresh: { await environment.refreshActivity() })
                     .padding(.horizontal, 16)
                     .background(Theme.ground.ignoresSafeArea())
                     .navigationDestination(for: AppRoute.self) { pushed($0) }
@@ -71,6 +71,7 @@ struct RootView: View {
         .task(id: router.path.isEmpty) {
             guard router.path.isEmpty else { return }
             await environment.refreshVault()
+            await environment.refreshActivity()
             await environment.inbox.load()
             await home?.loadProfile()
         }
@@ -189,6 +190,8 @@ struct RootView: View {
         case .receipt(let id):
             if let payout = environment.activity.entry(id: id)?.payout {
                 receipt(for: payout)
+            } else {
+                PayoutLoader(id: id) { receipt(for: $0) }
             }
         case .payNew, .payAmount, .payQuote, .paySending, .payPaid, .payRefunded:
             if let flow { payStep(route, flow) }
@@ -250,6 +253,34 @@ struct RootView: View {
         case .refunded: RefundedView(payout: payout)
         case .settled: PaidView(payout: payout)
         default: SendingReceipt(payout: payout)
+        }
+    }
+}
+
+/// A payout from the account's history, fetched when its row is opened.
+private struct PayoutLoader<Content: View>: View {
+    let id: String
+    @ViewBuilder let content: (Payout) -> Content
+    @Environment(AppEnvironment.self) private var environment
+    @State private var payout: Payout?
+    @State private var failed = false
+
+    var body: some View {
+        Group {
+            if let payout {
+                content(payout)
+            } else if failed {
+                Text("Couldn't load this payout. Pull to refresh Activity and try again.")
+                    .font(.system(size: 15))
+                    .foregroundStyle(Theme.textSecondary)
+                    .padding(.top, 60)
+                    .fliqScreen("Payout")
+            } else {
+                ProgressView().padding(.top, 80).fliqScreen("Payout")
+            }
+        }
+        .task {
+            do { payout = try await environment.api.payout(id: id) } catch { failed = true }
         }
     }
 }
