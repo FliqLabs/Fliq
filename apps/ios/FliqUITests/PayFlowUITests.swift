@@ -10,7 +10,7 @@ final class PayFlowUITests: XCTestCase {
     @MainActor
     func testPayDaraFromHomeToPaid() {
         let app = XCUIApplication()
-        app.launchArguments = ["--ui-testing", "--onboarded"]
+        app.launchArguments = ["--ui-testing", "--onboarded", "--funded"]
         app.launch()
 
         XCTAssertTrue(app.staticTexts["Vault balance"].waitForExistence(timeout: 5))
