@@ -202,6 +202,11 @@ struct PajSessionStore: Sendable {
     func save(_ session: Paj.Session) {
         try? keychain.save(session, for: "session")
     }
+
+    /// The email or phone last confirmed with Paj, kept after the session expires so signing in again is one tap.
+    func lastContact() -> String? {
+        keychain.load(Paj.Session.self, for: "session")?.contact
+    }
 }
 
 enum PajMessage {
