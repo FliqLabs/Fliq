@@ -2,9 +2,9 @@ import SwiftUI
 
 /// App Design v5 Home: the two newest things that moved money, with See all opening Activity.
 struct HomeRecentCard: View {
-    let rows: [ActivityStore.Row]
+    let lines: [ActivityLine]
     let onSeeAll: () -> Void
-    let onOpen: (String) -> Void
+    let onSelect: (ActivityLine) -> Void
 
     var body: some View {
         VStack(spacing: 0) {
@@ -18,130 +18,17 @@ struct HomeRecentCard: View {
                     .font(.system(size: 15))
                     .foregroundStyle(Theme.textSecondary)
             }
-            .padding(.bottom, 6)
-            ForEach(rows) { row in
-                if let id = row.payoutId {
-                    Button { onOpen(id) } label: { RecentRow(row: row) }.buttonStyle(.plain)
-                } else {
-                    RecentRow(row: row)
+            .padding(.horizontal, 20)
+            .padding(.bottom, 2)
+            ForEach(lines) { line in
+                Button { onSelect(line) } label: {
+                    ActivityCell(line: line, boxed: false)
                 }
+                .buttonStyle(.pressable(scale: 0.98))
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 16)
+        .padding(.vertical, 14)
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
-    }
-}
-
-private struct RecentRow: View {
-    let row: ActivityStore.Row
-
-    var body: some View {
-        HStack(spacing: 14) {
-            badge.frame(width: 44, height: 44)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.system(size: 17, weight: .medium)).lineLimit(1)
-                Text(subtitle).font(.system(size: 14)).foregroundStyle(Theme.textSecondary).lineLimit(1)
-            }
-            Spacer(minLength: 8)
-            VStack(alignment: .trailing, spacing: 3) {
-                Text(amount).font(.system(size: 17, weight: .medium)).monospacedDigit()
-                Text(detail).font(.system(size: 14)).foregroundStyle(Theme.textTertiary).monospacedDigit()
-            }
-        }
-        .foregroundStyle(Theme.textPrimary)
-        .padding(.vertical, 10)
-        .contentShape(Rectangle())
-        .accessibilityElement(children: .combine)
-    }
-
-    @ViewBuilder
-    private var badge: some View {
-        switch row {
-        case .local(let entry):
-            BankBadge(name: entry.payout.accountName, bank: entry.payout.account.bank)
-        case .history(let item):
-            switch item.kind {
-            case .deposit:
-                if let source = item.depositSource { SourceBadge(source: source, size: 40, ring: Theme.surface) } else { arrowDown }
-            case .transferIn: arrowDown
-            case .transferOut: PersonAvatar(name: item.party.name, size: 40)
-            default: BankBadge(name: item.party.name, bank: item.party.institution)
-            }
-        }
-    }
-
-    private var arrowDown: some View {
-        Icon("arrow.down", size: 18)
-            .foregroundStyle(Theme.confirmed)
-            .frame(width: 40, height: 40)
-            .background(Theme.surfaceRaised, in: Circle())
-    }
-
-    private var title: String {
-        switch row {
-        case .local(let entry): entry.payout.accountName
-        case .history(let item): item.party.name
-        }
-    }
-
-    private var subtitle: String {
-        var parts = [row.date.formatted(date: .omitted, time: .shortened)]
-        switch row {
-        case .local(let entry):
-            parts.append(entry.payout.provider.displayName)
-            if case .agent(let name) = entry.source { parts.append("by \(name)") }
-        case .history(let item):
-            switch item.kind {
-            case .payout, .refused:
-                if let provider = item.provider { parts.append(ProviderID(rawValue: provider)?.displayName ?? provider.capitalized) }
-                if let agent = item.agent { parts.append("by \(agent.name)") }
-            case .deposit:
-                if let seconds = item.seconds { parts.append("\(seconds)s") }
-            case .transferIn, .transferOut:
-                if let account = item.party.nearAccount { parts.append(account) }
-            case .unknown: break
-            }
-        }
-        return parts.joined(separator: " · ")
-    }
-
-    private var amount: String {
-        switch row {
-        case .local(let entry): Money.local(entry.payout.receive, entry.payout.currency)
-        case .history(let item): item.headline
-        }
-    }
-
-    private var detail: String {
-        switch row {
-        case .local(let entry): "$" + entry.payout.amount.decimalString
-        case .history(let item):
-            switch item.kind {
-            case .deposit: item.token ?? ""
-            case .refused: "Refused"
-            case .payout: item.usd.map { "$" + $0 } ?? ""
-            default: ""
-            }
-        }
-    }
-}
-
-/// The account holder's circle with their bank's logo tucked at the bottom left, as on the v5 Recent card.
-private struct BankBadge: View {
-    let name: String
-    let bank: String?
-
-    var body: some View {
-        Circle()
-            .fill(Color.clear)
-            .frame(width: 40, height: 40)
-            .overlay(alignment: .bottomLeading) {
-                InstitutionLogo(logoKey: Institution.supported.first { $0.code == bank }?.logoKey, name: name, size: 22)
-                    .padding(2)
-                    .background(Theme.surface, in: Circle())
-                    .offset(x: -2, y: 2)
-            }
     }
 }
 
@@ -188,16 +75,6 @@ struct HomeMovingCard: View {
     private func elapsed(at now: Date) -> String {
         let seconds = max(0, Int(now.timeIntervalSince(entry.startedAt)))
         return String(format: "%d:%02d", seconds / 60, seconds % 60)
-    }
-}
-
-extension ActivityStore.Row {
-    /// The payout a row opens, when it is one.
-    var payoutId: String? {
-        switch self {
-        case .local(let entry): entry.id
-        case .history(let item): item.kind == .payout ? item.refId : nil
-        }
     }
 }
 

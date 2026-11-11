@@ -110,6 +110,10 @@ struct HTTPClient: FliqAPI {
         try await send("PATCH", "me", body: ["photo_url": url.absoluteString])
     }
 
+    func removeProfilePhoto() async throws -> User {
+        try await send("PATCH", "me", body: ["photo_url": String?.none])
+    }
+
     func institutions(in country: Country) async throws -> [Institution] {
         let list: InstitutionList = try await send("GET", "institutions", query: ["country": country.rawValue])
         return list.items

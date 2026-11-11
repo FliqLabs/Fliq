@@ -44,7 +44,7 @@ struct RootView: View {
                 .tag(RootTab.transfer)
 
             NavigationStack(path: $activityPath) {
-                ActivityView(store: environment.activity, onReceive: { sheet = .receive }, onRefresh: { await environment.refreshActivity() })
+                ActivityView(store: environment.activity, onReceive: { sheet = .receive }, onRefresh: { await environment.refreshActivity() }, onOpenReceipt: { activityPath.append(.receipt(payoutId: $0)) })
                     .padding(.horizontal, 16)
                     .background(Theme.ground.ignoresSafeArea())
                     .navigationDestination(for: AppRoute.self) { pushed($0) }
