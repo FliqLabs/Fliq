@@ -226,10 +226,14 @@ final class AppEnvironment {
         if arguments.contains("--onboarded") { profile.completeOnboarding(name: nil, displayName: nil) }
         let accounts = AccountBook(keychain: nil)
         if arguments.contains("--sample-recipients") { seedRecipients(accounts) }
-        return AppEnvironment(
+        let environment = AppEnvironment(
             api: FixtureClient(bundle: bundle), profile: profile, accounts: accounts,
             preferences: Preferences(defaults: defaults), biometrics: AlwaysApprove(), lock: uiTestingLock(arguments, defaults: defaults)
         )
+        if arguments.contains("--sample-activity") {
+            Task { await environment.activity.load(from: FixtureClient(bundle: bundle)) }
+        }
+        return environment
     }
 
     /// The lock stays out of UI tests unless `--lock-setup` asks for the Secure fliq screen

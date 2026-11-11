@@ -20,6 +20,7 @@ struct ActivityItem: Decodable, Identifiable, Equatable, Sendable {
     struct Party: Decodable, Equatable, Sendable {
         let name: String
         let nearAccount: String?
+        let institution: String?
         let accountLast4: String?
         let photoUrl: String?
     }

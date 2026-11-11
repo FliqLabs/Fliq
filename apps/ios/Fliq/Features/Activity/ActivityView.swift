@@ -240,17 +240,7 @@ private struct HistoryRow: View {
         return parts.joined(separator: " · ")
     }
 
-    private var amount: String {
-        let dollars = item.usd.map { "$" + $0 } ?? ""
-        switch item.kind {
-        case .deposit, .transferIn: return "+" + dollars
-        case .transferOut: return "-" + dollars
-        default:
-            guard let local = item.local, let value = Int(local.amount) else { return dollars }
-            guard let currency = Currency(rawValue: local.currency.lowercased()) else { return "\(local.currency) \(local.amount)" }
-            return Money.local(value, currency)
-        }
-    }
+    private var amount: String { item.headline }
 
     private var amountColor: Color {
         switch item.kind {

@@ -28,7 +28,10 @@ struct RootView: View {
         TabView(selection: tabSelection) {
             NavigationStack(path: $router.path) {
                 Group {
-                    if let home { HomeView(model: home, onMenu: { router.push(.settings) }, onQR: { sheet = .qr }, onRefresh: { await environment.refreshVault() }) }
+                    if let home { HomeView(model: home, onMenu: { router.push(.settings) }, onQR: { sheet = .qr }, onRefresh: {
+                        await environment.refreshVault()
+                        await environment.refreshActivity()
+                    }, activity: environment.activity, onSeeAll: { tab = .activity }, onOpenPayout: { router.push(.receipt(payoutId: $0)) }) }
                 }
                 .navigationDestination(for: AppRoute.self) { pushed($0) }
             }
