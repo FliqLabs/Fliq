@@ -27,10 +27,12 @@ final class PayFlow {
     private let api: any FliqAPI
     private let activity: ActivityStore?
     private let vault: VaultStore?
+    private let transfers: (any VaultTransfers)?
 
     private let accounts: AccountBook?
 
-    init(api: any FliqAPI, activity: ActivityStore? = nil, vault: VaultStore? = nil, accounts: AccountBook? = nil) {
+    init(api: any FliqAPI, activity: ActivityStore? = nil, vault: VaultStore? = nil, accounts: AccountBook? = nil, transfers: (any VaultTransfers)? = nil) {
+        self.transfers = transfers
         self.accounts = accounts
         self.api = api
         self.activity = activity
@@ -97,6 +99,8 @@ final class PayFlow {
                 PayoutRequest(quoteId: quote.quoteId, account: account),
                 idempotencyKey: UUID().uuidString
             )
+            // A cash-out from the vault moves only once the payer signs the vault's payout for this order.
+            if let created = payout { _ = try await transfers?.release(created) }
             sentAt = .now
             if let payout {
                 activity?.record(payout, at: sentAt ?? .now)
@@ -110,6 +114,12 @@ final class PayFlow {
             return false
         } catch APIError.server(_, let detail) {
             errorMessage = "\(detail.message) Nothing moved."
+            return false
+        } catch TransferError.refused(let reason) {
+            errorMessage = "The vault refused it: \(reason). Nothing moved."
+            return false
+        } catch TransferError.stillPending {
+            errorMessage = "Your vault hasn't confirmed yet. Check Activity in a minute before trying again."
             return false
         } catch {
             errorMessage = "The payout didn't start. Nothing moved."

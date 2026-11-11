@@ -3,6 +3,8 @@ import Foundation
 /// Moves dollars from the user's vault balance to another fliq user's, instantly and without a fee.
 protocol VaultTransfers: Sendable {
     func send(_ amount: TokenAmount, to recipient: String) async throws -> RelayResult?
+    /// Signs the vault `payout` for a cash-out the API registered, so the vault releases its USDC to the deposit address.
+    func release(_ payout: Payout) async throws -> RelayResult?
 }
 
 enum TransferError: Error, Equatable {
@@ -26,6 +28,17 @@ struct RelayedVaultTransfers: VaultTransfers {
         let relay = DelegateRelay(api: api, rpc: rpc, keys: keys, pollInterval: pollInterval, pollAttempts: pollAttempts)
         return try await relay.submit(from: sender, reason: "Pay \(recipient)") { nonce, height, key in
             .vaultTransfer(from: sender, to: recipient, units: UInt64(amount.baseUnits), vault: vault, nonce: nonce, blockHeight: height, publicKey: key)
+        }
+    }
+
+    func release(_ payout: Payout) async throws -> RelayResult? {
+        guard payout.deposit.chain == "near", let sender = await sender(), let vault = await vault() else { return nil }
+        let relay = DelegateRelay(api: api, rpc: rpc, keys: keys, pollInterval: pollInterval, pollAttempts: pollAttempts)
+        return try await relay.submit(from: sender, reason: "Send \(Money.local(payout.receive, payout.currency)) to \(payout.accountName)") { nonce, height, key in
+            .vaultPayout(
+                from: sender, orderId: payout.payoutId, units: UInt64(payout.deposit.amount.baseUnits), depositAddress: payout.deposit.address,
+                vault: vault, nonce: nonce, blockHeight: height, publicKey: key
+            )
         }
     }
 }
@@ -70,4 +83,5 @@ struct DelegateRelay: Sendable {
 /// The demo build has no chain behind it, so a transfer always lands.
 struct FixtureVaultTransfers: VaultTransfers {
     func send(_ amount: TokenAmount, to recipient: String) async throws -> RelayResult? { nil }
+    func release(_ payout: Payout) async throws -> RelayResult? { nil }
 }

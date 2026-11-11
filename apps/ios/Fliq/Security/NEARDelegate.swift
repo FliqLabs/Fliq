@@ -75,6 +75,20 @@ extension DelegateAction {
         )
     }
 
+    /// Releases a registered cash-out: the vault sends the order's USDC to its deposit address and nothing else. The
+    /// vault refuses an amount or address that differs from the order, and the payout needs at least 60 Tgas.
+    static func vaultPayout(from sender: String, orderId: String, units: UInt64, depositAddress: String, vault: String, nonce: UInt64, blockHeight: UInt64, publicKey: Data) -> DelegateAction {
+        let args = Data(#"{"order_id":"\#(orderId)","amount":"\#(units)","deposit_address":"\#(depositAddress)"}"#.utf8)
+        return DelegateAction(
+            senderId: sender,
+            receiverId: vault,
+            call: FunctionCall(methodName: "payout", args: args, gas: 100_000_000_000_000, deposit: 0),
+            nonce: nonce,
+            maxBlockHeight: blockHeight + lifetimeBlocks,
+            publicKey: publicKey
+        )
+    }
+
     /// Moves USDC from the user's own NEAR account into their vault. An empty msg credits the sender, and the relayer
     /// refuses any other receiver, so this can only ever top up the signer's own vault.
     static func walletTopUp(from sender: String, units: UInt64, usdc: String, vault: String, nonce: UInt64, blockHeight: UInt64, publicKey: Data) -> DelegateAction {
