@@ -63,6 +63,8 @@ There are two paths, and which one applies depends on whether the target account
 
 **A fresh account, including the mainnet vault.** Deploy the Wasm and call the private `new(owner, registration_account, approved_usdc_token_contract)` initializer from the vault account itself, in the same transaction as the deployment. Deployment needs a full-access key on the vault account.
 
+`new` takes those three arguments and nothing else. `max_expiry` and `payout_timeout` are not parameters: they initialize to `DEFAULT_MAX_EXPIRY`, 24 hours, and `DEFAULT_PAYOUT_TIMEOUT`, 10 minutes. If the intended `payout_timeout` differs, as it does on mainnet, the owner must call `set_payout_timeout` as the step straight after deployment, so plan for the owner key to be reachable at deploy time rather than only in an emergency.
+
 **An account that already runs a pre-`order_agents` build, including the live testnet vault.** Deploy the new Wasm and call `migrate` in the same transaction, again from the vault account itself. Balances, orders, receipts, refund evidence, payout keys and policies are kept; `order_agents` starts empty, so orders registered before the upgrade can be paid by their payer alone. `new` cannot be used here: it is `#[init]` and guarded by `ALREADY_INITIALIZED`.
 
 `migrate` reads exactly one old layout, `ContractV1`. Confirm the deployed build is pre-`order_agents` before relying on it; against any other layout the state read fails.

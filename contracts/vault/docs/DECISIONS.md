@@ -54,8 +54,11 @@ These rules are PROPOSED and require backend approval:
 
 ## Confirmed mainnet configuration
 
-- `payout_timeout` is **1 hour**, 3600000000000 ns, at initialization. The bounds are 10 minutes to 7 days
-  and the owner can change it afterwards, so this is not a one-shot choice. A healthy payout settles in
+- `payout_timeout` is **1 hour**, 3600000000000 ns. `new` does not take it: initialization always uses the
+  10-minute `DEFAULT_PAYOUT_TIMEOUT`, so the owner must call `set_payout_timeout` as the step straight after
+  deployment. Launching briefly at 10 minutes is safe, because 10 minutes is the enforced floor and no
+  payout can be stuck inside that window anyway. The bounds are 10 minutes to 7 days and the owner can
+  change it at any time, so this is not a one-shot choice. A healthy payout settles in
   seconds and cannot reach the stuck state at all, because the callback holds a fixed 20 Tgas under a
   60 Tgas floor and so cannot be starved; the timeout therefore only matters if NEAR itself drops a
   receipt. An hour is far beyond any legitimate in-flight transfer, so an operator resolving at the timeout
