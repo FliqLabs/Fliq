@@ -1,0 +1,54 @@
+.docs-article {
+  display: flex;
+  flex-direction: column;
+  gap: 36px;
+  width: 100%;
+  max-width: 880px;
+  min-width: 0;
+  padding: 40px 48px 64px;
+}
+
+.docs-article h1 {
+  scroll-margin-top: 100px;
+}
+
+.docs-article section {
+  min-width: 0;
+  scroll-margin-top: 100px;
+}
+
+.docs-article pre code {
+  font-family: inherit;
+}
+
+.docs-article a:hover {
+  text-decoration: underline;
+}
+
+.docs-article a:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 3px;
+}
+
+.docs-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+@media (max-width: 767px) {
+  .docs-article {
+    padding: 28px 20px 48px;
+  }
+
+  .docs-article h1 {
+    font-size: 26px !important;
+  }
+
+  .docs-flow {
+    flex-wrap: wrap;
+  }
+
+  .docs-columns {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}

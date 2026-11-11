@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { AnimatedRateBadge } from "./animated-rate-badge";
 
 export function AuthShell({ children }: { children: React.ReactNode }) {
   return (
@@ -21,12 +22,9 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
 
       <aside className="relative hidden min-h-screen overflow-hidden bg-[#151515] text-white lg:flex lg:items-center lg:justify-center">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,#332365_0%,#1c1930_37%,transparent_70%)]" />
-        <div className="relative w-full max-w-[470px] px-8">
+        <div className="relative w-full max-w-[524px] px-8">
           <p className="mb-4 text-sm text-zinc-400">USDC to NGN bank, after fees</p>
-          <div className="rounded-full border border-emerald-400/35 bg-emerald-400/10 px-7 py-5 text-center shadow-[0_0_0_10px_#34d39912]">
-            <span className="text-5xl font-light tracking-tight">₦1,376.32</span>
-            <span className="ml-3 text-sm text-zinc-400">per $1</span>
-          </div>
+          <AnimatedRateBadge />
           <p className="mt-5 text-xs text-emerald-400">Sample rate · Paycrest</p>
           <div className="mt-8 rounded-2xl border border-zinc-800 bg-[#1a1a1a] p-6">
             <p className="mb-6 text-xs font-semibold uppercase tracking-wide text-zinc-400">Sample payout</p>

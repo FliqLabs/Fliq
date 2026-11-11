@@ -5,11 +5,15 @@ import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { signInWithPasskey } from "../auth/passkey";
 import { fliqApi, type User } from "../lib/fliq-api";
+import { AuthShell } from "../auth/auth-shell";
+import { EmailLinkSent } from "./email-link-sent";
 
 export function SignInForm() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [email, setEmail] = useState("");
+  const [sentEmail, setSentEmail] = useState<string | null>(null);
+  const [resendAt, setResendAt] = useState(0);
 
   function afterSignIn(user: User) {
     queryClient.clear();
@@ -24,6 +28,10 @@ export function SignInForm() {
         method: "POST",
         body: JSON.stringify({ email: address }),
       }),
+    onSuccess: (_data, address) => {
+      setSentEmail(address);
+      setResendAt(Date.now() + 30_000);
+    },
   });
 
   function submitEmail(event: FormEvent<HTMLFormElement>) {
@@ -31,8 +39,27 @@ export function SignInForm() {
     emailLink.mutate(email.trim());
   }
 
+  if (sentEmail) {
+    return (
+      <EmailLinkSent
+        key={resendAt}
+        email={sentEmail}
+        resendAt={resendAt}
+        pending={emailLink.isPending}
+        error={emailLink.isError ? emailLink.error.message : undefined}
+        onResend={() => {
+          if (Date.now() >= resendAt && !emailLink.isPending) emailLink.mutate(sentEmail);
+        }}
+        onChangeEmail={() => {
+          setSentEmail(null);
+          emailLink.reset();
+        }}
+      />
+    );
+  }
+
   return (
-    <>
+    <AuthShell>
       <h1 className="text-3xl font-bold tracking-tight">Sign in</h1>
       <p className="mt-1 text-sm text-zinc-500">To the fliq dashboard.</p>
       <button
@@ -89,16 +116,11 @@ export function SignInForm() {
           {emailLink.isPending ? "Sending link…" : "Email me a sign-in link"}
         </button>
       </form>
-      {emailLink.isSuccess && (
-        <p role="status" className="mt-3 text-sm text-emerald-700">
-          If the address can receive mail, a sign-in link is on its way.
-        </p>
-      )}
       {emailLink.isError && (
         <p role="alert" className="mt-3 text-sm text-red-600">
           {emailLink.error.message}
         </p>
       )}
-    </>
+    </AuthShell>
   );
 }

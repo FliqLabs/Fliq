@@ -2,13 +2,21 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
+import { useState } from "react";
+import { KeyManagement } from "./key-management";
 import { ApiError, fliqApi, type Usage, type User } from "../../lib/fliq-api";
 
 type KeyList = {
   items: { key_id: string; environment: "test" | "live"; masked: string; created_at: string }[];
 };
 
-export function ApiKeysList() {
+type ApiKeysListProps = {
+  initialAction?: "new";
+  initialEnvironment?: "test" | "live";
+};
+
+export function ApiKeysList({ initialAction, initialEnvironment = "test" }: ApiKeysListProps) {
+  const [detailOpen, setDetailOpen] = useState(false);
   const account = useQuery({ queryKey: ["me"], queryFn: () => fliqApi<User>("me") });
   const keys = useQuery({
     queryKey: ["keys"],
@@ -51,36 +59,16 @@ export function ApiKeysList() {
           {keys.error.message}
         </p>
       )}
-      {keys.isSuccess && (
-        <section
-          aria-label="Active API keys"
-          className="mt-7 overflow-hidden rounded-xl border border-zinc-200"
-        >
-          {keys.data.items.length === 0 ? (
-            <p className="p-8 text-center text-sm text-zinc-500">No API keys available.</p>
-          ) : (
-            <div className="divide-y divide-zinc-100">
-              {keys.data.items.map((key) => (
-                <div
-                  key={key.key_id}
-                  className="flex flex-wrap items-center justify-between gap-3 p-5 text-sm"
-                >
-                  <div>
-                    <p className="font-mono font-medium">{key.masked}</p>
-                    <p className="mt-1 text-xs capitalize text-zinc-500">
-                      {key.environment} · Created {new Date(key.created_at).toLocaleDateString("en-NG")}
-                    </p>
-                  </div>
-                  <span className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-semibold capitalize">
-                    {key.environment}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
+      {account.isSuccess && keys.isSuccess && (
+        <KeyManagement
+          backendKeys={keys.data.items}
+          userId={account.data.user_id}
+          initialAction={initialAction}
+          initialEnvironment={initialEnvironment}
+          onDetailChange={setDetailOpen}
+        />
       )}
-      {usage.isSuccess && (
+      {usage.isSuccess && !detailOpen && (
         <section aria-label="API usage" className="mt-7 rounded-xl border border-zinc-200 p-5">
           <h2 className="text-sm font-semibold">API usage · last 7 days</h2>
           <dl className="mt-4 grid gap-4 text-sm sm:grid-cols-3">

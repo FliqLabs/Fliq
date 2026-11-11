@@ -1,5 +1,7 @@
 "use client";
 
+import { CopyButton } from "../../../components/copy-button";
+
 export function ReceiptActions({ payoutId }: { payoutId: string }) {
   return (
     <div className="mt-6 flex flex-wrap gap-2 border-t border-zinc-100 pt-6 print:hidden">
@@ -10,13 +12,7 @@ export function ReceiptActions({ payoutId }: { payoutId: string }) {
       >
         Print receipt
       </button>
-      <button
-        type="button"
-        onClick={() => navigator.clipboard.writeText(payoutId)}
-        className="rounded-lg border border-zinc-200 px-4 py-2.5 text-xs font-semibold"
-      >
-        Copy payout ID
-      </button>
+      <CopyButton text={payoutId} label="Copy payout ID" />
     </div>
   );
 }

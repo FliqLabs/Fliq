@@ -1,0 +1,729 @@
+{
+  "info": {
+    "name": "Fliq API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://fliq-yclq.onrender.com/v1"
+    },
+    {
+      "key": "apiKey",
+      "value": "<YOUR_API_KEY>"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/health",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "health"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Best after-fee rate for a corridor",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/rates/{token}/{currency}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "rates",
+            "{token}",
+            "{currency}"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Quote a payout",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{apiKey}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/quote",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "quote"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Quote every provider and rank the routes",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{apiKey}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/quotes",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "quotes"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Banks and mobile-money providers for a country",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/institutions",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "institutions"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Ask the bank for the name on an account",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{apiKey}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/accounts/verify",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "accounts",
+            "verify"
+          ]
+        }
+      }
+    },
+    {
+      "name": "The user's saved recipients, newest first",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{apiKey}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/recipients",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "recipients"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Verify an account with the bank and save it",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{apiKey}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/recipients",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "recipients"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Remove a saved recipient",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{apiKey}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/recipients/{recipientId}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "recipients",
+            "{recipientId}"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Service and provider health for the status page",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/status",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "status"
+          ]
+        }
+      }
+    },
+    {
+      "name": "The user's vault balance, free and reserved",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{apiKey}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/vault",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "vault"
+          ]
+        }
+      }
+    },
+    {
+      "name": "People on fliq the user has paid, most recent first",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{apiKey}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/people/recent",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "people",
+            "recent"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Find a person on fliq by name before paying them",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{apiKey}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/people/{name}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "people",
+            "{name}"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Verify a bank account name",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{apiKey}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/institutions/verify",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "institutions",
+            "verify"
+          ]
+        }
+      }
+    },
+    {
+      "name": "List the workspace's payouts, newest first",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{apiKey}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/payouts",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "payouts"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Create a payout",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{apiKey}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/payouts",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "payouts"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Today's payout numbers for the dashboard cards",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{apiKey}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/payouts/stats",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "payouts",
+            "stats"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Get a payout and its receipt",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{apiKey}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/payouts/{payoutId}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "payouts",
+            "{payoutId}"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Start creating a passkey for a new user",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/auth/passkeys/register/options",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "auth",
+            "passkeys",
+            "register",
+            "options"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Finish passkey registration and open a session",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/auth/passkeys/register/verify",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "auth",
+            "passkeys",
+            "register",
+            "verify"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Start signing in with an existing passkey",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/auth/passkeys/login/options",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "auth",
+            "passkeys",
+            "login",
+            "options"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Finish passkey sign-in and open a session",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/auth/passkeys/login/verify",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "auth",
+            "passkeys",
+            "login",
+            "verify"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Email a one-time sign-in link",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/auth/email-links",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "auth",
+            "email-links"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Exchange a sign-in link token for a session",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/auth/email-links/verify",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "auth",
+            "email-links",
+            "verify"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Rotate the refresh token and get a new access token",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/auth/refresh",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "auth",
+            "refresh"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Revoke the current session",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{apiKey}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/auth/logout",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "auth",
+            "logout"
+          ]
+        }
+      }
+    },
+    {
+      "name": "The signed-in user",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{apiKey}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/me",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "me"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Set the display name and what the user does",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{apiKey}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/me",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "me"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Is a fliq name free to claim",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{apiKey}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/names/{name}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "names",
+            "{name}"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Claim a fliq name and create the NEAR account and vault behind it",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{apiKey}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/me/name",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "me",
+            "name"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Create a developer workspace and its first sandbox key",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{apiKey}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/workspaces",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "workspaces"
+          ]
+        }
+      }
+    },
+    {
+      "name": "The signed-in user's workspace",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{apiKey}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/workspaces/current",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "workspaces",
+            "current"
+          ]
+        }
+      }
+    },
+    {
+      "name": "API keys of the workspace, masked",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{apiKey}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/keys",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "keys"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Progress through the dashboard's getting-started steps",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{apiKey}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/onboarding",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "onboarding"
+          ]
+        }
+      }
+    }
+  ]
+}

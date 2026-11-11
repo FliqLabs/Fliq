@@ -39,7 +39,23 @@ html {
   scroll-behavior: smooth;
 }
 
+.auth-rate-trail {
+  animation: auth-rate-trail 2.6s linear infinite;
+}
+
+@keyframes auth-rate-trail {
+  from {
+    stroke-dashoffset: 1030;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .auth-rate-trail {
+    animation: none;
+  }
   html {
     scroll-behavior: auto;
   }
