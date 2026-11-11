@@ -193,7 +193,7 @@ Every tool returns the same envelope, so the agent always knows what happened:
 | `FLIQ_AGENT_KEY_FILE`    | agent     | The file holding the agent's `ed25519:...` secret key, as `keygen` writes it.                                           |
 | `FLIQ_AGENT_PRIVATE_KEY` | agent     | Instead of the file: the same secret key inline.                                                                        |
 | `FLIQ_NEAR_RPC_URL`      | agent     | Optional. The NEAR RPC used to read the key's nonce. Defaults to FastNEAR (mainnet, or testnet for a `.testnet` agent). |
-| `FLIQ_API_URL`           | both      | Optional. The fliq API to call, including `/v1`. Defaults to `https://api.fliq.cash/v1`.                                |
+| `FLIQ_API_URL`           | both      | Optional. The fliq API to call, including `/v1`. Defaults to `https://api-production-54e10.up.railway.app/v1`.          |
 | `FLIQ_RECEIPT_URL`       | both      | Optional. A receipt link template containing `{payout_id}`; without it `receipt_link` is null.                          |
 
 ## Coverage

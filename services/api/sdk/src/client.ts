@@ -15,8 +15,8 @@ import type {
   VerifiedAccount,
 } from "./types.js";
 
-export const DEFAULT_BASE_URL = "https://api.fliq.cash/v1";
-export const SDK_VERSION = "0.1.0";
+export const DEFAULT_BASE_URL = "https://api-production-54e10.up.railway.app/v1";
+export const SDK_VERSION = "0.1.1";
 
 export interface FliqClientOptions {
   apiKey: string;

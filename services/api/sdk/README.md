@@ -56,7 +56,7 @@ import { FliqClient, FliqError } from "@fliqlabs/sdk";
 
 const fliq = new FliqClient({
   apiKey: process.env.FLIQ_API_KEY!,
-  // Optional. The SDK calls https://api.fliq.cash/v1 by default; set FLIQ_API_URL to point it elsewhere.
+  // Optional. The SDK calls https://api-production-54e10.up.railway.app/v1 by default; set FLIQ_API_URL to point it elsewhere.
   baseUrl: process.env.FLIQ_API_URL,
 });
 
@@ -105,11 +105,11 @@ Which corridors answer at a given moment depends on which providers are live. A 
 new FliqClient({ apiKey, baseUrl?, fetch? });
 ```
 
-| Option    | Default                    | What it does                                                           |
-| --------- | -------------------------- | ---------------------------------------------------------------------- |
-| `apiKey`  | required                   | Your `rt_test_...` or `rt_live_...` key, sent as a bearer token.       |
-| `baseUrl` | `https://api.fliq.cash/v1` | The API to call. Include `/v1`.                                        |
-| `fetch`   | global `fetch`             | Your own `fetch`, for tests, proxies or runtimes without a global one. |
+| Option    | Default                                          | What it does                                                           |
+| --------- | ------------------------------------------------ | ---------------------------------------------------------------------- |
+| `apiKey`  | required                                         | Your `rt_test_...` or `rt_live_...` key, sent as a bearer token.       |
+| `baseUrl` | `https://api-production-54e10.up.railway.app/v1` | The API to call. Include `/v1`.                                        |
+| `fetch`   | global `fetch`                                   | Your own `fetch`, for tests, proxies or runtimes without a global one. |
 
 Every method also takes an optional `{ signal }` (an `AbortSignal`) to cancel the request.
 
