@@ -1,4 +1,4 @@
-const TESTNET = (process.env.NEXT_PUBLIC_NEAR_RPC_URL ?? "https://rpc.testnet.near.org").includes("testnet");
+const TESTNET = (process.env.NEXT_PUBLIC_NEAR_RPC_URL ?? "https://rpc.mainnet.fastnear.com").includes("testnet");
 
 export function explorerAccountUrl(account: string) {
   return `https://${TESTNET ? "testnet." : ""}nearblocks.io/address/${encodeURIComponent(account)}`;
