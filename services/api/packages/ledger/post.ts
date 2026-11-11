@@ -1,7 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { newId } from "../db/src/ids.js";
 import { account, type Asset } from "./accounts.js";
-import { vaultReserved, type Posting } from "./postings.js";
+import { vaultReleased, vaultReserved, type Posting } from "./postings.js";
 
 type Db = Prisma.TransactionClient;
 
@@ -80,6 +80,13 @@ export async function reserveVault(tx: Db, payoutId: string, holder: string, ass
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`vault:${holder}:${asset}`}, 0))`;
   if ((await vaultAvailable(tx, holder, asset)) < amount) throw new InsufficientVaultBalance(`not enough free balance for ${holder}`);
   return postEntry(tx, posting);
+}
+
+// The chain gave an order's reserved USDC back, so the mirror does too: once, and only for a reservation it made.
+export async function releaseReservation(tx: Db, payoutId: string, holder: string, asset: Asset, amount: bigint): Promise<PostResult | null> {
+  const reserved = await tx.journalEntry.findUnique({ where: { idempotencyKey: `${payoutId}:VAULT_RESERVED` }, select: { id: true } });
+  if (!reserved) return null;
+  return postEntry(tx, vaultReleased(payoutId, holder, asset, amount));
 }
 
 export interface Drift {
