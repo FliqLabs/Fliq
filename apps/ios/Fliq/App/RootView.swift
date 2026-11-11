@@ -28,7 +28,10 @@ struct RootView: View {
         TabView(selection: tabSelection) {
             NavigationStack(path: $router.path) {
                 Group {
-                    if let home { HomeView(model: home, onMenu: { router.push(.settings) }, onQR: { sheet = .qr }) }
+                    if let home { HomeView(model: home, onMenu: { router.push(.settings) }, onQR: { sheet = .qr }, onRefresh: {
+                        await environment.refreshVault()
+                        await environment.refreshActivity()
+                    }, activity: environment.activity, onSeeAll: { tab = .activity }, onOpenPayout: { router.push(.receipt(payoutId: $0)) }) }
                 }
                 .navigationDestination(for: AppRoute.self) { pushed($0) }
             }
@@ -41,7 +44,7 @@ struct RootView: View {
                 .tag(RootTab.transfer)
 
             NavigationStack(path: $activityPath) {
-                ActivityView(store: environment.activity) { sheet = .receive }
+                ActivityView(store: environment.activity, onReceive: { sheet = .receive }, onRefresh: { await environment.refreshActivity() })
                     .padding(.horizontal, 16)
                     .background(Theme.ground.ignoresSafeArea())
                     .navigationDestination(for: AppRoute.self) { pushed($0) }
@@ -51,6 +54,14 @@ struct RootView: View {
         }
         .tint(Theme.textPrimary)
         .minimizesTabBarOnScroll()
+        .overlay(alignment: .top) {
+            if let arrival = environment.arrival {
+                ArrivalBanner(amount: arrival)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(.spring(response: 0.45, dampingFraction: 0.8), value: environment.arrival)
+        .sensoryFeedback(.success, trigger: environment.arrival) { _, now in now != nil }
         .sheet(item: $sheet) { sheet in
             content(of: sheet)
                 .presentationDragIndicator(.visible)
@@ -63,6 +74,7 @@ struct RootView: View {
         .task(id: router.path.isEmpty) {
             guard router.path.isEmpty else { return }
             await environment.refreshVault()
+            await environment.refreshActivity()
             await environment.inbox.load()
             await home?.loadProfile()
         }
@@ -120,7 +132,8 @@ struct RootView: View {
     }
 
     private func makeReceive() -> ReceiveFlow {
-        ReceiveFlow(
+        environment.watchForArrival()
+        return ReceiveFlow(
             api: environment.deposits,
             vault: environment.vault,
             vaultAccount: environment.profile.name ?? NearNetwork.current.vault,
@@ -170,6 +183,7 @@ struct RootView: View {
             guard let testWallet else { throw Paj.Failure(message: "Bank deposits land in your vault on mainnet. This test build has no wallet set for them.") }
             return BankDepositDestination(address: testWallet, isTestWallet: true)
         }
+        environment.watchForArrival()
         environment.router.push(.bankDeposit)
     }
 
@@ -179,6 +193,8 @@ struct RootView: View {
         case .receipt(let id):
             if let payout = environment.activity.entry(id: id)?.payout {
                 receipt(for: payout)
+            } else {
+                PayoutLoader(id: id) { receipt(for: $0) }
             }
         case .payNew, .payAmount, .payQuote, .paySending, .payPaid, .payRefunded:
             if let flow { payStep(route, flow) }
@@ -240,6 +256,34 @@ struct RootView: View {
         case .refunded: RefundedView(payout: payout)
         case .settled: PaidView(payout: payout)
         default: SendingReceipt(payout: payout)
+        }
+    }
+}
+
+/// A payout from the account's history, fetched when its row is opened.
+private struct PayoutLoader<Content: View>: View {
+    let id: String
+    @ViewBuilder let content: (Payout) -> Content
+    @Environment(AppEnvironment.self) private var environment
+    @State private var payout: Payout?
+    @State private var failed = false
+
+    var body: some View {
+        Group {
+            if let payout {
+                content(payout)
+            } else if failed {
+                Text("Couldn't load this payout. Pull to refresh Activity and try again.")
+                    .font(.system(size: 15))
+                    .foregroundStyle(Theme.textSecondary)
+                    .padding(.top, 60)
+                    .fliqScreen("Payout")
+            } else {
+                ProgressView().padding(.top, 80).fliqScreen("Payout")
+            }
+        }
+        .task {
+            do { payout = try await environment.api.payout(id: id) } catch { failed = true }
         }
     }
 }
