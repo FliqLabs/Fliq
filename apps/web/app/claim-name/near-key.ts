@@ -74,7 +74,9 @@ async function importPrivateKey(secret: Uint8Array, publicBytes: Uint8Array): Pr
     false,
     ["sign"],
   );
-  const publicKey = await crypto.subtle.importKey("raw", new Uint8Array(publicBytes), "Ed25519", false, ["verify"]);
+  const publicKey = await crypto.subtle.importKey("raw", new Uint8Array(publicBytes), "Ed25519", false, [
+    "verify",
+  ]);
   const challenge = crypto.getRandomValues(new Uint8Array(KEY_LENGTH));
   const signature = await crypto.subtle.sign("Ed25519", privateKey, challenge);
   if (!(await crypto.subtle.verify("Ed25519", publicKey, signature, challenge))) {

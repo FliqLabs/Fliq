@@ -3,22 +3,35 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
-import { signInWithPasskey } from "../auth/passkey";
+import { labelPasskey, signInWithPasskey } from "../auth/passkey";
 import { fliqApi, type User } from "../lib/fliq-api";
-import { AuthShell } from "../auth/auth-shell";
-import { EmailLinkSent } from "./email-link-sent";
 
-export function SignInForm() {
+const copy = {
+  "sign-in": { title: "Sign in", subtitle: "To your fliq wallet." },
+  "get-started": {
+    title: "Get started",
+    subtitle:
+      "Already on the fliq app? Continue with the passkey you saved there. New here? Create an account.",
+  },
+};
+
+export function SignInForm({
+  intent = "sign-in",
+  onSignedIn,
+}: {
+  intent?: keyof typeof copy;
+  onSignedIn?: (user: User) => void;
+}) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [email, setEmail] = useState("");
-  const [sentEmail, setSentEmail] = useState<string | null>(null);
-  const [resendAt, setResendAt] = useState(0);
 
   function afterSignIn(user: User) {
     queryClient.clear();
     queryClient.setQueryData(["me"], user);
-    router.replace(user.near_account ? "/dashboard" : "/claim-name");
+    labelPasskey(user);
+    if (onSignedIn) onSignedIn(user);
+    else router.replace(user.near_account ? "/wallet" : "/claim-name");
   }
 
   const passkey = useMutation({ mutationFn: signInWithPasskey, onSuccess: afterSignIn });
@@ -28,10 +41,6 @@ export function SignInForm() {
         method: "POST",
         body: JSON.stringify({ email: address }),
       }),
-    onSuccess: (_data, address) => {
-      setSentEmail(address);
-      setResendAt(Date.now() + 30_000);
-    },
   });
 
   function submitEmail(event: FormEvent<HTMLFormElement>) {
@@ -39,29 +48,10 @@ export function SignInForm() {
     emailLink.mutate(email.trim());
   }
 
-  if (sentEmail) {
-    return (
-      <EmailLinkSent
-        key={resendAt}
-        email={sentEmail}
-        resendAt={resendAt}
-        pending={emailLink.isPending}
-        error={emailLink.isError ? emailLink.error.message : undefined}
-        onResend={() => {
-          if (Date.now() >= resendAt && !emailLink.isPending) emailLink.mutate(sentEmail);
-        }}
-        onChangeEmail={() => {
-          setSentEmail(null);
-          emailLink.reset();
-        }}
-      />
-    );
-  }
-
   return (
-    <AuthShell>
-      <h1 className="text-3xl font-bold tracking-tight">Sign in</h1>
-      <p className="mt-1 text-sm text-zinc-500">To the fliq dashboard.</p>
+    <>
+      <h1 className="text-3xl font-bold tracking-tight">{copy[intent].title}</h1>
+      <p className="mt-1 text-sm text-zinc-500">{copy[intent].subtitle}</p>
       <button
         type="button"
         disabled={passkey.isPending}
@@ -73,7 +63,8 @@ export function SignInForm() {
           : "Continue with passkey"}
       </button>
       <p className="mt-2 text-xs text-zinc-500">
-        Already have a passkey for this site? Sign in above. New here? Create an account below.
+        Pick the passkey from your iPhone or this device. iCloud Keychain and Google Password Manager sync it
+        for you.
       </p>
       <button
         type="button"
@@ -81,8 +72,13 @@ export function SignInForm() {
         onClick={() => passkey.mutate("register")}
         className="mt-3 min-h-12 rounded-lg border border-zinc-200 px-5 text-sm font-semibold disabled:opacity-60"
       >
-        Create an account with passkey
+        {passkey.isPending && passkey.variables === "register"
+          ? "Waiting for passkey…"
+          : "Create a new account"}
       </button>
+      <p className="mt-2 text-xs text-zinc-500">
+        Only if you have never used fliq. A new account has its own name and an empty wallet.
+      </p>
       {passkey.isError && (
         <p role="alert" className="mt-3 text-sm text-red-600">
           {passkey.error.message}
@@ -116,11 +112,16 @@ export function SignInForm() {
           {emailLink.isPending ? "Sending link…" : "Email me a sign-in link"}
         </button>
       </form>
+      {emailLink.isSuccess && (
+        <p role="status" className="mt-3 text-sm text-emerald-700">
+          If the address can receive mail, a sign-in link is on its way.
+        </p>
+      )}
       {emailLink.isError && (
         <p role="alert" className="mt-3 text-sm text-red-600">
           {emailLink.error.message}
         </p>
       )}
-    </AuthShell>
+    </>
   );
 }

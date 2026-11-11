@@ -32,11 +32,11 @@ export function ApiKeysList({ initialAction, initialEnvironment = "test" }: ApiK
   return (
     <main>
       <h1 className="text-xl font-semibold">API keys</h1>
-      <p className="mt-1 text-sm text-zinc-500">
+      <p className="mt-1 text-sm text-app-muted">
         Active keys for your workspace. Full keys are only shown when created.
       </p>
       {(account.isPending || (account.isSuccess && keys.isPending)) && (
-        <p className="mt-8 text-sm text-zinc-500">Loading keys…</p>
+        <p className="mt-8 text-sm text-app-muted">Loading keys…</p>
       )}
       {((account.error instanceof ApiError && account.error.status === 401) ||
         (keys.error instanceof ApiError && keys.error.status === 401)) && (
@@ -50,12 +50,12 @@ export function ApiKeysList({ initialAction, initialEnvironment = "test" }: ApiK
         </Link>
       )}
       {account.isError && !(account.error instanceof ApiError && account.error.status === 401) && (
-        <p role="alert" className="mt-8 text-sm text-red-600">
+        <p role="alert" className="mt-8 text-sm text-app-bad">
           {account.error.message}
         </p>
       )}
       {keys.isError && !(keys.error instanceof ApiError && [401, 404].includes(keys.error.status)) && (
-        <p role="alert" className="mt-8 text-sm text-red-600">
+        <p role="alert" className="mt-8 text-sm text-app-bad">
           {keys.error.message}
         </p>
       )}
@@ -69,26 +69,26 @@ export function ApiKeysList({ initialAction, initialEnvironment = "test" }: ApiK
         />
       )}
       {usage.isSuccess && !detailOpen && (
-        <section aria-label="API usage" className="mt-7 rounded-xl border border-zinc-200 p-5">
+        <section aria-label="API usage" className="mt-7 rounded-xl border border-app-line p-5">
           <h2 className="text-sm font-semibold">API usage · last 7 days</h2>
           <dl className="mt-4 grid gap-4 text-sm sm:grid-cols-3">
             <div>
-              <dt className="text-zinc-500">Requests</dt>
+              <dt className="text-app-muted">Requests</dt>
               <dd className="mt-1 font-semibold">{usage.data.totals.requests}</dd>
             </div>
             <div>
-              <dt className="text-zinc-500">Failed</dt>
-              <dd className="mt-1 font-semibold">{usage.data.totals.failed}</dd>
+              <dt className="text-app-bad">Failed</dt>
+              <dd className="mt-1 font-semibold text-app-bad">{usage.data.totals.failed}</dd>
             </div>
             <div>
-              <dt className="text-zinc-500">Payouts created</dt>
+              <dt className="text-app-muted">Payouts created</dt>
               <dd className="mt-1 font-semibold">{usage.data.totals.payouts_created}</dd>
             </div>
           </dl>
         </section>
       )}
       {usage.isError && (
-        <p role="alert" className="mt-4 text-sm text-red-600">
+        <p role="alert" className="mt-4 text-sm text-app-bad">
           {usage.error.message}
         </p>
       )}

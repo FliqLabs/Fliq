@@ -2,6 +2,7 @@ import Foundation
 
 protocol FliqAPI: Sendable {
     func health() async throws -> Health
+    func activity() async throws -> ActivityList
     func rate(_ token: Token, _ currency: Currency) async throws -> Rate
     func quote(_ request: QuoteRequest) async throws -> Quote
     func verify(_ account: Account) async throws -> VerifiedAccount
@@ -23,6 +24,8 @@ protocol FliqAPI: Sendable {
     /// Creates the NEAR account behind the name, owned by the device key `publicKey`.
     func claimName(_ name: FliqName, publicKey: String) async throws -> User
     func updateProfile(displayName: String) async throws -> User
+    func updateProfilePhoto(_ url: URL) async throws -> User
+    func removeProfilePhoto() async throws -> User
 
     func institutions(in country: Country) async throws -> [Institution]
     func vaultBalance() async throws -> VaultBalance

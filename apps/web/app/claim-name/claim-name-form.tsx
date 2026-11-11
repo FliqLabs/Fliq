@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { ApiError, fliqApi, type User } from "../lib/fliq-api";
+import { labelPasskey, signInWithPasskey } from "../auth/passkey";
+import { SignInForm } from "../sign-in/sign-in-form";
 import {
   createNearKey,
   loadNearKey,
@@ -70,6 +72,19 @@ export function ClaimNameForm() {
   const label = name.trim().toLowerCase();
   const valid = /^[a-z0-9](?:[a-z0-9-]{1,30}[a-z0-9])$/.test(label) && !label.includes("--");
   const account = useQuery({ queryKey: ["me"], queryFn: () => fliqApi<User>("me") });
+  const switchAccount = useMutation({
+    mutationFn: async () => {
+      await fliqApi<void>("auth/logout", { method: "POST" });
+      return signInWithPasskey("login");
+    },
+    onSuccess: (user) => {
+      queryClient.clear();
+      queryClient.setQueryData(["me"], user);
+      labelPasskey(user);
+      if (user.near_account) router.replace("/wallet");
+    },
+    onError: () => queryClient.invalidateQueries({ queryKey: ["me"] }),
+  });
   const savedKey = useQuery({
     queryKey: ["near-key", account.data?.user_id],
     queryFn: () => loadNearKey(account.data!.user_id),
@@ -103,7 +118,7 @@ export function ClaimNameForm() {
       if (isPendingClaim(result)) return;
       await saveNearKey({ ...key, claim: undefined });
       queryClient.setQueryData(["me"], result);
-      router.replace("/create-workspace");
+      router.replace("/wallet");
     },
   });
   const restore = useMutation({
@@ -194,12 +209,12 @@ export function ClaimNameForm() {
   }
   if (account.error instanceof ApiError && account.error.status === 401) {
     return (
-      <p className="text-sm">
-        Sign in first.{" "}
-        <Link href="/sign-in" className="font-semibold underline">
-          Go to sign in
-        </Link>
-      </p>
+      <SignInForm
+        intent="get-started"
+        onSignedIn={(user) => {
+          if (user.near_account) router.replace("/wallet");
+        }}
+      />
     );
   }
   if (account.isError || savedKey.isError) {
@@ -334,8 +349,8 @@ export function ClaimNameForm() {
       <div className="flex flex-col gap-3">
         <h1 className="text-3xl font-bold tracking-tight">Your NEAR key is on this device</h1>
         <p className="text-sm text-zinc-600">{account.data.near_account}</p>
-        <Link href="/dashboard" className="text-sm font-semibold underline">
-          Continue to dashboard
+        <Link href="/wallet" className="text-sm font-semibold underline">
+          Continue to your wallet
         </Link>
       </div>
     );
@@ -355,8 +370,8 @@ export function ClaimNameForm() {
         >
           Restore with recovery code
         </button>
-        <Link href="/dashboard" className="text-sm underline">
-          Continue to dashboard
+        <Link href="/wallet" className="text-sm underline">
+          Continue to your wallet
         </Link>
       </div>
     );
@@ -471,6 +486,25 @@ export function ClaimNameForm() {
           I already have a recovery code
         </button>
       )}
+      <div className="mt-8 rounded-lg border border-zinc-200 p-4">
+        <p className="text-sm font-medium">Already have a fliq name on your phone?</p>
+        <p className="mt-1 text-xs text-zinc-500">
+          You are signed in to a new, empty account. Sign in with the passkey you saved in the app instead.
+        </p>
+        <button
+          type="button"
+          disabled={switchAccount.isPending}
+          onClick={() => switchAccount.mutate()}
+          className="mt-3 min-h-11 w-full rounded-lg border border-zinc-300 px-4 text-sm font-semibold disabled:opacity-60"
+        >
+          {switchAccount.isPending ? "Waiting for passkey…" : "Sign in with that passkey"}
+        </button>
+        {switchAccount.isError && (
+          <p role="alert" className="mt-2 text-sm text-red-600">
+            {switchAccount.error.message}
+          </p>
+        )}
+      </div>
     </>
   );
 }

@@ -124,7 +124,7 @@ function NextSteps() {
 export default function JoinWaitlistPage() {
   return (
     <MarketingShell>
-      <div className="bg-canvas font-sans">
+      <div className="bg-canvas pt-[68px] font-sans">
         <main id="main-content">
           <Hero />
           <NextSteps />

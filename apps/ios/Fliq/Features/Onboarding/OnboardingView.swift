@@ -13,6 +13,7 @@ struct OnboardingView: View {
     @State private var passkeys = PasskeyAuthenticator()
     @State private var passkeyWorking = false
     @State private var passkeyMessage: String?
+    private let memory = PasskeyMemory()
     @State private var flow: OnboardingFlow
     @State private var signIn: SignInFlow
     @State private var path: [OnboardingStep] = []
@@ -22,7 +23,7 @@ struct OnboardingView: View {
         accounts = environment.accounts
         isLive = environment.isLive
         api = environment.api
-        _flow = State(initialValue: OnboardingFlow(api: environment.api, names: environment.names, isLive: environment.isLive))
+        _flow = State(initialValue: OnboardingFlow(api: environment.api, names: environment.names, isLive: environment.isLive, photos: environment.photos))
         _signIn = State(initialValue: SignInFlow(api: environment.api))
     }
 
@@ -74,8 +75,56 @@ struct OnboardingView: View {
     }
 
     private func start() {
-        if isLive { return usePasskey(.register) }
+        if isLive { return continueWithPasskey() }
         path.append(.claimName)
+    }
+
+    /// One button for everyone: signs in with the passkey this app recorded for its account, and creates the account
+    /// when there is no record yet, or when the recorded passkey is no longer known to the server.
+    private func continueWithPasskey() {
+        guard !passkeyWorking else { return }
+        passkeyWorking = true
+        passkeyMessage = nil
+        Task {
+            defer { passkeyWorking = false }
+            do {
+                let known = memory.ids
+                guard !known.isEmpty else { return try await createWithPasskey() }
+                let options = try await api.passkeyOptions(.login)
+                let response = try await passkeys.signIn(options, allowed: known)
+                do {
+                    let user = try await api.finishPasskey(.login, challengeId: options.challengeId, credential: response)
+                    memory.remember(passkeys.lastCredentialID)
+                    signedIn(user)
+                } catch let error as APIError where Self.isRejectedPasskey(error) {
+                    memory.forget()
+                    try await createWithPasskey()
+                }
+            } catch {
+                couldNotCreate(error)
+            }
+        }
+    }
+
+    /// The API answers a passkey it has no account for with 401 "Unknown passkey".
+    static func isRejectedPasskey(_ error: APIError) -> Bool {
+        switch error {
+        case .server(let status, _), .unexpected(let status): (400..<500).contains(status)
+        case .refused: false
+        }
+    }
+
+    private func createWithPasskey() async throws {
+        let options = try await api.passkeyOptions(.register)
+        let response = try await passkeys.register(options)
+        let user = try await api.finishPasskey(.register, challengeId: options.challengeId, credential: response)
+        memory.remember(passkeys.lastCredentialID)
+        signedIn(user)
+    }
+
+    private func couldNotCreate(_ error: any Error) {
+        if case PasskeyError.cancelled = error { return }
+        passkeyMessage = "We couldn't create your passkey. Try again or use email."
     }
 
     private func usePasskey(_ purpose: PasskeyPurpose) {
@@ -87,13 +136,15 @@ struct OnboardingView: View {
             do {
                 let options = try await api.passkeyOptions(purpose)
                 let response = purpose == .register ? try await passkeys.register(options) : try await passkeys.signIn(options)
-                signedIn(try await api.finishPasskey(purpose, challengeId: options.challengeId, credential: response))
+                let user = try await api.finishPasskey(purpose, challengeId: options.challengeId, credential: response)
+                memory.remember(passkeys.lastCredentialID)
+                signedIn(user)
             } catch PasskeyError.cancelled {
                 return
             } catch {
                 passkeyMessage = purpose == .register
                     ? "We couldn't create your passkey. Try again or use email."
-                    : "We couldn't sign you in with a passkey. Try again or use email."
+                    : "That passkey isn't for a fliq account here. Try another, or use email."
             }
         }
     }

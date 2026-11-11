@@ -27,7 +27,7 @@ struct DepositAddressView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     title(deposit)
                     if deposit.isDemo {
-                        Label("Demo address. Don't send real money to it.", systemImage: "exclamationmark.triangle.fill")
+                        IconLabel("Demo address. Don't send real money to it.", icon: "exclamationmark.triangle.fill")
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(Theme.warning)
                             .padding(.top, 14)
@@ -36,6 +36,8 @@ struct DepositAddressView: View {
                         .padding(.top, 22)
                     details(deposit, now: now)
                         .padding(.top, 8)
+                    TestNetworkNote(network: flow.network)
+                        .padding(.top, 16)
                 }
                 .padding(.horizontal, 16)
             }
@@ -57,7 +59,7 @@ struct DepositAddressView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 ShareLink(item: deposit.address, subject: Text("My \(deposit.source.token) address on \(deposit.source.chain)")) {
-                    Image(systemName: "square.and.arrow.up")
+                    Icon("square.and.arrow.up")
                 }
                 .accessibilityLabel("Share address")
             }
@@ -88,7 +90,7 @@ struct DepositAddressView: View {
             ChainLogo(source: deposit.source, size: 22)
             Text(deposit.source.isDirect ? "NEAR network" : "\(deposit.source.chain) network")
             if !others.isEmpty {
-                Image(systemName: "chevron.up.chevron.down").font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.textSecondary)
+                Icon("chevron.up.chevron.down", size: 16).foregroundStyle(Theme.textSecondary)
             }
         }
         .font(.system(size: 17, weight: .medium))
@@ -120,7 +122,7 @@ struct DepositAddressView: View {
                 Button { copy(deposit.address) } label: {
                     HStack(spacing: 8) {
                         Text(Self.short(deposit.address)).font(.system(size: 15, design: .monospaced)).foregroundStyle(Theme.textSecondary)
-                        Image(systemName: copied ? "checkmark" : "doc.on.doc").font(.system(size: 14)).foregroundStyle(Theme.textSecondary)
+                        Icon(copied ? "checkmark" : "doc.on.doc", size: 17).foregroundStyle(Theme.textSecondary)
                     }
                 }
                 .padding(.top, 4)
@@ -164,7 +166,7 @@ struct DepositAddressView: View {
                 HStack {
                     Text("Learn more about deposits").foregroundStyle(Theme.textSecondary)
                     Spacer()
-                    Image(systemName: "chevron.right").font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.textTertiary)
+                    Icon("chevron.right", size: 17).foregroundStyle(Theme.textTertiary)
                 }
                 .font(.system(size: 15))
                 .padding(.horizontal, 16)
@@ -216,7 +218,7 @@ private struct DepositInfoSheet: View {
 
     private func item(_ symbol: String, _ title: String, _ detail: String, isLast: Bool = false) -> some View {
         HStack(alignment: .top, spacing: 16) {
-            Image(systemName: symbol).font(.system(size: 18)).foregroundStyle(Theme.textSecondary).frame(width: 24)
+            Icon(symbol, size: 22).foregroundStyle(Theme.textSecondary).frame(width: 24)
             VStack(alignment: .leading, spacing: 4) {
                 Text(title).font(.system(size: 17, weight: .semibold))
                 Text(detail).font(.system(size: 15)).foregroundStyle(Theme.textSecondary)

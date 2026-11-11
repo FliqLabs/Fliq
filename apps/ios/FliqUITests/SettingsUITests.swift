@@ -9,7 +9,7 @@ final class SettingsUITests: XCTestCase {
     @MainActor
     func testSettingsAccountsSecurityNotifications() {
         let app = XCUIApplication()
-        app.launchArguments = ["--ui-testing", "--onboarded"]
+        app.launchArguments = ["--ui-testing", "--onboarded", "--funded"]
         app.launch()
 
         app.buttons["Transfer"].tap()
@@ -27,8 +27,9 @@ final class SettingsUITests: XCTestCase {
         number.typeText("0123456789")
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "DARA OKONKWO")).firstMatch.waitForExistence(timeout: 3))
         app.buttons["Continue"].tap()
-        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3), "The amount field opens the keyboard by itself")
-        app.typeText("5")
+        XCTAssertTrue(app.buttons["Delete"].waitForExistence(timeout: 3), "The amount screen has its own keypad")
+        XCTAssertFalse(app.keyboards.firstMatch.exists, "No system keyboard for amounts")
+        app.buttons["5"].tap()
         app.buttons["Get quote"].tap()
         XCTAssertTrue(app.buttons["Confirm with Face ID"].waitForExistence(timeout: 3))
         app.buttons["Confirm with Face ID"].tap()
@@ -36,7 +37,7 @@ final class SettingsUITests: XCTestCase {
         XCTAssertTrue(close.waitForExistence(timeout: 5))
         close.tap()
 
-        app.buttons["Menu"].tap()
+        app.buttons["Profile"].tap()
         XCTAssertTrue(app.staticTexts["Live rates, all providers"].waitForExistence(timeout: 3))
         snap("s1-settings")
 

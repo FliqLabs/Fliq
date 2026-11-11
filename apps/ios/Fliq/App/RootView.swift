@@ -6,7 +6,7 @@ enum RootTab: Hashable {
 
 /// Transfer opens on its menu; Receive from Activity opens straight on "How do you want to get paid?".
 enum HomeSheet: Identifiable {
-    case menu, receive
+    case menu, receive, qr
 
     var id: Self { self }
 }
@@ -16,6 +16,8 @@ struct RootView: View {
     @State private var home: HomeModel?
     @State private var flow: PayFlow?
     @State private var personFlow: PersonPayFlow?
+    @State private var withdrawFlow: WithdrawFlow?
+    @State private var bankDeposit: BankDepositFlow?
     @State private var tab = RootTab.home
     @State private var sheet: HomeSheet?
     @State private var activityPath: [AppRoute] = []
@@ -23,37 +25,43 @@ struct RootView: View {
     var body: some View {
         @Bindable var router = environment.router
 
-        TabView(selection: $tab) {
+        TabView(selection: tabSelection) {
             NavigationStack(path: $router.path) {
                 Group {
-                    if let home { HomeView(model: home, onMenu: { router.push(.settings) }) }
+                    if let home { HomeView(model: home, onMenu: { router.push(.settings) }, onQR: { sheet = .qr }, onRefresh: {
+                        await environment.refreshVault()
+                        await environment.refreshActivity()
+                    }, activity: environment.activity, onSeeAll: { tab = .activity }, onOpenPayout: { router.push(.receipt(payoutId: $0)) }) }
                 }
                 .navigationDestination(for: AppRoute.self) { pushed($0) }
             }
-            .tabItem { Label("Home", systemImage: "house.fill") }
+            .tabItem { IconLabel("Home", icon: "house.fill") }
             .tag(RootTab.home)
 
             // An action, not a page: picking it opens the money sheet and leaves the current tab selected.
             Color.clear
-                .tabItem { Label("Transfer", systemImage: "arrow.up.arrow.down") }
+                .tabItem { IconLabel("Transfer", icon: "arrow.up.arrow.down") }
                 .tag(RootTab.transfer)
 
             NavigationStack(path: $activityPath) {
-                ActivityView(store: environment.activity) { sheet = .receive }
+                ActivityView(store: environment.activity, onReceive: { sheet = .receive }, onRefresh: { await environment.refreshActivity() }, onOpenReceipt: { activityPath.append(.receipt(payoutId: $0)) })
                     .padding(.horizontal, 16)
                     .background(Theme.ground.ignoresSafeArea())
                     .navigationDestination(for: AppRoute.self) { pushed($0) }
             }
-            .tabItem { Label("Activity", systemImage: "clock.arrow.circlepath") }
+            .tabItem { IconLabel("Activity", icon: "clock.arrow.circlepath") }
             .tag(RootTab.activity)
         }
         .tint(Theme.textPrimary)
         .minimizesTabBarOnScroll()
-        .onChange(of: tab) { old, new in
-            guard new == .transfer else { return }
-            tab = old
-            sheet = .menu
+        .overlay(alignment: .top) {
+            if let arrival = environment.arrival {
+                ArrivalBanner(amount: arrival)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
         }
+        .animation(.spring(response: 0.45, dampingFraction: 0.8), value: environment.arrival)
+        .sensoryFeedback(.success, trigger: environment.arrival) { _, now in now != nil }
         .sheet(item: $sheet) { sheet in
             content(of: sheet)
                 .presentationDragIndicator(.visible)
@@ -66,8 +74,21 @@ struct RootView: View {
         .task(id: router.path.isEmpty) {
             guard router.path.isEmpty else { return }
             await environment.refreshVault()
+            await environment.refreshActivity()
             await environment.inbox.load()
+            await home?.loadProfile()
         }
+    }
+
+    /// Transfer opens the money sheet without ever becoming the selected tab. Selecting it and flipping back left
+    /// the Home stack with no safe area, so screens pushed from the sheet drew under the status bar.
+    private var tabSelection: Binding<RootTab> {
+        Binding(
+            get: { tab },
+            set: { picked in
+                if picked == .transfer { sheet = .menu } else { tab = picked }
+            }
+        )
     }
 
     /// Pushed screens own the whole display, so the tab bar steps aside for them.
@@ -75,7 +96,21 @@ struct RootView: View {
         destination(route).toolbar(.hidden, for: .tabBar)
     }
 
+    @ViewBuilder
     private func content(of sheet: HomeSheet) -> some View {
+        if sheet == .qr {
+            ReceiveTokensView(
+                model: ReceiveTokensModel(flow: makeReceive()),
+                inbox: environment.inbox,
+                name: environment.profile.name
+            ) { self.sheet = nil }
+            .presentationDetents([.large])
+        } else {
+            moveMoney(sheet)
+        }
+    }
+
+    private func moveMoney(_ sheet: HomeSheet) -> some View {
         MoveMoneySheet(
             startingAt: sheet == .receive ? [.receive] : [],
             name: environment.profile.name,
@@ -84,7 +119,9 @@ struct RootView: View {
             makeRequest: { RequestFlow(api: environment.api, vault: environment.vault) },
             onAccount: { account in leaveSheet { startPayment(to: account) } },
             onPerson: { account in leaveSheet { startPersonPayment(to: account) } },
-            onNewAccount: { account, save in leaveSheet { startPayment(to: account, save: save) } }
+            onNewAccount: { account, save in leaveSheet { startPayment(to: account, save: save) } },
+            onWallet: { leaveSheet { startWithdraw() } },
+            onBankDeposit: { leaveSheet { startBankDeposit() } }
         )
     }
 
@@ -95,11 +132,13 @@ struct RootView: View {
     }
 
     private func makeReceive() -> ReceiveFlow {
-        ReceiveFlow(
+        environment.watchForArrival()
+        return ReceiveFlow(
             api: environment.deposits,
             vault: environment.vault,
-            vaultAccount: environment.profile.name ?? "fliq-vault.testnet",
-            name: environment.profile.name
+            vaultAccount: environment.profile.name ?? NearNetwork.current.vault,
+            name: environment.profile.name,
+            network: environment.isLive ? .current : .mainnet
         )
     }
 
@@ -117,12 +156,45 @@ struct RootView: View {
         environment.router.push(.payPerson)
     }
 
+    private func startWithdraw() {
+        withdrawFlow = WithdrawFlow(
+            withdrawals: environment.withdrawals,
+            vault: environment.vault,
+            network: environment.isLive ? .current : .testnet,
+            onLeftVault: {
+                await environment.refreshVault()
+                await environment.inbox.load()
+            }
+        )
+        environment.router.push(.withdraw)
+    }
+
+    private func startBankDeposit() {
+        let deposits = environment.deposits
+        let network: NearNetwork = environment.isLive ? .current : .testnet
+        let vault = environment.profile.name ?? NearNetwork.current.vault
+        let testWallet = environment.pajTestRecipient
+        bankDeposit = BankDepositFlow(paj: environment.paj, signIn: environment.pajSignIn, deposits: deposits) {
+            if network.receivesFromOtherChains {
+                let solana = DepositSource(tokenId: "usdc", chainId: "solana", group: .dollars)
+                let reserved = try await deposits.reserve(solana, vault: vault)
+                return BankDepositDestination(address: reserved.address, deposit: reserved)
+            }
+            guard let testWallet else { throw Paj.Failure(message: "Bank deposits land in your vault on mainnet. This test build has no wallet set for them.") }
+            return BankDepositDestination(address: testWallet, isTestWallet: true)
+        }
+        environment.watchForArrival()
+        environment.router.push(.bankDeposit)
+    }
+
     @ViewBuilder
     private func destination(_ route: AppRoute) -> some View {
         switch route {
         case .receipt(let id):
             if let payout = environment.activity.entry(id: id)?.payout {
                 receipt(for: payout)
+            } else {
+                PayoutLoader(id: id) { receipt(for: $0) }
             }
         case .payNew, .payAmount, .payQuote, .paySending, .payPaid, .payRefunded:
             if let flow { payStep(route, flow) }
@@ -133,12 +205,30 @@ struct RootView: View {
                     Task { await environment.refreshVault() }
                 }
             }
+        case .withdraw, .withdrawTo, .withdrawReview:
+            if let withdrawFlow { withdrawStep(route, withdrawFlow) }
+        case .bankDeposit:
+            if let bankDeposit {
+                BankDepositView(flow: bankDeposit) {
+                    environment.router.reset()
+                    Task { await environment.refreshVault() }
+                }
+            }
         case .agents: AgentsView(store: environment.agents)
         case .settings: SettingsView()
         case .settingsAccounts: AccountsView(onAdd: { startPayment() })
         case .settingsSecurity: SecurityView()
         case .settingsNotifications: NotificationsView()
         case .agentConnect: AgentConnectView(store: environment.agents)
+        }
+    }
+
+    @ViewBuilder
+    private func withdrawStep(_ route: AppRoute, _ flow: WithdrawFlow) -> some View {
+        switch route {
+        case .withdrawTo: WithdrawToView(flow: flow)
+        case .withdrawReview: WithdrawReviewView(flow: flow) { environment.router.reset() }
+        default: WithdrawAmountView(flow: flow)
         }
     }
 
@@ -155,7 +245,7 @@ struct RootView: View {
             if let payout = flow.payout {
                 RefundedView(payout: payout, quote: flow.quote, onTryAgain: { startPayment(to: flow.verified) })
             }
-        case .payPerson, .receipt, .agents, .agentConnect, .settings, .settingsAccounts, .settingsSecurity, .settingsNotifications: EmptyView()
+        case .payPerson, .withdraw, .withdrawTo, .withdrawReview, .bankDeposit, .receipt, .agents, .agentConnect, .settings, .settingsAccounts, .settingsSecurity, .settingsNotifications: EmptyView()
         }
     }
 
@@ -166,6 +256,34 @@ struct RootView: View {
         case .refunded: RefundedView(payout: payout)
         case .settled: PaidView(payout: payout)
         default: SendingReceipt(payout: payout)
+        }
+    }
+}
+
+/// A payout from the account's history, fetched when its row is opened.
+private struct PayoutLoader<Content: View>: View {
+    let id: String
+    @ViewBuilder let content: (Payout) -> Content
+    @Environment(AppEnvironment.self) private var environment
+    @State private var payout: Payout?
+    @State private var failed = false
+
+    var body: some View {
+        Group {
+            if let payout {
+                content(payout)
+            } else if failed {
+                Text("Couldn't load this payout. Pull to refresh Activity and try again.")
+                    .font(.system(size: 15))
+                    .foregroundStyle(Theme.textSecondary)
+                    .padding(.top, 60)
+                    .fliqScreen("Payout")
+            } else {
+                ProgressView().padding(.top, 80).fliqScreen("Payout")
+            }
+        }
+        .task {
+            do { payout = try await environment.api.payout(id: id) } catch { failed = true }
         }
     }
 }

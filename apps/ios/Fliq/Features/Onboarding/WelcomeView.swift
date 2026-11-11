@@ -43,22 +43,16 @@ struct WelcomeView: View {
                     }
                     .frame(maxWidth: .infinity)
                     .overlay(alignment: .trailing) {
-                        Image(systemName: "arrow.right")
-                            .font(.system(size: 17, weight: .semibold))
+                        Icon("arrow.right", size: 20)
                             .padding(.trailing, 26)
                     }
                 }
                 .buttonStyle(WelcomeButtonStyle())
                 .disabled(isWorking)
-                Button(action: onExistingAccount) {
-                    HStack(spacing: 10) {
-                        icon("IconDownload")
-                        Text("I already have an account")
-                    }
-                    .font(.system(size: 17, weight: .medium))
-                }
-                .foregroundStyle(Theme.textPrimary)
-                .disabled(isWorking)
+                Button("Signing in on a new iPhone?", action: onExistingAccount)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(Theme.textSecondary)
+                    .disabled(isWorking)
                 if let message {
                     Text(message)
                         .font(.system(size: 13, weight: .medium))

@@ -7,6 +7,8 @@ struct PayToView: View {
     /// Nil opens Pay a fliq user with an empty name.
     let onPerson: (String?) -> Void
     let onNew: () -> Void
+    var onScan: (() -> Void)?
+    var onWallet: (() -> Void)?
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.dismiss) private var dismiss
     @State private var search = ""
@@ -34,7 +36,7 @@ struct PayToView: View {
         var name: String {
             switch self {
             case .account(let account): account.accountName.localizedCapitalized
-            case .person(let person): person.displayName ?? person.nearAccount
+            case .person(let person): person.displayName ?? FliqName.display(person.nearAccount)
             }
         }
     }
@@ -79,8 +81,7 @@ struct PayToView: View {
 
     private var searchField: some View {
         HStack(spacing: 10) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 16, weight: .medium))
+            Icon("magnifyingglass", size: 19)
                 .foregroundStyle(searching ? Theme.textPrimary : Theme.textTertiary)
             TextField("", text: $search, prompt: Text("Name, bank, account number or fliq name").foregroundStyle(Theme.textTertiary))
                 .focused($searching)
@@ -90,7 +91,7 @@ struct PayToView: View {
                 .accessibilityLabel("Search")
             if !search.isEmpty {
                 Button { search = "" } label: {
-                    Image(systemName: "xmark.circle.fill").foregroundStyle(Theme.textTertiary)
+                    Icon("xmark.circle.fill", size: 18).foregroundStyle(Theme.textTertiary)
                 }
                 .accessibilityLabel("Clear search")
             }
@@ -110,7 +111,7 @@ struct PayToView: View {
         ScrollView(.horizontal) {
             HStack(spacing: 8) {
                 chip(.all, count: nil) {
-                    Image(systemName: "globe").font(.system(size: 14, weight: .semibold))
+                    Icon("globe", size: 17)
                     Text("All")
                 }
                 ForEach(Country.allCases, id: \.self) { country in
@@ -154,6 +155,15 @@ struct PayToView: View {
 
     @ViewBuilder
     private var browsing: some View {
+        if let onScan, filter != .fliqUsers {
+            actionRow("Scan to pay", detail: "A bank QR code or an account number", icon: "qrcode.viewfinder", action: onScan)
+                .padding(.top, 16)
+        }
+        if let onWallet, filter == .all {
+            actionRow("Send to a wallet", detail: "USDC to any NEAR address", icon: "arrow.up.right", action: onWallet)
+                .padding(.top, 10)
+        }
+
         if filter == .all, !recent.isEmpty {
             sectionTitle("Recent")
             ScrollView(.horizontal) {
@@ -202,7 +212,7 @@ struct PayToView: View {
             sectionTitle("On fliq")
             card {
                 Button { onPerson(typed.account) } label: {
-                    RowLayout(title: Text("Pay \(typed.value)"), detail: Text("\(typed.account) · instant, no fee").foregroundStyle(Theme.textSecondary)) {
+                    RowLayout(title: Text("Pay @\(typed.value)"), detail: Text("fliq user · instant, no fee").foregroundStyle(Theme.textSecondary)) {
                         NEARMark(size: 22)
                             .frame(width: 46, height: 46)
                             .background(Color.black, in: Circle())
@@ -244,7 +254,7 @@ struct PayToView: View {
             return highlighted(account.institution, base: Theme.textSecondary) + Text("  ·  ").foregroundStyle(Theme.textTertiary)
                 + highlighted(number, base: Theme.textSecondary)
         case .person(let person):
-            return highlighted(person.nearAccount, base: Theme.textSecondary)
+            return highlighted(FliqName.display(person.nearAccount), base: Theme.textSecondary)
                 + Text("  ·  instant, no fee").foregroundStyle(Theme.confirmed.opacity(0.85))
         }
     }
@@ -265,12 +275,11 @@ struct PayToView: View {
 
     private func menu(for account: VerifiedAccount) -> some View {
         Menu {
-            Button { onAccount(account) } label: { Label("Pay", systemImage: "paperplane") }
-            Button { UIPasteboard.general.string = account.number } label: { Label("Copy account number", systemImage: "doc.on.doc") }
-            Button(role: .destructive) { removing = account } label: { Label("Remove", systemImage: "trash") }
+            Button { onAccount(account) } label: { IconLabel("Pay", icon: "paperplane") }
+            Button { UIPasteboard.general.string = account.number } label: { IconLabel("Copy account number", icon: "doc.on.doc") }
+            Button(role: .destructive) { removing = account } label: { IconLabel("Remove", icon: "trash") }
         } label: {
-            Image(systemName: "ellipsis")
-                .font(.system(size: 16, weight: .semibold))
+            Icon("ellipsis", size: 19)
                 .foregroundStyle(Theme.textSecondary)
                 .frame(width: 36, height: 36)
                 .contentShape(Rectangle())
@@ -282,22 +291,46 @@ struct PayToView: View {
     private func contextActions(for payee: Payee, isOwn: Bool) -> some View {
         switch payee {
         case .account(let account):
-            Button { onAccount(account) } label: { Label("Pay", systemImage: "paperplane") }
-            Button { UIPasteboard.general.string = account.number } label: { Label("Copy account number", systemImage: "doc.on.doc") }
+            Button { onAccount(account) } label: { IconLabel("Pay", icon: "paperplane") }
+            Button { UIPasteboard.general.string = account.number } label: { IconLabel("Copy account number", icon: "doc.on.doc") }
             if !isOwn {
-                Button(role: .destructive) { removing = account } label: { Label("Remove", systemImage: "trash") }
+                Button(role: .destructive) { removing = account } label: { IconLabel("Remove", icon: "trash") }
             }
         case .person(let person):
-            Button { onPerson(person.nearAccount) } label: { Label("Pay", systemImage: "paperplane") }
-            Button { UIPasteboard.general.string = person.nearAccount } label: { Label("Copy fliq name", systemImage: "doc.on.doc") }
+            Button { onPerson(person.nearAccount) } label: { IconLabel("Pay", icon: "paperplane") }
+            Button { UIPasteboard.general.string = FliqName.display(person.nearAccount) } label: { IconLabel("Copy fliq name", icon: "doc.on.doc") }
         }
     }
 
     private var chevron: some View {
-        Image(systemName: "chevron.right")
-            .font(.system(size: 13, weight: .semibold))
+        Icon("chevron.right", size: 16)
             .foregroundStyle(Theme.textTertiary)
             .frame(width: 36, height: 36)
+    }
+
+    private func actionRow(_ title: String, detail: String, icon: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                Icon(icon, size: 24)
+                    .frame(width: 44, height: 44)
+                    .background(Theme.surfaceRaised, in: Circle())
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.system(size: 17, weight: .semibold))
+                    Text(detail)
+                        .font(.system(size: 14))
+                        .foregroundStyle(Theme.textSecondary)
+                }
+                Spacer()
+                Icon("chevron.right", size: 17)
+                    .foregroundStyle(Theme.textTertiary)
+            }
+            .foregroundStyle(Theme.textPrimary)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(Theme.surfaceRaised.opacity(0.7), in: RoundedRectangle(cornerRadius: 20))
+        }
+        .buttonStyle(.pressable(scale: 0.98))
+        .accessibilityIdentifier(title)
     }
 
     private func sectionTitle(_ title: String, count: Int? = nil) -> some View {
@@ -321,8 +354,7 @@ struct PayToView: View {
 
     private var emptyList: some View {
         VStack(spacing: 10) {
-            Image(systemName: filter == .fliqUsers ? "person.2" : "building.columns")
-                .font(.system(size: 22))
+            Icon(filter == .fliqUsers ? "person.2" : "building.columns", size: 26)
                 .foregroundStyle(Theme.textTertiary)
                 .frame(width: 60, height: 60)
                 .background(Theme.surfaceRaised, in: Circle())
@@ -351,7 +383,7 @@ struct PayToView: View {
 
     private var newRecipient: some View {
         Button { filter == .fliqUsers ? onPerson(nil) : onNew() } label: {
-            Label("New recipient", systemImage: "plus")
+            IconLabel("New recipient", icon: "plus")
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(.black)
                 .padding(.horizontal, 22)
@@ -425,7 +457,7 @@ struct PayToView: View {
         return (own + listed).filter { payee in
             switch payee {
             case .account(let account): [account.accountName, account.institution, account.number].contains(where: contains)
-            case .person(let person): [person.displayName ?? "", person.nearAccount].contains(where: contains)
+            case .person(let person): [person.displayName ?? "", FliqName.display(person.nearAccount)].contains(where: contains)
             }
         }
     }
@@ -436,7 +468,8 @@ struct PayToView: View {
 
     /// What's typed, read as a fliq name, when it isn't someone already listed.
     private var typedName: FliqName? {
-        guard filter == .all || filter == .fliqUsers, !query.allSatisfy(\.isNumber), let name = FliqName(query.lowercased()) else { return nil }
+        guard filter == .all || filter == .fliqUsers, !query.allSatisfy(\.isNumber), let account = FliqName.account(typed: query),
+              let name = FliqName(String(account.dropLast(FliqName.suffix.count))) else { return nil }
         return people.contains { $0.nearAccount == name.account } ? nil : name
     }
 

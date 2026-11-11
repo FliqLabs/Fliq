@@ -63,13 +63,15 @@ final class AccountEntry {
     func verify() async {
         guard isComplete, verified == nil, !isVerifying else { return }
         isVerifying = true
+        errorMessage = nil
         defer { isVerifying = false }
         do {
             var confirmed = try await api.verify(Account(bank: institution.code, number: number))
             confirmed.country = country
             confirmed.logoKey = institution.logoKey
             verified = confirmed
-            errorMessage = nil
+        } catch APIError.server(_, let detail) {
+            errorMessage = detail.message
         } catch {
             errorMessage = "We couldn't confirm this account with \(institution.name)."
         }

@@ -69,7 +69,7 @@ struct AgentsView: View {
                 .padding(.top, 8)
             }
 
-            if agent.status == .active {
+            if agent.status != .revoked {
                 HStack(spacing: 8) {
                     Button("Change limits") { editing = agent }
                         .buttonStyle(CompactButtonStyle(prominent: true))
@@ -105,14 +105,14 @@ struct AgentsView: View {
                 CardRow {
                     Text("Connect an agent")
                     Spacer()
-                    Image(systemName: "plus").font(.system(size: 15, weight: .semibold))
+                    Icon("plus", size: 18)
                 }
             }
             .foregroundStyle(Theme.textPrimary)
             CardRow(isLast: true) {
                 Text("Enforced by \(store.vaultAccount)")
                 Spacer()
-                Image(systemName: "checkmark.shield").foregroundStyle(Theme.textTertiary)
+                Icon("checkmark.shield", size: 18).foregroundStyle(Theme.textTertiary)
             }
         }
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16))
@@ -154,10 +154,10 @@ private struct StatusDot: View {
     var body: some View {
         HStack(spacing: 5) {
             Circle().frame(width: 6, height: 6)
-            Text(status == .active ? "Active" : "Revoked")
+            Text(status == .active ? "Active" : status == .pending ? "Connecting" : "Revoked")
         }
         .font(.system(size: 12, weight: .medium))
-        .foregroundStyle(status == .active ? Theme.confirmed : Theme.textTertiary)
+        .foregroundStyle(status == .active ? Theme.confirmed : status == .pending ? Theme.warning : Theme.textTertiary)
     }
 }
 

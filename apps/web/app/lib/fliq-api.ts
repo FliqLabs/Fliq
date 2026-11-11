@@ -1,3 +1,25 @@
+
+export type Money = {
+  amount: string;
+  currency: "NGN" | "KES" | "GHS" | "USD";
+};
+
+export type Agent = {
+  agent_id: string;
+  name: string;
+  public_key: string;
+  state: "pending" | "active" | "revoked";
+  daily_cap: Money;
+  per_payout_cap: Money;
+  currencies: ("NGN" | "KES")[];
+  saved_accounts_only: boolean;
+  spent_today: Money;
+  connected_at: string;
+  expires_at: string;
+};
+
+export type AgentList = { agents: Agent[] };
+
 export type User = {
   user_id: string;
   near_account: string | null;
@@ -5,6 +27,9 @@ export type User = {
   photo_url: string | null;
   occupation: string | null;
   vault: string | null;
+  home_currency?: "NGN" | "KES";
+  daily_limit?: Money;
+  verified?: boolean;
 };
 
 export type Workspace = {
@@ -100,6 +125,7 @@ export class ApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    readonly code?: string,
   ) {
     super(message);
   }
@@ -115,10 +141,12 @@ export async function fliqApi<T>(path: string, init?: RequestInit): Promise<T> {
   const data = await response.json().catch(() => null);
   if (!response.ok) {
     const message = data?.error?.message ?? "Something went wrong. Try again.";
+    const code = typeof data?.error?.code === "string" ? data.error.code : undefined;
     const traceId = response.headers.get("x-trace-id");
     throw new ApiError(
       response.status >= 500 && traceId ? `${message} Reference: ${traceId}` : message,
       response.status,
+      code,
     );
   }
   return data as T;

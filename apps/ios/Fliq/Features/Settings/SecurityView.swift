@@ -6,6 +6,7 @@ struct SecurityView: View {
     @State private var passkeys: [Passkey]?
     @State private var devices: [DeviceSession]?
     @State private var signingOut: DeviceSession?
+    @State private var settingPasscode = false
 
     var body: some View {
         ScrollView {
@@ -15,7 +16,7 @@ struct SecurityView: View {
                     if let passkeys, !passkeys.isEmpty {
                         ForEach(Array(passkeys.enumerated()), id: \.element.id) { index, passkey in
                             CardRow(isLast: index == passkeys.count - 1) {
-                                Image(systemName: "person.badge.key").frame(width: 22)
+                                Icon("person.badge.key", size: 22)
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(passkey.transports.contains("hybrid") ? "iCloud Keychain passkey" : "Passkey on this device")
                                     Text(passkeyDetail(passkey)).font(.system(size: 13)).foregroundStyle(Theme.textSecondary)
@@ -28,6 +29,9 @@ struct SecurityView: View {
                         placeholder(passkeys == nil ? "Loading" : "No passkey yet. You signed in with email.")
                     }
                 }
+
+                SectionLabel(text: "App lock").padding(.top, 24)
+                appLock
 
                 SectionLabel(text: "Sending").padding(.top, 24)
                 card {
@@ -73,6 +77,15 @@ struct SecurityView: View {
         .scrollIndicators(.hidden)
         .fliqScreen("Security")
         .task { await load() }
+        .sheet(isPresented: $settingPasscode) {
+            NavigationStack {
+                NewPasscodeView { digits in
+                    environment.lock.setPasscode(digits)
+                    settingPasscode = false
+                }
+            }
+            .presentationBackground(Color(hex: 0x161616))
+        }
         .confirmationDialog(
             "Sign out \(signingOut?.device ?? "this device")?",
             isPresented: Binding(get: { signingOut != nil }, set: { if !$0 { signingOut = nil } }),
@@ -84,6 +97,43 @@ struct SecurityView: View {
                     try? await environment.api.revokeSession(id: device.sessionId)
                     await load()
                 }
+            }
+        }
+    }
+
+    private var appLock: some View {
+        let lock = environment.lock
+        return card {
+            CardRow {
+                Icon(LockBiometry.symbol, size: 22)
+                Toggle("Lock with \(LockBiometry.name)", isOn: Binding(get: { lock.usesBiometrics }, set: { on in
+                    if !on { return lock.useBiometrics(false) }
+                    Task { if await LockBiometry.unlock(allowDevicePasscode: false) { lock.useBiometrics(true) } }
+                }))
+                .tint(Theme.confirmed)
+            }
+            CardRow {
+                Icon("lock", size: 22)
+                Text("Passcode")
+                Spacer()
+                if lock.hasPasscode {
+                    Button("Change") { settingPasscode = true }.foregroundStyle(Theme.textPrimary)
+                    Button("Remove") { lock.removePasscode() }.foregroundStyle(Theme.danger)
+                } else {
+                    Button("Set") { settingPasscode = true }.foregroundStyle(Theme.textPrimary)
+                }
+            }
+            .font(.system(size: 15, weight: .medium))
+            CardRow(isLast: true) {
+                Icon("timer", size: 22)
+                Text("Lock")
+                Spacer()
+                Picker("Lock", selection: Binding(get: { lock.delay }, set: { lock.setDelay($0) })) {
+                    ForEach(AppLock.Delay.allCases) { Text($0.title).tag($0) }
+                }
+                .labelsHidden()
+                .tint(Theme.textSecondary)
+                .disabled(!lock.isEnabled)
             }
         }
     }

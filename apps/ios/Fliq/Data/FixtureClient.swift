@@ -43,6 +43,10 @@ struct FixtureClient: FliqAPI {
         return path.with(id: id).upTo(step: min(step, path.history.count - 1))
     }
 
+    func activity() async throws -> ActivityList {
+        try load("activity.list")
+    }
+
     func payouts() async throws -> PayoutList {
         try load("payouts.list")
     }
@@ -86,6 +90,15 @@ struct FixtureClient: FliqAPI {
     }
 
     func updateProfile(displayName: String) async throws -> User {
+        try load("user.new")
+    }
+
+    func updateProfilePhoto(_ url: URL) async throws -> User {
+        let user: User = try load("user.new")
+        return user.photographed(url)
+    }
+
+    func removeProfilePhoto() async throws -> User {
         try load("user.new")
     }
 
@@ -177,6 +190,10 @@ private actor FixtureLedger {
 private extension User {
     func named(_ account: String) -> User {
         User(userId: userId, nearAccount: account, displayName: displayName, occupation: occupation, vault: vault, photoUrl: photoUrl)
+    }
+
+    func photographed(_ url: URL) -> User {
+        User(userId: userId, nearAccount: nearAccount, displayName: displayName, occupation: occupation, vault: vault, photoUrl: url.absoluteString)
     }
 }
 

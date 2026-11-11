@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 
 struct SettingsView: View {
@@ -6,6 +7,7 @@ struct SettingsView: View {
     @State private var showingCustody = false
     @State private var confirmingSignOut = false
     @State private var user: User?
+    @State private var editingAvatar = false
     @State private var passkeys: [Passkey] = []
     @State private var devices: [DeviceSession] = []
 
@@ -98,18 +100,31 @@ struct SettingsView: View {
 
     private var profileCard: some View {
         HStack(spacing: 16) {
-            PersonAvatar(name: profile.displayName ?? profile.name ?? "f", photoURL: user?.photoUrl.flatMap(URL.init(string:)), size: 64)
-                .overlay(alignment: .bottomTrailing) {
-                    Image(systemName: "camera")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(.black)
-                        .frame(width: 22, height: 22)
-                        .background(.white, in: Circle())
-                        .overlay(Circle().strokeBorder(Theme.surface, lineWidth: 2))
-                }
+            Button { editingAvatar = true } label: {
+                PersonAvatar(name: profile.displayName ?? profile.name ?? "f", photoURL: user?.photoUrl.flatMap(URL.init(string:)), size: 64)
+                    .overlay(alignment: .bottomTrailing) {
+                        Icon("camera", size: 12)
+                            .foregroundStyle(.black)
+                            .frame(width: 22, height: 22)
+                            .background(.white, in: Circle())
+                            .overlay(Circle().strokeBorder(Theme.surface, lineWidth: 2))
+                    }
+            }
+            .accessibilityLabel("Edit avatar")
+            .sheet(isPresented: $editingAvatar) {
+                EditAvatarSheet(
+                    user: $user,
+                    name: profile.displayName ?? profile.name ?? "f",
+                    handle: (user?.nearAccount ?? profile.name).map { FliqName.display($0) }
+                )
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
+                .presentationCornerRadius(32)
+                .presentationBackground(Color(hex: 0x161616))
+            }
             VStack(alignment: .leading, spacing: 4) {
                 Text(user?.displayName ?? profile.displayName ?? "Your profile").font(.system(size: 19, weight: .semibold))
-                Text(user?.nearAccount ?? profile.name ?? "No fliq name yet")
+                Text((user?.nearAccount ?? profile.name).map(FliqName.display) ?? "No fliq name yet")
                     .font(.system(size: 13, design: .monospaced))
                     .foregroundStyle(Theme.textSecondary)
                     .lineLimit(1)
@@ -188,15 +203,14 @@ struct LinkRow<Mark: View>: View {
     var body: some View {
         Button(action: action) {
             CardRow(isLast: isLast) {
-                Image(systemName: symbol).foregroundStyle(symbolColor).frame(width: 22)
+                Icon(symbol, size: 22).foregroundStyle(symbolColor)
                 Text(title)
                 Spacer()
                 mark()
                 if let value {
                     Text(value).font(.system(size: 13)).foregroundStyle(Theme.textSecondary)
                 }
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .semibold))
+                Icon("chevron.right", size: 16)
                     .foregroundStyle(Theme.textTertiary)
             }
             .contentShape(Rectangle())
@@ -222,7 +236,7 @@ struct InfoRow<Mark: View>: View {
 
     var body: some View {
         CardRow(isLast: isLast) {
-            if let symbol { Image(systemName: symbol).frame(width: 22) }
+            if let symbol { Icon(symbol, size: 22) }
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                 if let detail { Text(detail).font(.system(size: 13)).foregroundStyle(Theme.textSecondary) }

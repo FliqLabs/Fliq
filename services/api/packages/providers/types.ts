@@ -37,6 +37,10 @@ export type Capabilities = {
   corridors: Corridor[];
   sources: SourceAsset[];
   limits: Partial<Record<FiatCurrency, Limits>>;
+  // Sandbox orders settle on test networks, so real funds must never be routed to them.
+  sandbox?: boolean;
+  // How a payout may fund this provider: straight from the sender's chain, or through a 1Click hop. Absent means both.
+  funding?: { direct: boolean; hop: boolean };
 };
 
 export type QuoteAmount = { side: "send"; units: bigint } | { side: "receive"; minorUnits: bigint };
@@ -79,6 +83,8 @@ export type CreateOrderRequest = {
   source: SourceAsset;
   recipient: Recipient;
   refundAddress: string;
+  // A stable pseudonym for the paying user, for providers that keep a profile per end user. Never the user id itself.
+  sender?: { pseudonym: string };
 };
 
 export type Funding =
@@ -136,11 +142,16 @@ export interface ProviderAdapter {
   institutions(country: Country): Promise<Institution[]>;
   parseWebhook(webhook: InboundWebhook): WebhookEvent;
   health(): Promise<Health>;
+  // Providers that only match a deposit once told its transaction hash. Safe to call again for the same order.
+  confirmFunding?(providerOrderId: string, txHash: string): Promise<OrderSnapshot>;
+  // The balance fliq holds at the provider, in asset base units, for providers that can hold funds for us.
+  balance?(asset: Asset): Promise<bigint>;
 }
 
 export type ProviderAlert = {
   provider: ProviderId;
-  kind: "unmappable_status" | "invalid_signature";
+  // custodial_refund: the provider returned a failed payout's funds to fliq's balance there, so an operator owes the sender.
+  kind: "unmappable_status" | "invalid_signature" | "custodial_refund";
   detail: string;
 };
 

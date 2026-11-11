@@ -6,6 +6,7 @@ import { CreateTestPayoutDrawer } from "./create-test-payout-drawer";
 import { FirstLoginDashboard } from "./first-login-dashboard";
 import { PayoutExportButton } from "./payout-export-button";
 import type { Onboarding } from "../lib/fliq-api";
+import { PayoutStatusBadge } from "./components/payout-status-badge";
 
 export type PayoutRow = {
   id: string;
@@ -22,7 +23,6 @@ export type DashboardSummary = {
   settledToday: number | null;
   medianSecondsToBank: number | null;
   refusedByVaultCaps: number | null;
-  bestRate: number | null;
 };
 
 type Props = {
@@ -78,41 +78,41 @@ export function PayoutsDashboard({
           value={search}
           onChange={(event) => setSearch(event.target.value)}
           placeholder="Search by name or payout ID"
-          className="h-10 w-full max-w-sm rounded-lg border border-zinc-200 px-4 text-sm outline-none placeholder:text-zinc-400 focus:border-zinc-500"
+          className="h-10 w-full max-w-sm rounded-lg border border-app-line px-4 text-sm outline-none placeholder:text-app-dim focus:border-app-accent"
         />
         <div className="flex gap-2">
           <PayoutExportButton />
           <button
             type="button"
             onClick={openCreatePayout}
-            className="rounded-lg bg-zinc-950 px-4 py-2.5 text-xs font-semibold text-white hover:bg-zinc-800"
+            className="rounded-lg bg-app-ink px-4 py-2.5 text-xs font-semibold text-app-ink-fg hover:opacity-90"
           >
             Create payout
           </button>
         </div>
       </div>
 
-      <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <SummaryCard label="Settled today" value={summary.settledToday?.toString() ?? "—"} />
+      <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <SummaryCard label="Settled today" value={summary.settledToday?.toString() ?? "—"} tone="success" />
         <SummaryCard
           label="Median time to bank"
           value={summary.medianSecondsToBank === null ? "—" : `${summary.medianSecondsToBank}s`}
         />
-        <SummaryCard label="Refused by vault caps" value={summary.refusedByVaultCaps?.toString() ?? "—"} />
         <SummaryCard
-          label="Best rate now"
-          value={summary.bestRate === null ? "—" : `₦${summary.bestRate.toFixed(2)}`}
+          label="Refused by vault caps"
+          value={summary.refusedByVaultCaps?.toString() ?? "—"}
+          tone="danger"
         />
       </div>
-      {summaryLoading && <p className="mt-2 text-xs text-zinc-500">Loading summary metrics…</p>}
+      {summaryLoading && <p className="mt-2 text-xs text-app-muted">Loading summary metrics…</p>}
       {summaryError && (
-        <p role="alert" className="mt-2 text-xs text-red-600">
+        <p role="alert" className="mt-2 text-xs text-app-bad">
           {summaryError}
         </p>
       )}
 
-      <section aria-label="Payouts list" className="mt-4 overflow-hidden rounded-xl border border-zinc-200">
-        <div className="hidden grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr] gap-4 border-b border-zinc-200 px-4 py-3 text-[11px] font-semibold uppercase text-zinc-500 md:grid">
+      <section aria-label="Payouts list" className="mt-4 overflow-hidden rounded-xl border border-app-line">
+        <div className="hidden grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr] gap-4 border-b border-app-line px-4 py-3 text-[11px] font-semibold uppercase text-app-muted md:grid">
           <span>Recipient</span>
           <span>Amount</span>
           <span>Provider</span>
@@ -124,24 +124,24 @@ export function PayoutsDashboard({
           <div className="flex min-h-[360px] flex-col items-center justify-center px-5 py-14 text-center">
             <div
               aria-hidden="true"
-              className="mb-4 grid size-10 place-items-center rounded-full bg-amber-50 text-amber-600"
+              className="mb-4 grid size-10 place-items-center rounded-full bg-app-warn-soft text-app-warn"
             >
               ✦
             </div>
             <h1 className="text-lg font-semibold">No matching payouts</h1>
-            <p className="mt-2 max-w-sm text-sm text-zinc-500">Try a different name or payout ID.</p>
+            <p className="mt-2 max-w-sm text-sm text-app-muted">Try a different name or payout ID.</p>
           </div>
         ) : (
-          <div className="divide-y divide-zinc-100">
+          <div className="divide-y divide-app-line">
             {visiblePayouts.map((payout) => (
               <Link
                 key={payout.id}
                 href={`/dashboard/payouts/${encodeURIComponent(payout.id)}`}
-                className="grid gap-2 px-4 py-4 text-sm hover:bg-zinc-50 md:grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr] md:items-center md:gap-4"
+                className="grid gap-2 px-4 py-4 text-sm hover:bg-app-hover md:grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr] md:items-center md:gap-4"
               >
                 <span>
                   <span className="block font-medium">{payout.recipient}</span>
-                  <span className="text-xs text-zinc-500">{payout.destination}</span>
+                  <span className="text-xs text-app-muted">{payout.destination}</span>
                 </span>
                 <span>
                   {new Intl.NumberFormat("en-NG", { style: "currency", currency: payout.currency }).format(
@@ -149,9 +149,9 @@ export function PayoutsDashboard({
                   )}
                 </span>
                 <span>{payout.provider}</span>
-                <span>{payout.state}</span>
+                <PayoutStatusBadge state={payout.state} />
                 <span>{payout.when}</span>
-                <span className="truncate text-xs text-zinc-500">{payout.id}</span>
+                <span className="truncate text-xs text-app-muted">{payout.id}</span>
               </Link>
             ))}
           </div>
@@ -162,7 +162,7 @@ export function PayoutsDashboard({
           type="button"
           disabled={loadingMore}
           onClick={onLoadMore}
-          className="mt-4 rounded-lg border border-zinc-200 px-4 py-2.5 text-sm font-semibold disabled:opacity-50"
+          className="mt-4 rounded-lg border border-app-line px-4 py-2.5 text-sm font-semibold disabled:opacity-50"
         >
           {loadingMore ? "Loading…" : "Load more payouts"}
         </button>
@@ -172,11 +172,30 @@ export function PayoutsDashboard({
   );
 }
 
-function SummaryCard({ label, value }: { label: string; value: string }) {
+function SummaryCard({
+  label,
+  value,
+  tone = "neutral",
+}: {
+  label: string;
+  value: string;
+  tone?: "neutral" | "success" | "danger" | "progress";
+}) {
+  const colors = {
+    neutral: { card: "border-app-line", label: "text-app-muted", value: "text-app-fg" },
+    success: {
+      card: "border-app-good-soft bg-app-good-soft",
+      label: "text-app-good",
+      value: "text-app-good",
+    },
+    danger: { card: "border-app-bad-soft bg-app-bad-soft", label: "text-app-bad", value: "text-app-bad" },
+    progress: { card: "border-app-accent-soft bg-app-accent-soft", label: "text-app-accent", value: "text-app-accent" },
+  }[tone];
+
   return (
-    <div className="min-h-28 rounded-xl border border-zinc-200 p-4">
-      <p className="text-xs text-zinc-500">{label}</p>
-      <p className="mt-2 text-2xl font-semibold">{value}</p>
+    <div className={`min-h-28 rounded-xl border p-4 ${colors.card}`}>
+      <p className={`text-xs ${colors.label}`}>{label}</p>
+      <p className={`mt-2 text-2xl font-semibold ${colors.value}`}>{value}</p>
     </div>
   );
 }

@@ -3,40 +3,75 @@ import SwiftUI
 struct HomeView: View {
     @State var model: HomeModel
     var onMenu: () -> Void = {}
+    var onQR: () -> Void = {}
+    var onRefresh: () async -> Void = {}
+    var activity: ActivityStore?
+    var onSeeAll: () -> Void = {}
+    var onOpenPayout: (String) -> Void = { _ in }
+    @State private var selected: ActivityLine?
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Spacer()
-            balance
-            Spacer()
-            WalletArrivedCard(inbox: model.inbox)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 16)
+        GeometryReader { proxy in
+            ScrollView {
+                VStack(spacing: 0) {
+                    header
+                    Spacer()
+                    balance
+                    Spacer()
+                    VStack(spacing: 12) {
+                        if let lines = activity?.lines.prefix(2), !lines.isEmpty {
+                            HomeRecentCard(lines: Array(lines), onSeeAll: onSeeAll) { selected = $0 }
+                        }
+                        if let moving = activity?.moving {
+                            HomeMovingCard(entry: moving) { onOpenPayout(moving.id) }
+                        }
+                        WalletArrivedCard(inbox: model.inbox)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 64)
+                    .animation(.smooth(duration: 0.3), value: activity?.rows)
+                }
+                .frame(minHeight: proxy.size.height)
+            }
+            .scrollIndicators(.hidden)
+            .refreshable {
+                await onRefresh()
+                await model.load()
+            }
         }
         .background(Theme.ground.ignoresSafeArea())
         .task { await model.load() }
+        .sheet(item: $selected) { line in
+            ActivityDetailSheet(line: line, onReceipt: onOpenPayout)
+                .presentationDragIndicator(.visible)
+                .presentationCornerRadius(32)
+                .presentationBackground(Color(hex: 0x161616))
+        }
     }
 
     private var header: some View {
         HStack {
             Button(action: onMenu) {
-                Circle()
-                    .fill(Theme.surfaceRaised)
-                    .frame(width: 32, height: 32)
-                    .overlay(Image(systemName: "person.fill").font(.system(size: 14)).foregroundStyle(Theme.textSecondary))
+                if let photo = model.photoURL {
+                    PersonAvatar(name: model.me?.displayName ?? "f", photoURL: photo, size: 36)
+                } else {
+                    Circle()
+                        .fill(Theme.surfaceRaised)
+                        .frame(width: 36, height: 36)
+                        .overlay(Icon("person.fill", size: 18).foregroundStyle(Theme.textSecondary))
+                }
             }
             .accessibilityLabel("Profile")
             Spacer()
             Wordmark()
             Spacer()
-            Button(action: onMenu) {
-                Image(systemName: "line.3.horizontal.decrease")
-                    .font(.system(size: 18))
+            Button(action: onQR) {
+                Icon("qrcode", size: 22)
                     .foregroundStyle(Theme.textSecondary)
                     .frame(width: 32, height: 32)
             }
-            .accessibilityLabel("Menu")
+            .accessibilityLabel("Receive with a QR code")
+            .accessibilityIdentifier("home.qr")
         }
         .padding(.horizontal, 24)
         .padding(.top, 16)
@@ -44,7 +79,7 @@ struct HomeView: View {
 
     private var balance: some View {
         VStack(spacing: 14) {
-            Label("Vault balance", systemImage: "eye")
+            IconLabel("Vault balance", icon: "eye")
                 .labelStyle(TrailingIconLabelStyle())
                 .font(.system(size: 14))
                 .foregroundStyle(Theme.textSecondary)

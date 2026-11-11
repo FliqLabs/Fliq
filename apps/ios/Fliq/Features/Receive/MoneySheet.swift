@@ -11,7 +11,7 @@ struct MoveMoneySheet: View {
 
     static let menuHeight = PresentationDetent.height(470)
     /// Amount, note, cash-out switch and button, sitting above the decimal pad with nothing cut off.
-    static let requestHeight = PresentationDetent.height(480)
+    static let requestHeight = PresentationDetent.large
 
     let name: String?
     let receive: ReceiveFlow
@@ -20,10 +20,15 @@ struct MoveMoneySheet: View {
     let onAccount: (VerifiedAccount) -> Void
     let onPerson: (String?) -> Void
     let onNewAccount: (VerifiedAccount, Bool) -> Void
+    var onWallet: (() -> Void)?
+    var onBankDeposit: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppEnvironment.self) private var environment
     @State private var path: [Step]
     @State private var request: RequestFlow?
     @State private var detent: PresentationDetent
+    @State private var scan: ScanToPayModel?
+    @State private var afterScan: (() -> Void)?
 
     init(
         startingAt start: [Step] = [],
@@ -33,7 +38,9 @@ struct MoveMoneySheet: View {
         makeRequest: @escaping () -> RequestFlow,
         onAccount: @escaping (VerifiedAccount) -> Void,
         onPerson: @escaping (String?) -> Void,
-        onNewAccount: @escaping (VerifiedAccount, Bool) -> Void
+        onNewAccount: @escaping (VerifiedAccount, Bool) -> Void,
+        onWallet: (() -> Void)? = nil,
+        onBankDeposit: (() -> Void)? = nil
     ) {
         self.name = name
         self.receive = receive
@@ -42,15 +49,18 @@ struct MoveMoneySheet: View {
         self.onAccount = onAccount
         self.onPerson = onPerson
         self.onNewAccount = onNewAccount
+        self.onWallet = onWallet
+        self.onBankDeposit = onBankDeposit
         _path = State(initialValue: start)
         _detent = State(initialValue: Self.menuHeight)
     }
 
     var body: some View {
         NavigationStack(path: $path) {
-            MoveMoneyMenu(onSend: { go(.payTo) }, onReceive: { go(.receive) }, onRequest: { go(.request) })
+            MoveMoneyMenu(onSend: { go(.payTo) }, onReceive: { go(.receive) }, onRequest: { go(.request) }, onScan: startScan)
                 .navigationDestination(for: Step.self, destination: screen)
         }
+        .fullScreenCover(item: $scan, onDismiss: { afterScan?(); afterScan = nil }) { scanner($0) }
         .tint(Theme.textPrimary)
         .presentationDetents(Self.detents(for: path.last).union([detent]), selection: $detent)
         .onChange(of: path) { _, path in
@@ -63,11 +73,12 @@ struct MoveMoneySheet: View {
     private func screen(_ step: Step) -> some View {
         switch step {
         case .receive:
-            ReceiveStartView(name: name, onFliqName: { go(.fliqName) }, onWallet: { go(.currencies) })
+            ReceiveStartView(name: name, flow: receive, onFliqName: { go(.fliqName) }, onWallet: openWallet, onBankDeposit: onBankDeposit)
+                .task { await receive.loadSources() }
         case .request:
             if let request { RequestView(flow: request) { dismiss() }.sheetToolbar { dismiss() } }
         case .payTo:
-            PayToView(onAccount: onAccount, onPerson: onPerson, onNew: { go(.recipientCurrency) })
+            PayToView(onAccount: onAccount, onPerson: onPerson, onNew: { go(.recipientCurrency) }, onScan: startScan, onWallet: onWallet)
         case .recipientCurrency:
             RecipientCurrencyView { go(.sendMethod($0)) }
         case .sendMethod(let country):
@@ -93,6 +104,25 @@ struct MoveMoneySheet: View {
         }
     }
 
+    /// The camera closes first; whatever was scanned carries on once it's gone.
+    private func scanner(_ model: ScanToPayModel) -> some View {
+        ScanToPayView(
+            model: model,
+            onPay: { account in finishScan { onNewAccount(account, false) } },
+            onPerson: { name in finishScan { onPerson(name) } },
+            onTypeInstead: { finishScan { go(.recipient(.ng, .bank)) } }
+        )
+    }
+
+    private func startScan() {
+        scan = ScanToPayModel(api: environment.api)
+    }
+
+    private func finishScan(then next: @escaping () -> Void) {
+        afterScan = next
+        scan = nil
+    }
+
     /// Moves on. A step that needs more room grows the sheet first, so it never appears squeezed.
     private func go(_ step: Step) {
         if step == .request, request == nil { request = makeRequest() }
@@ -107,6 +137,14 @@ struct MoveMoneySheet: View {
 
     private func reserve(_ source: DepositSource) {
         Task { if await receive.reserve(source) { go(.address) } }
+    }
+
+    /// With a single way to receive, as on testnet, both pickers are skipped and the address opens straight away.
+    private func openWallet() {
+        guard let only = receive.onlyOption else { return go(.currencies) }
+        Task {
+            if await receive.reserve(only) { go(.address) } else { go(.currencies) }
+        }
     }
 
     private static func detents(for step: Step?) -> Set<PresentationDetent> {
@@ -131,8 +169,10 @@ struct MoveMoneySheet: View {
 
 private struct ReceiveStartView: View {
     let name: String?
+    let flow: ReceiveFlow
     let onFliqName: () -> Void
     let onWallet: () -> Void
+    var onBankDeposit: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -150,16 +190,27 @@ private struct ReceiveStartView: View {
                 .multilineTextAlignment(.center)
                 .padding(.top, 18)
             VStack(spacing: 10) {
+                if let onBankDeposit {
+                    SheetRow(title: "Bank transfer", detail: "Pay in naira from any Nigerian bank", action: onBankDeposit) {
+                        Icon("building.columns", size: 24)
+                    }
+                }
                 if let name {
                     SheetRow(title: "Your fliq name", detail: "Share \(name)", action: onFliqName) {
                         NEARMark(size: 22)
                     }
                 }
-                SheetRow(title: "External wallet", detail: "Choose a coin and network", action: onWallet) {
-                    Image(systemName: "wallet.bifold").font(.system(size: 20))
+                SheetRow(title: "External wallet", detail: flow.onlyOption?.title ?? "Choose a coin and network", action: onWallet) {
+                    if flow.isReserving {
+                        ProgressView()
+                    } else {
+                        Icon("wallet.bifold", size: 24)
+                    }
                 }
+                .disabled(flow.isReserving)
             }
             .padding(.top, 34)
+            TestNetworkNote(network: flow.network).padding(.top, 14)
             Spacer()
         }
         .padding(.horizontal, 16)
@@ -186,6 +237,9 @@ private struct CurrencyListView: View {
                 if flow.isLoading && flow.sources.isEmpty {
                     ProgressView().frame(maxWidth: .infinity).padding(.top, 60)
                 }
+                if let notice = flow.notice {
+                    Text(notice).font(.system(size: 13)).foregroundStyle(Theme.warning).padding(.top, 12)
+                }
                 ForEach(flow.currencies, id: \.group) { group in
                     Text(group.group.title)
                         .font(.system(size: 20))
@@ -203,7 +257,8 @@ private struct CurrencyListView: View {
                 }
             }
             .padding(.horizontal, 24)
-            .padding(.bottom, 32)
+            .padding(.bottom, 16)
+            TestNetworkNote(network: flow.network).padding(.horizontal, 24).padding(.bottom, 24)
         }
         .scrollIndicators(.hidden)
         .navigationTitle("Choose currency to receive")
@@ -219,7 +274,7 @@ private struct CurrencyListView: View {
             if flow.isReserving, flow.source?.tokenId == token {
                 ProgressView()
             } else {
-                Image(systemName: "chevron.right").font(.system(size: 15, weight: .medium)).foregroundStyle(Theme.textSecondary)
+                Icon("chevron.right", size: 18).foregroundStyle(Theme.textSecondary)
             }
         }
         .foregroundStyle(Theme.textPrimary)
@@ -269,7 +324,7 @@ private struct NetworkListView: View {
 
                 if !compact {
                     HStack(spacing: 18) {
-                        Image(systemName: "exclamationmark.circle").font(.system(size: 22)).foregroundStyle(Color(hex: 0xF5C542))
+                        Icon("exclamationmark.circle", size: 26).foregroundStyle(Color(hex: 0xF5C542))
                         Text("Your receiving address depends on the coin and network.")
                             .font(.system(size: 17))
                             .foregroundStyle(Theme.textPrimary)
@@ -295,6 +350,10 @@ private struct NetworkListView: View {
                 .background(Color(hex: 0x262626), in: RoundedRectangle(cornerRadius: 26))
                 .overlay(RoundedRectangle(cornerRadius: 26).strokeBorder(Color.white.opacity(0.06)))
                 .padding(.top, compact ? 14 : 24)
+                if let notice = flow.notice {
+                    Text(notice).font(.system(size: 13)).foregroundStyle(Theme.warning).padding(.top, 12)
+                }
+                TestNetworkNote(network: flow.network).padding(.top, 14)
             }
             .padding(.horizontal, 24)
             .padding(.bottom, 32)
@@ -323,7 +382,7 @@ private struct NetworkListView: View {
             if flow.isReserving && flow.source == source {
                 ProgressView()
             } else if reason == nil {
-                Image(systemName: "chevron.right").font(.system(size: 16, weight: .medium)).foregroundStyle(Theme.textSecondary)
+                Icon("chevron.right", size: 19).foregroundStyle(Theme.textSecondary)
             }
         }
         .foregroundStyle(Theme.textPrimary)
@@ -360,10 +419,18 @@ struct FliqNameCardView: View {
                     NEARMark(size: 22).frame(width: 46, height: 46).background(Color.black, in: Circle())
                 }
                 .frame(width: 210, height: 210)
-                Text(name)
-                    .font(.system(size: 17, weight: .semibold, design: .monospaced))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.6)
+                VStack(spacing: 4) {
+                    Text(FliqName.display(name))
+                        .font(.system(size: 24, weight: .bold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                    Text("NEAR wallets: \(name)")
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundStyle(Theme.textTertiary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                        .textSelection(.enabled)
+                }
             }
             .padding(24)
             .frame(maxWidth: .infinity)
@@ -379,12 +446,11 @@ struct FliqNameCardView: View {
                     UIPasteboard.general.string = name
                     copied = true
                 } label: {
-                    Label(copied ? "Copied" : "Copy name", systemImage: copied ? "checkmark" : "doc.on.doc")
+                    IconLabel(copied ? "Copied" : "Copy NEAR address", icon: copied ? "checkmark" : "doc.on.doc")
                 }
                 .buttonStyle(PrimaryButtonStyle(filled: true))
-                ShareLink(item: name) {
-                    Image(systemName: "square.and.arrow.up")
-                        .font(.system(size: 18, weight: .semibold))
+                ShareLink(item: "Pay me on fliq: \(FliqName.display(name))\nFrom a NEAR wallet, send USDC to \(name)") {
+                    Icon("square.and.arrow.up", size: 22)
                         .frame(width: 56, height: 56)
                         .fliqGlass(Circle(), interactive: true)
                 }
@@ -410,6 +476,21 @@ struct FliqNameCardView: View {
 // MARK: Shared
 
 /// A tall row with a mark, two lines and a chevron, as the Receive and Move money sheets use.
+/// On testnet, one quiet line on why only NEAR is offered. Nothing on mainnet.
+struct TestNetworkNote: View {
+    let network: NearNetwork
+
+    var body: some View {
+        if !network.receivesFromOtherChains {
+            Text("Test network: receiving from other chains turns on with mainnet")
+                .font(.system(size: 13))
+                .foregroundStyle(Theme.textTertiary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+        }
+    }
+}
+
 struct SheetRow<Mark: View>: View {
     let title: String
     let detail: String
@@ -425,8 +506,7 @@ struct SheetRow<Mark: View>: View {
                     Text(detail).font(.system(size: 15)).foregroundStyle(Theme.textSecondary).lineLimit(1)
                 }
                 Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 15, weight: .semibold))
+                Icon("chevron.right", size: 18)
                     .foregroundStyle(Theme.textTertiary)
             }
             .foregroundStyle(Theme.textPrimary)
@@ -448,7 +528,7 @@ struct Callout: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
-            Image(systemName: symbol).font(.system(size: 20)).foregroundStyle(tint)
+            Icon(symbol, size: 24).foregroundStyle(tint)
             Text(text).font(.system(size: 15)).foregroundStyle(Theme.textPrimary)
             Spacer(minLength: 0)
         }
@@ -525,7 +605,7 @@ extension View {
     func sheetToolbar(onClose: @escaping () -> Void) -> some View {
         toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button(action: onClose) { Image(systemName: "xmark") }
+                Button(action: onClose) { Icon("xmark") }
                     .accessibilityLabel("Close")
             }
         }

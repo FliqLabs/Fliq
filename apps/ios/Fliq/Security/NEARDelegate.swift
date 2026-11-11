@@ -89,6 +89,19 @@ extension DelegateAction {
         )
     }
 
+    /// The user's available vault balance back to their own NEAR account. The vault refuses less than 60 Tgas and
+    /// the relayer allows at most 100.
+    static func vaultWithdraw(from sender: String, units: UInt64, vault: String, nonce: UInt64, blockHeight: UInt64, publicKey: Data) -> DelegateAction {
+        DelegateAction(
+            senderId: sender,
+            receiverId: vault,
+            call: FunctionCall(methodName: "withdraw", args: Data(#"{"amount":"\#(units)"}"#.utf8), gas: 90_000_000_000_000, deposit: 1),
+            nonce: nonce,
+            maxBlockHeight: blockHeight + lifetimeBlocks,
+            publicKey: publicKey
+        )
+    }
+
     /// A call the API asked the device to sign, such as the vault's `set_agent` or `remove_agent`.
     static func step(_ step: SignStep, from sender: String, nonce: UInt64, blockHeight: UInt64, publicKey: Data) -> DelegateAction {
         DelegateAction(
@@ -114,6 +127,10 @@ struct Yocto: Equatable, Sendable, ExpressibleByIntegerLiteral {
 
     init(integerLiteral value: UInt64) {
         self.init(low: value, high: 0)
+    }
+
+    var decimal: Decimal {
+        Decimal(high) * Decimal(string: "18446744073709551616")! + Decimal(low)
     }
 
     /// Parses a decimal string as the API sends it. Nil when it is not a whole number that fits in 128 bits.

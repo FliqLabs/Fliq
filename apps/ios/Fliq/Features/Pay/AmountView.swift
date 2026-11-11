@@ -3,15 +3,14 @@ import SwiftUI
 struct AmountView: View {
     let flow: PayFlow
     @Environment(AppEnvironment.self) private var environment
-    @FocusState private var amountFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
             Spacer()
-            AmountInput(text: flow.amountText, onType: flow.enterAmount, isFocused: $amountFocused) {
-                amount
-            }
+            amount
             Spacer()
+            AmountKeypad(text: flow.amountText, onType: flow.enterAmount)
+                .padding(.bottom, 12)
 
             if let message = flow.errorMessage {
                 Text(message)
@@ -28,7 +27,7 @@ struct AmountView: View {
                 if flow.isQuoting { ProgressView() } else { Text("Get quote") }
             }
             .buttonStyle(PrimaryButtonStyle())
-            .disabled((flow.amount ?? .zero) <= .zero || flow.isQuoting)
+            .disabled((flow.amount ?? .zero) <= .zero || flow.isOverBalance || flow.isQuoting)
             .padding(.bottom, 12)
         }
         .fliqScreen()
@@ -36,7 +35,6 @@ struct AmountView: View {
             ToolbarItem(placement: .principal) { recipientChip }
         }
         .task { await flow.loadRate() }
-        .onAppear { amountFocused = true }
     }
 
     private var amount: some View {
@@ -48,7 +46,7 @@ struct AmountView: View {
             Label {
                 Text("You send \(Text("$" + (flow.amountText.isEmpty ? "0" : flow.amountText)).foregroundStyle(Theme.textPrimary).fontWeight(.medium))")
             } icon: {
-                Image(systemName: "arrow.up.arrow.down")
+                Icon("arrow.up.arrow.down")
             }
             .font(.system(size: 14))
             .foregroundStyle(Theme.textSecondary)
@@ -62,6 +60,10 @@ struct AmountView: View {
                     .foregroundStyle(Theme.textSecondary)
                     .padding(.top, 6)
             }
+            Text(flow.isOverBalance ? "More than the $\(Money.dollars(flow.available)) in your vault" : "In your vault $\(Money.dollars(flow.available))")
+                .font(.system(size: 14))
+                .foregroundStyle(flow.isOverBalance ? Theme.warning : Theme.textTertiary)
+                .padding(.top, 2)
         }
     }
 
@@ -69,8 +71,7 @@ struct AmountView: View {
     private var recipientChip: some View {
         if let verified = flow.verified {
             HStack(spacing: 8) {
-                Image(systemName: "building.columns.fill")
-                    .font(.system(size: 12))
+                Icon("building.columns.fill", size: 14)
                     .foregroundStyle(Theme.textSecondary)
                 Text(verified.accountName)
             }

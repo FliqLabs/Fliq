@@ -4,7 +4,6 @@ struct PersonPayView: View {
     @Bindable var flow: PersonPayFlow
     let onDone: () -> Void
     @FocusState private var nameFocused: Bool
-    @FocusState private var amountFocused: Bool
 
     var body: some View {
         Group {
@@ -22,15 +21,17 @@ struct PersonPayView: View {
             nameField.padding(.top, 20)
             whoLine.frame(height: 44).padding(.top, 8)
             Spacer(minLength: 8)
-            AmountInput(text: flow.amountText, onType: flow.enterAmount, isFocused: $amountFocused) {
-                // With a keyboard up on a small iPhone the full block does not fit; overflowing would push the
-                // name field under the navigation bar and the pay button under the keyboard.
-                ViewThatFits(in: .vertical) {
-                    amount
-                    compactAmount
-                }
+            ViewThatFits(in: .vertical) {
+                amount
+                compactAmount
             }
+            .contentShape(Rectangle())
+            .onTapGesture { nameFocused = false }
             Spacer(minLength: 8)
+            if !nameFocused {
+                AmountKeypad(text: flow.amountText, onType: flow.enterAmount)
+                    .padding(.bottom, 8)
+            }
             if let message = flow.errorMessage {
                 Text(message)
                     .font(.system(size: 13))
@@ -42,7 +43,7 @@ struct PersonPayView: View {
                 if flow.isSending {
                     ProgressView().tint(.black)
                 } else {
-                    Label("Pay $\(Money.dollars(flow.amount ?? .zero)) with Face ID", systemImage: "faceid")
+                    IconLabel("Pay $\(Money.dollars(flow.amount ?? .zero)) with Face ID", icon: "faceid")
                 }
             }
             .buttonStyle(PrimaryButtonStyle())
@@ -50,13 +51,13 @@ struct PersonPayView: View {
             .padding(.bottom, 12)
         }
         .task(id: flow.nameText) { await flow.lookUp() }
-        .onAppear { if flow.nameText.isEmpty { nameFocused = true } else { amountFocused = true } }
+        .onAppear { if flow.nameText.isEmpty { nameFocused = true } }
     }
 
     private var compactAmount: some View {
         VStack(spacing: 4) {
             HeroAmount(symbol: "$", value: Money.dollars(flow.amount ?? .zero), size: 48)
-            Text("\(firstName) receives · in your vault $\(Money.dollars(flow.available))")
+            Text("\(receives) · in your vault $\(Money.dollars(flow.available))")
                 .font(.system(size: 14))
                 .foregroundStyle(Theme.textSecondary)
                 .lineLimit(1)
@@ -66,11 +67,11 @@ struct PersonPayView: View {
 
     private var amount: some View {
         VStack(spacing: 12) {
-            Text("\(firstName) receives")
+            Text(receives)
                 .font(.system(size: 15))
                 .foregroundStyle(Theme.textSecondary)
             HeroAmount(symbol: "$", value: Money.dollars(flow.amount ?? .zero))
-            Label("Vault to vault · instant · no fee", systemImage: "bolt")
+            IconLabel("Vault to vault · instant · no fee", icon: "bolt")
                 .font(.system(size: 15))
                 .foregroundStyle(Theme.textSecondary)
                 .padding(.horizontal, 16)
@@ -85,21 +86,17 @@ struct PersonPayView: View {
 
     private var nameField: some View {
         HStack(spacing: 12) {
-            Image("NearLogo").resizable().renderingMode(.template).scaledToFit().frame(width: 22, height: 22)
-                .foregroundStyle(Color(hex: 0x00EC97))
+            Text("@")
+                .font(.system(size: 19, weight: .medium))
+                .foregroundStyle(Theme.textSecondary)
             TextField("name", text: $flow.nameText)
                 .focused($nameFocused)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .keyboardType(.asciiCapable)
                 .submitLabel(.next)
-                .onSubmit { amountFocused = true }
+                .onSubmit { nameFocused = false }
                 .font(.system(size: 19, weight: .medium))
-            Text(FliqName.suffix)
-                .font(.system(size: 17))
-                .foregroundStyle(Theme.textSecondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
         }
         .padding(.horizontal, 18)
         .frame(height: 60)
@@ -113,16 +110,16 @@ struct PersonPayView: View {
     private var whoLine: some View {
         HStack(spacing: 10) {
             if let person = flow.person {
-                PersonAvatar(name: person.displayName ?? person.nearAccount, photoURL: person.photoUrl.flatMap(URL.init(string:)), size: 32)
-                Image(systemName: "checkmark.circle").foregroundStyle(Theme.confirmed)
-                Text(person.displayName ?? person.nearAccount).fontWeight(.semibold).foregroundStyle(Theme.confirmed)
+                PersonAvatar(name: person.displayName ?? FliqName.display(person.nearAccount), photoURL: person.photoUrl.flatMap(URL.init(string:)), size: 32)
+                Icon("checkmark.circle", size: 18).foregroundStyle(Theme.confirmed)
+                Text(person.displayName ?? FliqName.display(person.nearAccount)).fontWeight(.semibold).foregroundStyle(Theme.confirmed)
                 Text("· on fliq since \(person.memberSince.formatted(.dateTime.month(.abbreviated).year()))")
                     .foregroundStyle(Theme.textSecondary)
             } else if flow.isLookingUp {
                 ProgressView().controlSize(.small)
-                Text("Finding \(flow.account ?? "")").foregroundStyle(Theme.textSecondary)
+                Text("Finding \(flow.account.map(FliqName.display) ?? "")").foregroundStyle(Theme.textSecondary)
             } else if flow.lookupFailed {
-                Image(systemName: "questionmark.circle").foregroundStyle(Theme.warning)
+                Icon("questionmark.circle", size: 18).foregroundStyle(Theme.warning)
                 Text("No one on fliq has that name").foregroundStyle(Theme.warning)
             }
             Spacer()
@@ -135,16 +132,15 @@ struct PersonPayView: View {
     private func done(_ paid: TokenAmount, to person: Person) -> some View {
         VStack(spacing: 14) {
             Spacer()
-            Image(systemName: "checkmark")
-                .font(.system(size: 28, weight: .semibold))
+            Icon("checkmark", size: 34)
                 .foregroundStyle(.black)
                 .frame(width: 72, height: 72)
                 .background(Theme.confirmed, in: Circle())
             HeroAmount(symbol: "$", value: Money.dollars(paid))
-            Text("Paid to \(person.displayName ?? person.nearAccount)")
+            Text("Paid to \(person.displayName ?? FliqName.display(person.nearAccount))")
                 .font(.system(size: 16))
                 .foregroundStyle(Theme.textSecondary)
-            Text(person.nearAccount)
+            Text(FliqName.display(person.nearAccount))
                 .font(.system(size: 13, design: .monospaced))
                 .foregroundStyle(Theme.textTertiary)
             Spacer()
@@ -154,8 +150,9 @@ struct PersonPayView: View {
         }
     }
 
-    private var firstName: String {
-        flow.person?.displayName?.split(separator: " ").first.map(String.init) ?? "They"
+    private var receives: String {
+        guard let first = flow.person?.displayName?.split(separator: " ").first else { return "They receive" }
+        return "\(first) receives"
     }
 }
 

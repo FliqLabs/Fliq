@@ -1,11 +1,11 @@
 import { createInterface } from "node:readline";
 import type { Readable, Writable } from "node:stream";
-import { SERVER_INSTRUCTIONS, TOOL_DEFINITIONS } from "./tools/definitions.js";
+import { instructionsFor, toolsFor } from "./tools/definitions.js";
 import { isFailure } from "./tools/envelope.js";
 import { callTool, isToolName, type ToolContext } from "./tools/handlers.js";
 
 export const SERVER_NAME = "fliq";
-export const SERVER_VERSION = "0.1.0";
+export const SERVER_VERSION = "0.1.1";
 // Newest first. A client asking for one of these gets it back; any other request gets the newest.
 export const PROTOCOL_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 
@@ -85,11 +85,11 @@ async function handleLine(line: string, context: ToolContext, log: Log): Promise
 async function dispatch(method: string, params: unknown, context: ToolContext, log: Log): Promise<Reply> {
   switch (method) {
     case "initialize":
-      return { result: initializeResult(params) };
+      return { result: initializeResult(params, context) };
     case "ping":
       return { result: {} };
     case "tools/list":
-      return { result: { tools: TOOL_DEFINITIONS } };
+      return { result: { tools: toolsFor(context.mode) } };
     case "tools/call":
       return toolsCall(params, context, log);
     default:
@@ -97,7 +97,7 @@ async function dispatch(method: string, params: unknown, context: ToolContext, l
   }
 }
 
-function initializeResult(params: unknown) {
+function initializeResult(params: unknown, context: ToolContext) {
   const requested = (params as { protocolVersion?: unknown } | undefined)?.protocolVersion;
   const protocolVersion =
     typeof requested === "string" && PROTOCOL_VERSIONS.includes(requested) ? requested : PROTOCOL_VERSIONS[0];
@@ -105,13 +105,13 @@ function initializeResult(params: unknown) {
     protocolVersion,
     capabilities: { tools: { listChanged: false } },
     serverInfo: { name: SERVER_NAME, title: "fliq cash-out", version: SERVER_VERSION },
-    instructions: SERVER_INSTRUCTIONS,
+    instructions: instructionsFor(context.mode),
   };
 }
 
 async function toolsCall(params: unknown, context: ToolContext, log: Log): Promise<Reply> {
   const { name, arguments: args } = (params ?? {}) as { name?: unknown; arguments?: unknown };
-  if (typeof name !== "string" || !isToolName(name)) {
+  if (typeof name !== "string" || !isToolName(name, context.mode)) {
     return { error: { code: INVALID_PARAMS, message: `Unknown tool: ${String(name)}.` } };
   }
   const started = Date.now();

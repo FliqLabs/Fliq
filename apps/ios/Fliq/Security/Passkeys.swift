@@ -13,6 +13,8 @@ enum PasskeyError: Error, Equatable {
 final class PasskeyAuthenticator: NSObject {
     private var pending: CheckedContinuation<ASAuthorization, any Error>?
     private var controller: ASAuthorizationController?
+    /// The passkey the last successful register or sign-in used, for `PasskeyMemory`.
+    private(set) var lastCredentialID: Data?
 
     func register(_ options: PasskeyOptions) async throws -> Data {
         guard
@@ -23,10 +25,11 @@ final class PasskeyAuthenticator: NSObject {
         else { throw PasskeyError.badOptions }
 
         let provider = ASAuthorizationPlatformPublicKeyCredentialProvider(relyingPartyIdentifier: rp)
-        let request = provider.createCredentialRegistrationRequest(challenge: challenge, name: "fliq", userID: userID)
+        let request = provider.createCredentialRegistrationRequest(challenge: challenge, name: Self.label, userID: userID)
         guard let credential = try await perform(request).credential as? ASAuthorizationPlatformPublicKeyCredentialRegistration,
               let attestation = credential.rawAttestationObject
         else { throw PasskeyError.failed("No passkey was created.") }
+        lastCredentialID = credential.credentialID
 
         return try Self.json(id: credential.credentialID, response: [
             "clientDataJSON": credential.rawClientDataJSON.base64URL,
@@ -35,14 +38,17 @@ final class PasskeyAuthenticator: NSObject {
         ])
     }
 
-    func signIn(_ options: PasskeyOptions, relyingParty: String = "fliq.cash") async throws -> Data {
+    /// With `allowed`, iOS offers only those passkeys, so a testnet passkey never shows up in the mainnet app.
+    func signIn(_ options: PasskeyOptions, relyingParty: String = "fliq.cash", allowed: [Data] = []) async throws -> Data {
         guard let challenge = Data(base64URL: options.options.challenge) else { throw PasskeyError.badOptions }
 
         let provider = ASAuthorizationPlatformPublicKeyCredentialProvider(relyingPartyIdentifier: options.options.rp?.id ?? relyingParty)
         let request = provider.createCredentialAssertionRequest(challenge: challenge)
+        request.allowedCredentials = allowed.map { ASAuthorizationPlatformPublicKeyCredentialDescriptor(credentialID: $0) }
         guard let credential = try await perform(request).credential as? ASAuthorizationPlatformPublicKeyCredentialAssertion else {
             throw PasskeyError.failed("No passkey was used.")
         }
+        lastCredentialID = credential.credentialID
 
         return try Self.json(id: credential.credentialID, response: [
             "clientDataJSON": credential.rawClientDataJSON.base64URL,
@@ -51,6 +57,9 @@ final class PasskeyAuthenticator: NSObject {
             "userHandle": credential.userID.base64URL,
         ])
     }
+
+    /// What the passkey sheet shows for this passkey. Testnet and mainnet share fliq.cash, so the label tells them apart.
+    static var label: String { NearNetwork.current == .testnet ? "fliq testnet" : "fliq" }
 
     private func perform(_ request: ASAuthorizationRequest) async throws -> ASAuthorization {
         let controller = ASAuthorizationController(authorizationRequests: [request])
@@ -67,6 +76,10 @@ final class PasskeyAuthenticator: NSObject {
     private func finish(_ result: Result<ASAuthorization, any Error>) {
         pending?.resume(with: result)
         pending = nil
+    }
+
+    private func failure(_ error: any Error) -> any Error {
+        (error as? ASAuthorizationError)?.code == .canceled ? PasskeyError.cancelled : PasskeyError.failed(error.localizedDescription)
     }
 
     private static func json(id: Data, response: [String: Any]) throws -> Data {
@@ -87,10 +100,7 @@ extension PasskeyAuthenticator: ASAuthorizationControllerDelegate, ASAuthorizati
     }
 
     nonisolated func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: any Error) {
-        let mapped: any Error = (error as? ASAuthorizationError)?.code == .canceled
-            ? PasskeyError.cancelled
-            : PasskeyError.failed(error.localizedDescription)
-        MainActor.assumeIsolated { finish(.failure(mapped)) }
+        MainActor.assumeIsolated { finish(.failure(failure(error))) }
     }
 
     nonisolated func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
@@ -113,5 +123,25 @@ extension Data {
             .replacingOccurrences(of: "+", with: "-")
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "=", with: "")
+    }
+}
+
+/// Which passkey belongs to this app's fliq account, per network. Testnet and mainnet share fliq.cash, so without
+/// this record iOS would offer every fliq.cash passkey on the iPhone and the user could not tell them apart.
+struct PasskeyMemory: Sendable {
+    var keychain = Keychain(service: "cash.fliq.passkey-ids")
+    var network = NearNetwork.current
+
+    var ids: [Data] {
+        (keychain.load([String].self, for: network.rawValue) ?? []).compactMap(Data.init(base64URL:))
+    }
+
+    func remember(_ id: Data?) {
+        guard let id else { return }
+        try? keychain.save([id.base64URL], for: network.rawValue)
+    }
+
+    func forget() {
+        try? keychain.save([String](), for: network.rawValue)
     }
 }

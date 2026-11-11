@@ -6,6 +6,7 @@ import Observation
 final class HomeModel {
     private(set) var rate: Rate?
     private(set) var rateFailed = false
+    private(set) var me: User?
 
     let inbox: WalletInbox
     private let api: any FliqAPI
@@ -21,7 +22,15 @@ final class HomeModel {
     var balance: TokenAmount { vault.balance }
 
 
+    var photoURL: URL? { me?.photoUrl.flatMap(URL.init(string:)) }
+
+    /// Runs on every return to Home, so a photo changed in Settings shows straight away.
+    func loadProfile() async {
+        if let user = try? await api.me() { me = user }
+    }
+
     func load() async {
+        await loadProfile()
         do {
             rate = try await api.rate(.usdc, .ngn)
             rateFailed = false

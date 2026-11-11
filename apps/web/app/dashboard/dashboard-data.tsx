@@ -8,7 +8,6 @@ import {
   type Onboarding,
   type PayoutList,
   type PayoutStats,
-  type PublicRate,
   type User,
   type Workspace,
 } from "../lib/fliq-api";
@@ -42,12 +41,6 @@ export function DashboardData() {
       ),
     enabled: workspace.isSuccess,
   });
-  const bestRate = useQuery({
-    queryKey: ["public-rate", "usdc", "ngn"],
-    queryFn: () => fliqApi<PublicRate>("rates/usdc/ngn"),
-    enabled: workspace.isSuccess,
-  });
-
   if (account.isPending) return <Status message="Checking your session…" />;
   if (account.error instanceof ApiError && account.error.status === 401) {
     return <Status message="Sign in to see your payouts." href="/sign-in" action="Sign in" />;
@@ -78,7 +71,7 @@ export function DashboardData() {
       amount: item.receive,
       currency: item.currency,
       provider: item.provider,
-      state: item.state.replaceAll("_", " "),
+      state: item.state,
       when: new Date(item.created_at).toLocaleDateString("en-NG"),
     })),
   );
@@ -86,14 +79,13 @@ export function DashboardData() {
     settledToday: stats.data?.settled.count ?? null,
     medianSecondsToBank: stats.data?.median_seconds_to_bank ?? null,
     refusedByVaultCaps: stats.data?.refused.count ?? null,
-    bestRate: bestRate.data?.rate ?? null,
   };
 
   return (
     <PayoutsDashboard
       summary={summary}
-      summaryLoading={stats.isPending || bestRate.isPending}
-      summaryError={stats.error?.message ?? bestRate.error?.message}
+      summaryLoading={stats.isPending}
+      summaryError={stats.error?.message}
       payouts={rows}
       onboarding={onboarding.data}
       hasMore={payouts.hasNextPage}
@@ -106,11 +98,11 @@ export function DashboardData() {
 function Status({ message, href, action }: { message: string; href?: string; action?: string }) {
   return (
     <main className="mx-auto max-w-lg py-16 text-center">
-      <p className="text-sm text-zinc-500">{message}</p>
+      <p className="text-sm text-app-muted">{message}</p>
       {href && action && (
         <Link
           href={href}
-          className="mt-5 inline-flex rounded-lg bg-zinc-950 px-4 py-2.5 text-sm font-semibold text-white"
+          className="mt-5 inline-flex rounded-lg bg-app-ink px-4 py-2.5 text-sm font-semibold text-app-ink-fg"
         >
           {action}
         </Link>

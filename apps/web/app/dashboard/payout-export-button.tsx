@@ -36,12 +36,12 @@ export function PayoutExportButton() {
         type="button"
         disabled={pending}
         onClick={exportPayouts}
-        className="rounded-lg border border-zinc-200 px-4 py-2.5 text-xs font-semibold disabled:opacity-50"
+        className="rounded-lg border border-app-line px-4 py-2.5 text-xs font-semibold disabled:opacity-50"
       >
         {pending ? "Exporting…" : "Export CSV"}
       </button>
       {error && (
-        <p role="alert" className="mt-1 text-xs text-red-600">
+        <p role="alert" className="mt-1 text-xs text-app-bad">
           {error}
         </p>
       )}
