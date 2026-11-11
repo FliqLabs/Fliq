@@ -25,6 +25,7 @@ protocol FliqAPI: Sendable {
     func claimName(_ name: FliqName, publicKey: String) async throws -> User
     func updateProfile(displayName: String) async throws -> User
     func updateProfilePhoto(_ url: URL) async throws -> User
+    func removeProfilePhoto() async throws -> User
 
     func institutions(in country: Country) async throws -> [Institution]
     func vaultBalance() async throws -> VaultBalance

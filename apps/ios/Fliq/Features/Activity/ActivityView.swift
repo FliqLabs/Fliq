@@ -4,7 +4,9 @@ struct ActivityView: View {
     let store: ActivityStore
     let onReceive: () -> Void
     var onRefresh: () async -> Void = {}
+    var onOpenReceipt: (String) -> Void = { _ in }
     @State private var filter = Filter.all
+    @State private var selected: ActivityLine?
 
     enum Filter: String, CaseIterable {
         case all = "All", mine = "Mine", agents = "Agents"
@@ -42,8 +44,9 @@ struct ActivityView: View {
                                     .foregroundStyle(Theme.textSecondary)
                                     .padding(.top, 14)
                                     .padding(.horizontal, 2)
-                                ForEach(day.rows) { row in
-                                    rowView(row)
+                                ForEach(day.lines) { line in
+                                    Button { selected = line } label: { ActivityCell(line: line) }
+                                        .buttonStyle(.pressable(scale: 0.98))
                                 }
                             }
                         }
@@ -56,17 +59,11 @@ struct ActivityView: View {
             }
         }
         .task { await onRefresh() }
-    }
-
-    @ViewBuilder
-    private func rowView(_ row: ActivityStore.Row) -> some View {
-        switch row {
-        case .local(let entry):
-            NavigationLink(value: AppRoute.receipt(payoutId: entry.id)) { ActivityRow(entry: entry) }
-        case .history(let item) where item.kind == .payout:
-            NavigationLink(value: AppRoute.receipt(payoutId: item.refId)) { HistoryRow(item: item) }
-        case .history(let item):
-            HistoryRow(item: item)
+        .sheet(item: $selected) { line in
+            ActivityDetailSheet(line: line, onReceipt: onOpenReceipt)
+                .presentationDragIndicator(.visible)
+                .presentationCornerRadius(32)
+                .presentationBackground(Color(hex: 0x161616))
         }
     }
 
@@ -88,17 +85,17 @@ struct ActivityView: View {
         }
     }
 
-    private var shown: [ActivityStore.Row] {
-        store.rows.filter { row in
+    private var shown: [ActivityLine] {
+        store.lines.filter { line in
             switch filter {
             case .all: true
-            case .mine: !row.isAgent
-            case .agents: row.isAgent
+            case .mine: !line.isAgent
+            case .agents: line.isAgent
             }
         }
     }
 
-    private var days: [(title: String, rows: [ActivityStore.Row])] {
+    private var days: [(title: String, lines: [ActivityLine])] {
         let calendar = Calendar.current
         let grouped = Dictionary(grouping: shown) { calendar.startOfDay(for: $0.date) }
         return grouped.keys.sorted(by: >).map { day in
@@ -106,161 +103,6 @@ struct ActivityView: View {
                 : calendar.isDateInYesterday(day) ? "Yesterday"
                 : day.formatted(date: .abbreviated, time: .omitted)
             return (title, grouped[day] ?? [])
-        }
-    }
-}
-
-private struct ActivityRow: View {
-    let entry: ActivityStore.Entry
-
-    private var payout: Payout { entry.payout }
-
-    var body: some View {
-        HStack(spacing: 14) {
-            Text(String(payout.accountName.prefix(1)))
-                .font(.system(size: 16, weight: .semibold))
-                .frame(width: 38, height: 38)
-                .background(Theme.surfaceRaised, in: Circle())
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.system(size: 15, weight: .medium)).lineLimit(1)
-                Text(subtitle).font(.system(size: 13)).foregroundStyle(Theme.textSecondary).lineLimit(1)
-            }
-            Spacer()
-            VStack(alignment: .trailing, spacing: 3) {
-                Text(amount)
-                    .font(.system(size: 15, weight: .medium).monospacedDigit())
-                    .strikethrough(payout.state.stage == .refused, color: Theme.textTertiary)
-                    .foregroundStyle(payout.state.stage == .refused ? Theme.textTertiary : Theme.textPrimary)
-                HStack(spacing: 0) {
-                    if payout.state != .refunded {
-                        Text("$\(payout.amount.decimalString) · ").foregroundStyle(Theme.textTertiary)
-                    }
-                    status
-                }
-                .font(.system(size: 12))
-            }
-        }
-        .padding(.horizontal, 16)
-        .frame(height: 66)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14))
-        .foregroundStyle(Theme.textPrimary)
-        .accessibilityElement(children: .combine)
-    }
-
-    private var title: String {
-        switch entry.source {
-        case .mine: payout.accountName
-        case .agent(let name): "\(name) · \(payout.accountName)"
-        }
-    }
-
-    private var subtitle: String {
-        var parts = [entry.startedAt.formatted(date: .omitted, time: .shortened)]
-        switch payout.state.stage {
-        case .refunded: parts.append("\(payout.provider.displayName) failed")
-        case .refused: parts.append("over your cap")
-        default:
-            parts.append(payout.provider.displayName)
-            if let seconds = payout.seconds { parts.append("\(seconds)s") }
-        }
-        return parts.joined(separator: " · ")
-    }
-
-    private var amount: String {
-        payout.state == .refunded ? "$" + payout.amount.decimalString : Money.local(payout.receive, payout.currency)
-    }
-
-    @ViewBuilder
-    private var status: some View {
-        switch payout.state.stage {
-        case .settled: Text("Paid").foregroundStyle(Theme.confirmed)
-        case .refunded: Text("Refunded").foregroundStyle(Theme.textSecondary)
-        case .refused: Text("Refused").foregroundStyle(Theme.warning)
-        case .notReceived: Text("Checking").foregroundStyle(Theme.warning)
-        default: Text("Sending").foregroundStyle(Theme.textSecondary)
-        }
-    }
-}
-
-/// A row from the account's history: a payout, a deposit, a transfer between fliq users or a refused agent payout.
-private struct HistoryRow: View {
-    let item: ActivityItem
-
-    var body: some View {
-        HStack(spacing: 14) {
-            badge
-                .frame(width: 38, height: 38)
-                .background(Theme.surfaceRaised, in: Circle())
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.system(size: 15, weight: .medium)).lineLimit(1)
-                Text(subtitle).font(.system(size: 13)).foregroundStyle(Theme.textSecondary).lineLimit(1)
-            }
-            Spacer()
-            VStack(alignment: .trailing, spacing: 3) {
-                Text(amount)
-                    .font(.system(size: 15, weight: .medium).monospacedDigit())
-                    .strikethrough(item.kind == .refused, color: Theme.textTertiary)
-                    .foregroundStyle(amountColor)
-                status.font(.system(size: 12))
-            }
-        }
-        .padding(.horizontal, 16)
-        .frame(height: 66)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14))
-        .foregroundStyle(Theme.textPrimary)
-        .accessibilityElement(children: .combine)
-    }
-
-    @ViewBuilder
-    private var badge: some View {
-        switch item.kind {
-        case .deposit, .transferIn: Icon("arrow.down", size: 18).foregroundStyle(Theme.confirmed)
-        case .transferOut: Icon("arrow.up.right", size: 18).foregroundStyle(Theme.textSecondary)
-        default: Text(String(item.party.name.prefix(1))).font(.system(size: 16, weight: .semibold))
-        }
-    }
-
-    private var title: String {
-        guard let agent = item.agent else { return item.party.name }
-        return "\(agent.name) · \(item.party.name)"
-    }
-
-    private var subtitle: String {
-        var parts = [item.at.formatted(date: .omitted, time: .shortened)]
-        switch item.kind {
-        case .payout:
-            if let provider = item.provider { parts.append(ProviderID(rawValue: provider)?.displayName ?? provider.capitalized) }
-            if let seconds = item.seconds { parts.append("\(seconds)s") }
-        case .deposit: parts.append(item.token ?? "Deposit")
-        case .transferIn: parts.append(item.party.nearAccount ?? "From a fliq user")
-        case .transferOut: parts.append(item.party.nearAccount ?? "To a fliq user")
-        case .refused: parts.append("over your cap")
-        case .unknown: break
-        }
-        return parts.joined(separator: " · ")
-    }
-
-    private var amount: String { item.headline }
-
-    private var amountColor: Color {
-        switch item.kind {
-        case .refused: Theme.textTertiary
-        case .deposit, .transferIn: Theme.confirmed
-        default: Theme.textPrimary
-        }
-    }
-
-    @ViewBuilder
-    private var status: some View {
-        switch item.status {
-        case "paid": Text("Paid").foregroundStyle(Theme.confirmed)
-        case "received": Text("Received").foregroundStyle(Theme.confirmed)
-        case "sent": Text("Sent").foregroundStyle(Theme.textSecondary)
-        case "refunded": Text("Refunded").foregroundStyle(Theme.textSecondary)
-        case "refused": Text("Refused").foregroundStyle(Theme.warning)
-        case "failed": Text("Failed").foregroundStyle(Theme.danger)
-        case "expired": Text("Expired").foregroundStyle(Theme.textTertiary)
-        default: Text(item.kind == .deposit ? "Arriving" : "Sending").foregroundStyle(Theme.textSecondary)
         }
     }
 }

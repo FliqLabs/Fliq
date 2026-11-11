@@ -98,6 +98,10 @@ struct FixtureClient: FliqAPI {
         return user.photographed(url)
     }
 
+    func removeProfilePhoto() async throws -> User {
+        try load("user.new")
+    }
+
     func institutions(in country: Country) async throws -> [Institution] {
         let list: InstitutionList = try load("institutions.ng")
         return country == .ng ? list.items : []
