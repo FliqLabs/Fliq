@@ -5,7 +5,7 @@ export const OPERATION_TIMEOUT_MS: Record<Exclude<ProviderOperation, "parseWebho
   quote: 1_500,
   createOrder: 10_000,
   getOrder: 10_000,
-  verifyAccount: 5_000,
+  verifyAccount: 15_000,
   institutions: 10_000,
   health: 5_000,
   balance: 5_000,

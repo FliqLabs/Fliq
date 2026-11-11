@@ -58,7 +58,7 @@ export async function verifyAccount(adapters: readonly ProviderAdapter[], lookup
   const country = countryOf(lookup.country);
   for (const adapter of adapters) {
     try {
-      const result = await adapter.verifyAccount({ institutionCode: lookup.bank, accountNumber: lookup.number, country });
+      const result = await lookupOnce(adapter, { institutionCode: lookup.bank, accountNumber: lookup.number, country });
       if (!result.found) continue;
       const { name, verified } = resolveName(result.accountName, lookup.account_name);
       return { bank: lookup.bank, number: lookup.number, account_name: name, institution: institutionName(lookup.bank), name_verified: verified };
@@ -67,6 +67,17 @@ export async function verifyAccount(adapters: readonly ProviderAdapter[], lookup
     }
   }
   throw new ApiError(404, "account_not_found", "The bank could not find that account.");
+}
+
+// Bank name lookups go through the bank's own switch and are sometimes slow; one timeout is asked again before the
+// account is called unknown, since a timeout says nothing about whether the account exists.
+async function lookupOnce(adapter: ProviderAdapter, check: Parameters<ProviderAdapter["verifyAccount"]>[0]) {
+  try {
+    return await adapter.verifyAccount(check);
+  } catch (error) {
+    if (error instanceof ProviderError && error.kind === "timeout") return adapter.verifyAccount(check);
+    throw error;
+  }
 }
 
 function view(config: Config, recipient: { id: string; institutionCode: string; accountCipher: Uint8Array; nameCipher: Uint8Array; createdAt: Date; own: boolean; isDefault: boolean }) {
