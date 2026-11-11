@@ -72,8 +72,7 @@ struct WalletArrivedCard: View {
                             .lineLimit(2)
                     }
                     Spacer(minLength: 8)
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 15, weight: .semibold))
+                    Icon("chevron.right", size: 18)
                         .foregroundStyle(Theme.textSecondary)
                 }
                 .padding(.horizontal, 16)

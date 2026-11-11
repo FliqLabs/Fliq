@@ -46,8 +46,7 @@ struct QuoteView: View {
                                     .font(.system(size: 13))
                                     .foregroundStyle(Theme.confirmed)
                             }
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 13, weight: .semibold))
+                            Icon("chevron.right", size: 16)
                                 .foregroundStyle(Theme.textTertiary)
                         }
                     }
@@ -129,7 +128,7 @@ struct QuoteView: View {
                     .buttonStyle(PrimaryButtonStyle())
             } else {
                 Button { confirm() } label: {
-                    Label("Confirm with Face ID", systemImage: "faceid")
+                    IconLabel("Confirm with Face ID", icon: "faceid")
                 }
                 .buttonStyle(PrimaryButtonStyle(filled: true))
                 .disabled(flow.isSending)

@@ -1,18 +1,48 @@
 import SwiftUI
 
+/// The real mark of the app an agent runs in, on the tile that app uses; a neutral spark for anything else.
+struct AgentLogo: View {
+    let app: AgentApp
+    var size: CGFloat = 44
+
+    var body: some View {
+        Group {
+            if let asset = app.logoAsset {
+                Image(asset)
+                    .resizable()
+                    .scaledToFit()
+                    .padding(size * (app == .claude ? 0.2 : 0.24))
+            } else {
+                Icon("sparkles")
+                    .font(.system(size: size * 0.4, weight: .semibold))
+                    .foregroundStyle(Theme.textPrimary)
+            }
+        }
+        .frame(width: size, height: size)
+        .background(background, in: Circle())
+        .accessibilityHidden(true)
+    }
+
+    private var background: Color {
+        switch app {
+        case .claude: Color(hex: 0xF4F1EA)
+        case .openai, .cursor: .white
+        case .other: Theme.surfaceRaised
+        }
+    }
+}
+
 struct AgentAvatar: View {
     let name: String
     var size: CGFloat = 64
     var revoked = false
 
     var body: some View {
-        Text(String(name.prefix(1)))
-            .font(.system(size: size * 0.42, weight: .semibold))
-            .frame(width: size, height: size)
-            .background(Theme.surfaceRaised, in: Circle())
+        AgentLogo(app: AgentApp.guess(name: name), size: size)
+            .saturation(revoked ? 0 : 1)
             .overlay(alignment: .bottomTrailing) {
                 if revoked {
-                    Image(systemName: "xmark")
+                    Icon("xmark")
                         .font(.system(size: size * 0.16, weight: .heavy))
                         .foregroundStyle(.black)
                         .frame(width: size / 3, height: size / 3)
@@ -82,8 +112,7 @@ struct LimitStepper: View {
 
     private func round(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
         Button(action: { withAnimation(.snappy) { action() } }) {
-            Image(systemName: symbol)
-                .font(.system(size: 13, weight: .bold))
+            Icon(symbol, size: 16)
                 .frame(width: 32, height: 32)
                 .background(Color(hex: 0x262626), in: Circle())
         }
@@ -97,24 +126,24 @@ struct CurrencyChips: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            chip(.ngn, enabled: true)
-            chip(.kes, enabled: false)
+            chip(.ngn, country: .ng)
+            chip(.kes, country: .ke)
         }
     }
 
-    private func chip(_ currency: Currency, enabled: Bool) -> some View {
+    private func chip(_ currency: Currency, country: Country) -> some View {
         let on = selection.contains(currency)
         return Button {
             if on, selection.count > 1 { selection.remove(currency) } else { selection.insert(currency) }
         } label: {
-            Text(currency.rawValue.uppercased() + (enabled ? "" : " soon"))
+            Text("\(country.flag) \(country.name)")
                 .font(.system(size: 13, weight: .medium))
                 .padding(.horizontal, 10)
                 .frame(height: 28)
                 .foregroundStyle(on ? .black : Theme.textSecondary)
                 .background(on ? Color.white : Color(hex: 0x262626), in: Capsule())
         }
-        .disabled(!enabled)
+        .accessibilityAddTraits(on ? .isSelected : [])
     }
 }
 
@@ -128,7 +157,7 @@ struct SheetHeader: View {
             Spacer()
             Text(title).font(.system(size: 17, weight: .semibold))
             Spacer()
-            Button(action: onClose) { Image(systemName: "xmark") }
+            Button(action: onClose) { Icon("xmark") }
                 .frame(width: 32, height: 32)
                 .accessibilityLabel("Close")
         }

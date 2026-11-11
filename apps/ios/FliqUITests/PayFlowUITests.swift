@@ -10,7 +10,7 @@ final class PayFlowUITests: XCTestCase {
     @MainActor
     func testPayDaraFromHomeToPaid() {
         let app = XCUIApplication()
-        app.launchArguments = ["--ui-testing", "--onboarded"]
+        app.launchArguments = ["--ui-testing", "--onboarded", "--funded"]
         app.launch()
 
         XCTAssertTrue(app.staticTexts["Vault balance"].waitForExistence(timeout: 5))
@@ -34,8 +34,10 @@ final class PayFlowUITests: XCTestCase {
 
         app.buttons["Continue"].tap()
         XCTAssertTrue(app.staticTexts["They receive"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3), "The amount field opens the keyboard by itself")
-        app.typeText("50")
+        XCTAssertTrue(app.buttons["Delete"].waitForExistence(timeout: 3), "The amount screen has its own keypad")
+        XCTAssertFalse(app.keyboards.firstMatch.exists, "No system keyboard for amounts")
+        app.buttons["5"].tap()
+        app.buttons["0"].tap()
         snap("3-amount")
 
         app.buttons["Get quote"].tap()

@@ -101,6 +101,20 @@ fn register_storage(contract: &mut Contract, account: AccountId) {
 }
 
 #[cfg(feature = "testing")]
+fn payout_resolved_event(order_id: &str, transferred: bool, resolved_by: &str) -> String {
+    format!(
+        "EVENT_JSON:{{\"standard\":\"fliq_vault\",\"version\":\"1.0.0\",\"event\":\"payout_resolved\",\"data\":[{{\"order_id\":\"{order_id}\",\"transferred\":{transferred},\"resolved_by\":\"{resolved_by}\"}}]}}"
+    )
+}
+
+#[cfg(feature = "testing")]
+fn emitted(expected: &str) -> bool {
+    near_sdk::test_utils::get_logs()
+        .iter()
+        .any(|log| log == expected)
+}
+
+#[cfg(feature = "testing")]
 fn payout(contract: &mut Contract, order_id: &str) -> near_sdk::Promise {
     let order = contract
         .get_receipt(order_id.to_owned())
@@ -1458,6 +1472,12 @@ fn real_payout_then_refund_recredits_once_and_marks_refunded() {
     set_caller(accounts(1), NOW);
     contract.set_status(
         "order-1".to_string(),
+        "settled".to_string(),
+        ReceiptRefs::default(),
+    );
+    set_caller(accounts(1), NOW);
+    contract.set_status(
+        "order-1".to_string(),
         "refunding".to_string(),
         refund_refs("refund-tx"),
     );
@@ -2315,12 +2335,24 @@ fn resolving_a_stuck_payout_emits_who_resolved_it() {
     let _promise = payout(&mut contract, "order-1");
     set_caller(accounts(1), NOW + TIMEOUT);
     contract.resolve_stuck_payout("order-1".to_string(), true);
-    assert!(
-        near_sdk::test_utils::get_logs()
-            .iter()
-            .any(|log| log.contains("\"event\":\"payout_resolved\"")
-                && log.contains("\"transferred\":true"))
-    );
+    assert!(emitted(&payout_resolved_event("order-1", true, "bob")));
+    assert_eq!(contract.get_balance(accounts(3)).total, U128(90));
+}
+
+#[cfg(feature = "testing")]
+#[test]
+fn the_owner_resolving_a_stuck_payout_as_not_transferred_emits_the_same_shape() {
+    let mut contract = contract();
+    contract.credit_for_testing(accounts(3), 100);
+    register_payout_order(&mut contract, 10, NOW + 3_600_000_000_000);
+    set_caller(accounts(3), NOW);
+    let _promise = payout(&mut contract, "order-1");
+    assert_eq!(contract.get_balance(accounts(3)).available, U128(90));
+    set_caller(accounts(0), NOW + TIMEOUT);
+    contract.resolve_stuck_payout("order-1".to_string(), false);
+    assert!(emitted(&payout_resolved_event("order-1", false, "alice")));
+    assert_eq!(contract.get_balance(accounts(3)).available, U128(100));
+    assert_eq!(contract.get_liabilities(), U128(100));
 }
 
 #[cfg(feature = "testing")]

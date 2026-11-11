@@ -6,7 +6,11 @@ import { PAYCREST_SIGNATURE_HEADER } from "./paycrest/paycrest";
 import { TRANSFI_SIGNATURE_HEADER } from "./transfi/transfi";
 import { WEBHOOK_FUND_SETTLED } from "./transfi/transfi.fixtures";
 
-const deps = { alert: () => undefined };
+// Adapters that load their catalogue at startup must not reach the network from a test.
+const deps = {
+  alert: () => undefined,
+  fetch: (async () => new Response("{}", { status: 503 })) as typeof fetch,
+};
 
 const PAYCREST: Env = { PAYCREST_API_KEY: "pk", PAYCREST_API_SECRET: "current" };
 const BITNOB: Env = {
@@ -64,6 +68,15 @@ describe("enabled adapters", () => {
     expect(() => ids({ BITNOB_CALLBACK_URL: "https://api.example/hooks/bitnob" })).toThrow(
       "set BITNOB_CLIENT_ID, BITNOB_CLIENT_SECRET, BITNOB_ENVIRONMENT, BITNOB_WEBHOOK_SECRET",
     );
+  });
+
+  it("shows Busha's prices with no key, but needs a key and webhook secret to pay", () => {
+    const [prices] = enabledAdapters({ BUSHA_ENVIRONMENT: "production", BUSHA_PUBLIC_QUOTES: "1" }, deps);
+    expect(prices?.capabilities().funding).toEqual({ direct: false, hop: false });
+    expect(() => ids({ BUSHA_ENVIRONMENT: "production" })).toThrow(
+      "set BUSHA_SECRET_KEY, or BUSHA_PUBLIC_QUOTES=1",
+    );
+    expect(() => ids({ ...BUSHA, BUSHA_WEBHOOK_SECRET: "" })).toThrow("set BUSHA_WEBHOOK_SECRET");
   });
 
   it("refuses an unknown environment", () => {

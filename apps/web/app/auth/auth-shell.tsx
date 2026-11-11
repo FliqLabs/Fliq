@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { BrandVideo } from "./brand-video";
 
 export function AuthShell({ children }: { children: React.ReactNode }) {
   return (
@@ -19,30 +20,8 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
         <p className="text-xs text-zinc-400">Sandbox needs no KYB. Live keys need a verified business.</p>
       </section>
 
-      <aside className="relative hidden min-h-screen overflow-hidden bg-[#151515] text-white lg:flex lg:items-center lg:justify-center">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,#332365_0%,#1c1930_37%,transparent_70%)]" />
-        <div className="relative w-full max-w-[470px] px-8">
-          <p className="mb-4 text-sm text-zinc-400">USDC to NGN bank, after fees</p>
-          <div className="rounded-full border border-emerald-400/35 bg-emerald-400/10 px-7 py-5 text-center shadow-[0_0_0_10px_#34d39912]">
-            <span className="text-5xl font-light tracking-tight">₦1,376.32</span>
-            <span className="ml-3 text-sm text-zinc-400">per $1</span>
-          </div>
-          <p className="mt-5 text-xs text-emerald-400">Sample rate · Paycrest</p>
-          <div className="mt-8 rounded-2xl border border-zinc-800 bg-[#1a1a1a] p-6">
-            <p className="mb-6 text-xs font-semibold uppercase tracking-wide text-zinc-400">Sample payout</p>
-            <ol className="space-y-6 text-sm">
-              <li>
-                <span className="mr-3 text-emerald-400">✓</span>Left a NEAR vault · 50.00 USDC
-              </li>
-              <li>
-                <span className="mr-3 text-emerald-400">✓</span>Routed with Paycrest
-              </li>
-              <li>
-                <span className="mr-3 text-emerald-400">✓</span>₦68,816 paid to a bank · 21 seconds
-              </li>
-            </ol>
-          </div>
-        </div>
+      <aside className="sticky top-0 hidden h-screen items-center overflow-hidden bg-black lg:order-first lg:flex">
+        <BrandVideo />
       </aside>
     </main>
   );

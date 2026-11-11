@@ -1,3 +1,4 @@
+import { PublicKey } from "near-api-js";
 import { describe, expect, it } from "vitest";
 import { verifySignedDelegate } from "../../packages/chains/near/delegate.js";
 import {
@@ -8,10 +9,11 @@ import {
 } from "../../packages/chains/near/near.fixtures.js";
 import { checkPolicy } from "../../packages/chains/near/policy.js";
 import { base58Decode, base58Encode } from "../src/agent/base58.js";
-import { agentKeyFrom, PAYOUT_GAS, signDelegate } from "../src/agent/delegate.js";
-import { createVaultAgent } from "../src/agent/vault-agent.js";
+import { AgentClient } from "../src/agent/agent-client.js";
+import { agentKeyFrom, generateAgentKey, signDelegate } from "../src/agent/delegate.js";
 
 const AGENT = "agent-1.ada.fliq.testnet";
+const PAYOUT_GAS = 80_000_000_000_000n;
 
 describe("agent delegate signing", () => {
   it("produces byte for byte the signed delegate near-api-js produces", async () => {
@@ -35,19 +37,20 @@ describe("agent delegate signing", () => {
         JSON.stringify({ result: { nonce: 41, block_height: 5_000, permission: "FullAccess" } }),
       );
     }) as typeof fetch;
-    const agent = await createVaultAgent(
-      {
-        accountId: AGENT,
-        secretKey: user.key.toString(),
-        nearRpcUrl: "http://rpc.test",
-        vaultContractId: VAULT,
-      },
-      fakeRpc,
-    );
-    const { signedDelegate, hash } = await agent.signPayout({
-      orderId: PAYOUT_ARGS.order_id,
-      amountUnits: BigInt(PAYOUT_ARGS.amount),
-      depositAddress: PAYOUT_ARGS.deposit_address,
+    const agent = new AgentClient({
+      baseUrl: "http://api.test/v1",
+      key: await agentKeyFrom(AGENT, user.key.toString()),
+      nearRpcUrl: "http://rpc.test",
+      fetch: fakeRpc,
+    });
+    const signedDelegate = await agent.signStep({
+      kind: "function_call",
+      receiver_id: VAULT,
+      method_name: "payout",
+      args: PAYOUT_ARGS,
+      gas: PAYOUT_GAS.toString(),
+      deposit: "0",
+      public_key: null,
     });
 
     const verified = verifySignedDelegate(signedDelegate);
@@ -56,7 +59,6 @@ describe("agent delegate signing", () => {
       receiverId: VAULT,
       nonce: 42n,
       maxBlockHeight: 5_120n,
-      hash,
     });
     expect(verified.publicKey).toBe(user.publicKey);
     expect(() =>
@@ -71,6 +73,13 @@ describe("agent delegate signing", () => {
   it("refuses a key that is not a 64-byte ed25519 secret", async () => {
     await expect(agentKeyFrom(AGENT, "ed25519:abc")).rejects.toThrow("64 bytes");
     await expect(agentKeyFrom(AGENT, "secp256k1:abc")).rejects.toThrow("64 bytes");
+  });
+
+  it("makes a key that loads back and signs for its printed public key", async () => {
+    const { secretKey, publicKey } = await generateAgentKey();
+    const agent = await agentKeyFrom(AGENT, secretKey);
+    const message = new TextEncoder().encode("fliq");
+    expect(PublicKey.fromString(publicKey).verify(message, await agent.sign(message))).toBe(true);
   });
 
   it("round-trips base58 with leading zero bytes", () => {

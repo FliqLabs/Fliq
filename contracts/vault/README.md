@@ -49,7 +49,7 @@ Rules:
 
 Initialization is deliberately self-authorized. The `new` call must be signed and sent by the deployed vault account, with the vault account as the transaction predecessor; an external deployer or any other account cannot initialize it. The initialization arguments are the immutable owner, registration account, and approved USDC token contract.
 
-This release targets a fresh testnet deployment. Deploy the Wasm and call the private `new(owner, registration_account, approved_usdc_token_contract)` initializer from the vault account itself. There is no migration path in this release.
+A fresh account is initialized with `new`. An account that already runs a pre-`order_agents` build, including the live `fliq-vault.testnet`, is upgraded by deploying the new Wasm and calling `migrate` from the vault account instead: `new` is guarded by `ALREADY_INITIALIZED` and cannot be called over existing state. See [docs/HANDOFF.md](docs/HANDOFF.md) for which path applies and what a failed `migrate` leaves behind.
 
 ```
 make test-contract

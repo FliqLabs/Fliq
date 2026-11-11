@@ -178,9 +178,9 @@ describe.skipIf(!enabled)("provider webhooks against a real database", () => {
     expect(await stateOf(refunded.payout_id)).toBe("refunded");
   }, 60_000);
 
-  it("answers 404 for an order it does not know, so the provider retries, and 200 for an event it cannot read", async () => {
+  it("answers 503 for an order it does not know, so the provider retries, and 200 for an event it cannot read", async () => {
     const unknown = await deliver({ payout_id: "pay_missing", provider_order: "missing-order" }, "settled");
-    expect(unknown.statusCode).toBe(404);
+    expect(unknown.statusCode).toBe(503);
     expect(await probe.inbox.count({ where: { messageId: { startsWith: "missing-order" } } })).toBe(0);
 
     const payout = await newPayout();
@@ -232,7 +232,7 @@ describe.skipIf(!enabled)("provider webhooks against a real database", () => {
 
   it("keeps an event for an order it does not know yet, unlinked and unprocessed", async () => {
     const unknown = await deliver({ payout_id: "pay_missing", provider_order: "missing-order" }, "settled");
-    expect(unknown.statusCode).toBe(404);
+    expect(unknown.statusCode).toBe(503);
     const kept = await probe.inboundEvent.findFirstOrThrow({ where: { providerOrderId: "missing-order" } });
     expect(kept).toMatchObject({ payoutId: null, processedAt: null });
   }, 60_000);

@@ -3,6 +3,7 @@ import SwiftUI
 struct ActivityView: View {
     let store: ActivityStore
     let onReceive: () -> Void
+    var onRefresh: () async -> Void = {}
     @State private var filter = Filter.all
 
     enum Filter: String, CaseIterable {
@@ -29,36 +30,50 @@ struct ActivityView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.top, 14)
 
-            if shown.isEmpty {
-                empty
-            } else {
+            GeometryReader { proxy in
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 8) {
-                        ForEach(days, id: \.title) { day in
-                            Text(day.title)
-                                .font(.system(size: 13))
-                                .foregroundStyle(Theme.textSecondary)
-                                .padding(.top, 14)
-                                .padding(.horizontal, 2)
-                            ForEach(day.entries) { entry in
-                                NavigationLink(value: AppRoute.receipt(payoutId: entry.id)) {
-                                    ActivityRow(entry: entry)
+                    if shown.isEmpty {
+                        empty.frame(minHeight: proxy.size.height)
+                    } else {
+                        LazyVStack(alignment: .leading, spacing: 8) {
+                            ForEach(days, id: \.title) { day in
+                                Text(day.title)
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(Theme.textSecondary)
+                                    .padding(.top, 14)
+                                    .padding(.horizontal, 2)
+                                ForEach(day.rows) { row in
+                                    rowView(row)
                                 }
                             }
                         }
+                        .padding(.top, 8)
+                        .padding(.bottom, 24)
                     }
-                    .padding(.top, 8)
                 }
                 .scrollIndicators(.hidden)
+                .refreshable { await onRefresh() }
             }
+        }
+        .task { await onRefresh() }
+    }
+
+    @ViewBuilder
+    private func rowView(_ row: ActivityStore.Row) -> some View {
+        switch row {
+        case .local(let entry):
+            NavigationLink(value: AppRoute.receipt(payoutId: entry.id)) { ActivityRow(entry: entry) }
+        case .history(let item) where item.kind == .payout:
+            NavigationLink(value: AppRoute.receipt(payoutId: item.refId)) { HistoryRow(item: item) }
+        case .history(let item):
+            HistoryRow(item: item)
         }
     }
 
     private var empty: some View {
         VStack(spacing: 14) {
             Spacer()
-            Image(systemName: "clock.arrow.circlepath")
-                .font(.system(size: 24))
+            Icon("clock.arrow.circlepath", size: 29)
                 .foregroundStyle(Theme.textTertiary)
                 .frame(width: 64, height: 64)
                 .background(Theme.surface, in: Circle())
@@ -73,18 +88,19 @@ struct ActivityView: View {
         }
     }
 
-    private var shown: [ActivityStore.Entry] {
-        store.entries.filter { entry in
-            switch (filter, entry.source) {
-            case (.all, _), (.mine, .mine), (.agents, .agent): true
-            default: false
+    private var shown: [ActivityStore.Row] {
+        store.rows.filter { row in
+            switch filter {
+            case .all: true
+            case .mine: !row.isAgent
+            case .agents: row.isAgent
             }
         }
     }
 
-    private var days: [(title: String, entries: [ActivityStore.Entry])] {
+    private var days: [(title: String, rows: [ActivityStore.Row])] {
         let calendar = Calendar.current
-        let grouped = Dictionary(grouping: shown) { calendar.startOfDay(for: $0.startedAt) }
+        let grouped = Dictionary(grouping: shown) { calendar.startOfDay(for: $0.date) }
         return grouped.keys.sorted(by: >).map { day in
             let title = calendar.isDateInToday(day) ? "Today"
                 : calendar.isDateInYesterday(day) ? "Yesterday"
@@ -162,6 +178,89 @@ private struct ActivityRow: View {
         case .refused: Text("Refused").foregroundStyle(Theme.warning)
         case .notReceived: Text("Checking").foregroundStyle(Theme.warning)
         default: Text("Sending").foregroundStyle(Theme.textSecondary)
+        }
+    }
+}
+
+/// A row from the account's history: a payout, a deposit, a transfer between fliq users or a refused agent payout.
+private struct HistoryRow: View {
+    let item: ActivityItem
+
+    var body: some View {
+        HStack(spacing: 14) {
+            badge
+                .frame(width: 38, height: 38)
+                .background(Theme.surfaceRaised, in: Circle())
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(.system(size: 15, weight: .medium)).lineLimit(1)
+                Text(subtitle).font(.system(size: 13)).foregroundStyle(Theme.textSecondary).lineLimit(1)
+            }
+            Spacer()
+            VStack(alignment: .trailing, spacing: 3) {
+                Text(amount)
+                    .font(.system(size: 15, weight: .medium).monospacedDigit())
+                    .strikethrough(item.kind == .refused, color: Theme.textTertiary)
+                    .foregroundStyle(amountColor)
+                status.font(.system(size: 12))
+            }
+        }
+        .padding(.horizontal, 16)
+        .frame(height: 66)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14))
+        .foregroundStyle(Theme.textPrimary)
+        .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder
+    private var badge: some View {
+        switch item.kind {
+        case .deposit, .transferIn: Icon("arrow.down", size: 18).foregroundStyle(Theme.confirmed)
+        case .transferOut: Icon("arrow.up.right", size: 18).foregroundStyle(Theme.textSecondary)
+        default: Text(String(item.party.name.prefix(1))).font(.system(size: 16, weight: .semibold))
+        }
+    }
+
+    private var title: String {
+        guard let agent = item.agent else { return item.party.name }
+        return "\(agent.name) · \(item.party.name)"
+    }
+
+    private var subtitle: String {
+        var parts = [item.at.formatted(date: .omitted, time: .shortened)]
+        switch item.kind {
+        case .payout:
+            if let provider = item.provider { parts.append(ProviderID(rawValue: provider)?.displayName ?? provider.capitalized) }
+            if let seconds = item.seconds { parts.append("\(seconds)s") }
+        case .deposit: parts.append(item.token ?? "Deposit")
+        case .transferIn: parts.append(item.party.nearAccount ?? "From a fliq user")
+        case .transferOut: parts.append(item.party.nearAccount ?? "To a fliq user")
+        case .refused: parts.append("over your cap")
+        case .unknown: break
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    private var amount: String { item.headline }
+
+    private var amountColor: Color {
+        switch item.kind {
+        case .refused: Theme.textTertiary
+        case .deposit, .transferIn: Theme.confirmed
+        default: Theme.textPrimary
+        }
+    }
+
+    @ViewBuilder
+    private var status: some View {
+        switch item.status {
+        case "paid": Text("Paid").foregroundStyle(Theme.confirmed)
+        case "received": Text("Received").foregroundStyle(Theme.confirmed)
+        case "sent": Text("Sent").foregroundStyle(Theme.textSecondary)
+        case "refunded": Text("Refunded").foregroundStyle(Theme.textSecondary)
+        case "refused": Text("Refused").foregroundStyle(Theme.warning)
+        case "failed": Text("Failed").foregroundStyle(Theme.danger)
+        case "expired": Text("Expired").foregroundStyle(Theme.textTertiary)
+        default: Text(item.kind == .deposit ? "Arriving" : "Sending").foregroundStyle(Theme.textSecondary)
         }
     }
 }

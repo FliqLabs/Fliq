@@ -29,7 +29,7 @@ struct AgentLimitsSheet: View {
             }
 
             HStack(spacing: 10) {
-                Image(systemName: "checkmark.shield").foregroundStyle(Theme.textSecondary)
+                Icon("checkmark.shield", size: 18).foregroundStyle(Theme.textSecondary)
                 Text("Written to \(store.vaultAccount). Takes effect on the next payout.")
             }
             .font(.system(size: 13))
@@ -71,15 +71,15 @@ struct PolicyCard: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            LimitStepper(label: "Daily cap", value: $policy.dailyCap)
-            LimitStepper(label: "Per payout", value: $policy.perPayout)
+            LimitStepper(label: "Per day", value: $policy.dailyCap)
+            LimitStepper(label: "Per payment", value: $policy.perPayout)
             CardRow {
-                Text("Pays").foregroundStyle(Theme.textSecondary)
+                Text("Pays to").foregroundStyle(Theme.textSecondary)
                 Spacer()
                 CurrencyChips(selection: $policy.currencies)
             }
             CardRow(isLast: true) {
-                Toggle("Saved accounts only", isOn: $policy.savedAccountsOnly)
+                Toggle("Only my saved accounts", isOn: $policy.savedAccountsOnly)
                     .foregroundStyle(Theme.textSecondary)
                     .tint(Theme.confirmed)
             }

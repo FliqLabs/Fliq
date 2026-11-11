@@ -11,7 +11,7 @@ struct ProfileSetupView: View {
         VStack(spacing: 0) {
             VStack(spacing: 6) {
                 if let name = flow.name, flow.canClaim {
-                    Label("\(name.account) is yours", systemImage: "checkmark.circle.fill")
+                    IconLabel("@\(name.value) is yours", icon: "checkmark.circle.fill")
                         .symbolRenderingMode(.palette)
                         .foregroundStyle(Color.black, Theme.confirmed)
                         .font(.system(size: 13, weight: .bold))
@@ -130,8 +130,7 @@ private struct Avatar: View {
             if let photo, let image = UIImage(data: photo) {
                 Image(uiImage: image).resizable().scaledToFill()
             } else {
-                Image(systemName: "person.fill")
-                    .font(.system(size: 48))
+                Icon("person.fill", size: 58)
                     .foregroundStyle(Theme.textTertiary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Theme.surfaceRaised)
@@ -141,8 +140,7 @@ private struct Avatar: View {
         .clipShape(Circle())
         .overlay(Circle().strokeBorder(Color.white.opacity(0.14), lineWidth: 2))
         .overlay(alignment: .bottomTrailing) {
-            Image(systemName: "camera")
-                .font(.system(size: 15, weight: .semibold))
+            Icon("camera", size: 18)
                 .foregroundStyle(.black)
                 .frame(width: 36, height: 36)
                 .background(.white, in: Circle())

@@ -105,3 +105,7 @@ pub fn recredit_refund(
 pub fn get_balance(vault: &Vault, account: &AccountId) -> BalanceView {
     vault.balance_of(account).into()
 }
+
+pub fn get_liabilities(vault: &Vault) -> Amount {
+    vault.total_liabilities()
+}

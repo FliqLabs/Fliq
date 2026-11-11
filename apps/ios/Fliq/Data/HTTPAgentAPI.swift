@@ -95,9 +95,7 @@ struct HTTPAgentAPI: AgentAPI {
             currencies: limits.currencies, savedAccountsOnly: limits.savedAccountsOnly
         )
         let change = try await client.sendRaw("POST", "agents", body: body, headers: ["Idempotency-Key": UUID().uuidString])
-        var agent = try await signSteps(change, reason: "Let \(name) pay from your vault")
-        agent.status = .active
-        return agent
+        return try await signSteps(change, reason: "Let \(name) pay from your vault")
     }
 
     func update(_ agentId: String, policy: AgentPolicy, vault: String) async throws {
@@ -156,6 +154,15 @@ struct HTTPAgentAPI: AgentAPI {
         }
     }
 
+    /// The vault holds a new agent's policy a moment after the signed step lands; until then it is pending.
+    static func status(_ state: String) -> Agent.Status {
+        switch state {
+        case "revoked": .revoked
+        case "pending": .pending
+        default: .active
+        }
+    }
+
     static func agent(_ live: LiveAgent) -> Agent {
         Agent(
             id: live.agentId,
@@ -168,7 +175,7 @@ struct HTTPAgentAPI: AgentAPI {
                 savedAccountsOnly: live.savedAccountsOnly
             ),
             usedToday: Int(live.spentToday.amount) ?? 0,
-            status: live.state == "revoked" ? .revoked : .active
+            status: status(live.state)
         )
     }
 }

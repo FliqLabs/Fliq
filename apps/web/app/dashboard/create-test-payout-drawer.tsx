@@ -131,16 +131,16 @@ export function CreateTestPayoutDrawer({ dialogRef }: Props) {
     <dialog
       ref={dialogRef}
       aria-labelledby="create-payout-title"
-      className="fixed inset-y-0 right-0 left-auto z-50 m-0 h-dvh max-h-dvh w-full max-w-[400px] border-l border-zinc-200 bg-white p-0 text-zinc-950 backdrop:bg-black/35"
+      className="fixed inset-y-0 right-0 left-auto z-50 m-0 h-dvh max-h-dvh w-full max-w-[400px] border-l border-app-line bg-app-panel p-0 text-app-fg backdrop:bg-black/35"
     >
       <div className="flex h-full flex-col">
-        <div className="flex items-center justify-between border-b border-zinc-200 px-5 py-4">
+        <div className="flex items-center justify-between border-b border-app-line px-5 py-4">
           <div className="flex items-center gap-2">
             <h2 id="create-payout-title" className="text-sm font-semibold">
               {isMockPayout ? "Create test payout" : "Create payout"}
             </h2>
             {currentQuote && (
-              <span className="rounded-full bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-700">
+              <span className="rounded-full bg-app-warn-soft px-2 py-1 text-[10px] font-semibold text-app-warn">
                 {isMockPayout ? "Mock provider" : currentQuote.provider}
               </span>
             )}
@@ -149,7 +149,7 @@ export function CreateTestPayoutDrawer({ dialogRef }: Props) {
             type="button"
             onClick={() => dialogRef.current?.close()}
             aria-label="Close drawer"
-            className="grid size-8 place-items-center rounded-lg border border-zinc-200 text-lg"
+            className="grid size-8 place-items-center rounded-lg border border-app-line text-lg"
           >
             ×
           </button>
@@ -159,8 +159,8 @@ export function CreateTestPayoutDrawer({ dialogRef }: Props) {
           <div className="flex-1 space-y-5 overflow-y-auto p-5">
             <label className="block text-xs font-semibold">
               Amount
-              <span className="mt-2 flex h-12 items-center gap-2 rounded-lg border border-zinc-300 px-3 focus-within:border-zinc-700">
-                <span className="text-lg font-normal text-zinc-500">$</span>
+              <span className="mt-2 flex h-12 items-center gap-2 rounded-lg border border-app-line2 px-3 focus-within:border-app-accent">
+                <span className="text-lg font-normal text-app-muted">$</span>
                 <input
                   type="number"
                   min="0"
@@ -168,26 +168,26 @@ export function CreateTestPayoutDrawer({ dialogRef }: Props) {
                   value={amount}
                   onChange={(event) => setAmount(event.target.value)}
                   placeholder="0.00"
-                  className="min-w-0 flex-1 text-lg font-normal outline-none placeholder:text-zinc-400"
+                  className="min-w-0 flex-1 text-lg font-normal outline-none placeholder:text-app-dim"
                 />
-                <span className="rounded-full bg-zinc-100 px-2 py-1 text-[10px]">USDC</span>
+                <span className="rounded-full bg-app-panel2 px-2 py-1 text-[10px]">USDC</span>
               </span>
             </label>
             <button
               type="button"
               disabled={!validAmount || requestQuote.isPending}
               onClick={() => requestQuote.mutate({ amount, corridor })}
-              className="rounded-lg border border-zinc-200 px-3 py-2 text-xs font-semibold disabled:opacity-50"
+              className="rounded-lg border border-app-line px-3 py-2 text-xs font-semibold disabled:opacity-50"
             >
               {requestQuote.isPending ? "Getting quote…" : "Get quote"}
             </button>
             {requestQuote.isError && (
-              <p role="alert" className="text-xs text-red-600">
+              <p role="alert" className="text-xs text-app-bad">
                 {requestQuote.error.message}
               </p>
             )}
             {currentQuote && (
-              <div className="rounded-lg bg-zinc-50 p-3 text-xs">
+              <div className="rounded-lg bg-app-panel2 p-3 text-xs">
                 <p className="font-semibold">
                   Recipient gets{" "}
                   {new Intl.NumberFormat("en-NG", {
@@ -196,16 +196,16 @@ export function CreateTestPayoutDrawer({ dialogRef }: Props) {
                     maximumFractionDigits: 0,
                   }).format(currentQuote.receive)}
                 </p>
-                <p className="mt-1 text-zinc-500">
+                <p className="mt-1 text-app-muted">
                   Provider: {currentQuote.provider} · Rate: {currentQuote.rate.toLocaleString("en-NG")}
                 </p>
-                <p className="mt-1 text-zinc-500">
+                <p className="mt-1 text-app-muted">
                   Expires in {Math.max(0, Math.ceil((quote!.expiresAt - now) / 1000))}s
                 </p>
               </div>
             )}
             {quote && !currentQuote && (
-              <p className="text-xs text-amber-700">Get a fresh quote before sending.</p>
+              <p className="text-xs text-app-warn">Get a fresh quote before sending.</p>
             )}
 
             <fieldset>
@@ -233,7 +233,7 @@ export function CreateTestPayoutDrawer({ dialogRef }: Props) {
                   value={bank}
                   onChange={(event) => setBank(event.target.value)}
                   disabled={institutions.isPending || institutions.isError}
-                  className="mt-2 h-11 w-full rounded-lg border border-zinc-200 px-3 font-normal outline-none focus:border-zinc-500"
+                  className="mt-2 h-11 w-full rounded-lg border border-app-line px-3 font-normal outline-none focus:border-app-accent"
                 >
                   <option value="">Select {corridor === "ngn" ? "bank" : "provider"}</option>
                   {options.map((item) => (
@@ -250,12 +250,12 @@ export function CreateTestPayoutDrawer({ dialogRef }: Props) {
                   value={accountNumber}
                   onChange={(event) => setAccountNumber(event.target.value)}
                   placeholder="Enter number"
-                  className="mt-2 h-11 w-full rounded-lg border border-zinc-200 px-3 font-normal outline-none focus:border-zinc-500"
+                  className="mt-2 h-11 w-full rounded-lg border border-app-line px-3 font-normal outline-none focus:border-app-accent"
                 />
               </label>
             </div>
             {institutions.isError && (
-              <p role="alert" className="text-xs text-red-600">
+              <p role="alert" className="text-xs text-app-bad">
                 {institutions.error.message}
               </p>
             )}
@@ -265,7 +265,7 @@ export function CreateTestPayoutDrawer({ dialogRef }: Props) {
                 value={accountName}
                 onChange={(event) => setAccountName(event.target.value)}
                 placeholder="If the bank cannot return a name"
-                className="mt-2 h-11 w-full rounded-lg border border-zinc-200 px-3 font-normal outline-none focus:border-zinc-500"
+                className="mt-2 h-11 w-full rounded-lg border border-app-line px-3 font-normal outline-none focus:border-app-accent"
               />
             </label>
             <button
@@ -279,41 +279,41 @@ export function CreateTestPayoutDrawer({ dialogRef }: Props) {
                   ...(accountName.trim() ? { account_name: accountName.trim() } : {}),
                 })
               }
-              className="rounded-lg border border-zinc-200 px-3 py-2 text-xs font-semibold disabled:opacity-50"
+              className="rounded-lg border border-app-line px-3 py-2 text-xs font-semibold disabled:opacity-50"
             >
               {verifyAccount.isPending ? "Checking account…" : "Verify account"}
             </button>
             {verifyAccount.isError && (
-              <p role="alert" className="text-xs text-red-600">
+              <p role="alert" className="text-xs text-app-bad">
                 {verifyAccount.error.message}
               </p>
             )}
             {currentAccount && (
-              <div className="rounded-lg bg-zinc-50 p-3 text-xs">
+              <div className="rounded-lg bg-app-panel2 p-3 text-xs">
                 <p className="font-semibold">{currentAccount.account_name}</p>
-                <p className="mt-1 text-zinc-500">
+                <p className="mt-1 text-app-muted">
                   {currentAccount.name_verified
                     ? "Name verified by provider"
                     : "Name supplied by you; provider could not verify it"}
                 </p>
               </div>
             )}
-            <details className="border-t border-zinc-100 pt-4 text-xs text-zinc-500">
+            <details className="border-t border-app-line pt-4 text-xs text-app-muted">
               <summary className="cursor-pointer">Advanced: reference</summary>
               <label className="mt-3 block">
                 Client reference (optional)
                 <input
                   value={clientReference}
                   onChange={(event) => setClientReference(event.target.value)}
-                  className="mt-2 h-10 w-full rounded-lg border border-zinc-200 px-3 outline-none focus:border-zinc-500"
+                  className="mt-2 h-10 w-full rounded-lg border border-app-line px-3 outline-none focus:border-app-accent"
                 />
               </label>
             </details>
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-app-muted">
                 The same request, as code
               </p>
-              <pre className="mt-2 overflow-x-auto rounded-lg bg-zinc-950 p-4 text-xs leading-5 text-zinc-300">
+              <pre className="mt-2 overflow-x-auto rounded-lg bg-app-code p-4 text-xs leading-5 text-app-code-fg">
                 {JSON.stringify(
                   {
                     quote_id: currentQuote?.quote_id ?? "<get a quote>",
@@ -325,26 +325,26 @@ export function CreateTestPayoutDrawer({ dialogRef }: Props) {
               </pre>
             </div>
           </div>
-          <div className="border-t border-zinc-200 p-5">
+          <div className="border-t border-app-line p-5">
             {currentQuote && !isMockPayout && (
-              <p className="mb-3 text-xs text-amber-700">
+              <p className="mb-3 text-xs text-app-warn">
                 This creates a {currentQuote.provider} order and may use real USDC from your vault.
               </p>
             )}
             {submitPayout.isError && (
-              <p role="alert" className="mb-3 text-xs text-red-600">
+              <p role="alert" className="mb-3 text-xs text-app-bad">
                 {submitPayout.error.message}
               </p>
             )}
             {submitPayout.isSuccess && (
-              <p role="status" className="mb-3 text-xs text-emerald-700">
+              <p role="status" className="mb-3 text-xs text-app-good">
                 Payout created. It is now in your payouts list.
               </p>
             )}
             <button
               type="submit"
               disabled={!canSubmit}
-              className="w-full rounded-lg bg-zinc-950 px-4 py-3 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+              className="w-full rounded-lg bg-app-ink px-4 py-3 text-xs font-semibold text-app-ink-fg disabled:cursor-not-allowed disabled:opacity-50"
             >
               {submitPayout.isPending
                 ? "Creating payout…"
@@ -366,11 +366,19 @@ export function CreateTestPayoutDrawer({ dialogRef }: Props) {
                 {accountNumber.slice(-4)}). The recipient is expected to receive{" "}
                 {currentQuote ? formatLocalAmount(currentQuote.receive, corridor) : "—"}.
               </p>
+<<<<<<< HEAD
               <p className="mt-2 font-medium text-red-700">
                 This provider order may use real USDC from your vault.
               </p>
               {!currentQuote && (
                 <p className="mt-2 text-red-700">The quote expired. Get a new quote first.</p>
+=======
+              <p className="mt-2 font-medium text-app-bad">
+                This provider order may use real USDC from your vault.
+              </p>
+              {!currentQuote && (
+                <p className="mt-2 text-app-bad">The quote expired. Get a new quote first.</p>
+>>>>>>> 52b2e07c9f81bc0e97433462c0f73623f3156322
               )}
             </>
           }
@@ -397,7 +405,7 @@ function CorridorOption({
 }) {
   return (
     <label
-      className={`flex h-11 cursor-pointer items-center justify-between rounded-lg border px-3 text-xs ${selected ? "border-zinc-800" : "border-zinc-200 text-zinc-500"}`}
+      className={`flex h-11 cursor-pointer items-center justify-between rounded-lg border px-3 text-xs ${selected ? "border-app-fg" : "border-app-line text-app-muted"}`}
     >
       <span>{label}</span>
       <input
@@ -406,7 +414,7 @@ function CorridorOption({
         value={value}
         checked={selected}
         onChange={() => onChange(value)}
-        className="accent-zinc-950"
+        className="accent-app-fg"
       />
     </label>
   );

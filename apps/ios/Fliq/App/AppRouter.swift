@@ -14,6 +14,10 @@ enum AppRoute: Hashable {
     case settingsSecurity
     case settingsNotifications
     case agentConnect
+    case withdraw
+    case withdrawTo
+    case withdrawReview
+    case bankDeposit
     case receipt(payoutId: String)
 }
 

@@ -74,6 +74,48 @@ final class ReceiveTests: XCTestCase {
         XCTAssertEqual(flow.reason(unavailable: base), "Receiving from base is not available right now.")
     }
 
+    func testTestnetOffersOnlyTheUsersOwnNEARAccount() async {
+        let flow = ReceiveFlow(api: FixtureDepositAPI(), vault: VaultStore(), vaultAccount: "frank.fliq.near", network: .testnet)
+        await flow.loadSources()
+
+        XCTAssertEqual(flow.offered.map(\.chainId), ["near"])
+        XCTAssertEqual(flow.currencies.map(\.group), [.dollars], "Bitcoin has no source on testnet, so it is hidden")
+        XCTAssertEqual(flow.currencies.first?.tokens, ["usdc"], "USDT has no source on testnet, so it is hidden")
+        XCTAssertEqual(flow.onlyOption?.chainId, "near", "One way to receive skips both pickers")
+    }
+
+    func testMainnetOffersEveryAvailableChain() async {
+        let flow = await makeFlow()
+
+        XCTAssertEqual(flow.offered.count, 8)
+        XCTAssertNil(flow.onlyOption)
+    }
+
+    func testASourceTheAPIMarksUnavailableIsHiddenNotGreyedOut() async {
+        let flow = ReceiveFlow(api: PartlyAvailable(), vault: VaultStore(), vaultAccount: "frank.fliq.near")
+        await flow.loadSources()
+
+        XCTAssertFalse(flow.networks(for: "usdc").contains { $0.chainId == "base" })
+        XCTAssertFalse(flow.currencies.contains { $0.group == .bitcoin }, "A currency left with no source disappears")
+    }
+
+    func testASourceRefusedWhenReservingDropsOutWithANote() async throws {
+        let flow = ReceiveFlow(api: Refusing(), vault: VaultStore(), vaultAccount: "frank.fliq.near")
+        await flow.loadSources()
+        let base = try XCTUnwrap(flow.sources.first { $0.chainId == "base" })
+
+        _ = await flow.reserve(base)
+
+        XCTAssertFalse(flow.networks(for: "usdc").contains(base))
+        XCTAssertEqual(flow.notice, "USDC on Base isn't available right now.")
+    }
+
+    func testTheNetworkComesFromTheBuildSettingOrTheRPC() {
+        XCTAssertEqual(NearNetwork.from(["FliqNearNetwork": "mainnet", "FliqNearRPCURL": "https://rpc.testnet.near.org"]), .mainnet)
+        XCTAssertEqual(NearNetwork.from(["FliqNearRPCURL": "https://rpc.testnet.near.org"]), .testnet)
+        XCTAssertEqual(NearNetwork.from(["FliqNearRPCURL": "https://rpc.mainnet.near.org"]), .mainnet)
+    }
+
     func testTheAPIsDepositsReadIntoAddressesAndStages() throws {
         let decoder = FliqJSON.decoder()
         let waiting = try decoder.decode(HTTPDepositAPI.VaultDeposit.self, from: try fixture("deposit.waiting"))
@@ -98,6 +140,20 @@ final class ReceiveTests: XCTestCase {
         func sources() async throws -> [DepositSource] { try await FixtureDepositAPI().sources() }
         func reserve(_ source: DepositSource, vault: String) async throws -> DepositAddress {
             throw DepositUnavailable(message: "Receiving from \(source.chainId) is not available right now.")
+        }
+        func status(of deposit: DepositAddress) async throws -> DepositStatus { throw DepositUnavailable(message: "") }
+    }
+
+    private struct PartlyAvailable: DepositAPI {
+        func sources() async throws -> [DepositSource] {
+            try await FixtureDepositAPI().sources().map { source in
+                var source = source
+                source.available = !["base", "bitcoin"].contains(source.chainId)
+                return source
+            }
+        }
+        func reserve(_ source: DepositSource, vault: String) async throws -> DepositAddress {
+            try await FixtureDepositAPI().reserve(source, vault: vault)
         }
         func status(of deposit: DepositAddress) async throws -> DepositStatus { throw DepositUnavailable(message: "") }
     }

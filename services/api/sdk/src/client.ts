@@ -12,13 +12,11 @@ import type {
   Quote,
   QuoteRequest,
   Rate,
-  RelayResult,
   VerifiedAccount,
 } from "./types.js";
-import { webCrypto } from "./webhooks.js";
 
-export const DEFAULT_BASE_URL = "https://api.fliq.cash/v1";
-export const SDK_VERSION = "0.1.0";
+export const DEFAULT_BASE_URL = "https://api-production-54e10.up.railway.app/v1";
+export const SDK_VERSION = "0.1.1";
 
 export interface FliqClientOptions {
   apiKey: string;
@@ -98,7 +96,7 @@ export class FliqClient {
   }
 
   createPayout(input: PayoutRequest, options: CreatePayoutOptions = {}): Promise<Payout> {
-    const idempotencyKey = options.idempotencyKey ?? webCrypto().randomUUID();
+    const idempotencyKey = options.idempotencyKey ?? globalThis.crypto.randomUUID();
     return this.request<Payout>("POST", "/payouts", {
       body: input,
       headers: { "idempotency-key": idempotencyKey },
@@ -119,20 +117,6 @@ export class FliqClient {
   getPayoutStats(timezone?: string, options: RequestOptions = {}): Promise<PayoutStats> {
     return this.request<PayoutStats>("GET", "/payouts/stats", {
       query: { tz: timezone },
-      signal: options.signal,
-    });
-  }
-
-  // The API answers these two only to a signed-in session today; an API key gets 403 forbidden.
-  relay(signedDelegate: string, options: RequestOptions = {}): Promise<RelayResult> {
-    return this.request<RelayResult>("POST", "/relays", {
-      body: { signed_delegate: signedDelegate },
-      signal: options.signal,
-    });
-  }
-
-  getRelay(delegateHash: string, options: RequestOptions = {}): Promise<RelayResult> {
-    return this.request<RelayResult>("GET", `/relays/${encodeURIComponent(delegateHash)}`, {
       signal: options.signal,
     });
   }
@@ -203,7 +187,8 @@ export class FliqClient {
   }
 }
 
-async function readResponse<T>(response: Response): Promise<T> {
+// Shared with the agent client in @fliqlabs/mcp, which signs its requests differently but reads answers the same way.
+export async function readResponse<T>(response: Response): Promise<T> {
   const text = await response.text();
   let body: unknown = null;
   try {

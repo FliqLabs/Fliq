@@ -47,7 +47,7 @@ export function FirstLoginDashboard({ onCreatePayout, onboarding }: Props) {
       {showSteps ? (
         <section
           aria-label="Getting started"
-          className="grid grid-cols-1 md:grid-cols-[30%_30%_30%_5%] items-center gap-4 rounded-xl border border-zinc-200 px-4 py-3 text-xs"
+          className="grid grid-cols-1 md:grid-cols-[30%_30%_30%_5%] items-center gap-4 rounded-xl border border-app-line px-4 py-3 text-xs"
         >
           <div className="flex items-center justify-between">
             <Step
@@ -57,7 +57,7 @@ export function FirstLoginDashboard({ onCreatePayout, onboarding }: Props) {
               active
               done={onboarding?.steps.find((step) => step.id === "create_test_payout")?.done}
             />
-            <span aria-hidden="true" className="hidden h-px max-w-6 flex-1 bg-zinc-200 md:block" />
+            <span aria-hidden="true" className="hidden h-px max-w-6 flex-1 bg-app-line2 md:block" />
           </div>
 
           <div className="flex items-center justify-between">
@@ -67,7 +67,7 @@ export function FirstLoginDashboard({ onCreatePayout, onboarding }: Props) {
               description="Receive payout events"
               done={onboarding?.steps.find((step) => step.id === "add_webhook")?.done}
             />
-            <span aria-hidden="true" className="hidden h-px max-w-6 flex-1 bg-zinc-200 md:block" />
+            <span aria-hidden="true" className="hidden h-px max-w-6 flex-1 bg-app-line2 md:block" />
           </div>
 
           <div className="flex items-center justify-between">
@@ -82,7 +82,7 @@ export function FirstLoginDashboard({ onCreatePayout, onboarding }: Props) {
           <button
             type="button"
             onClick={() => setShowSteps(false)}
-            className="ml-auto text-xs text-zinc-500 hover:text-zinc-950"
+            className="ml-auto text-xs text-app-muted hover:text-app-fg"
           >
             Hide
           </button>
@@ -91,7 +91,7 @@ export function FirstLoginDashboard({ onCreatePayout, onboarding }: Props) {
         <button
           type="button"
           onClick={() => setShowSteps(true)}
-          className="text-xs text-zinc-500 hover:text-zinc-950"
+          className="text-xs text-app-muted hover:text-app-fg"
         >
           Show getting started
         </button>
@@ -102,22 +102,22 @@ export function FirstLoginDashboard({ onCreatePayout, onboarding }: Props) {
           aria-label="Search payouts"
           disabled
           placeholder="Search by name, payout ID, NIP reference"
-          className="h-10 w-full max-w-sm rounded-lg border border-zinc-200 px-4 text-sm placeholder:text-zinc-400 disabled:bg-zinc-50"
+          className="h-10 w-full max-w-sm rounded-lg border border-app-line px-4 text-sm placeholder:text-app-dim disabled:bg-app-panel2"
         />
         <div className="flex gap-2">
           <PayoutExportButton />
           <button
             type="button"
             onClick={onCreatePayout}
-            className="rounded-lg bg-zinc-950 px-4 py-2.5 text-xs font-semibold text-white hover:bg-zinc-800"
+            className="rounded-lg bg-app-ink px-4 py-2.5 text-xs font-semibold text-app-ink-fg hover:opacity-90"
           >
             Create payout
           </button>
         </div>
       </div>
 
-      <section aria-label="Payouts list" className="mt-4 overflow-hidden rounded-xl border border-zinc-200">
-        <div className="hidden grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr] gap-4 border-b border-zinc-200 px-4 py-3 text-[11px] font-semibold uppercase text-zinc-500 md:grid">
+      <section aria-label="Payouts list" className="mt-4 overflow-hidden rounded-xl border border-app-line">
+        <div className="hidden grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr] gap-4 border-b border-app-line px-4 py-3 text-[11px] font-semibold uppercase text-app-muted md:grid">
           <span>Recipient</span>
           <span>Amount</span>
           <span>Provider</span>
@@ -130,13 +130,13 @@ export function FirstLoginDashboard({ onCreatePayout, onboarding }: Props) {
             <Image src={fliqMark} alt="" className="size-16 object-contain" />
             <span
               aria-hidden="true"
-              className="absolute right-0 bottom-0 grid size-5 place-items-center rounded-full bg-amber-50 text-[9px] text-amber-700"
+              className="absolute right-0 bottom-0 grid size-5 place-items-center rounded-full bg-app-warn-soft text-[9px] text-app-warn"
             >
               ●
             </span>
           </div>
           <h1 className="text-lg font-semibold">No payouts yet. Create your first payout.</h1>
-          <p className="mt-2 max-w-lg text-sm text-zinc-500">
+          <p className="mt-2 max-w-lg text-sm text-app-muted">
             Your payouts will appear here once you create one. Get a quote to see which provider will
             handle it, then connect a webhook endpoint to follow its status.
           </p>
@@ -144,13 +144,13 @@ export function FirstLoginDashboard({ onCreatePayout, onboarding }: Props) {
             <button
               type="button"
               onClick={onCreatePayout}
-              className="rounded-lg bg-zinc-950 px-4 py-2.5 text-xs font-semibold text-white hover:bg-zinc-800"
+              className="rounded-lg bg-app-ink px-4 py-2.5 text-xs font-semibold text-app-ink-fg hover:opacity-90"
             >
               Create payout
             </button>
             <a
               href="#quickstart"
-              className="rounded-lg border border-zinc-200 px-4 py-2.5 text-xs font-semibold hover:bg-zinc-50"
+              className="rounded-lg border border-app-line px-4 py-2.5 text-xs font-semibold hover:bg-app-hover"
             >
               Read the quickstart
             </a>
@@ -161,7 +161,7 @@ export function FirstLoginDashboard({ onCreatePayout, onboarding }: Props) {
               <div
                 role="group"
                 aria-label="Quickstart language"
-                className="flex rounded-lg bg-zinc-100 p-1 text-xs"
+                className="flex rounded-lg bg-app-panel2 p-1 text-xs"
               >
                 {(["curl", "TypeScript"] as const).map((option) => (
                   <button
@@ -172,38 +172,38 @@ export function FirstLoginDashboard({ onCreatePayout, onboarding }: Props) {
                       setLanguage(option);
                       setCopied(false);
                     }}
-                    className={`rounded-md px-3 py-1.5 ${language === option ? "bg-white font-semibold shadow-sm" : "text-zinc-500"}`}
+                    className={`rounded-md px-3 py-1.5 ${language === option ? "bg-app-panel font-semibold shadow-sm" : "text-app-muted"}`}
                   >
                     {option}
                   </button>
                 ))}
-                <span className="px-3 py-1.5 text-zinc-400" title="MCP example is not available yet">
+                <span className="px-3 py-1.5 text-app-muted" title="MCP example is not available yet">
                   MCP
                 </span>
               </div>
               <button
                 type="button"
                 onClick={copyExample}
-                className="rounded-lg border border-zinc-200 px-3 py-1.5 text-xs font-semibold"
+                className="rounded-lg border border-app-line px-3 py-1.5 text-xs font-semibold"
               >
                 {copied ? "Copied" : "Copy"}
               </button>
             </div>
             <pre
               id="quickstart-example"
-              className="mt-2 overflow-x-auto rounded-lg bg-zinc-950 p-4 font-mono text-xs leading-5 text-zinc-100"
+              className="mt-2 overflow-x-auto rounded-lg bg-app-code p-4 font-mono text-xs leading-5 text-app-code-fg"
             >
               {examples[language]}
             </pre>
-            <p className="mt-2 text-xs text-zinc-500">
+            <p className="mt-2 text-xs text-app-muted">
               Replace the placeholders with your sandbox key and amount. Create a payout with the quote ID
               returned by this request.
             </p>
           </div>
         </div>
       </section>
-      <p className="mt-3 text-xs text-zinc-500">
-        <span className="text-amber-500">●</span> Check the provider on your quote before creating a payout.
+      <p className="mt-3 text-xs text-app-muted">
+        <span className="text-app-warn">●</span> Check the provider on your quote before creating a payout.
       </p>
     </>
   );
@@ -225,13 +225,13 @@ function Step({
   return (
     <div className="flex min-w-40 items-center gap-2">
       <span
-        className={`grid size-6 shrink-0 place-items-center rounded-full text-[11px] ${active ? "bg-zinc-950 text-white" : "border border-zinc-200 text-zinc-500"}`}
+        className={`grid size-6 shrink-0 place-items-center rounded-full text-[11px] ${active ? "bg-app-ink text-app-ink-fg" : "border border-app-line text-app-muted"}`}
       >
         {done ? "✓" : number}
       </span>
       <span>
-        <span className={`block font-semibold ${active ? "text-zinc-950" : "text-zinc-500"}`}>{title}</span>
-        <span className="block text-[11px] text-zinc-500">{description}</span>
+        <span className={`block font-semibold ${active ? "text-app-fg" : "text-app-muted"}`}>{title}</span>
+        <span className="block text-[11px] text-app-muted">{description}</span>
       </span>
     </div>
   );

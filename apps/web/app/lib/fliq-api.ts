@@ -27,6 +27,9 @@ export type User = {
   photo_url: string | null;
   occupation: string | null;
   vault: string | null;
+  home_currency?: "NGN" | "KES";
+  daily_limit?: Money;
+  verified?: boolean;
 };
 
 export type Workspace = {
@@ -122,6 +125,7 @@ export class ApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    readonly code?: string,
   ) {
     super(message);
   }
@@ -137,10 +141,12 @@ export async function fliqApi<T>(path: string, init?: RequestInit): Promise<T> {
   const data = await response.json().catch(() => null);
   if (!response.ok) {
     const message = data?.error?.message ?? "Something went wrong. Try again.";
+    const code = typeof data?.error?.code === "string" ? data.error.code : undefined;
     const traceId = response.headers.get("x-trace-id");
     throw new ApiError(
       response.status >= 500 && traceId ? `${message} Reference: ${traceId}` : message,
       response.status,
+      code,
     );
   }
   return data as T;

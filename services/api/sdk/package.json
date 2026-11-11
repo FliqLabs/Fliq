@@ -1,12 +1,26 @@
 {
-  "name": "@fliq/sdk",
-  "version": "0.1.0",
+  "name": "@fliqlabs/sdk",
+  "version": "0.1.1",
   "description": "TypeScript client for the fliq payouts API: quotes, payouts, account verification and webhook verification.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/FliqLabs/Fliq.git",
+    "directory": "services/api/sdk"
+  },
+  "homepage": "https://github.com/FliqLabs/Fliq/tree/main/services/api/sdk#readme",
+  "keywords": [
+    "fliq",
+    "near",
+    "stablecoin",
+    "payouts",
+    "offramp",
+    "sdk"
+  ],
   "type": "module",
   "sideEffects": false,
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "exports": {
     ".": {
@@ -22,7 +36,6 @@
     "build": "node scripts/build.mjs"
   },
   "publishConfig": {
-    "access": "public",
-    "provenance": true
+    "access": "public"
   }
 }

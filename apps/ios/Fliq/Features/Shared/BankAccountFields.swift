@@ -36,8 +36,7 @@ struct BankAccountFields: View {
                 Text(entry.institution.name)
                     .foregroundStyle(Theme.textPrimary)
                 Spacer()
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 14))
+                Icon("chevron.down", size: 17)
                     .foregroundStyle(Theme.textTertiary)
             }
             .font(.system(size: 17))
@@ -73,7 +72,7 @@ struct BankAccountFields: View {
         Group {
             if let verified = entry.verified {
                 HStack(spacing: 6) {
-                    Image(systemName: "checkmark.circle")
+                    Icon("checkmark.circle", size: 18)
                     Text(verified.accountName).fontWeight(.semibold)
                     Text("· confirmed by \(verified.institution)").foregroundStyle(Theme.textTertiary)
                 }

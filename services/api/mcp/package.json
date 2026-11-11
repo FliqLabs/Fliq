@@ -1,8 +1,22 @@
 {
-  "name": "@fliq/mcp",
-  "version": "0.1.0",
+  "name": "@fliqlabs/mcp",
+  "version": "0.1.1",
   "description": "MCP server for fliq: lets an AI agent quote, verify, pay and track stablecoin cash-outs over stdio.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/FliqLabs/Fliq.git",
+    "directory": "services/api/mcp"
+  },
+  "homepage": "https://github.com/FliqLabs/Fliq/tree/main/services/api/mcp#readme",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "near",
+    "stablecoin",
+    "payouts",
+    "offramp"
+  ],
   "type": "module",
   "engines": {
     "node": ">=20"
@@ -18,7 +32,6 @@
     "build": "node ../node_modules/typescript/bin/tsc -p tsconfig.build.json"
   },
   "publishConfig": {
-    "access": "public",
-    "provenance": true
+    "access": "public"
   }
 }
