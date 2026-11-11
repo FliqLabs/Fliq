@@ -5,7 +5,7 @@ import { isFailure } from "./tools/envelope.js";
 import { callTool, isToolName, type ToolContext } from "./tools/handlers.js";
 
 export const SERVER_NAME = "fliq";
-export const SERVER_VERSION = "0.1.0";
+export const SERVER_VERSION = "0.1.1";
 // Newest first. A client asking for one of these gets it back; any other request gets the newest.
 export const PROTOCOL_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 

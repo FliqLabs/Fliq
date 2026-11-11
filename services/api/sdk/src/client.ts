@@ -15,8 +15,8 @@ import type {
   VerifiedAccount,
 } from "./types.js";
 
-export const DEFAULT_BASE_URL = "https://api.fliq.cash/v1";
-export const SDK_VERSION = "0.1.0";
+export const DEFAULT_BASE_URL = "https://api-production-54e10.up.railway.app/v1";
+export const SDK_VERSION = "0.1.1";
 
 export interface FliqClientOptions {
   apiKey: string;
@@ -187,7 +187,7 @@ export class FliqClient {
   }
 }
 
-// Shared with the agent client in @fliq/mcp, which signs its requests differently but reads answers the same way.
+// Shared with the agent client in @fliqlabs/mcp, which signs its requests differently but reads answers the same way.
 export async function readResponse<T>(response: Response): Promise<T> {
   const text = await response.text();
   let body: unknown = null;
