@@ -63,6 +63,8 @@ There are two paths, and which one applies depends on whether the target account
 
 **A fresh account, including the mainnet vault.** Deploy the Wasm and call the private `new(owner, registration_account, approved_usdc_token_contract)` initializer from the vault account itself, in the same transaction as the deployment. Deployment needs a full-access key on the vault account.
 
+`new` takes those three arguments and nothing else. `max_expiry` and `payout_timeout` are not parameters: they initialize to `DEFAULT_MAX_EXPIRY`, 24 hours, and `DEFAULT_PAYOUT_TIMEOUT`, 10 minutes. If the intended `payout_timeout` differs, as it does on mainnet, the owner must call `set_payout_timeout` as the step straight after deployment, so plan for the owner key to be reachable at deploy time rather than only in an emergency.
+
 **An account that already runs a pre-`order_agents` build, including the live testnet vault.** Deploy the new Wasm and call `migrate` in the same transaction, again from the vault account itself. Balances, orders, receipts, refund evidence, payout keys and policies are kept; `order_agents` starts empty, so orders registered before the upgrade can be paid by their payer alone. `new` cannot be used here: it is `#[init]` and guarded by `ALREADY_INITIALIZED`.
 
 `migrate` reads exactly one old layout, `ContractV1`. Confirm the deployed build is pre-`order_agents` before relying on it; against any other layout the state read fails.
@@ -81,6 +83,38 @@ As of 10 November 2026 the live testnet vault is `fliq-vault.testnet`, owner `fl
 Native USDC on NEAR mainnet is `17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1`, the address Circle publishes, confirmed on chain on 10 November 2026: `ft_metadata` reports spec `ft-1.0.0`, symbol `USDC` and **6 decimals**, matching the testnet stand-in, so no amount scaling changes. `storage_balance_bounds` is `min` equal to `max` at 1250000000000000000000 yoctoNEAR, so registering the vault for USDC storage costs exactly 0.00125 NEAR and is registration-only.
 
 Do not use `a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.factory.bridge.near`. That is the bridged `USDC.e` token; it also has 6 decimals, so it will not look wrong, but Circle does not support it for mint or redemption. The approved token is stored once at initialization and cannot be changed afterwards, so this is a one-shot decision. Verify the address against Circle's own documentation at deploy time rather than copying it from here.
+
+### Sizing the vault account's NEAR
+
+NEAR charges 10^19 yoctoNEAR per byte of account storage, confirmed on mainnet. Two costs follow, and the
+first is much the larger:
+
+- **The contract code.** The November artifact is 270,648 bytes, so roughly **2.71 NEAR is locked** for as
+  long as the code is deployed. It is storage staking, not a fee: it returns if the contract is ever
+  removed.
+- **Every order, permanently.** `register_order` is not payable, so the order and receipt are stored
+  against the vault account's own balance rather than the caller's. Measured on the live testnet vault with
+  `get_storage_usage`: registering an order cost 526 bytes, the backend's refs added 72 more, and
+  `release_order` gave back only the reservation, leaving **494 bytes for a completed order**, about
+  **0.005 NEAR, locked for good**. Terminal orders are never cleaned up; that is on the post-hackathon list
+  in `DECISIONS.md`.
+
+So the vault's spare balance is a cap on how many orders it can ever accept, not a running cost, and the
+failure is user-facing: once the balance cannot cover the storage stake, `register_order` fails outright.
+The vault is the first account to top up.
+
+A workable split of 8 NEAR for a first mainnet deployment:
+
+| Account | NEAR | Covers |
+| --- | ---: | --- |
+| vault | 3.6 | 2.71 code, 0.00125 USDC registration, about 0.03 deploy gas, and roughly 0.85 of order headroom, about 170 orders |
+| owner | 0.3 | Rare cold-key calls only; it does not pay agent-policy storage, which is charged to the policy owner |
+| registration account | 2.6 | Per-order gas across `register_order`, `set_status`, `recredit` and `release_order` |
+| storage payer | 1.5 | Per user: 0.00141 vault registration, 0.00125 USDC registration and about 0.02 funding |
+
+Gas was at the protocol floor of 10^8 yoctoNEAR per unit on 10 November 2026, which puts a 60 Tgas call at
+0.006 NEAR. Testnet was running about ten times that when an agent payout failed earlier the same day, so
+size gas budgets against the congested price, not the floor.
 
 ## Backend alignment
 
