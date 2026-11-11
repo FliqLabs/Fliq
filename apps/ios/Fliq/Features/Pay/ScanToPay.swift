@@ -143,15 +143,14 @@ struct ScanToPayView: View {
     private var topBar: some View {
         HStack {
             Button { dismiss() } label: {
-                Image(systemName: "xmark").font(.system(size: 17, weight: .semibold)).frame(width: 44, height: 44)
+                Icon("xmark", size: 20).frame(width: 44, height: 44)
             }
             .fliqGlass(Circle(), interactive: true)
             .accessibilityLabel("Close")
             Spacer()
             if canScan {
                 Button { setTorch(!torch) } label: {
-                    Image(systemName: torch ? "flashlight.on.fill" : "flashlight.off.fill")
-                        .font(.system(size: 17, weight: .semibold))
+                    Icon(torch ? "flashlight.on.fill" : "flashlight.off.fill", size: 20)
                         .frame(width: 44, height: 44)
                 }
                 .fliqGlass(Circle(), interactive: true)
@@ -184,8 +183,7 @@ struct ScanToPayView: View {
 
     private var unavailable: some View {
         VStack(spacing: 14) {
-            Image(systemName: "qrcode.viewfinder")
-                .font(.system(size: 38))
+            Icon("qrcode.viewfinder", size: 46)
                 .foregroundStyle(Theme.textSecondary)
                 .frame(width: 84, height: 84)
                 .fliqGlass(Circle())
@@ -220,7 +218,7 @@ struct ScanToPayView: View {
             .transition(.move(edge: .bottom).combined(with: .opacity))
         } else if let spotted = model.spotted {
             Button(action: model.useSpotted) {
-                Label("Use \(Self.masked(spotted))", systemImage: "number")
+                IconLabel("Use \(Self.masked(spotted))", icon: "number")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(.black)
                     .padding(.horizontal, 22)
@@ -275,7 +273,7 @@ private struct ScanResultCard: View {
             if let payable = code.account {
                 account(number: payable.number, institution: payable.institution)
             } else {
-                Label(code.comingSoon ?? "", systemImage: "clock")
+                IconLabel(code.comingSoon ?? "", icon: "clock")
                     .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(Theme.textSecondary)
                 primary("Scan again", action: model.scanAgain)
@@ -296,7 +294,7 @@ private struct ScanResultCard: View {
                     HStack {
                         Text(number).font(.system(size: 17, weight: .medium).monospacedDigit())
                         Spacer()
-                        Image(systemName: "chevron.right").foregroundStyle(Theme.textTertiary)
+                        Icon("chevron.right", size: 18).foregroundStyle(Theme.textTertiary)
                     }
                     .padding(.horizontal, 16)
                     .frame(height: 52)
@@ -367,10 +365,10 @@ private struct ScanResultCard: View {
         }
         Group {
             if let verified = entry.verified {
-                Label(verified.accountName.localizedCapitalized, systemImage: "checkmark.circle.fill")
+                IconLabel(verified.accountName.localizedCapitalized, icon: "checkmark.circle.fill")
                     .foregroundStyle(Theme.confirmed)
             } else if let error = entry.errorMessage {
-                Label(error, systemImage: "exclamationmark.circle").foregroundStyle(Theme.warning)
+                IconLabel(error, icon: "exclamationmark.circle").foregroundStyle(Theme.warning)
             } else {
                 HStack(spacing: 10) {
                     ProgressView().controlSize(.small)
@@ -401,10 +399,10 @@ private struct ScanResultCard: View {
             }
         } label: {
             HStack {
-                Image(systemName: "building.columns")
+                Icon("building.columns")
                 Text("Choose the bank")
                 Spacer()
-                Image(systemName: "chevron.up.chevron.down").foregroundStyle(Theme.textTertiary)
+                Icon("chevron.up.chevron.down", size: 18).foregroundStyle(Theme.textTertiary)
             }
             .font(.system(size: 17, weight: .medium))
             .foregroundStyle(Theme.textPrimary)

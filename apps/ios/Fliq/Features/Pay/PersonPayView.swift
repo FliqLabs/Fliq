@@ -43,7 +43,7 @@ struct PersonPayView: View {
                 if flow.isSending {
                     ProgressView().tint(.black)
                 } else {
-                    Label("Pay $\(Money.dollars(flow.amount ?? .zero)) with Face ID", systemImage: "faceid")
+                    IconLabel("Pay $\(Money.dollars(flow.amount ?? .zero)) with Face ID", icon: "faceid")
                 }
             }
             .buttonStyle(PrimaryButtonStyle())
@@ -71,7 +71,7 @@ struct PersonPayView: View {
                 .font(.system(size: 15))
                 .foregroundStyle(Theme.textSecondary)
             HeroAmount(symbol: "$", value: Money.dollars(flow.amount ?? .zero))
-            Label("Vault to vault · instant · no fee", systemImage: "bolt")
+            IconLabel("Vault to vault · instant · no fee", icon: "bolt")
                 .font(.system(size: 15))
                 .foregroundStyle(Theme.textSecondary)
                 .padding(.horizontal, 16)
@@ -111,7 +111,7 @@ struct PersonPayView: View {
         HStack(spacing: 10) {
             if let person = flow.person {
                 PersonAvatar(name: person.displayName ?? FliqName.display(person.nearAccount), photoURL: person.photoUrl.flatMap(URL.init(string:)), size: 32)
-                Image(systemName: "checkmark.circle").foregroundStyle(Theme.confirmed)
+                Icon("checkmark.circle", size: 18).foregroundStyle(Theme.confirmed)
                 Text(person.displayName ?? FliqName.display(person.nearAccount)).fontWeight(.semibold).foregroundStyle(Theme.confirmed)
                 Text("· on fliq since \(person.memberSince.formatted(.dateTime.month(.abbreviated).year()))")
                     .foregroundStyle(Theme.textSecondary)
@@ -119,7 +119,7 @@ struct PersonPayView: View {
                 ProgressView().controlSize(.small)
                 Text("Finding \(flow.account.map(FliqName.display) ?? "")").foregroundStyle(Theme.textSecondary)
             } else if flow.lookupFailed {
-                Image(systemName: "questionmark.circle").foregroundStyle(Theme.warning)
+                Icon("questionmark.circle", size: 18).foregroundStyle(Theme.warning)
                 Text("No one on fliq has that name").foregroundStyle(Theme.warning)
             }
             Spacer()
@@ -132,8 +132,7 @@ struct PersonPayView: View {
     private func done(_ paid: TokenAmount, to person: Person) -> some View {
         VStack(spacing: 14) {
             Spacer()
-            Image(systemName: "checkmark")
-                .font(.system(size: 28, weight: .semibold))
+            Icon("checkmark", size: 34)
                 .foregroundStyle(.black)
                 .frame(width: 72, height: 72)
                 .background(Theme.confirmed, in: Circle())

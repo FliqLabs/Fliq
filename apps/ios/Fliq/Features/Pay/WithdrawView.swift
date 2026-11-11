@@ -114,17 +114,17 @@ struct WithdrawToView: View {
             } else {
                 switch flow.check {
                 case .ready(let needsSetup):
-                    Image(systemName: "checkmark.circle").foregroundStyle(Theme.confirmed)
+                    Icon("checkmark.circle", size: 18).foregroundStyle(Theme.confirmed)
                     Text(needsSetup ? "NEAR wallet found. It hasn't held USDC before, so fliq sets that up in the same step." : "NEAR wallet found")
                         .foregroundStyle(Theme.confirmed)
                 case .invalid(let problem) where !problem.isEmpty:
-                    Image(systemName: "exclamationmark.circle").foregroundStyle(Theme.warning)
+                    Icon("exclamationmark.circle", size: 18).foregroundStyle(Theme.warning)
                     Text(problem).foregroundStyle(Theme.warning)
                 case .unavailable:
-                    Image(systemName: "wifi.exclamationmark").foregroundStyle(Theme.warning)
+                    Icon("wifi.exclamationmark", size: 18).foregroundStyle(Theme.warning)
                     Text("Couldn't check the address. Try again in a moment.").foregroundStyle(Theme.warning)
                 default:
-                    Image(systemName: "info.circle.fill").foregroundStyle(Theme.warning)
+                    Icon("info.circle.fill", size: 18).foregroundStyle(Theme.warning)
                     Text("Only send to a NEAR address. Money sent to another network can't come back.")
                         .fontWeight(.medium)
                         .foregroundStyle(Theme.warning)
@@ -216,7 +216,7 @@ struct WithdrawReviewView: View {
                 if flow.isSending {
                     ProgressView().tint(.black)
                 } else {
-                    Label("Send with Face ID", systemImage: "faceid")
+                    IconLabel("Send with Face ID", icon: "faceid")
                 }
             }
             .buttonStyle(PrimaryButtonStyle())
@@ -228,8 +228,7 @@ struct WithdrawReviewView: View {
     private func done(_ sent: WithdrawFlow.Sent) -> some View {
         VStack(spacing: 14) {
             Spacer()
-            Image(systemName: "checkmark")
-                .font(.system(size: 28, weight: .semibold))
+            Icon("checkmark", size: 34)
                 .foregroundStyle(.black)
                 .frame(width: 72, height: 72)
                 .background(Theme.confirmed, in: Circle())
@@ -244,7 +243,7 @@ struct WithdrawReviewView: View {
             .padding(.top, 12)
             if let explorer = sent.explorer {
                 Link(destination: explorer) {
-                    Label("View on NEAR", systemImage: "arrow.up.right.square")
+                    IconLabel("View on NEAR", icon: "arrow.up.right.square")
                         .font(.system(size: 15, weight: .medium))
                 }
                 .foregroundStyle(Theme.textPrimary)

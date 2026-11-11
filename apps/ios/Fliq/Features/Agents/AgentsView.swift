@@ -105,14 +105,14 @@ struct AgentsView: View {
                 CardRow {
                     Text("Connect an agent")
                     Spacer()
-                    Image(systemName: "plus").font(.system(size: 15, weight: .semibold))
+                    Icon("plus", size: 18)
                 }
             }
             .foregroundStyle(Theme.textPrimary)
             CardRow(isLast: true) {
                 Text("Enforced by \(store.vaultAccount)")
                 Spacer()
-                Image(systemName: "checkmark.shield").foregroundStyle(Theme.textTertiary)
+                Icon("checkmark.shield", size: 18).foregroundStyle(Theme.textTertiary)
             }
         }
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16))

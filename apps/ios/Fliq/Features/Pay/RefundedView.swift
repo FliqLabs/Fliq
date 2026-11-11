@@ -10,8 +10,7 @@ struct RefundedView: View {
     var body: some View {
         VStack(spacing: 0) {
             VStack(spacing: 8) {
-                Image(systemName: "arrow.counterclockwise")
-                    .font(.system(size: 28, weight: .medium))
+                Icon("arrow.counterclockwise", size: 34)
                     .frame(width: 72, height: 72)
                     .background(Theme.surface, in: Circle())
                     .padding(.bottom, 8)
@@ -29,7 +28,7 @@ struct RefundedView: View {
 
             if let next = nextBest {
                 HStack(spacing: 14) {
-                    Image(systemName: "arrow.triangle.branch")
+                    Icon("arrow.triangle.branch")
                         .frame(width: 40, height: 40)
                         .background(Theme.surfaceRaised, in: Circle())
                     VStack(alignment: .leading, spacing: 3) {
@@ -62,7 +61,7 @@ struct RefundedView: View {
         .navigationBarBackButtonHidden(onTryAgain != nil)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button { environment.router.reset() } label: { Image(systemName: "xmark") }
+                Button { environment.router.reset() } label: { Icon("xmark") }
                     .accessibilityLabel("Close")
             }
         }
@@ -73,8 +72,7 @@ struct RefundedView: View {
             ForEach(Array(payout.history.enumerated()), id: \.offset) { _, change in
                 if let title = title(for: change.state) {
                     HStack(spacing: 14) {
-                        Image(systemName: change.state == .payingOut ? "xmark" : "checkmark")
-                            .font(.system(size: 11, weight: .bold))
+                        Icon(change.state == .payingOut ? "xmark" : "checkmark", size: 13)
                             .foregroundStyle(change.state == .payingOut ? .black : .white)
                             .frame(width: 26, height: 26)
                             .background(change.state == .payingOut ? Color.white : Theme.confirmed, in: Circle())

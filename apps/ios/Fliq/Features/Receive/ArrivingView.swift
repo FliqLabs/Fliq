@@ -49,7 +49,7 @@ struct ArrivingView: View {
         .onAppear { if sentAt == nil { sentAt = .now } }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button(action: onDone) { Image(systemName: "xmark") }
+                Button(action: onDone) { Icon("xmark") }
                     .accessibilityLabel("Close")
             }
         }
@@ -172,8 +172,7 @@ private struct StepIcon: View {
             .overlay { ring }
             .overlay(alignment: .bottomTrailing) {
                 if state == .done {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 6, weight: .black))
+                    Icon("checkmark", size: 7)
                         .foregroundStyle(.white)
                         .frame(width: 13, height: 13)
                         .background(Theme.confirmed, in: Circle())

@@ -16,7 +16,7 @@ struct SecurityView: View {
                     if let passkeys, !passkeys.isEmpty {
                         ForEach(Array(passkeys.enumerated()), id: \.element.id) { index, passkey in
                             CardRow(isLast: index == passkeys.count - 1) {
-                                Image(systemName: "person.badge.key").frame(width: 22)
+                                Icon("person.badge.key", size: 22)
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(passkey.transports.contains("hybrid") ? "iCloud Keychain passkey" : "Passkey on this device")
                                     Text(passkeyDetail(passkey)).font(.system(size: 13)).foregroundStyle(Theme.textSecondary)
@@ -105,7 +105,7 @@ struct SecurityView: View {
         let lock = environment.lock
         return card {
             CardRow {
-                Image(systemName: LockBiometry.symbol).frame(width: 22)
+                Icon(LockBiometry.symbol, size: 22)
                 Toggle("Lock with \(LockBiometry.name)", isOn: Binding(get: { lock.usesBiometrics }, set: { on in
                     if !on { return lock.useBiometrics(false) }
                     Task { if await LockBiometry.unlock(allowDevicePasscode: false) { lock.useBiometrics(true) } }
@@ -113,7 +113,7 @@ struct SecurityView: View {
                 .tint(Theme.confirmed)
             }
             CardRow {
-                Image(systemName: "lock").frame(width: 22)
+                Icon("lock", size: 22)
                 Text("Passcode")
                 Spacer()
                 if lock.hasPasscode {
@@ -125,7 +125,7 @@ struct SecurityView: View {
             }
             .font(.system(size: 15, weight: .medium))
             CardRow(isLast: true) {
-                Image(systemName: "timer").frame(width: 22)
+                Icon("timer", size: 22)
                 Text("Lock")
                 Spacer()
                 Picker("Lock", selection: Binding(get: { lock.delay }, set: { lock.setDelay($0) })) {

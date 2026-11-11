@@ -70,6 +70,7 @@ Architecture diagrams: [docs/architecture.md](docs/architecture.md).
 | ioredis | services/api | Redis client for the atomic token-bucket rate limiter |
 | yaml | services/api | Read spec/openapi.yaml at startup to register routes |
 | prettier | root | Formatting |
+| Hugeicons free icons (SVG files, MIT) | apps/ios | The app's icon set, bundled as template vectors; notice in apps/ios/THIRD_PARTY_NOTICES.md |
 
 ## Contributing
 

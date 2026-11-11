@@ -100,8 +100,7 @@ struct SettingsView: View {
         HStack(spacing: 16) {
             PersonAvatar(name: profile.displayName ?? profile.name ?? "f", photoURL: user?.photoUrl.flatMap(URL.init(string:)), size: 64)
                 .overlay(alignment: .bottomTrailing) {
-                    Image(systemName: "camera")
-                        .font(.system(size: 10, weight: .semibold))
+                    Icon("camera", size: 12)
                         .foregroundStyle(.black)
                         .frame(width: 22, height: 22)
                         .background(.white, in: Circle())
@@ -188,15 +187,14 @@ struct LinkRow<Mark: View>: View {
     var body: some View {
         Button(action: action) {
             CardRow(isLast: isLast) {
-                Image(systemName: symbol).foregroundStyle(symbolColor).frame(width: 22)
+                Icon(symbol, size: 22).foregroundStyle(symbolColor)
                 Text(title)
                 Spacer()
                 mark()
                 if let value {
                     Text(value).font(.system(size: 13)).foregroundStyle(Theme.textSecondary)
                 }
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .semibold))
+                Icon("chevron.right", size: 16)
                     .foregroundStyle(Theme.textTertiary)
             }
             .contentShape(Rectangle())
@@ -222,7 +220,7 @@ struct InfoRow<Mark: View>: View {
 
     var body: some View {
         CardRow(isLast: isLast) {
-            if let symbol { Image(systemName: symbol).frame(width: 22) }
+            if let symbol { Icon(symbol, size: 22) }
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                 if let detail { Text(detail).font(.system(size: 13)).foregroundStyle(Theme.textSecondary) }

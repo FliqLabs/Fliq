@@ -29,7 +29,7 @@ struct AgentLimitsSheet: View {
             }
 
             HStack(spacing: 10) {
-                Image(systemName: "checkmark.shield").foregroundStyle(Theme.textSecondary)
+                Icon("checkmark.shield", size: 18).foregroundStyle(Theme.textSecondary)
                 Text("Written to \(store.vaultAccount). Takes effect on the next payout.")
             }
             .font(.system(size: 13))

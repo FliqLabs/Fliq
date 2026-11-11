@@ -43,8 +43,7 @@ struct WelcomeView: View {
                     }
                     .frame(maxWidth: .infinity)
                     .overlay(alignment: .trailing) {
-                        Image(systemName: "arrow.right")
-                            .font(.system(size: 17, weight: .semibold))
+                        Icon("arrow.right", size: 20)
                             .padding(.trailing, 26)
                     }
                 }
