@@ -54,6 +54,30 @@ async function requestCredential(
   }
 }
 
+type SignalApi = {
+  signalCurrentUserDetails?: (details: {
+    rpId: string;
+    userId: string;
+    name: string;
+    displayName: string;
+  }) => Promise<void>;
+};
+
+// Passkeys are created before a name exists, so they are saved under the opaque user id. Once the
+// account has a name, browsers that support it relabel the saved passkey so the picker is readable.
+export function labelPasskey(user: User) {
+  const signal = (window.PublicKeyCredential as unknown as SignalApi | undefined)?.signalCurrentUserDetails;
+  if (!signal || !user.near_account) return;
+  const userId = encode(new TextEncoder().encode(user.user_id).buffer);
+  if (!userId) return;
+  signal({
+    rpId: location.hostname,
+    userId,
+    name: user.near_account,
+    displayName: user.display_name || user.near_account,
+  }).catch(() => undefined);
+}
+
 export async function signInWithPasskey(mode: "login" | "register"): Promise<User> {
   assertBrowserReady();
   const base = `auth/passkeys/${mode}`;
