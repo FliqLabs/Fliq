@@ -30,7 +30,7 @@ describe.skipIf(!enabled)("vault sync keeps the ledger mirror in step with relea
 
     const rows: SyncedPayout[] = [{ id: orderId, state: "expired", provider: "paycrest", providerOrderId: null }];
     const listing = (async (fn: (tx: unknown) => unknown) =>
-      unit((tx) => fn(new Proxy(tx, { get: (target, key) => (key === "payout" ? { findMany: async () => rows } : Reflect.get(target, key)) })))) as typeof unit;
+      unit((tx) => fn(new Proxy(tx, { get: (target, key) => (key === "payout" ? { findMany: async () => rows } : Reflect.get(target, key)) })) as Promise<unknown>)) as unknown as typeof unit;
     const deps = { unit: listing, vault, now: () => new Date(), log: () => undefined };
 
     expect((await syncVaultReceipts(deps)).map((r) => r.action)).toEqual(["release"]);
