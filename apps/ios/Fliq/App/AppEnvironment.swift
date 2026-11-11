@@ -15,6 +15,9 @@ final class AppEnvironment {
     let profile: ProfileStore
     let activity: ActivityStore
     let vault: VaultStore
+    /// The amount that just landed, shown as a banner over any screen for a few seconds.
+    private(set) var arrival: TokenAmount?
+    @ObservationIgnored private var arrivalWatch: Task<Void, Never>?
     let deposits: any DepositAPI
     let agents: AgentStore
     let accounts: AccountBook
@@ -172,6 +175,37 @@ final class AppEnvironment {
     func refreshVault() async {
         guard isLive, let balance = try? await api.vaultBalance() else { return }
         vault.sync(balance)
+    }
+
+    /// Deposits land minutes after the person has left the screen they started on, and nothing pushes the news to
+    /// the phone, so once a deposit starts the app checks the balance quietly until it rises or the window closes.
+    func watchForArrival(every interval: Duration = .seconds(5), for window: Duration = .seconds(900)) {
+        guard isLive else { return }
+        arrivalWatch?.cancel()
+        arrivalWatch = Task { [weak self] in
+            guard let self else { return }
+            await refreshVault()
+            var floor = vault.balance.baseUnits
+            let end = ContinuousClock.now + window
+            while !Task.isCancelled, ContinuousClock.now < end {
+                try? await Task.sleep(for: interval)
+                await refreshVault()
+                let now = vault.balance.baseUnits
+                if now > floor {
+                    announceArrival(TokenAmount(baseUnits: now - floor))
+                    return
+                }
+                floor = min(floor, now)
+            }
+        }
+    }
+
+    func announceArrival(_ amount: TokenAmount) {
+        arrival = amount
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(5))
+            if self?.arrival == amount { self?.arrival = nil }
+        }
     }
 
     #if DEBUG

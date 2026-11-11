@@ -34,7 +34,9 @@ struct FliqApp: App {
             .onChange(of: scenePhase) { _, phase in
                 switch phase {
                 case .background: environment.lock.movedToBackground()
-                case .active: environment.lock.cameToForeground()
+                case .active:
+                    environment.lock.cameToForeground()
+                    Task { await environment.refreshVault() }
                 default: break
                 }
             }

@@ -4,16 +4,27 @@ struct HomeView: View {
     @State var model: HomeModel
     var onMenu: () -> Void = {}
     var onQR: () -> Void = {}
+    var onRefresh: () async -> Void = {}
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Spacer()
-            balance
-            Spacer()
-            WalletArrivedCard(inbox: model.inbox)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 16)
+        GeometryReader { proxy in
+            ScrollView {
+                VStack(spacing: 0) {
+                    header
+                    Spacer()
+                    balance
+                    Spacer()
+                    WalletArrivedCard(inbox: model.inbox)
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 16)
+                }
+                .frame(minHeight: proxy.size.height)
+            }
+            .scrollIndicators(.hidden)
+            .refreshable {
+                await onRefresh()
+                await model.load()
+            }
         }
         .background(Theme.ground.ignoresSafeArea())
         .task { await model.load() }

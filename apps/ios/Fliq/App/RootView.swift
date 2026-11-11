@@ -28,7 +28,7 @@ struct RootView: View {
         TabView(selection: tabSelection) {
             NavigationStack(path: $router.path) {
                 Group {
-                    if let home { HomeView(model: home, onMenu: { router.push(.settings) }, onQR: { sheet = .qr }) }
+                    if let home { HomeView(model: home, onMenu: { router.push(.settings) }, onQR: { sheet = .qr }, onRefresh: { await environment.refreshVault() }) }
                 }
                 .navigationDestination(for: AppRoute.self) { pushed($0) }
             }
@@ -51,6 +51,14 @@ struct RootView: View {
         }
         .tint(Theme.textPrimary)
         .minimizesTabBarOnScroll()
+        .overlay(alignment: .top) {
+            if let arrival = environment.arrival {
+                ArrivalBanner(amount: arrival)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(.spring(response: 0.45, dampingFraction: 0.8), value: environment.arrival)
+        .sensoryFeedback(.success, trigger: environment.arrival) { _, now in now != nil }
         .sheet(item: $sheet) { sheet in
             content(of: sheet)
                 .presentationDragIndicator(.visible)
@@ -120,7 +128,8 @@ struct RootView: View {
     }
 
     private func makeReceive() -> ReceiveFlow {
-        ReceiveFlow(
+        environment.watchForArrival()
+        return ReceiveFlow(
             api: environment.deposits,
             vault: environment.vault,
             vaultAccount: environment.profile.name ?? NearNetwork.current.vault,
@@ -170,6 +179,7 @@ struct RootView: View {
             guard let testWallet else { throw Paj.Failure(message: "Bank deposits land in your vault on mainnet. This test build has no wallet set for them.") }
             return BankDepositDestination(address: testWallet, isTestWallet: true)
         }
+        environment.watchForArrival()
         environment.router.push(.bankDeposit)
     }
 
