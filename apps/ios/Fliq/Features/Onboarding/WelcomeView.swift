@@ -7,8 +7,6 @@ struct WelcomeView: View {
     var isWorking = false
     var message: String?
     var onEmail: (() -> Void)?
-    /// Shown after a sign-in with a passkey this server does not know, so a new account is a deliberate choice.
-    var onCreateAccount: (() -> Void)?
 
     private static let accent = LinearGradient(
         colors: [Color(hex: 0x7B61FF), Color(hex: 0xB39BFF)],
@@ -51,25 +49,15 @@ struct WelcomeView: View {
                 }
                 .buttonStyle(WelcomeButtonStyle())
                 .disabled(isWorking)
-                Button(action: onExistingAccount) {
-                    HStack(spacing: 10) {
-                        icon("IconDownload")
-                        Text("I already have an account")
-                    }
-                    .font(.system(size: 17, weight: .medium))
-                }
-                .foregroundStyle(Theme.textPrimary)
-                .disabled(isWorking)
+                Button("Signing in on a new iPhone?", action: onExistingAccount)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(Theme.textSecondary)
+                    .disabled(isWorking)
                 if let message {
                     Text(message)
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(Theme.danger)
                         .multilineTextAlignment(.center)
-                }
-                if let onCreateAccount {
-                    Button("Create a new account", action: onCreateAccount)
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(Theme.textPrimary)
                 }
                 if let onEmail {
                     Button("Use email instead", action: onEmail)

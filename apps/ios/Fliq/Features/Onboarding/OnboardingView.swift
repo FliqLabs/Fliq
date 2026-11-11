@@ -13,7 +13,7 @@ struct OnboardingView: View {
     @State private var passkeys = PasskeyAuthenticator()
     @State private var passkeyWorking = false
     @State private var passkeyMessage: String?
-    @State private var offerNewAccount = false
+    private let memory = PasskeyMemory()
     @State private var flow: OnboardingFlow
     @State private var signIn: SignInFlow
     @State private var path: [OnboardingStep] = []
@@ -35,8 +35,7 @@ struct OnboardingView: View {
                 onSkip: skip,
                 isWorking: passkeyWorking,
                 message: passkeyMessage,
-                onEmail: email,
-                onCreateAccount: offerNewAccount ? { createAccount() } : nil
+                onEmail: email
             )
             .navigationDestination(for: OnboardingStep.self, destination: screen)
         }
@@ -80,35 +79,34 @@ struct OnboardingView: View {
         path.append(.claimName)
     }
 
-    /// Signs in with a passkey this iPhone already holds and creates an account only when there is none. A passkey this
-    /// server does not know (a testnet one in the mainnet app) gets a message and a Create a new account button.
+    /// One button for everyone: signs in with the passkey this app recorded for its account, and creates the account
+    /// when there is no record yet, or when the recorded passkey is no longer known to the server.
     private func continueWithPasskey() {
         guard !passkeyWorking else { return }
         passkeyWorking = true
         passkeyMessage = nil
-        offerNewAccount = false
         Task {
             defer { passkeyWorking = false }
             do {
+                let known = memory.ids
+                guard !known.isEmpty else { return try await createWithPasskey() }
                 let options = try await api.passkeyOptions(.login)
-                let response = try await passkeys.signIn(options, onlySaved: true)
+                let response = try await passkeys.signIn(options, allowed: known)
                 do {
-                    return signedIn(try await api.finishPasskey(.login, challengeId: options.challengeId, credential: response))
+                    let user = try await api.finishPasskey(.login, challengeId: options.challengeId, credential: response)
+                    memory.remember(passkeys.lastCredentialID)
+                    signedIn(user)
                 } catch let error as APIError where Self.isRejectedPasskey(error) {
-                    passkeyMessage = "That passkey isn't for a fliq account here. Pick the one named \(PasskeyAuthenticator.label), or create a new account."
-                    offerNewAccount = true
+                    memory.forget()
+                    try await createWithPasskey()
                 }
-            } catch PasskeyError.noneSaved {
-                do { try await createWithPasskey() } catch { couldNotCreate(error) }
-            } catch PasskeyError.cancelled {
-                return
             } catch {
                 couldNotCreate(error)
             }
         }
     }
 
-    /// The API answers a passkey it has no account for with 401 "Unknown passkey", whose body may not decode.
+    /// The API answers a passkey it has no account for with 401 "Unknown passkey".
     static func isRejectedPasskey(_ error: APIError) -> Bool {
         switch error {
         case .server(let status, _), .unexpected(let status): (400..<500).contains(status)
@@ -116,21 +114,12 @@ struct OnboardingView: View {
         }
     }
 
-    private func createAccount() {
-        guard !passkeyWorking else { return }
-        passkeyWorking = true
-        passkeyMessage = nil
-        offerNewAccount = false
-        Task {
-            defer { passkeyWorking = false }
-            do { try await createWithPasskey() } catch { couldNotCreate(error) }
-        }
-    }
-
     private func createWithPasskey() async throws {
         let options = try await api.passkeyOptions(.register)
         let response = try await passkeys.register(options)
-        signedIn(try await api.finishPasskey(.register, challengeId: options.challengeId, credential: response))
+        let user = try await api.finishPasskey(.register, challengeId: options.challengeId, credential: response)
+        memory.remember(passkeys.lastCredentialID)
+        signedIn(user)
     }
 
     private func couldNotCreate(_ error: any Error) {
@@ -147,13 +136,15 @@ struct OnboardingView: View {
             do {
                 let options = try await api.passkeyOptions(purpose)
                 let response = purpose == .register ? try await passkeys.register(options) : try await passkeys.signIn(options)
-                signedIn(try await api.finishPasskey(purpose, challengeId: options.challengeId, credential: response))
+                let user = try await api.finishPasskey(purpose, challengeId: options.challengeId, credential: response)
+                memory.remember(passkeys.lastCredentialID)
+                signedIn(user)
             } catch PasskeyError.cancelled {
                 return
             } catch {
                 passkeyMessage = purpose == .register
                     ? "We couldn't create your passkey. Try again or use email."
-                    : "We couldn't sign you in with a passkey. Try again or use email."
+                    : "That passkey isn't for a fliq account here. Try another, or use email."
             }
         }
     }
