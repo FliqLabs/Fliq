@@ -5,7 +5,7 @@ import { SiteHeader } from "../../../components/site-header";
 import { siteContainer } from "../../../components/site-container";
 import { PayRequestClient } from "./pay-request-client";
 
-const API_BASE = process.env.FLIQ_API_BASE_URL ?? "https://api-production-54e10.up.railway.app/v1";
+const API_BASE = process.env.FLIQ_API_BASE_URL ?? "https://api-mainnet-64d65ef4.up.railway.app/v1";
 
 type PageProps = { params: Promise<{ name: string; code: string }> };
 

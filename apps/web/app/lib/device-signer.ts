@@ -4,7 +4,7 @@ import { loadNearKey } from "../claim-name/near-key";
 import { submitDelegate, type DelegateAction } from "./near-delegate";
 import { walletApi, type User } from "./wallet-api";
 
-const RPC_URL = process.env.NEXT_PUBLIC_NEAR_RPC_URL ?? "https://rpc.testnet.near.org";
+const RPC_URL = process.env.NEXT_PUBLIC_NEAR_RPC_URL ?? "https://rpc.mainnet.fastnear.com";
 
 export class NoDeviceKeyError extends Error {
   constructor() {

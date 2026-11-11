@@ -24,7 +24,7 @@ function isText(value: unknown, max = MAX_FIELD): value is string {
 async function hasFliqSession(request: Request) {
   const authorization = request.headers.get("authorization") ?? "";
   if (!/^Bearer \S+$/.test(authorization)) return false;
-  const apiBase = process.env.FLIQ_API_BASE_URL ?? "https://api-production-54e10.up.railway.app/v1";
+  const apiBase = process.env.FLIQ_API_BASE_URL ?? "https://api-mainnet-64d65ef4.up.railway.app/v1";
   try {
     const result = await fetch(`${apiBase}/me`, {
       headers: { Authorization: authorization },
