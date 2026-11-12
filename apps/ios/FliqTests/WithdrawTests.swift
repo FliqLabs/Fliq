@@ -2,47 +2,27 @@ import CryptoKit
 import XCTest
 @testable import Fliq
 
-final class NEARTransactionTests: XCTestCase {
-    // Built with near-api-js 7.4.0 `createTransaction` and `encodeTransaction` from the same inputs.
-    private let referenceBase64 = "GQAAAG9saWVuLmZsaXFhY2NvdW50LnRlc3RuZXQA6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iwqAAAAAAAAAAwAAAB1c2RjLnRlc3RuZXTjPEZ4EjpajeXa1KQQ7G3aDG0Q8a0ipbnp0EcuY9zQowIAAAACDwAAAHN0b3JhZ2VfZGVwb3NpdDUAAAB7ImFjY291bnRfaWQiOiJib2IudGVzdG5ldCIsInJlZ2lzdHJhdGlvbl9vbmx5Ijp0cnVlfQCgck4YCQAAAABIVjcZPMNDAAAAAAAAAAILAAAAZnRfdHJhbnNmZXI+AAAAeyJyZWNlaXZlcl9pZCI6ImJvYi50ZXN0bmV0IiwiYW1vdW50IjoiMTUwMDAwMCIsIm1lbW8iOiJmbGlxIn0AQOWcMBIAAAEAAAAAAAAAAAAAAAAAAAA="
-    private let referenceHash = "12a2f04444fdcc93bf7af9c3af8153b63dcbf5c2d42ca7723d699e32fc1b9dee"
-
-    private func transfer(registration: Yocto?) throws -> NEARTransaction {
-        .usdcTransfer(
-            from: "olien.fliqaccount.testnet",
-            to: "bob.testnet",
-            units: 1_500_000,
-            usdc: "usdc.testnet",
-            registration: registration,
-            nonce: 42,
-            blockHash: try XCTUnwrap(NEARKey.base58Decode("GJ2rbiDPcN1R5y2hWjERXjfTsDp9XYnXXbJx8tjHYaRx")),
-            publicKey: Data(hex: "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c")
+final class WithdrawDelegateTests: XCTestCase {
+    func testTheOnwardSendFitsTheRelayerRules() {
+        let action = DelegateAction.usdcTransfer(
+            from: "olien.fliqaccount.near", to: "rejois.near", units: 300_000, usdc: "usdc.near",
+            nonce: 10, blockHeight: 100, publicKey: Data(repeating: 1, count: 32)
         )
+        XCTAssertEqual(action.receiverId, "usdc.near")
+        XCTAssertEqual(action.call.methodName, "ft_transfer")
+        XCTAssertEqual(String(decoding: action.call.args, as: UTF8.self), #"{"receiver_id":"rejois.near","amount":"300000","memo":"fliq"}"#)
+        XCTAssertEqual(action.call.deposit, 1)
     }
 
-    func testATransferWithRegistrationMatchesNearApiJs() throws {
-        let transaction = try transfer(registration: Yocto(decimal: "1250000000000000000000"))
-        XCTAssertEqual(transaction.borsh.base64EncodedString(), referenceBase64)
-        XCTAssertEqual(transaction.signingHash.map { String(format: "%02x", $0) }.joined(), referenceHash)
-    }
-
-    func testARegisteredReceiverGetsOnlyTheTransfer() throws {
-        let transaction = try transfer(registration: nil)
-        XCTAssertEqual(transaction.calls.map(\.methodName), ["ft_transfer"])
-        XCTAssertEqual(transaction.calls.first?.deposit, 1)
-    }
-
-    func testTheSignedTransactionCarriesAVerifiableSignature() throws {
-        let key = Curve25519.Signing.PrivateKey()
-        let transaction = NEARTransaction.usdcTransfer(
-            from: "a.testnet", to: "b.testnet", units: 1, usdc: "usdc.testnet", registration: nil,
-            nonce: 1, blockHash: Data(repeating: 0, count: 32), publicKey: key.publicKey.rawRepresentation
+    func testANewWalletIsRegisteredOnlyForUSDC() throws {
+        let cost = try XCTUnwrap(Yocto(decimal: "1250000000000000000000"))
+        let action = DelegateAction.usdcRegistration(
+            from: "olien.fliqaccount.near", for: "rejois.near", cost: cost, usdc: "usdc.near",
+            nonce: 10, blockHeight: 100, publicKey: Data(repeating: 1, count: 32)
         )
-        let signature = try key.signature(for: transaction.signingHash)
-        let signed = try XCTUnwrap(Data(base64Encoded: transaction.signed(with: signature)))
-        XCTAssertEqual(signed.prefix(transaction.borsh.count), transaction.borsh)
-        XCTAssertEqual(signed.count, transaction.borsh.count + 1 + 64)
-        XCTAssertTrue(key.publicKey.isValidSignature(signature, for: transaction.signingHash))
+        XCTAssertEqual(action.call.methodName, "storage_deposit")
+        XCTAssertEqual(String(decoding: action.call.args, as: UTF8.self), #"{"account_id":"rejois.near","registration_only":true}"#)
+        XCTAssertEqual(action.call.deposit, cost)
     }
 
     func testBase58DecodesABlockHashWithLeadingZeros() {
@@ -75,15 +55,6 @@ final class WithdrawAddressTests: XCTestCase {
 
     func testPastedAddressesAreTrimmedAndLowercased() {
         XCTAssertEqual(WithdrawAddress.normalized("  Bob.Testnet\n"), "bob.testnet")
-    }
-
-    func testTheFeeCheckCountsStorageAndRegistration() throws {
-        let tenthOfANear = NEARRPC.Account(amount: "10000000000000000000000", storageUsage: 182)
-        let registration = Yocto(decimal: "1250000000000000000000")
-        XCTAssertTrue(RelayedWithdrawals.covers(tenthOfANear, registration: registration))
-        let almostEmpty = NEARRPC.Account(amount: "7000000000000000000000", storageUsage: 182)
-        XCTAssertTrue(RelayedWithdrawals.covers(almostEmpty, registration: nil))
-        XCTAssertFalse(RelayedWithdrawals.covers(almostEmpty, registration: registration))
     }
 
     func testYoctoBecomesAnExactDecimal() {
@@ -165,7 +136,7 @@ final class WithdrawFlowTests: XCTestCase {
         let flow = WithdrawFlow(withdrawals: Undelivered(), vault: vault, recents: recents(), onLeftVault: { refreshed = true })
         flow.addressText = "bob.testnet"
         await flow.checkAddress()
-        XCTAssertTrue(flow.needsSetup)
+        XCTAssertEqual(flow.check, .ready(needsSetup: true))
         flow.enterAmount("5")
 
         let sent = await flow.send()

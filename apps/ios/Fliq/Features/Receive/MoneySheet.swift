@@ -91,8 +91,12 @@ struct MoveMoneySheet: View {
             FliqNameCardView(name: name ?? "", inbox: inbox).sheetToolbar { dismiss() }
         case .currencies:
             CurrencyListView(flow: receive) { token in
-                let networks = receive.networks(for: token)
-                if networks.count == 1, let only = networks.first { reserve(only) } else { go(.networks(token: token)) }
+                let networks = receive.choices(for: token)
+                if networks.count == 1, let only = networks.first, receive.reason(unavailable: only) == nil {
+                    reserve(only)
+                } else {
+                    go(.networks(token: token))
+                }
             }
             .task { await receive.loadSources() }
         case .networks(let token):
@@ -250,7 +254,7 @@ private struct CurrencyListView: View {
                         ForEach(group.tokens, id: \.self) { token in
                             Button { onPick(token) } label: { row(token) }
                                 .buttonStyle(.pressable(scale: 0.98))
-                                .disabled(flow.isReserving)
+                                .disabled(flow.isReserving || flow.networks(for: token).isEmpty)
                                 .accessibilityIdentifier(Self.name(of: token))
                         }
                     }
@@ -273,11 +277,14 @@ private struct CurrencyListView: View {
             Spacer()
             if flow.isReserving, flow.source?.tokenId == token {
                 ProgressView()
+            } else if flow.networks(for: token).isEmpty {
+                Text("Coming soon").font(.system(size: 15)).foregroundStyle(Theme.textSecondary)
             } else {
                 Icon("chevron.right", size: 18).foregroundStyle(Theme.textSecondary)
             }
         }
         .foregroundStyle(Theme.textPrimary)
+        .opacity(flow.networks(for: token).isEmpty ? 0.5 : 1)
         .padding(.leading, 14)
         .padding(.trailing, 22)
         .frame(height: 56)
@@ -336,7 +343,7 @@ private struct NetworkListView: View {
                     .padding(.top, 26)
                 }
 
-                let networks = flow.networks(for: token)
+                let networks = flow.choices(for: token)
                 VStack(spacing: 0) {
                     ForEach(Array(networks.enumerated()), id: \.element.id) { index, source in
                         Button { onPick(source) } label: { row(source) }
@@ -373,9 +380,9 @@ private struct NetworkListView: View {
             ChainLogo(source: source, size: compact ? 28 : 32)
             VStack(alignment: .leading, spacing: compact ? 2 : 4) {
                 Text(source.isDirect ? "NEAR" : source.chain).font(.system(size: compact ? 17 : 20))
-                Text(reason == nil ? (source.isDirect ? "\(source.eta) · no fee" : source.eta) : "Not available yet")
+                Text(reason == nil ? (source.isDirect ? "\(source.eta) · no fee" : source.eta) : "Coming soon")
                     .font(.system(size: compact ? 14 : 17))
-                    .foregroundStyle(reason == nil ? Theme.textSecondary : Theme.warning)
+                    .foregroundStyle(Theme.textSecondary)
                     .lineLimit(1)
             }
             Spacer()

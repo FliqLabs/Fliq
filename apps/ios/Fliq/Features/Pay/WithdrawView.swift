@@ -200,7 +200,7 @@ struct WithdrawReviewView: View {
             DetailCard {
                 DetailRow("To", WithdrawAddress.short(flow.address))
                 DetailRow("Network", "USDC on NEAR")
-                DetailRow("Fee", flow.needsSetup ? "Under $0.01 + wallet setup" : "Under $0.01")
+                DetailRow("Fee", "Free")
                 DetailRow("Arrives", "In a few seconds", isLast: true)
             }
             .padding(.top, 32)

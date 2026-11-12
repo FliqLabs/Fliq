@@ -166,6 +166,7 @@ final class AppEnvironment {
 
     /// Forgot the app passcode: sign out and clear the lock. Signing back in with the passkey loses nothing.
     func forgotPasscode() async {
+        await PushNotifications.shared.signOut()
         await api.signOut()
         lock.reset()
         signedOutByServer()

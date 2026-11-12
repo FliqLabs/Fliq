@@ -80,7 +80,10 @@ struct SettingsView: View {
                 environment.accounts.clear()
                 environment.router.reset()
                 profile.signOut()
-                Task { await environment.api.signOut() }
+                Task {
+                    await PushNotifications.shared.signOut()
+                    await environment.api.signOut()
+                }
             }
         } message: {
             Text("Your vault and its money stay on NEAR. You can sign back in with your passkey.")

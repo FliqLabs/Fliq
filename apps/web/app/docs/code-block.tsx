@@ -34,7 +34,7 @@ export function CodeBlock({ text, children }: { text: string; children?: ReactNo
   return (
     <div className="min-w-0 overflow-hidden rounded-xl bg-[#0f0f0f] text-[#e5e5e5]">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 px-3 py-2">
-        <span className="text-[11px] text-zinc-400">Playground · test data</span>
+        <span className="text-[11px] text-zinc-400">Playground · no API key</span>
         <div className="flex items-center gap-2">
           <CopyButton text={source} />
           <button
@@ -90,8 +90,8 @@ export function CodeBlock({ text, children }: { text: string; children?: ReactNo
         </pre>
       )}
       <p className="border-t border-white/10 px-3 py-2 text-[10px] leading-4 text-zinc-400">
-        Run JSON, curl or JavaScript with local test responses. No real API calls. Install commands and server
-        integrations need your terminal.
+        No API key needed. Run JSON, curl or JavaScript with local test responses. No real API calls. Install
+        commands and server integrations need your terminal.
       </p>
       {result && (
         <div

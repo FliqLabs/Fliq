@@ -35,6 +35,8 @@ targets:
       path: Fliq/Info.plist
       properties:
         CFBundleDisplayName: $(FLIQ_DISPLAY_NAME)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleShortVersionString: $(MARKETING_VERSION)
         FliqAPIBaseURL: $(FLIQ_API_BASE_URL)
         FliqAPIKey: $(FLIQ_API_KEY)
         FliqDataSource: $(FLIQ_DATA_SOURCE)
@@ -61,6 +63,7 @@ targets:
       properties:
         com.apple.developer.associated-domains:
           - webcredentials:fliq.cash$(FLIQ_ASSOCIATED_DOMAIN_MODE)
+        aps-environment: development
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: $(FLIQ_BUNDLE_ID)

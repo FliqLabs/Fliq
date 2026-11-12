@@ -59,7 +59,10 @@ final class AgentConnectTests: XCTestCase {
         XCTAssertEqual(setup.secretKey, key.secretKey)
         XCTAssertTrue(setup.snippet.hasPrefix("claude mcp add fliq"))
         XCTAssertTrue(setup.snippet.contains("FLIQ_AGENT_PRIVATE_KEY=\(key.secretKey)"))
-        XCTAssertTrue(setup.snippet.contains("FLIQ_VAULT_CONTRACT_ID=fliq-vault.testnet"))
+        XCTAssertTrue(setup.snippet.contains("FLIQ_AGENT_ID=\(setup.accountId)"))
+        XCTAssertTrue(setup.snippet.contains("FLIQ_API_URL="))
+        XCTAssertTrue(setup.snippet.hasSuffix("npx -y @fliqlabs/mcp"))
+        XCTAssertFalse(setup.snippet.contains("FLIQ_API_KEY"), "An API key would put the connector in developer mode")
 
         flow.finish()
         XCTAssertNil(flow.setup)
@@ -78,9 +81,17 @@ final class AgentConnectTests: XCTestCase {
 
     func testEachAppGetsItsOwnSetupAndLogo() {
         func setup(_ app: AgentApp) -> AgentSetup {
-            AgentSetup(app: app, accountId: "claude-frank.fliq.near", secretKey: "ed25519:secret", rpcURL: "https://rpc", vault: "vault")
+            AgentSetup(app: app, accountId: "claude-frank.fliq.near", secretKey: "ed25519:secret", rpcURL: "https://rpc", apiURL: "https://api/v1")
         }
-        XCTAssertTrue(setup(.openai).snippet.hasPrefix("[mcp_servers.fliq]"))
+        XCTAssertEqual(
+            setup(.openai).snippet,
+            """
+            [mcp_servers.fliq]
+            command = "npx"
+            args = ["-y", "@fliqlabs/mcp"]
+            env = { FLIQ_AGENT_ID = "claude-frank.fliq.near", FLIQ_AGENT_PRIVATE_KEY = "ed25519:secret", FLIQ_API_URL = "https://api/v1", FLIQ_NEAR_RPC_URL = "https://rpc" }
+            """
+        )
         XCTAssertTrue(setup(.cursor).snippet.contains("\"mcpServers\""))
         XCTAssertEqual(AgentApp.guess(name: "Claude"), .claude)
         XCTAssertEqual(AgentApp.guess(name: "Payroll bot"), .other)

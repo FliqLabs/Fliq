@@ -62,6 +62,32 @@ extension DelegateAction {
     /// The relayer only passes about ten minutes of blocks, and refuses more than 1,200.
     static let lifetimeBlocks: UInt64 = 600
 
+    /// USDC from the user's own account to a NEAR wallet outside fliq, the step after a vault withdraw.
+    static func usdcTransfer(from sender: String, to receiver: String, units: UInt64, usdc: String, nonce: UInt64, blockHeight: UInt64, publicKey: Data) -> DelegateAction {
+        let args = Data(#"{"receiver_id":"\#(receiver)","amount":"\#(units)","memo":"fliq"}"#.utf8)
+        return DelegateAction(
+            senderId: sender,
+            receiverId: usdc,
+            call: FunctionCall(methodName: "ft_transfer", args: args, gas: 20_000_000_000_000, deposit: 1),
+            nonce: nonce,
+            maxBlockHeight: blockHeight + lifetimeBlocks,
+            publicKey: publicKey
+        )
+    }
+
+    /// Registers a wallet that has never held USDC, or the token contract refuses to send to it.
+    static func usdcRegistration(from sender: String, for receiver: String, cost: Yocto, usdc: String, nonce: UInt64, blockHeight: UInt64, publicKey: Data) -> DelegateAction {
+        let args = Data(#"{"account_id":"\#(receiver)","registration_only":true}"#.utf8)
+        return DelegateAction(
+            senderId: sender,
+            receiverId: usdc,
+            call: FunctionCall(methodName: "storage_deposit", args: args, gas: 10_000_000_000_000, deposit: cost),
+            nonce: nonce,
+            maxBlockHeight: blockHeight + lifetimeBlocks,
+            publicKey: publicKey
+        )
+    }
+
     /// Vault to vault between fliq users. The vault takes exactly one yoctoNEAR, so only the owner's full-access key can move money.
     static func vaultTransfer(from sender: String, to recipient: String, units: UInt64, vault: String, nonce: UInt64, blockHeight: UInt64, publicKey: Data) -> DelegateAction {
         let args = Data(#"{"to_account":"\#(recipient)","amount":"\#(units)"}"#.utf8)
