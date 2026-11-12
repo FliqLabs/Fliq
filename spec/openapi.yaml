@@ -2845,7 +2845,6 @@ components:
         bundle_id:
           type: string
           maxLength: 255
-          example: cash.fliq.app.mainnet
     AgentRef:
       type: object
       required: [agent_id, name]

@@ -1835,7 +1835,6 @@ export interface components {
              * @enum {string}
              */
             environment: "production" | "sandbox";
-            /** @example cash.fliq.app.mainnet */
             bundle_id: string;
         };
         AgentRef: {
