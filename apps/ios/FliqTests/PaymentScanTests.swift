@@ -214,6 +214,15 @@ final class PaymentScanTests: XCTestCase {
         XCTAssertEqual(PaymentScan.parse("olienn" + FliqName.suffix), .fliqName("olienn"))
     }
 
+    func testANEARWalletGoesToASendToThatWallet() {
+        XCTAssertEqual(PaymentScan.parse("rejois.near"), .nearWallet("rejois.near"))
+        XCTAssertEqual(PaymentScan.parse("near:Bob.Tg"), .nearWallet("bob.tg"))
+        XCTAssertEqual(PaymentScan.parse("sub.wallet-1.near"), .nearWallet("sub.wallet-1.near"))
+        let implicit = String(repeating: "a1", count: 32)
+        XCTAssertEqual(PaymentScan.parse(implicit), .nearWallet(implicit))
+        XCTAssertEqual(PaymentScan.parse("hello.world"), .nothing, "Only NEAR top-level accounts count as wallets")
+    }
+
     func testAnythingElseFindsNothing() {
         XCTAssertEqual(PaymentScan.parse("hello world"), .nothing)
         XCTAssertEqual(PaymentScan.parse("https://example.com/menu"), .nothing)

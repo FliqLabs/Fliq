@@ -21,6 +21,7 @@ struct MoveMoneySheet: View {
     let onPerson: (String?) -> Void
     let onNewAccount: (VerifiedAccount, Bool) -> Void
     var onWallet: (() -> Void)?
+    var onScanWallet: ((String) -> Void)?
     var onBankDeposit: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
     @Environment(AppEnvironment.self) private var environment
@@ -40,6 +41,7 @@ struct MoveMoneySheet: View {
         onPerson: @escaping (String?) -> Void,
         onNewAccount: @escaping (VerifiedAccount, Bool) -> Void,
         onWallet: (() -> Void)? = nil,
+        onScanWallet: ((String) -> Void)? = nil,
         onBankDeposit: (() -> Void)? = nil
     ) {
         self.name = name
@@ -50,6 +52,7 @@ struct MoveMoneySheet: View {
         self.onPerson = onPerson
         self.onNewAccount = onNewAccount
         self.onWallet = onWallet
+        self.onScanWallet = onScanWallet
         self.onBankDeposit = onBankDeposit
         _path = State(initialValue: start)
         _detent = State(initialValue: Self.menuHeight)
@@ -114,6 +117,7 @@ struct MoveMoneySheet: View {
             model: model,
             onPay: { account in finishScan { onNewAccount(account, false) } },
             onPerson: { name in finishScan { onPerson(name) } },
+            onWallet: { address in finishScan { onScanWallet?(address) } },
             onTypeInstead: { finishScan { go(.recipient(.ng, .bank)) } }
         )
     }
