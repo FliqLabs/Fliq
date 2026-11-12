@@ -9,7 +9,7 @@ struct ActivityDetailSheet: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
-                ActivityBadgeView(badge: line.badge, size: 64)
+                ActivityBadgeView(badge: line.badge, size: 64, moving: line.outcome == .moving)
                     .padding(.top, 8)
                 Text(line.title)
                     .font(.system(size: 20, weight: .medium))

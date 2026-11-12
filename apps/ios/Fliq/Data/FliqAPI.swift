@@ -26,6 +26,8 @@ protocol FliqAPI: Sendable {
     func updateProfile(displayName: String) async throws -> User
     func updateProfilePhoto(_ url: URL) async throws -> User
     func removeProfilePhoto() async throws -> User
+    func registerDevice(_ device: PushDevice) async throws
+    func unregisterDevice(token: String) async throws
 
     func institutions(in country: Country) async throws -> [Institution]
     func vaultBalance() async throws -> VaultBalance
@@ -80,4 +82,18 @@ struct APINameDirectory: NameDirectory {
     func isAvailable(_ name: FliqName) async throws -> Bool {
         try await api.checkName(name).available
     }
+}
+
+/// This iPhone's address for push notifications, as `POST /devices` takes it.
+struct PushDevice: Encodable, Equatable, Sendable {
+    let token: String
+    var platform = "ios"
+    /// "sandbox" for builds run from Xcode, "production" for TestFlight and the App Store.
+    let environment: String
+    let bundleId: String
+}
+
+extension FliqAPI {
+    func registerDevice(_ device: PushDevice) async throws {}
+    func unregisterDevice(token: String) async throws {}
 }

@@ -32,59 +32,6 @@ struct HomeRecentCard: View {
     }
 }
 
-/// A cash-out from this iPhone that has not settled yet: the provider's mark in a turning ring and the time so far.
-struct HomeMovingCard: View {
-    let entry: ActivityStore.Entry
-    let onOpen: () -> Void
-    @State private var angle = 0.0
-
-    var body: some View {
-        Button(action: onOpen) {
-            HStack(spacing: 14) {
-                ProviderMark(provider: entry.payout.provider, size: 40)
-                    .padding(5)
-                    .overlay {
-                        Circle()
-                            .strokeBorder(Color.white, style: StrokeStyle(lineWidth: 2.5, dash: [10, 8]))
-                            .rotationEffect(.degrees(angle))
-                    }
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("\(Money.local(entry.payout.receive, entry.payout.currency)) to \(entry.payout.accountName)")
-                        .font(.system(size: 17, weight: .medium))
-                        .foregroundStyle(Theme.textPrimary)
-                        .lineLimit(1)
-                    TimelineView(.periodic(from: .now, by: 1)) { context in
-                        Text("With \(entry.payout.provider.displayName) · \(elapsed(at: context.date))")
-                            .font(.system(size: 15))
-                            .foregroundStyle(Theme.textSecondary)
-                            .monospacedDigit()
-                    }
-                }
-                Spacer(minLength: 8)
-                Icon("chevron.right", size: 18).foregroundStyle(Theme.textSecondary)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
-            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
-            .contentShape(RoundedRectangle(cornerRadius: 26))
-        }
-        .buttonStyle(.plain)
-        .onAppear { withAnimation(.linear(duration: 2).repeatForever(autoreverses: false)) { angle = 360 } }
-    }
-
-    private func elapsed(at now: Date) -> String {
-        let seconds = max(0, Int(now.timeIntervalSince(entry.startedAt)))
-        return String(format: "%d:%02d", seconds / 60, seconds % 60)
-    }
-}
-
-extension ActivityStore {
-    /// The newest cash-out from this iPhone that is still on its way.
-    var moving: Entry? {
-        entries.first { ![.settled, .refunded, .refused].contains($0.payout.state.stage) }
-    }
-}
-
 extension ActivityItem {
     /// The amount as the row leads with it: Naira for a payout, dollars in or out for everything else.
     var headline: String {

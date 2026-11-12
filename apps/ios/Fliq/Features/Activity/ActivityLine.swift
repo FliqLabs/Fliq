@@ -8,7 +8,7 @@ struct ActivityLine: Identifiable {
         case agent(AgentApp)
         case source(DepositSource)
         case incoming
-        case person(String)
+        case person(name: String, photo: URL?, incoming: Bool)
     }
 
     enum Outcome { case done, moving, refunded, refused, failed }
@@ -106,7 +106,7 @@ extension ActivityLine {
             facts = [("Status", statusText), ("You sent", item.token ?? ""), ("Delivered", item.usd.map { "$" + $0 } ?? ""), ("Network", chain), ("Reference", item.refId)]
         case .transferIn, .transferOut:
             let incoming = item.kind == .transferIn
-            badge = incoming ? .incoming : .person(item.party.name)
+            badge = .person(name: item.party.name, photo: item.party.photoUrl.flatMap(URL.init(string:)), incoming: incoming)
             subtitle = Self.join(date, item.party.nearAccount)
             dollars = nil
             category = incoming ? "Received" : "Sent"
@@ -217,12 +217,21 @@ extension AgentApp {
     }
 }
 
-/// The leading mark of a row: the bank's logo, the agent's logo, or the coin with its network.
+/// The leading mark of a row: the bank's logo, the agent's logo, the person's photo, or the coin with its network.
+/// While the money is still on its way, a ring turns around it.
 struct ActivityBadgeView: View {
     let badge: ActivityLine.Badge
     var size: CGFloat = 44
+    var moving = false
 
     var body: some View {
+        mark
+            .padding(moving ? 4 : 0)
+            .overlay { if moving { SpinningRing() } }
+    }
+
+    @ViewBuilder
+    private var mark: some View {
         switch badge {
         case .bank(let name, let logoKey):
             InstitutionLogo(logoKey: logoKey, name: name, size: size * 0.82)
@@ -237,8 +246,16 @@ struct ActivityBadgeView: View {
                 .foregroundStyle(Theme.confirmed)
                 .frame(width: size, height: size)
                 .background(Theme.surfaceRaised, in: Circle())
-        case .person(let name):
-            PersonAvatar(name: name, size: size)
+        case .person(let name, let photo, let incoming):
+            PersonAvatar(name: name, photoURL: photo, size: size)
+                .overlay(alignment: .bottomTrailing) {
+                    Icon(incoming ? "arrow.down" : "arrow.up", size: size * 0.22)
+                        .foregroundStyle(incoming ? Theme.confirmed : Theme.textPrimary)
+                        .frame(width: size * 0.4, height: size * 0.4)
+                        .background(Theme.surfaceRaised, in: Circle())
+                        .overlay(Circle().strokeBorder(Theme.surface, lineWidth: 2))
+                        .offset(x: 3, y: 3)
+                }
         }
     }
 }
@@ -250,7 +267,7 @@ struct ActivityCell: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            ActivityBadgeView(badge: line.badge)
+            ActivityBadgeView(badge: line.badge, moving: line.outcome == .moving)
             VStack(alignment: .leading, spacing: 4) {
                 Text(line.title).font(.system(size: 16, weight: .medium)).lineLimit(2)
                 Text(line.subtitle).font(.system(size: 13)).foregroundStyle(Theme.textSecondary).lineLimit(2)
@@ -279,5 +296,19 @@ struct ActivityCell: View {
         .background(boxed ? Theme.surface : .clear, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .contentShape(RoundedRectangle(cornerRadius: 20))
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// A white arc turning around a mark: the money is on its way.
+struct SpinningRing: View {
+    @State private var turning = false
+
+    var body: some View {
+        Circle()
+            .trim(from: 0, to: 0.7)
+            .stroke(Color.white, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+            .rotationEffect(.degrees(turning ? 360 : 0))
+            .onAppear { withAnimation(.linear(duration: 1).repeatForever(autoreverses: false)) { turning = true } }
+            .accessibilityLabel("On its way")
     }
 }
