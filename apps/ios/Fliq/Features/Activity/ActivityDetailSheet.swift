@@ -4,6 +4,8 @@ import SwiftUI
 struct ActivityDetailSheet: View {
     let line: ActivityLine
     var onReceipt: ((String) -> Void)?
+    /// False when shown as a pushed screen, where the back button already closes it.
+    var closes = true
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -58,6 +60,15 @@ struct ActivityDetailSheet: View {
                 .padding(.horizontal, 4)
                 .padding(.top, 20)
 
+                ShareLink(item: shareText) {
+                    Label("Share receipt", systemImage: "square.and.arrow.up")
+                        .font(.system(size: 17, weight: .medium))
+                        .frame(maxWidth: .infinity, minHeight: 52)
+                        .background(Theme.surfaceRaised, in: Capsule())
+                }
+                .foregroundStyle(Theme.textPrimary)
+                .padding(.top, 24)
+
                 if let payoutId = line.payoutId, let onReceipt {
                     Button("Open receipt") {
                         dismiss()
@@ -72,19 +83,29 @@ struct ActivityDetailSheet: View {
         }
         .scrollIndicators(.hidden)
         .safeAreaInset(edge: .top) {
-            HStack {
-                Spacer()
-                Button { dismiss() } label: {
-                    Icon("xmark", size: 18)
-                        .foregroundStyle(Theme.textPrimary)
-                        .frame(width: 44, height: 44)
-                        .fliqGlass(Circle(), interactive: true)
-                }
-                .accessibilityLabel("Close")
-            }
-            .padding(.horizontal, 20)
-            .padding(.top, 16)
+            if closes { closeBar }
         }
+    }
+
+    /// What the share sheet sends: one line per fact, the way a bank receipt reads in a chat.
+    private var shareText: String {
+        let facts = line.facts.filter { !$0.1.isEmpty }.map { "\($0.0): \($0.1)" }
+        return (["fliq receipt", "\(line.amount) · \(line.title)", ActivityLine.time(line.date)] + facts).joined(separator: "\n")
+    }
+
+    private var closeBar: some View {
+        HStack {
+            Spacer()
+            Button { dismiss() } label: {
+                Icon("xmark", size: 18)
+                    .foregroundStyle(Theme.textPrimary)
+                    .frame(width: 44, height: 44)
+                    .fliqGlass(Circle(), interactive: true)
+            }
+            .accessibilityLabel("Close")
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 16)
     }
 
     private var timeline: some View {

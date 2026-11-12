@@ -290,19 +290,19 @@ private struct PayoutLoader<Content: View>: View {
     }
 }
 
-/// A payout from Activity that is still moving or did not settle.
+/// A payout from Activity that is still moving or did not settle: the same receipt as the Activity detail sheet,
+/// with the bank's logo, what happened when, and every fact, so it can be shared.
 private struct SendingReceipt: View {
     let payout: Payout
+    @Environment(AppEnvironment.self) private var environment
 
     var body: some View {
-        VStack(spacing: 8) {
-            HeroAmount(symbol: payout.currency.symbol, value: payout.receive.formatted())
-            Text("to \(payout.accountName) · \(payout.state.rawValue.replacingOccurrences(of: "_", with: " "))")
-                .font(.system(size: 15))
-                .foregroundStyle(Theme.textSecondary)
-        }
-        .padding(.top, 60)
-        .fliqScreen("Payout")
+        let started = payout.history.first?.at ?? .now
+        let entry = ActivityStore.Entry(payout: payout, source: .mine, startedAt: started)
+        ActivityDetailSheet(line: ActivityLine(.local(entry), institutions: environment.activity.institutions), closes: false)
+            .toolbarTitleDisplayMode(.inline)
+            .navigationTitle("Receipt")
+            .background(Theme.ground.ignoresSafeArea())
     }
 }
 
