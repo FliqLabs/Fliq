@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct FliqApp: App {
+    @UIApplicationDelegateAdaptor(FliqAppDelegate.self) private var appDelegate
     @State private var environment = AppEnvironment.live()
     @Environment(\.scenePhase) private var scenePhase
 
@@ -10,6 +11,7 @@ struct FliqApp: App {
             Group {
                 if environment.profile.isOnboarded {
                     RootView()
+                        .task { await PushNotifications.shared.start(environment) }
                         .fullScreenCover(isPresented: .constant(environment.lock.needsSetup)) {
                             SecureFliqView(lock: environment.lock)
                                 .preferredColorScheme(.dark)

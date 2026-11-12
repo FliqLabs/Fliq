@@ -61,6 +61,7 @@ targets:
       properties:
         com.apple.developer.associated-domains:
           - webcredentials:fliq.cash$(FLIQ_ASSOCIATED_DOMAIN_MODE)
+        aps-environment: development
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: $(FLIQ_BUNDLE_ID)

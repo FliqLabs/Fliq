@@ -22,9 +22,6 @@ struct HomeView: View {
                         if let lines = activity?.lines.prefix(2), !lines.isEmpty {
                             HomeRecentCard(lines: Array(lines), onSeeAll: onSeeAll) { selected = $0 }
                         }
-                        if let moving = activity?.moving {
-                            HomeMovingCard(entry: moving) { onOpenPayout(moving.id) }
-                        }
                         WalletArrivedCard(inbox: model.inbox)
                     }
                     .padding(.horizontal, 16)
