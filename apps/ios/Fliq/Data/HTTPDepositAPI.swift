@@ -71,7 +71,7 @@ struct HTTPDepositAPI: DepositAPI {
                 headers: ["Idempotency-Key": UUID().uuidString]
             )
             return Self.address(deposit, source: source)
-        } catch APIError.server(status: 503, let error) {
+        } catch APIError.server(let status, let error) where status == 503 || status == 400 {
             throw DepositUnavailable(message: error.message)
         }
     }
