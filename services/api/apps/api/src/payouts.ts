@@ -14,6 +14,7 @@ import type { Db, Unit } from "./db.js";
 import { ApiError, conflict, invalidRequest, notFound } from "./errors.js";
 import { hashOf, type Reply } from "./idempotency.js";
 import { institutionType } from "./institutions.js";
+import { floatCanPay, type FloatWallet } from "./float.js";
 import type { OneClickHops } from "./hop.js";
 import { isAddressOn } from "./refund-address.js";
 import { COUNTRY, developerIdFor, requestQuote, reviveHop, reviveProviderQuote, type QuoteDeps, type QuoteInput } from "./quotes.js";
@@ -28,6 +29,8 @@ export interface PayoutDeps {
   quotes: QuoteDeps;
   // Present when the deployment can run a NEAR to provider route through 1Click and a vault.
   intents?: IntentsDeps;
+  // fliq's USDC on Base. When it can cover a payout it pays the provider at once and 1Click refills it afterwards.
+  float?: FloatWallet;
 }
 
 export interface IntentsDeps {
@@ -333,9 +336,10 @@ type Prepared = {
 };
 
 type Deposit = { chain: string; address: string; units: bigint; validUntil: Date | null; memo: string | null };
+type FloatPlan = { target: string; units: bigint };
 
 type Opened =
-  | { kind: "ready"; order: CreatedOrder; deposit: Deposit }
+  | { kind: "ready"; order: CreatedOrder; deposit: Deposit; float?: FloatPlan }
   | { kind: "unknown" }
   | { kind: "rejected" }
   | { kind: "quote_changed" }
@@ -417,6 +421,7 @@ async function openHop(
   const deadline = new Date(Math.min(validUntil.getTime() - intents.deadlineMarginMs, now.getTime() + MAX_ORDER_TTL_MS));
   if (deadline <= now) return { kind: "route_unavailable" };
 
+  const float = await floatPlan(deps, unit, hop.chain, asset, funding);
   let swap;
   try {
     swap = await intents.hops.depositQuote({
@@ -424,7 +429,7 @@ async function openHop(
       from: prepared.quote.sourceChain as Chain,
       to: hop.chain,
       amountOut: funding.units,
-      recipient: funding.address,
+      recipient: float ? deps.float!.address : funding.address,
       // A swap that cannot complete is refunded on NEAR, into the vault, which holds it until recredit returns it.
       refundTo: deps.config.vaultAccount,
       deadline,
@@ -466,7 +471,14 @@ async function openHop(
     await unit((tx) => postEntry(tx, vaultReleased(payoutId, payer, asset, deposit.units)));
     return { kind: "route_unavailable" };
   }
-  return { kind: "ready", order, deposit };
+  return { kind: "ready", order, deposit, ...(float ? { float } : {}) };
+}
+
+// The float pays Paycrest's Base address the moment the vault pays, so the payout never waits on 1Click. Without a
+// float, or when it cannot cover this payout, 1Click delivers to the provider as before.
+async function floatPlan(deps: PayoutDeps, unit: Unit, chain: Chain, asset: Asset, funding: { address: string; units: bigint }): Promise<FloatPlan | undefined> {
+  if (!deps.float || chain !== "base" || asset !== "USDC") return undefined;
+  return (await floatCanPay(deps.float, unit, funding.units, deps.now())) ? { target: funding.address, units: funding.units } : undefined;
 }
 
 async function settle(
@@ -493,9 +505,15 @@ async function settle(
           depositUnits: deposit.units,
           depositValidUntil: deposit.validUntil,
           depositMemo: deposit.memo,
+          ...(opened.float ? { floatTarget: opened.float.target, floatUnits: opened.float.units } : {}),
         },
       });
-      await transitionPayout(tx, { payoutId, target: "awaiting_deposit", cause: "order_created", detail: { provider: prepared.route.provider } });
+      await transitionPayout(tx, {
+        payoutId,
+        target: "awaiting_deposit",
+        cause: "order_created",
+        detail: { provider: prepared.route.provider, funded_by: opened.float ? "float" : prepared.intents ? "1click" : "sender" },
+      });
       return { status: 201, body: await payoutView(tx, deps.config, payoutId) };
     }
     case "rejected":

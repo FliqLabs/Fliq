@@ -10,6 +10,7 @@ import { createDatabase, unitOf } from "../apps/api/src/db.js";
 import { createHandlers } from "../apps/api/src/handlers.js";
 import { OneClickHops } from "../apps/api/src/hop.js";
 import { DEFAULT_DEADLINE_MARGIN_MS, DEFAULT_GUARD_BPS, DEFAULT_VELOCITY } from "../apps/api/src/payouts.js";
+import { MIN_FLOAT_ETH_WEI, type FloatWallet } from "../apps/api/src/float.js";
 import { sandboxAdapters } from "../apps/api/src/sandbox.js";
 import { createOneClickClient, createOneClickMock, OneClickError, type OneClickClient } from "../packages/chains/oneclick/index.js";
 import { MockVault, type VaultClient } from "../packages/chains/vault/index.js";
@@ -24,6 +25,7 @@ const USDC = "usdc.test.near";
 const PAYCREST_ADDRESS = "0x76b4c56085ed136a8744d52be956396624a730e8";
 const ACCOUNT = { bank: "058", number: "0123456789" };
 const BASE_REFUND = "0x2222222222222222222222222222222222222222";
+const FLOAT_ADDRESS = "0xF10a7000000000000000000000000000000000aa";
 
 describe.skipIf(!enabled)("paying a bank account from the vault through NEAR Intents", () => {
   if (!enabled) {
@@ -51,6 +53,7 @@ describe.skipIf(!enabled)("paying a bank account from the vault through NEAR Int
     async quote(input, options) {
       if (!input.dry && trouble.failQuote) throw new OneClickError("quote", "unavailable", "simulated outage");
       if (!input.dry) swapRefunds.push(input.refundTo);
+      if (!input.dry) swapRecipients.push(input.recipient);
       const quote = await rawClient.quote(input, options);
       if (input.dry || !trouble.spike) return quote;
       return { ...quote, amountIn: (quote.amountIn * 102n) / 100n, minAmountIn: (quote.minAmountIn * 102n) / 100n };
@@ -60,6 +63,14 @@ describe.skipIf(!enabled)("paying a bank account from the vault through NEAR Int
   const orders: string[] = [];
   const providerRefunds: string[] = [];
   const swapRefunds: string[] = [];
+  const swapRecipients: string[] = [];
+  // fliq's Base float, empty unless a test fills it, so every other test takes the 1Click path.
+  const floatFunds = { usdc: 0n };
+  const float: FloatWallet = {
+    address: FLOAT_ADDRESS,
+    balances: async () => ({ usdc: floatFunds.usdc, eth: MIN_FLOAT_ETH_WEI }),
+    transferUsdc: async () => "0xunused",
+  };
   const base = sandboxAdapters()[0] as ProviderAdapter;
   // Accepts USDC on Base only, as Paycrest does, and hands back a Base deposit address that is valid for 15 minutes.
   const paycrest: ProviderAdapter = {
@@ -96,7 +107,7 @@ describe.skipIf(!enabled)("paying a bank account from the vault through NEAR Int
     await new Promise<void>((resolve) => server.listen(0, resolve));
     rawClient = createOneClickClient({ baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, apiKey: undefined });
     hops = new OneClickHops({ client, slippageBps: 10, pricingRefundTo: config.vaultAccount, pricingRecipient: PAYCREST_ADDRESS });
-    const quotes = { adapters: [paycrest], hop: hops, routing: DEFAULT_ROUTING_CONFIG, signals: NO_SIGNALS, now: () => new Date() };
+    const quotes = { adapters: [paycrest], hop: hops, float, routing: DEFAULT_ROUTING_CONFIG, signals: NO_SIGNALS, now: () => new Date() };
     app = buildApp({
       config,
       unit,
@@ -114,6 +125,7 @@ describe.skipIf(!enabled)("paying a bank account from the vault through NEAR Int
           velocity: DEFAULT_VELOCITY,
           now: () => new Date(),
           intents: { hops, vault: faultyVault, tokenStorage: { ensure: async (account: string) => vault.registerStorage(account) }, guardBps: DEFAULT_GUARD_BPS, deadlineMarginMs: DEFAULT_DEADLINE_MARGIN_MS },
+          float,
         },
       }),
     });
@@ -169,7 +181,10 @@ describe.skipIf(!enabled)("paying a bank account from the vault through NEAR Int
   };
   const pay = (headers: Record<string, string>, key: string, quoteId: string) =>
     app.inject({ method: "POST", url: "/v1/payouts", payload: { quote_id: quoteId, account: ACCOUNT }, headers: { ...headers, "idempotency-key": key } });
-  const reset = () => Object.assign(trouble, { spike: false, failQuote: false, failRegister: false, providerFee: 0n });
+  const reset = () => {
+    Object.assign(trouble, { spike: false, failQuote: false, failRegister: false, providerFee: 0n });
+    floatFunds.usdc = 0n;
+  };
 
   it("quotes a NEAR to bank route as an Intents route that costs the hop and takes longer", async () => {
     const user = await holder("quote", 0n);
@@ -206,6 +221,48 @@ describe.skipIf(!enabled)("paying a bank account from the vault through NEAR Int
     const stored = await database.payout.findUniqueOrThrow({ where: { id: payout.payout_id } });
     expect(stored.routeKind).toBe("intents");
     expect((await pay(user.headers, `k-${suffix}-ok`, quoted.quote_id)).json()).toEqual(payout);
+  }, 120_000);
+
+  it("pays the provider from the float when it covers the payout, and sends the 1Click leg to refill it", async () => {
+    reset();
+    floatFunds.usdc = 500_000_000n;
+    const user = await holder("float", 100_000_000n);
+    const quoted = await quote(user.headers);
+    expect(quoted.instant).toBe(true);
+    expect(quoted.routes[0].instant).toBe(true);
+    const reply = await pay(user.headers, `k-${suffix}-float`, quoted.quote_id);
+    expect(reply.statusCode, reply.body).toBe(201);
+    expect(swapRecipients.at(-1)).toBe(FLOAT_ADDRESS);
+    expect(swapRefunds.at(-1)).toBe(config.vaultAccount);
+    const stored = await database.payout.findUniqueOrThrow({ where: { id: reply.json().payout_id } });
+    expect(stored.floatTarget).toBe(PAYCREST_ADDRESS);
+    expect(stored.floatUnits).toBeGreaterThan(49_000_000n);
+    expect(stored.floatUnits).toBeLessThanOrEqual(stored.depositUnits as bigint);
+  }, 120_000);
+
+  it("leaves a payout larger than the float to 1Click, and the quote says it is not instant", async () => {
+    reset();
+    floatFunds.usdc = 10_000_000n;
+    const user = await holder("bigger", 100_000_000n);
+    const quoted = await quote(user.headers);
+    expect(quoted.instant).toBe(false);
+    const reply = await pay(user.headers, `k-${suffix}-bigger`, quoted.quote_id);
+    expect(reply.statusCode, reply.body).toBe(201);
+    expect(swapRecipients.at(-1)).toBe(PAYCREST_ADDRESS);
+    const stored = await database.payout.findUniqueOrThrow({ where: { id: reply.json().payout_id } });
+    expect(stored.floatTarget).toBeNull();
+  }, 120_000);
+
+  it("falls back to 1Click when the float drained after the quote", async () => {
+    reset();
+    floatFunds.usdc = 500_000_000n;
+    const user = await holder("drained", 100_000_000n);
+    const quoted = await quote(user.headers);
+    expect(quoted.instant).toBe(true);
+    floatFunds.usdc = 0n;
+    const reply = await pay(user.headers, `k-${suffix}-drained`, quoted.quote_id);
+    expect(reply.statusCode, reply.body).toBe(201);
+    expect(swapRecipients.at(-1)).toBe(PAYCREST_ADDRESS);
   }, 120_000);
 
   it("pays a small payout when the provider's order adds its network fee", async () => {

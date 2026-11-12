@@ -153,6 +153,12 @@ model Payout {
   depositUnits      BigInt?   @map("deposit_units")
   depositValidUntil DateTime? @map("deposit_valid_until") @db.Timestamptz(6)
   depositMemo       String?   @map("deposit_memo") @db.Text
+  // Set when fliq's Base float pays the provider: where and how much, the claim taken before sending, and the
+  // transfer's hash. The 1Click leg from the vault then refills the float instead of paying the provider.
+  floatTarget       String?   @map("float_target") @db.Text
+  floatUnits        BigInt?   @map("float_units")
+  floatClaimedAt    DateTime? @map("float_claimed_at") @db.Timestamptz(6)
+  floatTxHash       String?   @map("float_tx_hash") @db.Text
   createdAt       DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime    @default(now()) @map("updated_at") @db.Timestamptz(6)
   quote           Quote       @relation(fields: [quoteId], references: [id])

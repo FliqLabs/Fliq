@@ -29,6 +29,7 @@
     "fastify": "5.12.8",
     "ioredis": "5.8.2",
     "near-api-js": "7.4.0",
+    "viem": "2.21.54",
     "yaml": "2.6.1"
   },
   "devDependencies": {

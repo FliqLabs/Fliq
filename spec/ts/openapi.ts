@@ -1590,6 +1590,8 @@ export interface components {
             less_than_best?: number;
             /** @description True when the money crosses chains through NEAR Intents before reaching the provider */
             via_intents?: boolean;
+            /** @description True when fliq's Base float can pay the provider the moment the vault pays, so this route never waits on the NEAR Intents hop. Checked again when the payout is created; if the float has drained by then, the payout takes the hop. */
+            instant?: boolean;
             /** @enum {string|null} */
             not_offered_reason?: "breaker_open" | "timeout" | "error" | "half_open_over_limit" | null;
         };
@@ -1611,6 +1613,8 @@ export interface components {
             eta_seconds?: number;
             /** @description Whole local currency units the chosen route pays over the next best, 0 when there is only one */
             saving_vs_next?: number;
+            /** @description The chosen route's `instant`. False for an amount larger than the float can cover, which then waits on the NEAR Intents hop. */
+            instant?: boolean;
         };
         Account: {
             /** @description Institution code, for example 058 for GTBank */

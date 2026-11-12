@@ -21,6 +21,7 @@ import { startHealthChecks, type Probe } from "./status.js";
 import { createWebhookHandler } from "./webhooks.js";
 import { startWebhookDelivery } from "./webhook-delivery.js";
 import { startVaultSync } from "./vault-sync.js";
+import { floatFromEnv, logFloat, startFloatDispatch } from "./float.js";
 import { startPayoutWatch } from "./payout-watch.js";
 import { apnsFromEnv, createApnsSender, startPushDispatch } from "./push.js";
 import { usageRecorder } from "./usage.js";
@@ -119,7 +120,9 @@ const deposits = createDeposits({
     : {}),
 });
 
-const quoteDeps = { adapters, ...(hops ? { hop: hops } : {}), routing: DEFAULT_ROUTING_CONFIG, signals: NO_SIGNALS, now: () => new Date() };
+// The float only stands in for a 1Click hop, so it needs the hop to refill it.
+const float = hops ? floatFromEnv(process.env) : null;
+const quoteDeps = { adapters, ...(hops ? { hop: hops } : {}), ...(float ? { float } : {}), routing: DEFAULT_ROUTING_CONFIG, signals: NO_SIGNALS, now: () => new Date() };
 const rateBoard = createRateBoard(quoteDeps, unit);
 
 // With a relayer, claiming a name creates the user's NEAR account on chain; without one, nothing is created on chain.
@@ -156,6 +159,7 @@ const handlers = createHandlers({
     velocity: DEFAULT_VELOCITY,
     now: () => new Date(),
     ...(hops ? { intents: { hops, vault, tokenStorage, guardBps: DEFAULT_GUARD_BPS, deadlineMarginMs: Number(process.env.ONECLICK_DEADLINE_MARGIN_MS ?? DEFAULT_DEADLINE_MARGIN_MS) } } : {}),
+    ...(float ? { float } : {}),
   },
 });
 
@@ -174,6 +178,13 @@ startVaultSync(
   { unit, vault, now: () => new Date(), log: (message) => app.log.warn(message) },
   Number(process.env.VAULT_SYNC_INTERVAL_MS ?? 15_000),
 );
+if (float) {
+  void logFloat(float, (message) => app.log.info(message));
+  startFloatDispatch(
+    { unit, vault, wallet: float, now: () => new Date(), log: (message) => app.log.warn(message) },
+    Number(process.env.FLOAT_INTERVAL_MS ?? 3_000),
+  );
+}
 const apns = apnsFromEnv(process.env);
 startPushDispatch(
   { unit, send: apns ? createApnsSender(apns) : null, dataKey: config.dataKey, now: () => new Date(), log: (message) => app.log.warn(message) },

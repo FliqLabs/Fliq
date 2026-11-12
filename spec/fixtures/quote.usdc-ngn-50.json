@@ -10,10 +10,11 @@
   "provider": "paycrest",
   "best_of": 4,
   "routes": [
-    { "provider": "paycrest", "status": "live", "rate": 1376.32, "age_seconds": 6, "routed": true },
+    { "provider": "paycrest", "status": "live", "rate": 1376.32, "age_seconds": 6, "routed": true, "instant": true },
     { "provider": "busha", "status": "live", "rate": 1370.08, "age_seconds": 9, "routed": false },
     { "provider": "fonbnk", "status": "stale", "rate": 1358.4, "age_seconds": 240, "routed": false },
     { "provider": "bitnob", "status": "paused", "rate": null, "routed": false }
   ],
-  "expires_in": 90
+  "expires_in": 90,
+  "instant": true
 }

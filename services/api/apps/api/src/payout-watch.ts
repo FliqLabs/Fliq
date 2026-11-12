@@ -40,6 +40,7 @@ type Watched = {
   routeKind: string;
   depositAddress: string | null;
   depositMemo: string | null;
+  floatTarget: string | null;
   createdAt: Date;
 };
 
@@ -58,6 +59,7 @@ export async function watchPayouts(deps: WatchDeps): Promise<WatchResult[]> {
         routeKind: true,
         depositAddress: true,
         depositMemo: true,
+        floatTarget: true,
         createdAt: true,
       },
       orderBy: { updatedAt: "asc" },
@@ -110,7 +112,8 @@ async function confirmDelivered(
   adapter: ProviderAdapter,
   payout: Watched,
 ): Promise<OrderSnapshot | null> {
-  if (payout.routeKind !== "intents" || !deps.oneClick || !payout.depositAddress || !payout.providerOrderId)
+  // A float payout's 1Click leg refills the float, so its transfer never paid the provider.
+  if (payout.routeKind !== "intents" || payout.floatTarget || !deps.oneClick || !payout.depositAddress || !payout.providerOrderId)
     return null;
   const leg = await deps.oneClick.status(payout.depositAddress, payout.depositMemo ?? undefined);
   if (leg.status !== "SUCCESS") return null;

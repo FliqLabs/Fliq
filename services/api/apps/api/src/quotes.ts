@@ -12,6 +12,7 @@ import { newId } from "../../../packages/db/src/ids.js";
 import { InvalidAmountError, toUnits } from "../../../packages/providers/money.js";
 import type { Asset, Chain, Country, FiatCurrency, PayoutType, ProviderAdapter, ProviderQuote, QuoteAmount } from "../../../packages/providers/types.js";
 import { formatTokenAmount } from "./dashboard.js";
+import { floatCovers, type FloatWallet } from "./float.js";
 import type { Db, Unit } from "./db.js";
 import { ApiError, invalidRequest } from "./errors.js";
 
@@ -21,6 +22,8 @@ export interface QuoteDeps {
   routing: RoutingConfig;
   signals: RoutingSignals;
   now: () => Date;
+  // fliq's Base float. A route it can cover pays the provider at once instead of waiting on the 1Click hop.
+  float?: Pick<FloatWallet, "address" | "balances">;
 }
 
 export interface QuoteInput {
@@ -118,13 +121,21 @@ export async function priceQuote(deps: QuoteDeps, input: QuoteInput) {
     deps.hop,
   );
   logTimeouts("quote", input.currency, priced.dropped);
-  return { ...priced, now };
+  const asset = input.token.toUpperCase();
+  const instant = await Promise.all(priced.routes.map((route) => isInstant(deps, route, asset)));
+  return { ...priced, now, instant };
+}
+
+// The payout re-checks at creation and falls back to the 1Click hop if the float drained in between.
+async function isInstant(deps: QuoteDeps, route: Awaited<ReturnType<typeof quoteRoutes>>["routes"][number], asset: string): Promise<boolean> {
+  if (!deps.float || route.kind !== "intents" || route.hop?.chain !== "base" || asset !== "USDC") return false;
+  return floatCovers(deps.float, route.hop.amountOut);
 }
 
 export type PricedQuote = Awaited<ReturnType<typeof priceQuote>>;
 
 export async function saveQuote(tx: Db, userId: string, input: QuoteInput, priced: PricedQuote) {
-  const { routes, dropped, expiresAt, now } = priced;
+  const { routes, dropped, expiresAt, now, instant } = priced;
   const best = routes[0];
   if (!best || expiresAt <= now) throw new ApiError(422, "no_route", "No provider can pay this out right now.");
 
@@ -179,7 +190,7 @@ export async function saveQuote(tx: Db, userId: string, input: QuoteInput, price
     provider: best.provider,
     best_of: routes.length,
     routes: [
-      ...routes.map((route) => ({
+      ...routes.map((route, index) => ({
         provider: route.provider,
         status: "live" as const,
         rate: rateOf(route.amountOutMinor, route.amountIn),
@@ -191,6 +202,7 @@ export async function saveQuote(tx: Db, userId: string, input: QuoteInput, price
         on_time_percent: Math.round(route.breakdown.reliability * 100),
         less_than_best: wholeUnits(best.amountOutMinor - route.amountOutMinor),
         via_intents: route.kind === "intents",
+        instant: instant[index] ?? false,
         not_offered_reason: null,
       })),
       ...dropped.flatMap((drop) => {
@@ -207,6 +219,7 @@ export async function saveQuote(tx: Db, userId: string, input: QuoteInput, price
     ],
     expires_in: Math.max(0, Math.floor((expiresAt.getTime() - now.getTime()) / 1000)),
     eta_seconds: best.etaSeconds,
+    instant: instant[0] ?? false,
     saving_vs_next: next ? wholeUnits(best.amountOutMinor - next.amountOutMinor) : 0,
   };
 }
