@@ -507,6 +507,37 @@ paths:
           description: Registered; registering the same token again is harmless
         "400":
           $ref: "#/components/responses/Error"
+  /devices:
+    post:
+      operationId: registerDevice
+      summary: Register this device for push notifications, with the APNs gateway and app it belongs to
+      tags: [accounts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceRequest"
+      responses:
+        "204":
+          description: Registered; a token already registered moves to this user
+        "400":
+          $ref: "#/components/responses/Error"
+  /devices/{token}:
+    delete:
+      operationId: removeDevice
+      summary: Stop push notifications to this device, for example on sign out
+      tags: [accounts]
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+            maxLength: 512
+      responses:
+        "204":
+          description: Removed, or it was not registered to this user
   /agents:
     get:
       operationId: listAgents
@@ -2795,6 +2826,25 @@ components:
         platform:
           type: string
           enum: [ios, android]
+    DeviceRequest:
+      type: object
+      additionalProperties: false
+      required: [token, platform, environment, bundle_id]
+      properties:
+        token:
+          type: string
+          description: The APNs device token in hex
+          pattern: "^[0-9a-fA-F]{32,512}$"
+        platform:
+          type: string
+          enum: [ios]
+        environment:
+          type: string
+          enum: [production, sandbox]
+          description: production for TestFlight and App Store builds, sandbox for builds run from Xcode
+        bundle_id:
+          type: string
+          maxLength: 255
     AgentRef:
       type: object
       required: [agent_id, name]
