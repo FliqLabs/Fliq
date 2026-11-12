@@ -2,6 +2,7 @@
 
 import type { Payout } from "../../payout-model";
 import { useState } from "react";
+import { CopyButton } from "../../../components/copy-button";
 
 export function ReceiptActions({ payout }: { payout: Payout }) {
   const [copied, setCopied] = useState<string | null>(null);
@@ -14,6 +15,7 @@ export function ReceiptActions({ payout }: { payout: Payout }) {
 
   return (
     <div className="flex flex-wrap gap-2 print:hidden">
+      <CopyButton text={payout.payout_id} label="Copy payout ID" />
       <button
         type="button"
         onClick={() => copy("link", window.location.href)}

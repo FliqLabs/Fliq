@@ -1,34 +1,5 @@
-/* The signed-in app: wallet first, developer tools behind one link. Tokens live on the root only while the app is on screen. */
-:root:has(.fliq-app) {
-  --bg:#F5F5F8;--panel:#FFFFFF;--panel2:#F0F0F4;--hover:#EAEAF0;--line:#E3E3EA;--line2:#D3D3DC;
-  --fg:#0D0D12;--fg2:#40404B;--muted:#72727E;--dim:#A3A3AD;
-  --accent:#5B4BE0;--accent-fg:#FFFFFF;--accent-soft:rgba(91,75,224,.09);
-  --ink:#0D0D12;--ink-fg:#FFFFFF;
-  --good:#15803C;--good-soft:rgba(21,128,60,.10);--warn:#A26406;--warn-soft:rgba(184,120,10,.12);--bad:#C4323B;--bad-soft:rgba(196,50,59,.09);
-  --sandbox:#E39A12;--code-bg:#0E0E12;--code-fg:#E7E7EC;--code-dim:#7C7C88;--code-acc:#B9AEFF;--code-str:#9FD8A6;
-  --scrim:rgba(13,13,18,.32);
-  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
-  color-scheme:light;
-  background:var(--bg);
-}
-@media (prefers-color-scheme:dark) {
-  :root:not([data-theme="light"]):has(.fliq-app) {
-  --bg:#000000;--panel:#141416;--panel2:#1B1B1E;--hover:#222226;--line:#222226;--line2:#2E2E33;
-  --fg:#F4F4F5;--fg2:#C9C9CF;--muted:#8B8B95;--dim:#5C5C65;
-  --accent:#A594FF;--accent-fg:#0D0D12;--accent-soft:rgba(165,148,255,.13);
-  --ink:#FFFFFF;--ink-fg:#000000;
-  --good:#3DD17A;--good-soft:rgba(61,209,122,.12);--warn:#F2B144;--warn-soft:rgba(242,177,68,.12);--bad:#FF6B72;--bad-soft:rgba(255,107,114,.12);
-  --code-bg:#0A0A0C;--scrim:rgba(0,0,0,.62);color-scheme:dark;
-  }
-}
-:root[data-theme="dark"]:has(.fliq-app) {
-  --bg:#000000;--panel:#141416;--panel2:#1B1B1E;--hover:#222226;--line:#222226;--line2:#2E2E33;
-  --fg:#F4F4F5;--fg2:#C9C9CF;--muted:#8B8B95;--dim:#5C5C65;
-  --accent:#A594FF;--accent-fg:#0D0D12;--accent-soft:rgba(165,148,255,.13);
-  --ink:#FFFFFF;--ink-fg:#000000;
-  --good:#3DD17A;--good-soft:rgba(61,209,122,.12);--warn:#F2B144;--warn-soft:rgba(242,177,68,.12);--bad:#FF6B72;--bad-soft:rgba(255,107,114,.12);
-  --code-bg:#0A0A0C;--scrim:rgba(0,0,0,.62);color-scheme:dark;
-}
+@import "./theme.css";
+
 /* Element resets sit in the base layer so Tailwind utilities on the developer pages still win. */
 @layer base {
   .fliq-app *{box-sizing:border-box}

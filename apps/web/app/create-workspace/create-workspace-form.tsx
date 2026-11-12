@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState, type FormEvent } from "react";
+import { CopyButton } from "../components/copy-button";
 import { ApiError, fliqApi, type User, type Workspace, type WorkspaceCreated } from "../lib/fliq-api";
 import { SignInForm } from "../sign-in/sign-in-form";
 
@@ -30,7 +31,6 @@ export function CreateWorkspaceForm() {
   const [name, setName] = useState("");
   const [useCase, setUseCase] = useState<UseCase | null>(null);
   const [countries, setCountries] = useState<string[]>([]);
-  const [copied, setCopied] = useState(false);
   const idempotencyKey = useRef<string | null>(null);
 
   const account = useQuery({ queryKey: ["me"], queryFn: () => fliqApi<User>("me") });
@@ -46,7 +46,10 @@ export function CreateWorkspaceForm() {
         headers: { "Idempotency-Key": idempotencyKey.current ?? crypto.randomUUID() },
         body: JSON.stringify({ name: name.trim(), use_case: useCase, countries }),
       }),
-    onSuccess: ({ workspace }) => queryClient.setQueryData(["workspace"], workspace),
+    onSuccess: ({ workspace, sandbox_key }) => {
+      queryClient.setQueryData(["workspace"], workspace);
+      if (account.data) queryClient.setQueryData(["created-sandbox-key", account.data.user_id], sandbox_key);
+    },
   });
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -100,16 +103,7 @@ export function CreateWorkspaceForm() {
         <div className="mt-6 break-all rounded-lg border border-zinc-200 bg-zinc-50 p-4 font-mono text-sm">
           {create.data.sandbox_key.key}
         </div>
-        <button
-          type="button"
-          onClick={async () => {
-            await navigator.clipboard.writeText(create.data.sandbox_key.key);
-            setCopied(true);
-          }}
-          className="mt-3 rounded-lg border border-zinc-200 px-4 py-2 text-sm font-semibold"
-        >
-          {copied ? "Copied" : "Copy key"}
-        </button>
+        <div className="mt-3"><CopyButton text={create.data.sandbox_key.key} label="Copy key" /></div>
         <Link
           href="/dashboard"
           className="mt-6 block rounded-lg bg-zinc-950 px-5 py-3 text-center text-sm font-semibold text-white"

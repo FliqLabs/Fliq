@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { CopyButton } from "../components/copy-button";
 import { useState } from "react";
 import fliqMark from "../image/fliq image.png";
 import type { Onboarding } from "../lib/fliq-api";
@@ -31,16 +32,6 @@ const examples: Record<ExampleLanguage, string> = {
 export function FirstLoginDashboard({ onCreatePayout, onboarding }: Props) {
   const [showSteps, setShowSteps] = useState(true);
   const [language, setLanguage] = useState<ExampleLanguage>("curl");
-  const [copied, setCopied] = useState(false);
-
-  async function copyExample() {
-    try {
-      await navigator.clipboard.writeText(examples[language]);
-      setCopied(true);
-    } catch {
-      setCopied(false);
-    }
-  }
 
   return (
     <>
@@ -137,8 +128,8 @@ export function FirstLoginDashboard({ onCreatePayout, onboarding }: Props) {
           </div>
           <h1 className="text-lg font-semibold">No payouts yet. Create your first payout.</h1>
           <p className="mt-2 max-w-lg text-sm text-app-muted">
-            Your payouts will appear here once you create one. Get a quote to see which provider will
-            handle it, then connect a webhook endpoint to follow its status.
+            Your payouts will appear here once you create one. Get a quote to see which provider will handle
+            it, then connect a webhook endpoint to follow its status.
           </p>
           <div className="mt-5 flex flex-wrap justify-center gap-2">
             <button
@@ -170,7 +161,6 @@ export function FirstLoginDashboard({ onCreatePayout, onboarding }: Props) {
                     aria-pressed={language === option}
                     onClick={() => {
                       setLanguage(option);
-                      setCopied(false);
                     }}
                     className={`rounded-md px-3 py-1.5 ${language === option ? "bg-app-panel font-semibold shadow-sm" : "text-app-muted"}`}
                   >
@@ -181,13 +171,7 @@ export function FirstLoginDashboard({ onCreatePayout, onboarding }: Props) {
                   MCP
                 </span>
               </div>
-              <button
-                type="button"
-                onClick={copyExample}
-                className="rounded-lg border border-app-line px-3 py-1.5 text-xs font-semibold"
-              >
-                {copied ? "Copied" : "Copy"}
-              </button>
+              <CopyButton text={examples[language]} />
             </div>
             <pre
               id="quickstart-example"

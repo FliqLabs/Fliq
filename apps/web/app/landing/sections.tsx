@@ -43,7 +43,7 @@ export function Developers() {
         </p>
         <div className="flex flex-wrap gap-2.5">
           <MarketingActionLink href="/create-workspace">Get a sandbox key</MarketingActionLink>
-          <MarketingActionLink href="#quickstart" variant="secondary">
+          <MarketingActionLink href="/docs/quickstart" variant="secondary">
             Read the quickstart
           </MarketingActionLink>
         </div>
