@@ -19,7 +19,6 @@ struct WithdrawReceipt: Equatable, Sendable {
 
 enum WithdrawError: Error, Equatable {
     case notSetUp
-    case needsGas
     case invalidAddress(String)
     /// The vault refused, so nothing moved.
     case refused(String)
@@ -73,10 +72,6 @@ struct RelayedWithdrawals: Withdrawals {
     var pollInterval: Duration = .seconds(1.5)
     var pollAttempts = 20
 
-    /// 30 Tgas of prepaid gas at one and a half times the minimum gas price, in yoctoNEAR.
-    static let gasAllowance = Decimal(string: "4500000000000000000000")!
-    private static let yoctoPerStorageByte = Decimal(string: "10000000000000000000")!
-
     func check(_ typed: String) async -> AddressCheck {
         let address = WithdrawAddress.normalized(typed)
         guard let owner = await owner(), let vault = await vault() else { return .unavailable }
@@ -103,22 +98,21 @@ struct RelayedWithdrawals: Withdrawals {
         guard let rawKey = NEARKey.decode(publicKey) else { throw WithdrawError.notSetUp }
 
         async let registered = rpc.isRegistered(address, on: usdc)
-        async let account = rpc.account(owner)
         async let block = rpc.finalBlock()
         async let nonce = rpc.accessKeyNonce(account: owner, publicKey: publicKey)
         let registration = try await registered ? nil : try await rpc.registrationCost(on: usdc)
-        guard let state = try await account, Self.covers(state, registration: registration) else { throw WithdrawError.needsGas }
         let header = try await block
-        guard let hash = header.hash, let blockHash = NEARKey.base58Decode(hash), blockHash.count == 32 else { throw WithdrawError.notSetUp }
         let next = try await nonce + 1
         let units = UInt64(amount.baseUnits)
 
+        var onward: [DelegateAction] = []
+        if let registration {
+            onward.append(.usdcRegistration(from: owner, for: address, cost: registration, usdc: usdc, nonce: next + 1, blockHeight: header.height, publicKey: rawKey))
+        }
+        onward.append(.usdcTransfer(from: owner, to: address, units: units, usdc: usdc, nonce: next + 1 + UInt64(onward.count), blockHeight: header.height, publicKey: rawKey))
         let withdraw = DelegateAction.vaultWithdraw(from: owner, units: units, vault: vault, nonce: next, blockHeight: header.height, publicKey: rawKey)
-        let transfer = NEARTransaction.usdcTransfer(
-            from: owner, to: address, units: units, usdc: usdc, registration: registration,
-            nonce: next + 1, blockHash: blockHash, publicKey: rawKey
-        )
-        let signatures = try keys.sign([withdraw.signingHash, transfer.signingHash], reason: "Send $\(Money.dollars(amount)) to \(address)")
+        let actions = [withdraw] + onward
+        let signatures = try keys.sign(actions.map(\.signingHash), reason: "Send $\(Money.dollars(amount)) to \(address)")
 
         let relay = DelegateRelay(api: api, rpc: rpc, keys: keys, pollInterval: pollInterval, pollAttempts: pollAttempts)
         do {
@@ -129,21 +123,16 @@ struct RelayedWithdrawals: Withdrawals {
             throw WithdrawError.stillPending
         }
 
-        let outcome: NEARRPC.Outcome
+        // Relayed like every other step, so the user's account needs no NEAR for gas.
+        var last: RelayResult?
         do {
-            outcome = try await rpc.send(signedTransaction: transfer.signed(with: signatures[1]))
+            for (action, signature) in zip(onward, signatures.dropFirst()) {
+                last = try await relay.follow(try await api.relay(signedDelegate: action.signed(with: signature)))
+            }
         } catch {
             throw WithdrawError.notDelivered(String(describing: error))
         }
-        if let failure = outcome.failure { throw WithdrawError.notDelivered(failure) }
-        return WithdrawReceipt(transactionHash: outcome.hash)
-    }
-
-    /// NEAR checks the prepaid gas and any deposit against what the account holds beyond its own storage.
-    static func covers(_ account: NEARRPC.Account, registration: Yocto?) -> Bool {
-        guard let balance = Decimal(string: account.amount) else { return false }
-        let spendable = balance - Decimal(account.storageUsage) * yoctoPerStorageByte
-        return spendable >= gasAllowance + (registration?.decimal ?? 0)
+        return WithdrawReceipt(transactionHash: last?.txHash ?? "")
     }
 }
 
