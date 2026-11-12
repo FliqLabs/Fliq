@@ -29,11 +29,11 @@ type DialogState =
   | { action: "roll" | "revoke" | "limits"; key: ManagedKey }
   | { action: "created"; key: ManagedKey; secret: string };
 const buttonClass =
-  "cursor-pointer rounded-lg border border-[#e6e6e6] bg-white px-3.5 py-2.5 text-[13px] font-semibold transition-colors hover:bg-zinc-50 focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-40";
+  "cursor-pointer rounded-lg border border-app-line bg-app-panel px-3.5 py-2.5 text-[13px] font-semibold transition-colors hover:bg-app-panel2 focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-40";
 const primaryClass =
-  "cursor-pointer rounded-lg bg-[#111] px-4 py-3 text-[13px] font-semibold text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-40";
+  "cursor-pointer rounded-lg bg-app-ink px-4 py-3 text-[13px] font-semibold text-app-ink-fg transition-colors hover:bg-app-fg2 disabled:cursor-not-allowed disabled:opacity-40";
 const fieldClass =
-  "mt-2 w-full rounded-lg border border-[#e6e6e6] px-3 py-2.5 text-sm font-normal outline-none focus:border-zinc-950 focus:ring-1 focus:ring-zinc-950";
+  "mt-2 w-full rounded-lg border border-app-line bg-app-panel text-app-fg px-3 py-2.5 text-sm font-normal outline-none focus:border-app-accent focus:ring-1 focus:ring-app-accent";
 const supportedCorridors = ["USDC → NGN bank", "USDC → KES M-Pesa", "USDT → NGN bank"];
 
 function positiveMinor(value: string) {
@@ -58,7 +58,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
         event.preventDefault();
         onClose();
       }}
-      className="fixed inset-0 m-auto max-h-[calc(100dvh-48px)] w-[520px] max-w-[calc(100%_-_32px)] overflow-y-auto rounded-2xl bg-white p-6 text-zinc-950 shadow-[0_24px_64px_#0004] backdrop:bg-[#0a0a0a6b]"
+      className="fixed inset-0 m-auto max-h-[calc(100dvh-48px)] w-[520px] max-w-[calc(100%_-_32px)] overflow-y-auto rounded-2xl bg-app-panel p-6 text-app-fg shadow-[0_24px_64px_#0004] backdrop:bg-[#0a0a0a6b]"
     >
       <div className="mb-4 flex items-start justify-between gap-4">
         <h2 id="key-dialog-title" className="text-lg font-semibold tracking-tight">
@@ -68,7 +68,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
           type="button"
           onClick={onClose}
           aria-label="Close dialog"
-          className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-lg text-zinc-500 hover:bg-zinc-100"
+          className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-lg text-app-muted hover:bg-app-hover"
         >
           ×
         </button>
@@ -114,10 +114,10 @@ function KeyForm({
   }
   return (
     <form onSubmit={submit} className="space-y-[18px]">
-      <p className="text-[13px] leading-5 text-[#6b6b6b]">
+      <p className="text-[13px] leading-5 text-app-muted">
         A key is a spending limit with a name. In production, the vault contract enforces its caps on chain.
       </p>
-      <p className="rounded-lg bg-amber-50 p-3 text-xs leading-5 text-amber-800">
+      <p className="rounded-lg bg-app-warn-soft p-3 text-xs leading-5 text-app-warn">
         Sandbox design preview. This creates a local, non-working preview token. It cannot authenticate API
         calls or move money.
       </p>
@@ -133,7 +133,7 @@ function KeyForm({
               placeholder="Payroll runner"
               className={fieldClass}
             />
-            <span className="mt-1.5 block text-xs font-normal text-[#6b6b6b]">
+            <span className="mt-1.5 block text-xs font-normal text-app-muted">
               Shows on receipts and webhooks created with this key.
             </span>
           </label>
@@ -150,7 +150,7 @@ function KeyForm({
                     disabled={environment === "live" && !liveAllowed}
                     className="peer sr-only"
                   />
-                  <span className="inline-block rounded-lg border border-zinc-200 px-3 py-2 text-[13px] peer-checked:border-zinc-950 peer-checked:bg-zinc-950 peer-checked:text-white peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-disabled:cursor-not-allowed peer-disabled:opacity-40">
+                  <span className="inline-block rounded-lg border border-app-line px-3 py-2 text-[13px] peer-checked:border-app-accent peer-checked:bg-app-ink peer-checked:text-app-ink-fg peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-disabled:cursor-not-allowed peer-disabled:opacity-40">
                     {environment === "test" ? "Sandbox" : "Live (after KYB)"}
                   </span>
                 </label>
@@ -169,7 +169,7 @@ function KeyForm({
                     onChange={() => setDraft({ ...draft, actor })}
                     className="peer sr-only"
                   />
-                  <span className="inline-block rounded-lg border border-zinc-200 px-3 py-2 text-[13px] peer-checked:border-zinc-950 peer-checked:bg-zinc-950 peer-checked:text-white peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2">
+                  <span className="inline-block rounded-lg border border-app-line px-3 py-2 text-[13px] peer-checked:border-app-accent peer-checked:bg-app-ink peer-checked:text-app-ink-fg peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2">
                     {actor === "server" ? "Your server" : "An AI agent (MCP)"}
                   </span>
                 </label>
@@ -216,7 +216,7 @@ function KeyForm({
                       : draft.corridors.filter((value) => value !== corridor),
                   })
                 }
-                className="size-4 accent-zinc-950"
+                className="size-4 accent-app-accent"
               />
               {corridor}
             </label>
@@ -224,11 +224,11 @@ function KeyForm({
         </div>
       </fieldset>
       {error && (
-        <p role="alert" className="text-xs leading-5 text-red-700">
+        <p role="alert" className="text-xs leading-5 text-app-bad">
           {error}
         </p>
       )}
-      <div className="flex justify-end gap-2 border-t border-zinc-100 pt-4">
+      <div className="flex justify-end gap-2 border-t border-app-line pt-4">
         <button type="button" onClick={onCancel} className={buttonClass}>
           Cancel
         </button>
@@ -329,14 +329,14 @@ export function KeyManagement({
           <button
             type="button"
             onClick={() => showDetail(null)}
-            className="cursor-pointer text-xs font-semibold text-zinc-500 hover:text-zinc-950"
+            className="cursor-pointer text-xs font-semibold text-app-muted hover:text-app-fg"
           >
             API keys / {currentDetail.name} · Back to keys
           </button>
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <h1 className="text-2xl font-bold">{currentDetail.name}</h1>
-              <p className="mt-2 text-[13px] text-zinc-500">
+              <p className="mt-2 text-[13px] text-app-muted">
                 {currentDetail.actor === "agent"
                   ? "Agent key"
                   : currentDetail.actor === "server"
@@ -365,7 +365,7 @@ export function KeyManagement({
                 type="button"
                 disabled={currentDetail.revoked}
                 onClick={() => openAction("revoke", currentDetail)}
-                className={`${buttonClass} text-red-600`}
+                className={`${buttonClass} text-app-bad`}
               >
                 Revoke
               </button>
@@ -382,26 +382,26 @@ export function KeyManagement({
               ["Requests, 7 days", "—", "No request telemetry available"],
               ["Rate limit", "—", "Not returned by the API"],
             ].map(([label, value, hint]) => (
-              <div key={label} className="rounded-xl border border-[#e6e6e6] p-4">
-                <p className="text-xs text-zinc-500">{label}</p>
+              <div key={label} className="rounded-xl border border-app-line p-4">
+                <p className="text-xs text-app-muted">{label}</p>
                 <p className="my-2 text-2xl font-semibold">{value}</p>
-                <p className="text-xs text-zinc-500">{hint}</p>
+                <p className="text-xs text-app-muted">{hint}</p>
               </div>
             ))}
           </div>
           <div className="grid gap-5 xl:grid-cols-[1.6fr_1fr]">
-            <section className="rounded-xl border border-[#e6e6e6] p-5">
+            <section className="rounded-xl border border-app-line p-5">
               <h2 className="text-sm font-bold">Requests from this key</h2>
-              <div className="mt-4 grid grid-cols-3 border-y border-zinc-100 py-3 text-xs font-semibold text-zinc-500">
+              <div className="mt-4 grid grid-cols-3 border-y border-app-line py-3 text-xs font-semibold text-app-muted">
                 <span>Time</span>
                 <span>Call</span>
                 <span>Result</span>
               </div>
-              <p className="py-12 text-center text-sm text-zinc-500">
+              <p className="py-12 text-center text-sm text-app-muted">
                 Request history is not available from the current API.
               </p>
             </section>
-            <section className="rounded-xl border border-[#e6e6e6] p-5">
+            <section className="rounded-xl border border-app-line p-5">
               <h2 className="text-sm font-bold">What this key can do</h2>
               <dl className="mt-4 space-y-4 text-[13px]">
                 {[
@@ -412,18 +412,18 @@ export function KeyManagement({
                   ["Status", currentDetail.revoked ? "Revoked in preview" : "Active"],
                 ].map(([label, value]) => (
                   <div key={label} className="grid grid-cols-[90px_1fr] gap-3">
-                    <dt className="text-zinc-500">{label}</dt>
+                    <dt className="text-app-muted">{label}</dt>
                     <dd>{value}</dd>
                   </div>
                 ))}
               </dl>
-              <p className="mt-5 text-xs leading-5 text-zinc-500">
+              <p className="mt-5 text-xs leading-5 text-app-muted">
                 Production caps live in the vault contract. Preview changes do not sign a transaction or
                 change a real key.
               </p>
               <Link
                 href="/docs/agents"
-                className="mt-5 inline-block rounded-lg bg-zinc-950 px-4 py-2.5 text-xs font-semibold text-white"
+                className="mt-5 inline-block rounded-lg bg-app-ink px-4 py-2.5 text-xs font-semibold text-app-ink-fg"
               >
                 Open MCP config
               </Link>
@@ -433,31 +433,31 @@ export function KeyManagement({
       ) : (
         <>
           <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
-            <p className="text-sm leading-6 text-[#6b6b6b]">
+            <p className="text-sm leading-6 text-app-muted">
               Sandbox keys start with <code>rt_test_</code>. Live keys start with <code>rt_live_</code> and
               need KYB.
             </p>
             <button
               type="button"
               onClick={() => setDialog({ action: "new" })}
-              className="cursor-pointer rounded-lg bg-blue-600 px-4 py-2.5 text-[13px] font-semibold text-white hover:bg-blue-700"
+              className="cursor-pointer rounded-lg bg-app-accent px-4 py-2.5 text-[13px] font-semibold text-[var(--accent-fg)] hover:bg-app-accent"
             >
               New key
             </button>
           </div>
-          <p className="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800">
+          <p className="mb-4 rounded-lg bg-app-warn-soft px-4 py-3 text-xs leading-5 text-app-warn">
             Key management preview. New, Roll and Revoke simulate the design in this browser session. They do
             not create or change backend credentials.
           </p>
           <section
             aria-label="Your workspace API keys"
-            className="overflow-hidden rounded-xl border border-[#e6e6e6]"
+            className="overflow-hidden rounded-xl border border-app-line"
           >
-            {keys.length === 0 && <p className="p-6 text-sm text-zinc-500">No active workspace keys.</p>}
+            {keys.length === 0 && <p className="p-6 text-sm text-app-muted">No active workspace keys.</p>}
             {keys.map((key) => (
               <div
                 key={key.key_id}
-                className={`grid items-center gap-4 border-b border-[#e6e6e6] px-[18px] py-4 last:border-b-0 xl:grid-cols-[230px_minmax(180px,1fr)_auto] ${key.revoked ? "opacity-60" : ""}`}
+                className={`grid items-center gap-4 border-b border-app-line px-[18px] py-4 last:border-b-0 xl:grid-cols-[230px_minmax(180px,1fr)_auto] ${key.revoked ? "opacity-60" : ""}`}
               >
                 <div>
                   <button
@@ -467,7 +467,7 @@ export function KeyManagement({
                   >
                     {key.name}
                   </button>
-                  <p className="mt-1.5 text-xs text-[#6b6b6b]">
+                  <p className="mt-1.5 text-xs text-app-muted">
                     Made{" "}
                     {new Date(key.created_at).toLocaleDateString("en-GB", {
                       day: "numeric",
@@ -477,17 +477,17 @@ export function KeyManagement({
                     {key.preview ? " · Local preview" : ""}
                   </p>
                 </div>
-                <div className="flex min-w-0 items-center justify-between gap-3 rounded-lg bg-[#f6f6f6] px-3 py-2.5">
+                <div className="flex min-w-0 items-center justify-between gap-3 rounded-lg bg-app-panel2 px-3 py-2.5">
                   <code className="truncate text-[13px]">{key.masked}</code>
                   {createdKey.data?.key_id === key.key_id ? (
                     <CopyButton text={createdKey.data.key} />
                   ) : (
-                    <span className="text-[10px] text-zinc-500">Shown once</span>
+                    <span className="text-[10px] text-app-muted">Shown once</span>
                   )}
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
                   <span
-                    className={`rounded-md px-2.5 py-1 text-xs font-bold ${key.revoked ? "bg-red-50 text-red-700" : key.environment === "test" ? "bg-[#fff3d6] text-[#8a5a00]" : "bg-emerald-50 text-emerald-700"}`}
+                    className={`rounded-md px-2.5 py-1 text-xs font-bold ${key.revoked ? "bg-app-bad-soft text-app-bad" : key.environment === "test" ? "bg-app-warn-soft text-app-warn" : "bg-app-good-soft text-app-good"}`}
                   >
                     {key.revoked
                       ? "Revoked"
@@ -509,7 +509,7 @@ export function KeyManagement({
                     type="button"
                     disabled={key.revoked}
                     onClick={() => openAction("revoke", key)}
-                    className={`${buttonClass} text-red-600`}
+                    className={`${buttonClass} text-app-bad`}
                   >
                     Revoke
                   </button>
@@ -517,10 +517,10 @@ export function KeyManagement({
               </div>
             ))}
             {!keys.some((key) => key.environment === "live" && !key.revoked) && (
-              <div className="flex items-center justify-between gap-4 border-t border-zinc-100 px-[18px] py-4">
+              <div className="flex items-center justify-between gap-4 border-t border-app-line px-[18px] py-4">
                 <div>
                   <h2 className="text-sm font-bold">Live key</h2>
-                  <p className="mt-1.5 text-xs text-zinc-500">
+                  <p className="mt-1.5 text-xs text-app-muted">
                     {decision.status === "approved"
                       ? "Simulated approval complete · preview available"
                       : "Not yet · Create after KYB"}
@@ -528,7 +528,7 @@ export function KeyManagement({
                 </div>
                 <Link
                   href="/dashboard/go-live"
-                  className="rounded-lg border border-zinc-200 px-3 py-2 text-xs font-semibold"
+                  className="rounded-lg border border-app-line px-3 py-2 text-xs font-semibold"
                 >
                   {decision.status === "approved" ? "View approval" : "Go live"}
                 </Link>
@@ -538,7 +538,7 @@ export function KeyManagement({
         </>
       )}
       {notice && (
-        <p role="status" className="mt-4 rounded-lg bg-zinc-50 p-3 text-xs text-zinc-600">
+        <p role="status" className="mt-4 rounded-lg bg-app-panel2 p-3 text-xs text-app-fg2">
           {notice}
         </p>
       )}
@@ -585,33 +585,30 @@ export function KeyManagement({
           )}
           {dialog.action === "created" && (
             <div className="space-y-[18px]">
-              <p className="text-[13px] leading-5 text-[#6b6b6b]">
+              <p className="text-[13px] leading-5 text-app-muted">
                 Copy the secret now. It is shown once; after you close this dialog only the prefix stays
                 visible.
               </p>
-              <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-800">
+              <p className="rounded-lg bg-app-warn-soft p-3 text-xs text-app-warn">
                 Non-working preview token · not a backend API credential.
               </p>
               <code className="block break-all rounded-[10px] bg-[#0f0f0f] px-3.5 py-4 text-[13px] text-[#e5e5e5]">
                 {dialog.secret}
               </code>
               <CopyButton text={dialog.secret} />
-              <dl className="grid grid-cols-3 gap-3 rounded-xl border border-zinc-200 p-4 text-xs">
+              <dl className="grid grid-cols-3 gap-3 rounded-xl border border-app-line p-4 text-xs">
                 {[
                   ["Per payout", dialog.key.perPayout ? `₦${dialog.key.perPayout}` : "Not configured"],
                   ["Daily", dialog.key.daily ? `₦${dialog.key.daily}` : "Not configured"],
-                  [
-                    "Environment",
-                    dialog.key.environment === "test" ? "Sandbox" : "Live preview",
-                  ],
+                  ["Environment", dialog.key.environment === "test" ? "Sandbox" : "Live preview"],
                 ].map(([label, value]) => (
                   <div key={label}>
-                    <dt className="text-zinc-500">{label}</dt>
+                    <dt className="text-app-muted">{label}</dt>
                     <dd className="mt-1 font-semibold">{value}</dd>
                   </div>
                 ))}
               </dl>
-              <p className="text-xs leading-5 text-zinc-500">
+              <p className="text-xs leading-5 text-app-muted">
                 Production secrets belong in your secrets manager, never in the repository.
               </p>
               <div className="flex flex-wrap justify-end gap-2">
@@ -626,7 +623,7 @@ export function KeyManagement({
           )}
           {dialog.action === "roll" && (
             <div className="space-y-5">
-              <p className="text-[13px] leading-6 text-zinc-500">
+              <p className="text-[13px] leading-6 text-app-muted">
                 In production, a new secret replaces this one with a 10-minute overlap so your servers can
                 switch without a gap.
               </p>
@@ -637,14 +634,14 @@ export function KeyManagement({
                   "Webhook signing secret is not affected",
                 ].map((line, index) => (
                   <li key={line} className="flex gap-3">
-                    <span className="flex size-[22px] shrink-0 items-center justify-center rounded-full bg-zinc-100 text-xs">
+                    <span className="flex size-[22px] shrink-0 items-center justify-center rounded-full bg-app-hover text-xs">
                       {index + 1}
                     </span>
                     {line}
                   </li>
                 ))}
               </ol>
-              <p className="rounded-lg bg-amber-50 p-3 text-xs leading-5 text-amber-800">
+              <p className="rounded-lg bg-app-warn-soft p-3 text-xs leading-5 text-app-warn">
                 This only rolls a local preview token. Your backend key remains unchanged.
               </p>
               <div className="flex justify-end gap-2">
@@ -663,13 +660,13 @@ export function KeyManagement({
           )}
           {dialog.action === "revoke" && (
             <div className="space-y-5">
-              <p className="text-[13px] leading-6 text-zinc-500">
+              <p className="text-[13px] leading-6 text-app-muted">
                 In production, revocation stops new requests from this key. Previously completed payouts
                 remain paid.
               </p>
-              <div className="rounded-xl border border-zinc-200 p-4 text-sm">
+              <div className="rounded-xl border border-app-line p-4 text-sm">
                 <strong>{dialog.key.name}</strong>
-                <code className="mt-2 block text-xs text-zinc-500">{dialog.key.masked}</code>
+                <code className="mt-2 block text-xs text-app-muted">{dialog.key.masked}</code>
               </div>
               <label className="block text-[13px] font-semibold">
                 Type the key name to confirm
@@ -680,7 +677,7 @@ export function KeyManagement({
                   className={fieldClass}
                 />
               </label>
-              <p className="rounded-lg bg-amber-50 p-3 text-xs leading-5 text-amber-800">
+              <p className="rounded-lg bg-app-warn-soft p-3 text-xs leading-5 text-app-warn">
                 Preview only. This does not revoke or disable your real backend key.
               </p>
               <div className="flex justify-end gap-2">
@@ -699,7 +696,7 @@ export function KeyManagement({
                     );
                     close();
                   }}
-                  className="cursor-pointer rounded-lg bg-red-600 px-4 py-3 text-[13px] font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="cursor-pointer rounded-lg bg-red-600 px-4 py-3 text-[13px] font-semibold text-app-ink-fg hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   Revoke key · preview
                 </button>

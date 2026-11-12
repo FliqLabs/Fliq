@@ -38,17 +38,17 @@ export function CountrySelect({ value, onChange }: { value: string; onChange: (v
       >
         <summary
           aria-labelledby="country-label country-value"
-          className="flex cursor-pointer list-none items-center gap-2 rounded-lg border border-[#e6e6e6] bg-white px-3 py-2.5 focus-visible:outline-2 focus-visible:outline-zinc-800 [&::-webkit-details-marker]:hidden"
+          className="flex cursor-pointer list-none items-center gap-2 rounded-lg border border-app-line bg-app-panel px-3 py-2.5 focus-visible:outline-2 focus-visible:outline-app-accent [&::-webkit-details-marker]:hidden"
         >
           {selected && (
             <Image src={selected.icon} alt="" className="size-5 shrink-0 rounded-full object-contain" />
           )}
           <span id="country-value">{selected?.name ?? "Other"}</span>
-          <span aria-hidden="true" className="ml-auto text-zinc-500">
+          <span aria-hidden="true" className="ml-auto text-app-muted">
             ⌄
           </span>
         </summary>
-        <div className="absolute inset-x-0 top-full z-20 mt-1 rounded-lg border border-[#e6e6e6] bg-white p-1 shadow-lg">
+        <div className="absolute inset-x-0 top-full z-20 mt-1 rounded-lg border border-app-line bg-app-panel p-1 shadow-lg">
           {[...countries, { value: "other", name: "Other", icon: null }].map((country) => (
             <button
               key={country.value}
@@ -61,7 +61,7 @@ export function CountrySelect({ value, onChange }: { value: string; onChange: (v
                   details.current.querySelector("summary")?.focus();
                 }
               }}
-              className={`flex w-full cursor-pointer items-center gap-2 rounded-md px-3 py-2.5 text-left hover:bg-zinc-100 focus-visible:outline-2 ${value === country.value ? "bg-zinc-100" : ""}`}
+              className={`flex w-full cursor-pointer items-center gap-2 rounded-md px-3 py-2.5 text-left hover:bg-app-hover focus-visible:outline-2 ${value === country.value ? "bg-app-hover" : ""}`}
             >
               {country.icon ? (
                 <Image src={country.icon} alt="" className="size-5 shrink-0 rounded-full object-contain" />

@@ -36,15 +36,15 @@ const comparison = [
   ["Fee", "Free", "0.5% above $50k a month"],
 ];
 const fieldClass =
-  "mt-2 w-full rounded-lg border border-[#e6e6e6] bg-white px-3 py-2.5 text-sm font-normal outline-none transition-colors placeholder:text-zinc-400 focus:border-zinc-800 focus:ring-1 focus:ring-zinc-800";
+  "mt-2 w-full rounded-lg border border-app-line bg-app-panel px-3 py-2.5 text-sm font-normal outline-none transition-colors placeholder:text-app-muted focus:border-app-accent focus:ring-1 focus:ring-app-accent";
 const primaryClass =
-  "cursor-pointer rounded-lg bg-[#111111] px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-zinc-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-950 disabled:cursor-not-allowed disabled:opacity-40";
+  "cursor-pointer rounded-lg bg-app-ink px-4 py-3 text-sm font-semibold text-app-ink-fg transition-colors hover:bg-app-fg2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-accent disabled:cursor-not-allowed disabled:opacity-40";
 
 export function GoLiveForm() {
   const account = useQuery({ queryKey: ["me"], queryFn: () => fliqApi<User>("me") });
   if (account.isPending)
     return (
-      <p role="status" className="text-sm text-zinc-500">
+      <p role="status" className="text-sm text-app-muted">
         Loading your workspace…
       </p>
     );
@@ -56,7 +56,7 @@ export function GoLiveForm() {
     );
   if (account.isError)
     return (
-      <p role="alert" className="text-sm text-red-700">
+      <p role="alert" className="text-sm text-app-bad">
         {account.error.message}
       </p>
     );
@@ -105,12 +105,12 @@ function BusinessPreview({ userId }: { userId: string }) {
           <h1 className="text-[28px] leading-[34px] font-bold tracking-tight">
             {step === 4 ? "You are live · sandbox preview" : "Go live with fliq"}
           </h1>
-          <p className="mt-3 max-w-[690px] text-sm leading-6 text-[#6b6b6b]">
+          <p className="mt-3 max-w-[690px] text-sm leading-6 text-app-muted">
             Live keys move real money, so we check who you are first. Most reviews close in 1 to 2 business
             days.
           </p>
         </div>
-        <span className="rounded-md bg-[#fff3d6] px-3 py-2 text-xs font-bold text-[#8a5a00]">
+        <span className="rounded-md bg-app-warn-soft px-3 py-2 text-xs font-bold text-app-warn">
           Sandbox KYB preview · reviews are mocked
         </span>
       </div>
@@ -129,18 +129,18 @@ function BusinessPreview({ userId }: { userId: string }) {
         <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.85fr)_minmax(300px,1fr)]">
           <div className="min-w-0">
             <section
-              className="overflow-hidden rounded-xl border border-[#e6e6e6]"
+              className="overflow-hidden rounded-xl border border-app-line"
               aria-label="Business verification preview"
             >
-              <ol className="flex flex-wrap items-center gap-x-5 gap-y-3 border-b border-[#e6e6e6] bg-[#fafafa] px-6 py-5 text-xs sm:text-[13px]">
+              <ol className="flex flex-wrap items-center gap-x-5 gap-y-3 border-b border-app-line bg-app-panel2 px-6 py-5 text-xs sm:text-[13px]">
                 {["Business", "Documents", "Review and submit"].map((label, index) => (
                   <li
                     key={label}
                     aria-current={step === index ? "step" : undefined}
-                    className={`flex items-center gap-2 ${step === index ? "font-bold text-zinc-950" : "text-[#6b6b6b]"}`}
+                    className={`flex items-center gap-2 ${step === index ? "font-bold text-app-fg" : "text-app-muted"}`}
                   >
                     <span
-                      className={`flex size-6 items-center justify-center rounded-full ${step === index ? "bg-zinc-950 text-white" : "border border-zinc-200 bg-white"}`}
+                      className={`flex size-6 items-center justify-center rounded-full ${step === index ? "bg-app-ink text-app-ink-fg" : "border border-app-line bg-app-panel"}`}
                     >
                       {index + 1}
                     </span>
@@ -198,7 +198,7 @@ function BusinessPreview({ userId }: { userId: string }) {
                     />
                     <span
                       id="purpose-help"
-                      className="mt-2 block text-xs leading-5 font-normal text-[#6b6b6b]"
+                      className="mt-2 block text-xs leading-5 font-normal text-app-muted"
                     >
                       One sentence is enough. It decides which providers we open for you.
                     </span>
@@ -217,7 +217,7 @@ function BusinessPreview({ userId }: { userId: string }) {
                             onChange={() => update({ volume })}
                             className="peer sr-only"
                           />
-                          <span className="block rounded-lg border border-[#e6e6e6] px-3 py-2.5 text-xs peer-checked:border-zinc-950 peer-checked:bg-zinc-950 peer-checked:text-white peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2">
+                          <span className="block rounded-lg border border-app-line px-3 py-2.5 text-xs peer-checked:border-app-accent peer-checked:bg-app-ink peer-checked:text-app-ink-fg peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2">
                             {volume}
                           </span>
                         </label>
@@ -239,7 +239,7 @@ function BusinessPreview({ userId }: { userId: string }) {
                                   : draft.corridors.filter((item) => item !== value),
                               })
                             }
-                            className="mt-0.5 size-4 accent-zinc-950"
+                            className="mt-0.5 size-4 accent-app-accent"
                           />
                           <Image
                             src={usdcIcon}
@@ -250,15 +250,15 @@ function BusinessPreview({ userId }: { userId: string }) {
                           <span>
                             {label}
                             {value === "ghs" && (
-                              <span className="block text-xs text-[#6b6b6b]">· Bitnob, sandbox only</span>
+                              <span className="block text-xs text-app-muted">· Bitnob, sandbox only</span>
                             )}
                           </span>
                         </label>
                       ))}
                     </div>
                   </fieldset>
-                  <div className="flex flex-wrap items-center justify-between gap-4 border-t border-[#e6e6e6] pt-5">
-                    <p className="text-xs text-[#6b6b6b]">Saved as you type for this session.</p>
+                  <div className="flex flex-wrap items-center justify-between gap-4 border-t border-app-line pt-5">
+                    <p className="text-xs text-app-muted">Saved as you type for this session.</p>
                     <button type="submit" className={primaryClass}>
                       Continue to documents
                     </button>
@@ -277,9 +277,9 @@ function BusinessPreview({ userId }: { userId: string }) {
               )}
             </section>
             {step < 2 && (
-              <section className="mt-5 rounded-xl border border-[#e6e6e6] p-6">
+              <section className="mt-5 rounded-xl border border-app-line p-6">
                 <h2 className="text-sm font-bold">Documents you will need in step 2</h2>
-                <ul className="mt-4 grid gap-x-6 gap-y-3 text-[13px] text-[#6b6b6b] sm:grid-cols-2">
+                <ul className="mt-4 grid gap-x-6 gap-y-3 text-[13px] text-app-muted sm:grid-cols-2">
                   {documents.map((document) => (
                     <li key={document} className="flex gap-2">
                       <Image src={documentIcon} alt="" className="size-5 shrink-0 object-contain" />
@@ -295,15 +295,15 @@ function BusinessPreview({ userId }: { userId: string }) {
           ) : step === 2 ? (
             <ReviewGuidance />
           ) : (
-            <aside className="rounded-xl border border-[#e6e6e6] p-5">
+            <aside className="rounded-xl border border-app-line p-5">
               <div className="flex items-center justify-between gap-2">
                 <h2 className="text-sm font-bold">What live unlocks</h2>
-                <span className="rounded-md bg-[#f6f6f6] px-2 py-1 text-xs text-[#6b6b6b]">Not started</span>
+                <span className="rounded-md bg-app-panel2 px-2 py-1 text-xs text-app-muted">Not started</span>
               </div>
               <table className="mt-5 w-full table-fixed text-left text-xs leading-5">
                 <caption className="sr-only">Sandbox and live features</caption>
                 <thead>
-                  <tr className="text-[10px] tracking-wider text-[#6b6b6b]">
+                  <tr className="text-[10px] tracking-wider text-app-muted">
                     <th className="w-[24%] pb-3">
                       <span className="sr-only">Feature</span>
                     </th>
@@ -313,11 +313,11 @@ function BusinessPreview({ userId }: { userId: string }) {
                 </thead>
                 <tbody>
                   {comparison.map(([label, sandbox, live]) => (
-                    <tr key={label} className="border-t border-[#e6e6e6]">
+                    <tr key={label} className="border-t border-app-line">
                       <th scope="row" className="py-3 pr-2 align-top font-medium">
                         {label}
                       </th>
-                      <td className="py-3 pr-3 align-top text-[#6b6b6b]">{sandbox}</td>
+                      <td className="py-3 pr-3 align-top text-app-muted">{sandbox}</td>
                       <td className="py-3 align-top">
                         {live}
                         {label === "Providers" && (
@@ -337,20 +337,20 @@ function BusinessPreview({ userId }: { userId: string }) {
                   ))}
                 </tbody>
               </table>
-              <section className="mt-4 border-t border-[#e6e6e6] pt-5">
+              <section className="mt-4 border-t border-app-line pt-5">
                 <h2 className="text-sm font-bold">What happens after you submit</h2>
-                <p className="mt-4 text-[13px] leading-6 text-[#6b6b6b]">
-                  <strong className="font-semibold text-zinc-950">In review</strong>, 1 to 2 business days.
-                  Your sandbox keeps working the whole time.
+                <p className="mt-4 text-[13px] leading-6 text-app-muted">
+                  <strong className="font-semibold text-app-fg">In review</strong>, 1 to 2 business days. Your
+                  sandbox keeps working the whole time.
                 </p>
-                <p className="mt-3 text-[13px] leading-6 text-[#6b6b6b]">
-                  <strong className="font-semibold text-zinc-950">Approved:</strong> you pick your vault caps,
+                <p className="mt-3 text-[13px] leading-6 text-app-muted">
+                  <strong className="font-semibold text-app-fg">Approved:</strong> you pick your vault caps,
                   we open the providers for your corridors, and a live key appears on API keys.
                 </p>
-                <p className="mt-4 rounded-lg bg-[#fff3d6] p-3 text-xs leading-5 text-[#8a5a00]">
+                <p className="mt-4 rounded-lg bg-app-warn-soft p-3 text-xs leading-5 text-app-warn">
                   The first live payout is capped at $500 for 48 hours, whatever caps you set.
                 </p>
-                <p className="mt-4 text-xs leading-5 text-[#6b6b6b]">
+                <p className="mt-4 text-xs leading-5 text-app-muted">
                   This preview does not submit documents, start a review, or enable live payouts.
                 </p>
               </section>

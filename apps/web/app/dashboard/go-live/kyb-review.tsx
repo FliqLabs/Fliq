@@ -46,15 +46,15 @@ export function KybReview({
           <button
             type="button"
             onClick={onEditBusiness}
-            className="cursor-pointer text-xs font-semibold text-blue-700 hover:underline"
+            className="cursor-pointer text-xs font-semibold text-app-accent hover:underline"
           >
             Edit business
           </button>
         </div>
-        <dl className="divide-y divide-zinc-100 rounded-xl border border-[#e6e6e6] px-4">
+        <dl className="divide-y divide-app-line rounded-xl border border-app-line px-4">
           {fields.map(([label, value]) => (
             <div key={label} className="grid gap-1 py-3 text-[13px] sm:grid-cols-[170px_1fr]">
-              <dt className="text-[#6b6b6b]">{label}</dt>
+              <dt className="text-app-muted">{label}</dt>
               <dd className="min-w-0 break-words">{value || "Not provided"}</dd>
             </div>
           ))}
@@ -66,18 +66,18 @@ export function KybReview({
           <button
             type="button"
             onClick={onEditDocuments}
-            className="cursor-pointer text-xs font-semibold text-blue-700 hover:underline"
+            className="cursor-pointer text-xs font-semibold text-app-accent hover:underline"
           >
             Edit documents
           </button>
         </div>
-        <ul className="divide-y divide-zinc-100 rounded-xl border border-[#e6e6e6] px-4">
+        <ul className="divide-y divide-app-line rounded-xl border border-app-line px-4">
           {documentRequirements.map((requirement, index) => (
             <li key={requirement} className="flex items-start gap-3 py-3 text-[13px]">
               <Image src={documentIcon} alt="" className="size-5 shrink-0 object-contain" />
               <span className="min-w-0">
                 <span className="block font-medium">{requirement}</span>
-                <span className="mt-1 block break-all text-xs text-[#6b6b6b]">
+                <span className="mt-1 block break-all text-xs text-app-muted">
                   {files[index]
                     ? `${files[index].name} · ${formatFileSize(files[index].size)} · Looks good`
                     : "No PDF selected"}
@@ -92,7 +92,7 @@ export function KybReview({
           type="checkbox"
           checked={confirmed}
           onChange={(event) => setConfirmed(event.target.checked)}
-          className="mt-1 size-4 shrink-0 accent-zinc-950"
+          className="mt-1 size-4 shrink-0 accent-app-accent"
         />
         <span>
           I am a director of <strong>{draft.legalName || "this business"}</strong>, and the information above
@@ -104,24 +104,24 @@ export function KybReview({
           type="checkbox"
           checked={keepSandbox}
           onChange={(event) => setKeepSandbox(event.target.checked)}
-          className="size-4 accent-zinc-950"
+          className="size-4 accent-app-accent"
         />
         Keep the sandbox key working while the review runs.
       </label>
-      <p className="rounded-lg bg-amber-50 p-3 text-xs leading-5 text-amber-800">
+      <p className="rounded-lg bg-app-warn-soft p-3 text-xs leading-5 text-app-warn">
         Sandbox simulation only. No documents are uploaded, no agreement is accepted, and your existing
         sandbox key remains unchanged.
       </p>
       {!complete && (
-        <p role="alert" className="text-xs text-red-700">
+        <p role="alert" className="text-xs text-app-bad">
           Complete the business details and all four PDFs before submitting this preview.
         </p>
       )}
-      <div className="flex flex-wrap items-center justify-between gap-4 border-t border-[#e6e6e6] pt-5">
+      <div className="flex flex-wrap items-center justify-between gap-4 border-t border-app-line pt-5">
         <button
           type="button"
           onClick={onEditDocuments}
-          className="cursor-pointer rounded-lg border border-zinc-200 px-4 py-3 text-sm hover:bg-zinc-50"
+          className="cursor-pointer rounded-lg border border-app-line px-4 py-3 text-sm hover:bg-app-panel2"
         >
           Back
         </button>
@@ -129,7 +129,7 @@ export function KybReview({
           type="button"
           disabled={!confirmed || !complete}
           onClick={() => onSubmit(keepSandbox)}
-          className="cursor-pointer rounded-lg bg-[#111] px-4 py-3 text-sm font-semibold text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-40"
+          className="cursor-pointer rounded-lg bg-app-ink px-4 py-3 text-sm font-semibold text-app-ink-fg hover:bg-app-fg2 disabled:cursor-not-allowed disabled:opacity-40"
         >
           Submit for review · sandbox
         </button>
@@ -140,7 +140,7 @@ export function KybReview({
 
 export function ReviewGuidance() {
   return (
-    <aside className="rounded-xl border border-[#e6e6e6] p-6">
+    <aside className="rounded-xl border border-app-line p-6">
       <h2 className="text-sm font-bold">After you submit</h2>
       <ol className="mt-5 space-y-6 text-[13px] leading-6">
         {[
@@ -152,17 +152,17 @@ export function ReviewGuidance() {
           ["Live", "Once approved, create a live key from API keys."],
         ].map(([title, description], index) => (
           <li key={title} className="flex gap-3">
-            <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-[#f6f6f6] text-xs">
+            <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-app-panel2 text-xs">
               {index + 1}
             </span>
             <span>
               <strong className="block font-semibold">{title}</strong>
-              <span className="text-[#6b6b6b]">{description}</span>
+              <span className="text-app-muted">{description}</span>
             </span>
           </li>
         ))}
       </ol>
-      <p className="mt-5 text-xs leading-5 text-amber-800">
+      <p className="mt-5 text-xs leading-5 text-app-warn">
         This preview uses simulated decisions. It will not send emails or activate real-money access.
       </p>
     </aside>
