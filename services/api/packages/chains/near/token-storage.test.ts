@@ -78,6 +78,15 @@ describe("registering payout addresses on the token", () => {
     expect(chain.sent.map((tx) => BigInt(tx.nonce))).toEqual([8n, 9n]);
   });
 
+  it("never reuses a nonce when the node answering the read is a block behind the send", async () => {
+    const chain = fakeChain(false);
+    const behind: NearRpc = { ...chain.rpc, accessKey: async () => ({ nonce: 7n, permission: "FullAccess" }) };
+    const storage = storageOn(behind);
+    await storage.ensure("a.near");
+    await storage.ensure("b.near");
+    expect(chain.sent.map((tx) => BigInt(tx.nonce))).toEqual([8n, 9n]);
+  });
+
   it("reports a refused deposit", async () => {
     const chain = fakeChain(false, "failed");
     await expect(storageOn(chain.rpc).ensure("deposit.near")).rejects.toBeInstanceOf(TokenStorageError);

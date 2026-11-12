@@ -98,18 +98,23 @@ export function buildRelayerApp(deps: RelayerAppDeps): FastifyInstance {
     return result ? relayView(result) : fail(reply, 404, "not_found", "no relay with that delegate hash");
   });
 
-  app.post<{ Body: { account_id: string; public_key: string } }>(
+  app.post<{ Body: { account_id: string; public_key: string; register_storage?: boolean } }>(
     "/v1/accounts",
     {
       schema: {
-        body: strictBody({
-          account_id: { type: "string", maxLength: 64 },
-          public_key: { type: "string", maxLength: 128 },
-        }),
+        body: strictBody(
+          {
+            account_id: { type: "string", maxLength: 64 },
+            public_key: { type: "string", maxLength: 128 },
+            register_storage: { type: "boolean" },
+          },
+          ["account_id", "public_key"],
+        ),
       },
     },
     async (request, reply) => {
-      const result = await provisionAccount(deps.provision, request.body.account_id, request.body.public_key);
+      const { account_id, public_key, register_storage } = request.body;
+      const result = await provisionAccount(deps.provision, account_id, public_key, { registerStorage: register_storage });
       const code = result.status === "created" ? 201 : result.status === "pending" ? 202 : 200;
       return reply.code(code).send(accountView(result));
     },
@@ -149,8 +154,8 @@ export function buildRelayerApp(deps: RelayerAppDeps): FastifyInstance {
   return app;
 }
 
-function strictBody(properties: Record<string, object>) {
-  return { type: "object", required: Object.keys(properties), additionalProperties: false, properties };
+function strictBody(properties: Record<string, object>, required: string[] = Object.keys(properties)) {
+  return { type: "object", required, additionalProperties: false, properties };
 }
 
 function fail(reply: FastifyReply, status: number, code: string, message: string) {

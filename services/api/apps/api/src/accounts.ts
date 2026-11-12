@@ -14,7 +14,7 @@ const ED25519_KEY = /^ed25519:[1-9A-HJ-NP-Za-km-z]{32,64}$/;
 export type Provisioned = { status: "created" | "pending"; nearAccount: string; vault: string };
 
 export interface NearProvisioner {
-  createAccount(fullName: string, publicKey: string | undefined): Promise<Provisioned>;
+  createAccount(fullName: string, publicKey: string | undefined, options?: { registerStorage?: boolean }): Promise<Provisioned>;
   // Leaves the owner enough NEAR to attach set_agent's storage deposit to the delegate action they sign.
   fundAgentDeposit(owner: string, agentId: string): Promise<void>;
 }
@@ -42,11 +42,11 @@ export class RelayerProvisioner implements NearProvisioner {
     private readonly vaultAccount: string,
   ) {}
 
-  async createAccount(fullName: string, publicKey: string | undefined): Promise<Provisioned> {
+  async createAccount(fullName: string, publicKey: string | undefined, options?: { registerStorage?: boolean }): Promise<Provisioned> {
     if (!publicKey) throw invalidRequest("public_key is required to create your NEAR account.");
     if (!ED25519_KEY.test(publicKey)) throw invalidRequest("public_key must be ed25519:<base58>.");
     try {
-      const result = await this.relayer.provisionAccount(fullName, publicKey);
+      const result = await this.relayer.provisionAccount(fullName, publicKey, options);
       return { status: result.status === "pending" ? "pending" : "created", nearAccount: result.account_id, vault: this.vaultAccount };
     } catch (error) {
       if (!(error instanceof RelayerClientError)) throw error;
