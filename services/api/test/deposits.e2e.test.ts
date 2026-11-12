@@ -130,10 +130,13 @@ describe.skipIf(!enabled)("topping up the vault from another chain", () => {
     const reply = await app.inject({ method: "GET", url: "/v1/deposits/sources", headers: user.headers });
     expect(reply.statusCode, reply.body).toBe(200);
     const { sources } = reply.json();
-    expect(sources.map((s: { chain: string }) => s.chain)).toEqual(["base", "solana", "tron", "arbitrum", "ethereum", "polygon", "bitcoin", "near"]);
+    expect(sources.map((s: { chain: string }) => s.chain)).toEqual([
+      "base", "solana", "arbitrum", "ethereum", "polygon", "bnb", "monad",
+      "solana", "ethereum", "bnb", "polygon", "tron", "bitcoin", "near",
+    ]);
     expect(sources.find((s: { chain: string }) => s.chain === "near")).toMatchObject({ direct: true, available: true, address: user.account });
     expect(sources.find((s: { chain: string }) => s.chain === "bitcoin")).toMatchObject({ available: false, address: null });
-    expect(sources.find((s: { chain: string }) => s.chain === "tron")).toMatchObject({ minimum: "100.00", available: true });
+    expect(sources.find((s: { chain: string }) => s.chain === "tron")).toMatchObject({ minimum: "110.00", available: true });
   });
 
   it("estimates what about 200 USDC from Solana lands as, without reserving anything", async () => {
@@ -152,7 +155,7 @@ describe.skipIf(!enabled)("topping up the vault from another chain", () => {
     expect(near.json().error.message).toContain(user.account);
     const tron = await reserve(user.headers, `t-${suffix}`, { token: "usdt", chain: "tron", amount: "50" });
     expect(tron.statusCode).toBe(400);
-    expect(tron.json().error.message).toContain("100.00 USDT");
+    expect(tron.json().error.message).toContain("110.00 USDT");
     expect((await reserve(user.headers, `b-${suffix}`, { token: "usdc", chain: "bitcoin", amount: "5" })).statusCode).toBe(400);
   });
 
