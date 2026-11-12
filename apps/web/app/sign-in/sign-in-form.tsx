@@ -95,10 +95,6 @@ export function SignInForm({
           ? "Waiting for passkey…"
           : "Continue with passkey"}
       </button>
-      <p className="mt-2 text-xs text-zinc-500">
-        Pick the passkey from your iPhone or this device. iCloud Keychain and Google Password Manager sync it
-        for you.
-      </p>
       <button
         type="button"
         disabled={passkey.isPending}
@@ -109,9 +105,6 @@ export function SignInForm({
           ? "Waiting for passkey…"
           : "Create a new account"}
       </button>
-      <p className="mt-2 text-xs text-zinc-500">
-        Only if you have never used fliq. A new account has its own name and an empty wallet.
-      </p>
       {passkey.isError && (
         <p role="alert" className="mt-3 text-sm text-red-600">
           {passkey.error.message}
