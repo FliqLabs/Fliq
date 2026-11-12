@@ -66,7 +66,13 @@ final class WithdrawAddressTests: XCTestCase {
 final class WithdrawFlowTests: XCTestCase {
     private struct Undelivered: Withdrawals {
         func check(_ address: String) async -> AddressCheck { .ready(needsSetup: true) }
-        func send(_ amount: TokenAmount, to address: String) async throws -> WithdrawReceipt {
+        func prepare(_ amount: TokenAmount, to address: String) async throws -> PreparedWithdraw {
+            PreparedWithdraw(amount: amount, address: address, actions: [])
+        }
+
+        func sign(_ prepared: PreparedWithdraw) throws -> SignedWithdraw { SignedWithdraw(actions: [], signatures: []) }
+
+        func deliver(_ signed: SignedWithdraw) async throws -> WithdrawReceipt {
             throw WithdrawError.notDelivered("ft_transfer failed")
         }
     }

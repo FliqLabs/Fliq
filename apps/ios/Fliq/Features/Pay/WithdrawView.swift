@@ -223,36 +223,111 @@ struct WithdrawReviewView: View {
             .disabled(!flow.canSend)
             .padding(.bottom, 12)
         }
+        .task(id: "\(flow.amountText)|\(flow.address)") { await flow.prepare() }
     }
 
+    /// Opens the moment Face ID passes. The ring turns until NEAR confirms the USDC reached the wallet.
     private func done(_ sent: WithdrawFlow.Sent) -> some View {
-        VStack(spacing: 14) {
-            Spacer()
-            Icon("checkmark", size: 34)
-                .foregroundStyle(.black)
-                .frame(width: 72, height: 72)
-                .background(Theme.confirmed, in: Circle())
-            Text("Sent")
-                .font(.system(size: 16))
-                .foregroundStyle(Theme.textSecondary)
-            HeroAmount(symbol: "$", value: Money.dollars(sent.amount))
-            DetailCard {
-                DetailRow("To", WithdrawAddress.short(sent.address))
-                DetailRow("Network", "USDC on NEAR", isLast: true)
-            }
-            .padding(.top, 12)
-            if let explorer = sent.explorer {
-                Link(destination: explorer) {
-                    IconLabel("View on NEAR", icon: "arrow.up.right.square")
-                        .font(.system(size: 15, weight: .medium))
+        ScrollView {
+            VStack(spacing: 0) {
+                ZStack(alignment: .bottomTrailing) {
+                    WalletAvatar(address: sent.address, size: 76)
+                        .padding(sent.delivered ? 0 : 6)
+                        .overlay { if !sent.delivered { SpinningRing() } }
+                    if sent.delivered {
+                        Icon("checkmark", size: 14)
+                            .foregroundStyle(.black)
+                            .frame(width: 28, height: 28)
+                            .background(Theme.confirmed, in: Circle())
+                            .overlay(Circle().strokeBorder(Theme.ground, lineWidth: 3))
+                            .transition(.scale.combined(with: .opacity))
+                    }
                 }
-                .foregroundStyle(Theme.textPrimary)
-                .padding(.top, 4)
+                .animation(.spring(duration: 0.4), value: sent.delivered)
+                .padding(.top, 40)
+
+                Text(sent.delivered ? "Sent to \(WithdrawAddress.short(sent.address))" : "Sending to \(WithdrawAddress.short(sent.address))")
+                    .font(.system(size: 18, weight: .medium))
+                    .multilineTextAlignment(.center)
+                    .padding(.top, 18)
+                    .contentTransition(.opacity)
+                HeroAmount(symbol: "$", value: Money.dollars(sent.amount))
+                    .padding(.top, 4)
+                Text(ActivityLine.time(sent.at))
+                    .font(.system(size: 15))
+                    .foregroundStyle(Theme.textSecondary)
+
+                timeline(sent).padding(.top, 28)
+
+                DetailCard {
+                    DetailRow("To", WithdrawAddress.short(sent.address))
+                    DetailRow("Network", "USDC on NEAR")
+                    DetailRow("Fee", "Free", isLast: true)
+                }
+                .padding(.top, 16)
+
+                if sent.delivered {
+                    HStack(spacing: 12) {
+                        ShareLink(item: "fliq receipt\n$\(Money.dollars(sent.amount)) sent to \(sent.address)\nUSDC on NEAR · fee free\n\(ActivityLine.time(sent.at))" + (sent.explorer.map { "\n\($0.absoluteString)" } ?? "")) {
+                            IconLabel("Share", icon: "square.and.arrow.up")
+                                .frame(maxWidth: .infinity, minHeight: 50)
+                                .background(Theme.surfaceRaised, in: Capsule())
+                        }
+                        if let explorer = sent.explorer {
+                            Link(destination: explorer) {
+                                IconLabel("View on NEAR", icon: "arrow.up.right.square")
+                                    .frame(maxWidth: .infinity, minHeight: 50)
+                                    .background(Theme.surfaceRaised, in: Capsule())
+                            }
+                        }
+                    }
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(Theme.textPrimary)
+                    .padding(.top, 16)
+                    .transition(.opacity)
+                }
             }
-            Spacer()
+            .padding(.horizontal, 4)
+            .animation(.smooth(duration: 0.3), value: sent.delivered)
+        }
+        .scrollIndicators(.hidden)
+        .safeAreaInset(edge: .bottom) {
             Button("Done", action: onDone)
                 .buttonStyle(PrimaryButtonStyle())
                 .padding(.bottom, 12)
+        }
+    }
+
+    private func timeline(_ sent: WithdrawFlow.Sent) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            step("Approved with Face ID", detail: ActivityLine.time(sent.at), done: true, last: false)
+            step(
+                sent.delivered ? "Delivered to \(WithdrawAddress.short(sent.address))" : "Landing on NEAR",
+                detail: sent.delivered ? "In their wallet now" : "Usually a few seconds",
+                done: sent.delivered,
+                last: true
+            )
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+    }
+
+    private func step(_ title: String, detail: String, done: Bool, last: Bool) -> some View {
+        HStack(alignment: .top, spacing: 16) {
+            VStack(spacing: 4) {
+                if done {
+                    Circle().fill(Theme.confirmed).frame(width: 8, height: 8).padding(.top, 7)
+                } else {
+                    ProgressView().controlSize(.mini).frame(width: 8, height: 8).padding(.top, 7)
+                }
+                if !last { Rectangle().fill(Theme.confirmed).frame(width: 2, height: 36) }
+            }
+            .frame(width: 10)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(.system(size: 17, weight: .medium))
+                Text(detail).font(.system(size: 15)).foregroundStyle(Theme.textSecondary)
+            }
         }
     }
 }
@@ -260,6 +335,7 @@ struct WithdrawReviewView: View {
 /// A colour drawn from the address, so the same wallet always looks the same in Recent.
 private struct WalletAvatar: View {
     let address: String
+    var size: CGFloat = 44
 
     var body: some View {
         let hue = Double(address.unicodeScalars.reduce(0) { ($0 &* 31 &+ Int($1.value)) & 0xFFFF } % 360) / 360
@@ -269,7 +345,7 @@ private struct WalletAvatar: View {
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             ))
-            .frame(width: 44, height: 44)
+            .frame(width: size, height: size)
     }
 }
 
