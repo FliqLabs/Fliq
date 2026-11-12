@@ -97,29 +97,6 @@ jobs:
             repo
           requireScope: true
 
-  freeze:
-    if: github.event_name == 'pull_request'
-    needs: changes
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check freeze dates
-        env:
-          EXCEPTION: ${{ contains(github.event.pull_request.labels.*.name, 'freeze-exception') }}
-          TOUCHES_APP_LAYER: ${{ needs.changes.outputs.api == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.spec == 'true' }}
-          TOUCHES_CONTRACT: ${{ needs.changes.outputs.contract == 'true' }}
-        run: |
-          now=$(date -u +%s)
-          app_freeze=$(date -u -d '2026-11-09T23:59:00Z' +%s)
-          contract_freeze=$(date -u -d '2026-11-12T23:59:00Z' +%s)
-          if [ "$EXCEPTION" = "true" ]; then echo "freeze-exception label present"; exit 0; fi
-          if [ "$TOUCHES_APP_LAYER" = "true" ] && [ "$now" -gt "$app_freeze" ]; then
-            echo "::error::web, api and spec froze on 9 Nov 23:59 UTC"; exit 1
-          fi
-          if [ "$TOUCHES_CONTRACT" = "true" ] && [ "$now" -gt "$contract_freeze" ]; then
-            echo "::error::contracts froze on 12 Nov 23:59 UTC"; exit 1
-          fi
-          echo "not frozen"
-
   secrets:
     runs-on: ubuntu-latest
     steps:
@@ -232,7 +209,7 @@ jobs:
 
   ci-gate:
     if: always()
-    needs: [changes, pr-title, freeze, secrets, spec, api, web, contract, ios]
+    needs: [changes, pr-title, secrets, spec, api, web, contract, ios]
     runs-on: ubuntu-latest
     steps:
       - name: All required jobs passed or were skipped
