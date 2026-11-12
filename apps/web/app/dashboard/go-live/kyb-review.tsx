@@ -39,7 +39,7 @@ export function KybReview({
     ],
   ];
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6 p-4 sm:p-6 lg:p-7">
       <section>
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-sm font-bold">Business</h2>
@@ -117,7 +117,7 @@ export function KybReview({
           Complete the business details and all four PDFs before submitting this preview.
         </p>
       )}
-      <div className="flex flex-wrap items-center justify-between gap-4 border-t border-app-line pt-5">
+      <div className="kyb-actions border-t border-app-line pt-5">
         <button
           type="button"
           onClick={onEditDocuments}
@@ -129,7 +129,7 @@ export function KybReview({
           type="button"
           disabled={!confirmed || !complete}
           onClick={() => onSubmit(keepSandbox)}
-          className="cursor-pointer rounded-lg bg-app-ink px-4 py-3 text-sm font-semibold text-app-ink-fg hover:bg-app-fg2 disabled:cursor-not-allowed disabled:opacity-40"
+          className="cursor-pointer rounded-lg kyb-primary bg-app-ink px-5 py-3 text-sm font-semibold text-app-ink-fg hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-40"
         >
           Submit for review · sandbox
         </button>
@@ -140,7 +140,7 @@ export function KybReview({
 
 export function ReviewGuidance() {
   return (
-    <aside className="rounded-xl border border-app-line p-6">
+    <aside className="kyb-card min-w-0 p-4 sm:p-6">
       <h2 className="text-sm font-bold">After you submit</h2>
       <ol className="mt-5 space-y-6 text-[13px] leading-6">
         {[

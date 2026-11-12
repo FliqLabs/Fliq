@@ -36,8 +36,8 @@ export function KybStatus({
   const approved = decision.status === "approved";
   const opened = countries.filter((country) => draft.corridors.includes(country.corridor));
   return (
-    <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.85fr)_minmax(300px,1fr)]">
-      <section className="rounded-xl border border-app-line p-6">
+    <div className="kyb-grid">
+      <section className="kyb-card min-w-0 p-4 sm:p-6">
         <span
           className={`inline-flex rounded-full px-3 py-1.5 text-xs font-bold ${approved ? "bg-app-good-soft text-app-good" : "bg-app-warn-soft text-app-warn"}`}
         >
@@ -74,7 +74,7 @@ export function KybStatus({
             <div className="flex flex-wrap gap-3">
               <Link
                 href="/dashboard/api-keys"
-                className="rounded-lg bg-app-ink px-4 py-3 text-sm font-semibold text-app-ink-fg hover:bg-app-fg2"
+                className="rounded-lg kyb-primary bg-app-ink px-5 py-3 text-sm font-semibold text-app-ink-fg hover:opacity-85"
               >
                 Back to API keys
               </Link>
@@ -164,7 +164,7 @@ export function KybStatus({
           View or edit this preview application
         </button>
       </section>
-      <aside className="rounded-xl border border-app-line p-6">
+      <aside className="kyb-card min-w-0 p-4 sm:p-6">
         <h2 className="text-sm font-bold">{approved ? "Providers opened for you" : "While you wait"}</h2>
         {approved ? (
           <div className="mt-5 space-y-5">

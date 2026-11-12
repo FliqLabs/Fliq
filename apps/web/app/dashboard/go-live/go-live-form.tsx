@@ -16,6 +16,7 @@ import { DocumentGuidance } from "./document-guidance";
 import { KybReview, ReviewGuidance } from "./kyb-review";
 import { KybStatus } from "./kyb-status";
 import { ApiError, fliqApi, type User } from "../../lib/fliq-api";
+import "./go-live.css";
 
 const emptyDraft: BusinessDraft = {
   legalName: "",
@@ -38,7 +39,7 @@ const comparison = [
 const fieldClass =
   "mt-2 w-full rounded-lg border border-app-line bg-app-panel px-3 py-2.5 text-sm font-normal outline-none transition-colors placeholder:text-app-muted focus:border-app-accent focus:ring-1 focus:ring-app-accent";
 const primaryClass =
-  "cursor-pointer rounded-lg bg-app-ink px-4 py-3 text-sm font-semibold text-app-ink-fg transition-colors hover:bg-app-fg2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-accent disabled:cursor-not-allowed disabled:opacity-40";
+  "kyb-primary cursor-pointer rounded-xl bg-app-ink px-5 py-3 text-sm font-semibold text-app-ink-fg transition-opacity hover:opacity-85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-accent disabled:cursor-not-allowed disabled:opacity-40";
 
 export function GoLiveForm() {
   const account = useQuery({ queryKey: ["me"], queryFn: () => fliqApi<User>("me") });
@@ -99,10 +100,13 @@ function BusinessPreview({ userId }: { userId: string }) {
   }
 
   return (
-    <main>
-      <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-[28px] leading-[34px] font-bold tracking-tight">
+    <main className="kyb-page">
+      <div className="kyb-heading">
+        <div className="min-w-0">
+          <p className="mb-2 text-xs font-semibold tracking-[0.12em] text-app-accent uppercase">
+            Business verification
+          </p>
+          <h1 className="text-[clamp(26px,3.5vw,34px)] leading-tight font-semibold tracking-tight">
             {step === 4 ? "You are live · sandbox preview" : "Go live with fliq"}
           </h1>
           <p className="mt-3 max-w-[690px] text-sm leading-6 text-app-muted">
@@ -110,7 +114,7 @@ function BusinessPreview({ userId }: { userId: string }) {
             days.
           </p>
         </div>
-        <span className="rounded-md bg-app-warn-soft px-3 py-2 text-xs font-bold text-app-warn">
+        <span className="w-fit max-w-full rounded-full border border-app-warn/25 bg-app-warn-soft px-3 py-2 text-xs leading-5 font-medium text-app-warn">
           Sandbox KYB preview · reviews are mocked
         </span>
       </div>
@@ -126,31 +130,33 @@ function BusinessPreview({ userId }: { userId: string }) {
           }}
         />
       ) : (
-        <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.85fr)_minmax(300px,1fr)]">
+        <div className="kyb-grid">
           <div className="min-w-0">
             <section
-              className="overflow-hidden rounded-xl border border-app-line"
+              className="kyb-form-card kyb-card overflow-hidden"
               aria-label="Business verification preview"
             >
-              <ol className="flex flex-wrap items-center gap-x-5 gap-y-3 border-b border-app-line bg-app-panel2 px-6 py-5 text-xs sm:text-[13px]">
+              <ol className="kyb-steps" aria-label="Verification progress">
                 {["Business", "Documents", "Review and submit"].map((label, index) => (
-                  <li
-                    key={label}
-                    aria-current={step === index ? "step" : undefined}
-                    className={`flex items-center gap-2 ${step === index ? "font-bold text-app-fg" : "text-app-muted"}`}
-                  >
-                    <span
-                      className={`flex size-6 items-center justify-center rounded-full ${step === index ? "bg-app-ink text-app-ink-fg" : "border border-app-line bg-app-panel"}`}
+                  <li key={label} aria-current={step === index ? "step" : undefined} className="min-w-0">
+                    <button
+                      type="button"
+                      disabled={index > step}
+                      onClick={() => setStep(index)}
+                      className="kyb-step"
+                      data-state={step === index ? "active" : index < step ? "complete" : "upcoming"}
                     >
-                      {index + 1}
-                    </span>
-                    {label}
+                      <span className="kyb-step-number" aria-hidden="true">
+                        {index < step ? "✓" : index + 1}
+                      </span>
+                      <span>{label}</span>
+                    </button>
                   </li>
                 ))}
               </ol>
               {step === 0 ? (
-                <form onSubmit={continueToDocuments} className="space-y-6 p-6">
-                  <div className="grid gap-5 sm:grid-cols-2">
+                <form onSubmit={continueToDocuments} className="space-y-6 p-4 sm:p-6 lg:p-7">
+                  <div className="kyb-fields">
                     <label className="text-[13px] font-bold">
                       Legal business name
                       <input
@@ -205,7 +211,7 @@ function BusinessPreview({ userId }: { userId: string }) {
                   </label>
                   <fieldset>
                     <legend className="mb-3 text-[13px] font-bold">Expected monthly volume</legend>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="grid grid-cols-2 gap-2">
                       {["Under $10k", "$10k to $50k", "$50k to $250k", "Over $250k"].map((volume) => (
                         <label key={volume} className="cursor-pointer">
                           <input
@@ -217,7 +223,7 @@ function BusinessPreview({ userId }: { userId: string }) {
                             onChange={() => update({ volume })}
                             className="peer sr-only"
                           />
-                          <span className="block rounded-lg border border-app-line px-3 py-2.5 text-xs peer-checked:border-app-accent peer-checked:bg-app-ink peer-checked:text-app-ink-fg peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2">
+                          <span className="flex min-h-11 items-center justify-center rounded-xl border border-app-line bg-app-panel px-3 py-2.5 text-center text-xs peer-checked:border-app-accent peer-checked:bg-app-ink peer-checked:text-app-ink-fg peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2">
                             {volume}
                           </span>
                         </label>
@@ -226,9 +232,12 @@ function BusinessPreview({ userId }: { userId: string }) {
                   </fieldset>
                   <fieldset>
                     <legend className="mb-3 text-[13px] font-bold">Corridors to open</legend>
-                    <div className="flex flex-wrap gap-x-5 gap-y-3">
+                    <div className="grid gap-3">
                       {countries.map(({ corridor: value, corridorLabel: label, icon }) => (
-                        <label key={value} className="flex cursor-pointer items-start gap-2 text-[13px]">
+                        <label
+                          key={value}
+                          className="flex min-w-0 cursor-pointer items-start gap-2 rounded-xl border border-app-line bg-app-panel px-3 py-3 text-[13px]"
+                        >
                           <input
                             type="checkbox"
                             checked={draft.corridors.includes(value)}
@@ -257,7 +266,7 @@ function BusinessPreview({ userId }: { userId: string }) {
                       ))}
                     </div>
                   </fieldset>
-                  <div className="flex flex-wrap items-center justify-between gap-4 border-t border-app-line pt-5">
+                  <div className="kyb-actions border-t border-app-line pt-5">
                     <p className="text-xs text-app-muted">Saved as you type for this session.</p>
                     <button type="submit" className={primaryClass}>
                       Continue to documents
@@ -277,7 +286,7 @@ function BusinessPreview({ userId }: { userId: string }) {
               )}
             </section>
             {step < 2 && (
-              <section className="mt-5 rounded-xl border border-app-line p-6">
+              <section className="kyb-card mt-5 p-4 sm:p-6">
                 <h2 className="text-sm font-bold">Documents you will need in step 2</h2>
                 <ul className="mt-4 grid gap-x-6 gap-y-3 text-[13px] text-app-muted sm:grid-cols-2">
                   {documents.map((document) => (
@@ -295,48 +304,44 @@ function BusinessPreview({ userId }: { userId: string }) {
           ) : step === 2 ? (
             <ReviewGuidance />
           ) : (
-            <aside className="rounded-xl border border-app-line p-5">
+            <aside className="kyb-card min-w-0 p-4 sm:p-6">
               <div className="flex items-center justify-between gap-2">
                 <h2 className="text-sm font-bold">What live unlocks</h2>
                 <span className="rounded-md bg-app-panel2 px-2 py-1 text-xs text-app-muted">Not started</span>
               </div>
-              <table className="mt-5 w-full table-fixed text-left text-xs leading-5">
-                <caption className="sr-only">Sandbox and live features</caption>
-                <thead>
-                  <tr className="text-[10px] tracking-wider text-app-muted">
-                    <th className="w-[24%] pb-3">
-                      <span className="sr-only">Feature</span>
-                    </th>
-                    <th className="w-[33%] pb-3 font-medium">SANDBOX</th>
-                    <th className="pb-3 font-medium">LIVE</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {comparison.map(([label, sandbox, live]) => (
-                    <tr key={label} className="border-t border-app-line">
-                      <th scope="row" className="py-3 pr-2 align-top font-medium">
-                        {label}
-                      </th>
-                      <td className="py-3 pr-3 align-top text-app-muted">{sandbox}</td>
-                      <td className="py-3 align-top">
+              <div className="mt-5 grid grid-cols-2 gap-3 rounded-xl bg-app-panel2 p-3 text-[11px] font-semibold tracking-wide text-app-fg2 uppercase">
+                <span>Sandbox</span>
+                <span>Live</span>
+              </div>
+              <dl className="divide-y divide-app-line">
+                {comparison.map(([label, sandbox, live]) => (
+                  <div key={label} className="py-4">
+                    <dt className="mb-2 text-xs font-semibold">{label}</dt>
+                    <dd className="grid grid-cols-2 gap-4 text-xs leading-5">
+                      <span className="min-w-0 break-words text-app-fg2">
+                        <span className="sr-only">Sandbox: </span>
+                        {sandbox}
+                      </span>
+                      <span className="min-w-0 break-words">
+                        <span className="sr-only">Live: </span>
                         {live}
                         {label === "Providers" && (
-                          <span className="mt-2 flex items-center gap-1.5" aria-label="Three live providers">
+                          <span className="mt-2 flex flex-wrap gap-2" aria-label="Three live providers">
                             {[yellowIcon, flashIcon, blueStarIcon].map((icon, index) => (
                               <Image
                                 key={index}
                                 src={icon}
                                 alt=""
-                                className="size-[22px] shrink-0 object-contain"
+                                className="size-6 rounded-md bg-white p-0.5 object-contain"
                               />
                             ))}
                           </span>
                         )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      </span>
+                    </dd>
+                  </div>
+                ))}
+              </dl>
               <section className="mt-4 border-t border-app-line pt-5">
                 <h2 className="text-sm font-bold">What happens after you submit</h2>
                 <p className="mt-4 text-[13px] leading-6 text-app-muted">

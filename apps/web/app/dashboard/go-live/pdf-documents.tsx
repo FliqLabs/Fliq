@@ -44,7 +44,7 @@ export function PdfDocuments({
   }
 
   return (
-    <div className="space-y-5 p-6">
+    <div className="space-y-5 p-4 sm:p-6 lg:p-7">
       <div>
         <h2 className="text-lg font-bold">Upload your documents</h2>
         <p className="mt-2 text-sm leading-6 text-app-muted">
@@ -95,8 +95,8 @@ export function PdfDocuments({
               <span className="text-xs text-app-muted">or drag and drop it here</span>
             </label>
             {files[index] && (
-              <div className="mt-3 flex items-start justify-between gap-3 text-xs">
-                <p className="min-w-0 break-all text-app-fg2">
+              <div className="mt-3 flex flex-wrap items-start gap-x-4 gap-y-2 text-xs">
+                <p className="min-w-0 basis-full break-all text-app-fg2 sm:flex-1 sm:basis-auto">
                   {files[index].name} · {formatFileSize(files[index].size)} ·{" "}
                   <span className="text-app-good">Looks good</span>
                 </p>
@@ -136,7 +136,7 @@ export function PdfDocuments({
       <p role="status" className="text-xs text-app-muted">
         {Object.keys(files).length} of {documentRequirements.length} PDFs selected.
       </p>
-      <div className="flex flex-wrap items-center justify-between gap-4 border-t border-app-line pt-5">
+      <div className="kyb-actions border-t border-app-line pt-5">
         <button
           type="button"
           onClick={onBack}
@@ -150,7 +150,7 @@ export function PdfDocuments({
             !documentRequirements.every((_, index) => files[index]) || Object.values(errors).some(Boolean)
           }
           onClick={onContinue}
-          className="cursor-pointer rounded-lg bg-app-ink px-4 py-3 text-sm font-semibold text-app-ink-fg hover:bg-app-fg2 disabled:cursor-not-allowed disabled:opacity-40"
+          className="cursor-pointer rounded-lg kyb-primary bg-app-ink px-5 py-3 text-sm font-semibold text-app-ink-fg hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-40"
         >
           Continue to review
         </button>

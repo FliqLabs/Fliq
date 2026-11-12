@@ -7,7 +7,7 @@ const checks = [
 
 export function DocumentGuidance() {
   return (
-    <aside className="space-y-6 rounded-xl border border-app-line p-6">
+    <aside className="space-y-6 kyb-card min-w-0 p-4 sm:p-6">
       <section>
         <h2 className="text-sm font-bold">What we check</h2>
         <ol className="mt-5 space-y-4 text-[13px] leading-5">
