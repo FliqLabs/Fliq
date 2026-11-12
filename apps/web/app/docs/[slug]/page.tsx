@@ -50,7 +50,7 @@ export default function DocsArticle({ params }: { params: Promise<{ slug: string
     <Suspense
       fallback={
         <main id="docs-content" className="docs-article" aria-busy="true">
-          <p role="status" className="text-[13px] text-zinc-500">
+          <p role="status" className="text-[13px] text-[var(--muted)]">
             Loading documentation…
           </p>
         </main>
@@ -72,7 +72,7 @@ async function ResolvedDocsArticle({ params }: { params: Promise<{ slug: string 
   return (
     <main id="docs-content" className="docs-article">
       {slug !== "api" && (
-        <aside className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-[11px] leading-5 text-amber-900">
+        <aside className="rounded-lg border border-[var(--warn)] bg-[var(--warn-soft)] px-4 py-3 text-[11px] leading-5 text-[var(--warn)]">
           Sandbox documentation preview. Some features shown in the product design are still being
           implemented. Use the{" "}
           <Link href="/docs/api" className="font-semibold underline">
@@ -84,12 +84,15 @@ async function ResolvedDocsArticle({ params }: { params: Promise<{ slug: string 
       <Article />
       <nav
         aria-label="Previous and next article"
-        className="mt-4 grid grid-cols-2 gap-4 border-t border-[#e6e6e6] pt-6 text-[13px]"
+        className="mt-4 grid grid-cols-2 gap-4 border-t border-[var(--line)] pt-6 text-[13px]"
       >
         <div>
           {previous && (
-            <Link href={`/docs/${previous.slug}`} className="block rounded-xl border border-[#e6e6e6] p-4">
-              <span className="block text-[11px] text-zinc-500">Previous</span>
+            <Link
+              href={`/docs/${previous.slug}`}
+              className="block rounded-xl border border-[var(--line)] p-4"
+            >
+              <span className="block text-[11px] text-[var(--muted)]">Previous</span>
               <span className="mt-1 block font-semibold">← {previous.title}</span>
             </Link>
           )}
@@ -98,9 +101,9 @@ async function ResolvedDocsArticle({ params }: { params: Promise<{ slug: string 
           {next && (
             <Link
               href={`/docs/${next.slug}`}
-              className="block rounded-xl border border-[#e6e6e6] p-4 text-right"
+              className="block rounded-xl border border-[var(--line)] p-4 text-right"
             >
-              <span className="block text-[11px] text-zinc-500">Next</span>
+              <span className="block text-[11px] text-[var(--muted)]">Next</span>
               <span className="mt-1 block font-semibold">{next.title} →</span>
             </Link>
           )}

@@ -15,7 +15,7 @@ export default function DocsSDKContent() {
         >
           {"SDK"}
         </h1>
-        <p style={{ margin: "0", fontSize: "14px", color: "#6B6B6B", lineHeight: "1.5" }}>
+        <p style={{ margin: "0", fontSize: "14px", color: "var(--muted)", lineHeight: "1.5" }}>
           {
             "The proposed TypeScript SDK interface is shown below. This repository currently provides generated OpenAPI types; a published SDK package is not included. Python and Swift are planned after the hackathon."
           }
@@ -71,7 +71,7 @@ export default function DocsSDKContent() {
       </section>
       <section style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
         <h2 style={{ fontSize: "16px", fontWeight: 600, letterSpacing: "-0.01em" }}>{"What it gives you"}</h2>
-        <div style={{ border: "1px solid #E6E6E6", borderRadius: "14px", overflow: "hidden" }}>
+        <div style={{ border: "1px solid var(--line)", borderRadius: "14px", overflow: "hidden" }}>
           <div
             className="docs-columns"
             style={{
@@ -79,13 +79,13 @@ export default function DocsSDKContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "10px 16px",
-              background: "#F6F6F6",
+              background: "var(--panel2)",
               fontSize: "11px",
               fontWeight: 600,
-              color: "#6B6B6B",
+              color: "var(--muted)",
               letterSpacing: "0.04em",
               textTransform: "uppercase",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
             }}
           >
             <span>{"Thing"}</span>
@@ -99,7 +99,7 @@ export default function DocsSDKContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "11px 16px",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
               fontSize: "13px",
               alignItems: "baseline",
             }}
@@ -107,8 +107,8 @@ export default function DocsSDKContent() {
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
               {"Types"}
             </span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"generated"}</span>
-            <span style={{ color: "#3A3A3A" }}>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"generated"}</span>
+            <span style={{ color: "var(--fg2)" }}>
               {"Every request and response from spec/openapi.yaml. pnpm --filter @fliq/spec generate."}
             </span>
           </div>
@@ -119,7 +119,7 @@ export default function DocsSDKContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "11px 16px",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
               fontSize: "13px",
               alignItems: "baseline",
             }}
@@ -127,8 +127,8 @@ export default function DocsSDKContent() {
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
               {"Retries"}
             </span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"built in"}</span>
-            <span style={{ color: "#3A3A3A" }}>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"built in"}</span>
+            <span style={{ color: "var(--fg2)" }}>
               {"429 and 503 with backoff. POST /payouts only with an idempotency key."}
             </span>
           </div>
@@ -139,7 +139,7 @@ export default function DocsSDKContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "11px 16px",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
               fontSize: "13px",
               alignItems: "baseline",
             }}
@@ -147,8 +147,8 @@ export default function DocsSDKContent() {
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
               {"watch()"}
             </span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"helper"}</span>
-            <span style={{ color: "#3A3A3A" }}>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"helper"}</span>
+            <span style={{ color: "var(--fg2)" }}>
               {"Polls GET /payouts/{id} until a terminal state, or subscribes to your webhook relay."}
             </span>
           </div>
@@ -159,7 +159,7 @@ export default function DocsSDKContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "11px 16px",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
               fontSize: "13px",
               alignItems: "baseline",
             }}
@@ -167,8 +167,8 @@ export default function DocsSDKContent() {
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
               {"webhooks.verify()"}
             </span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"helper"}</span>
-            <span style={{ color: "#3A3A3A" }}>{"Signature check with constant-time compare."}</span>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"helper"}</span>
+            <span style={{ color: "var(--fg2)" }}>{"Signature check with constant-time compare."}</span>
           </div>
           <div
             className="docs-columns"
@@ -184,8 +184,8 @@ export default function DocsSDKContent() {
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
               {"Sandbox"}
             </span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"default"}</span>
-            <span style={{ color: "#3A3A3A" }}>{"A test key selects sandbox automatically."}</span>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"default"}</span>
+            <span style={{ color: "var(--fg2)" }}>{"A test key selects sandbox automatically."}</span>
           </div>
         </div>
       </section>

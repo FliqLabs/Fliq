@@ -98,7 +98,7 @@ export default function QuickstartContent() {
           <br />
           in four calls
         </h1>
-        <p className="text-sm leading-6 text-[#6b6b6b]">
+        <p className="text-sm leading-6 text-[var(--muted)]">
           Get a key, quote, pay, watch the webhook. Start in sandbox with the canonical demo recipient.
         </p>
         <nav aria-label="Quickstart steps" className="flex flex-wrap gap-2">
@@ -106,23 +106,23 @@ export default function QuickstartContent() {
             <a
               key={title}
               href={`#s${index + 1}`}
-              className="inline-flex items-center gap-2 rounded-full border border-[#e6e6e6] px-3 py-1.5 text-[12px]"
+              className="inline-flex items-center gap-2 rounded-full border border-[var(--line)] px-3 py-1.5 text-[12px]"
             >
-              <span className="flex size-[18px] items-center justify-center rounded-full bg-[#111] text-[11px] text-white">
+              <span className="flex size-[18px] items-center justify-center rounded-full bg-[var(--ink)] text-[11px] text-[var(--ink-fg)]">
                 {index + 1}
               </span>
               {title}
             </a>
           ))}
         </nav>
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#e6e6e6] bg-[#f6f6f6] px-3.5 py-3 text-[13px]">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--line)] bg-[var(--panel2)] px-3.5 py-3 text-[13px]">
           <span className="flex items-center gap-2.5">
             <span aria-hidden="true" className="size-2 rounded-full bg-[#e8a317]" />
             Your sandbox key is available at workspace creation.
           </span>
           <Link
             href="/dashboard/api-keys"
-            className="rounded-[10px] border border-[#e6e6e6] bg-white px-3.5 py-2 text-[12px] font-semibold"
+            className="rounded-[10px] border border-[var(--line)] bg-[var(--panel)] px-3.5 py-2 text-[12px] font-semibold"
           >
             View keys
           </Link>
@@ -130,7 +130,7 @@ export default function QuickstartContent() {
         <div
           role="group"
           aria-label="Example language"
-          className="flex w-fit flex-wrap gap-0.5 rounded-[10px] bg-[#f6f6f6] p-[3px]"
+          className="flex w-fit flex-wrap gap-0.5 rounded-[10px] bg-[var(--panel2)] p-[3px]"
         >
           {(["curl", "TypeScript", "MCP"] as const).map((option) => (
             <button
@@ -138,7 +138,7 @@ export default function QuickstartContent() {
               type="button"
               aria-pressed={option === language}
               onClick={() => setLanguage(option)}
-              className={`cursor-pointer rounded-lg px-3.5 py-2 text-[12px] ${language === option ? "bg-white font-semibold shadow-sm" : "text-[#6b6b6b] hover:text-zinc-950"}`}
+              className={`cursor-pointer rounded-lg px-3.5 py-2 text-[12px] ${language === option ? "bg-[var(--panel)] font-semibold shadow-sm" : "text-[var(--muted)] hover:text-[var(--fg)]"}`}
             >
               {option}
             </button>
@@ -148,14 +148,14 @@ export default function QuickstartContent() {
       {steps.map((step, index) => (
         <section key={step.title} id={`s${index + 1}`} className="flex flex-col gap-3">
           <h2 className="flex items-center gap-3 text-base font-semibold">
-            <span className="flex size-7 items-center justify-center rounded-full bg-[#111] text-[13px] text-white">
+            <span className="flex size-7 items-center justify-center rounded-full bg-[var(--ink)] text-[13px] text-[var(--ink-fg)]">
               {index + 1}
             </span>
             {step.title}
           </h2>
-          <p className="text-[13px] leading-6 text-[#6b6b6b]">{step.description}</p>
+          <p className="text-[13px] leading-6 text-[var(--muted)]">{step.description}</p>
           <CodeBlock key={language} text={examples[language][index]} />
-          <p className="text-[11px] font-semibold text-zinc-500">
+          <p className="text-[11px] font-semibold text-[var(--muted)]">
             {index === 1 ? "Example response" : "Keep in mind"}
           </p>
           <CodeBlock text={step.output} />
@@ -164,13 +164,13 @@ export default function QuickstartContent() {
           </Link>
         </section>
       ))}
-      <section className="rounded-xl border border-[#e6e6e6] p-5">
+      <section className="rounded-xl border border-[var(--line)] p-5">
         <h2 className="text-base font-semibold">What next?</h2>
         <div className="mt-4 grid gap-4 text-[13px] sm:grid-cols-2">
-          <Link href="/docs/agents" className="rounded-lg bg-zinc-50 p-4">
+          <Link href="/docs/agents" className="rounded-lg bg-[var(--panel2)] p-4">
             Give your agent a capped key →
           </Link>
-          <Link href="/dashboard/go-live" className="rounded-lg bg-zinc-50 p-4">
+          <Link href="/dashboard/go-live" className="rounded-lg bg-[var(--panel2)] p-4">
             Prepare your business for live payouts →
           </Link>
         </div>

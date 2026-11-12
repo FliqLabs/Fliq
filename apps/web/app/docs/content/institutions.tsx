@@ -15,7 +15,7 @@ export default function DocsInstitutionsContent() {
         >
           {"Institutions"}
         </h1>
-        <p style={{ margin: "0", fontSize: "14px", color: "#6B6B6B", lineHeight: "1.5" }}>
+        <p style={{ margin: "0", fontSize: "14px", color: "var(--muted)", lineHeight: "1.5" }}>
           {
             "Banks and mobile-money providers you can pay into, by country, with the logo key the app uses. Public, no key needed, cached for an hour."
           }
@@ -94,7 +94,7 @@ export default function DocsInstitutionsContent() {
           <span style={{ color: "#F2C879" }}>{'"opay"'}</span>
           {" }\n] }"}
         </CodeBlock>
-        <div style={{ border: "1px solid #E6E6E6", borderRadius: "14px", overflow: "hidden" }}>
+        <div style={{ border: "1px solid var(--line)", borderRadius: "14px", overflow: "hidden" }}>
           <div
             className="docs-columns"
             style={{
@@ -102,13 +102,13 @@ export default function DocsInstitutionsContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "10px 16px",
-              background: "#F6F6F6",
+              background: "var(--panel2)",
               fontSize: "11px",
               fontWeight: 600,
-              color: "#6B6B6B",
+              color: "var(--muted)",
               letterSpacing: "0.04em",
               textTransform: "uppercase",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
             }}
           >
             <span>{"Field"}</span>
@@ -122,7 +122,7 @@ export default function DocsInstitutionsContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "11px 16px",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
               fontSize: "13px",
               alignItems: "baseline",
             }}
@@ -130,8 +130,8 @@ export default function DocsInstitutionsContent() {
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
               {"country"}
             </span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"query"}</span>
-            <span style={{ color: "#3A3A3A" }}>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"query"}</span>
+            <span style={{ color: "var(--fg2)" }}>
               {"ng (default), ke, gh, id, ph. Only ng and ke have live providers today."}
             </span>
           </div>
@@ -142,14 +142,14 @@ export default function DocsInstitutionsContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "11px 16px",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
               fontSize: "13px",
               alignItems: "baseline",
             }}
           >
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>{"code"}</span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"string"}</span>
-            <span style={{ color: "#3A3A3A" }}>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"string"}</span>
+            <span style={{ color: "var(--fg2)" }}>
               {"The code you pass as bank to verify and payouts. CBN codes for NG banks."}
             </span>
           </div>
@@ -160,14 +160,14 @@ export default function DocsInstitutionsContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "11px 16px",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
               fontSize: "13px",
               alignItems: "baseline",
             }}
           >
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>{"type"}</span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"enum"}</span>
-            <span style={{ color: "#3A3A3A" }}>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"enum"}</span>
+            <span style={{ color: "var(--fg2)" }}>
               {"bank or mobile_money. Mobile money takes a phone number."}
             </span>
           </div>
@@ -185,14 +185,14 @@ export default function DocsInstitutionsContent() {
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
               {"logo_key"}
             </span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"string"}</span>
-            <span style={{ color: "#3A3A3A" }}>{"Asset name in the app bundle and the web sprite."}</span>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"string"}</span>
+            <span style={{ color: "var(--fg2)" }}>{"Asset name in the app bundle and the web sprite."}</span>
           </div>
         </div>
       </section>
       <section style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
         <h2 style={{ fontSize: "16px", fontWeight: 600, letterSpacing: "-0.01em" }}>{"Coverage today"}</h2>
-        <div style={{ border: "1px solid #E6E6E6", borderRadius: "14px", overflow: "hidden" }}>
+        <div style={{ border: "1px solid var(--line)", borderRadius: "14px", overflow: "hidden" }}>
           <div
             className="docs-columns"
             style={{
@@ -200,13 +200,13 @@ export default function DocsInstitutionsContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "10px 16px",
-              background: "#F6F6F6",
+              background: "var(--panel2)",
               fontSize: "11px",
               fontWeight: 600,
-              color: "#6B6B6B",
+              color: "var(--muted)",
               letterSpacing: "0.04em",
               textTransform: "uppercase",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
             }}
           >
             <span>{"Country"}</span>
@@ -220,7 +220,7 @@ export default function DocsInstitutionsContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "11px 16px",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
               fontSize: "13px",
               alignItems: "baseline",
             }}
@@ -228,8 +228,8 @@ export default function DocsInstitutionsContent() {
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
               {"Nigeria"}
             </span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"NGN"}</span>
-            <span style={{ color: "#3A3A3A" }}>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"NGN"}</span>
+            <span style={{ color: "var(--fg2)" }}>
               {"All NIP banks, OPay, PalmPay, Moniepoint via Paycrest and Busha. Fonbnk for mobile money."}
             </span>
           </div>
@@ -240,7 +240,7 @@ export default function DocsInstitutionsContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "11px 16px",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
               fontSize: "13px",
               alignItems: "baseline",
             }}
@@ -248,8 +248,8 @@ export default function DocsInstitutionsContent() {
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
               {"Kenya"}
             </span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"KES"}</span>
-            <span style={{ color: "#3A3A3A" }}>{"M-Pesa via Busha."}</span>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"KES"}</span>
+            <span style={{ color: "var(--fg2)" }}>{"M-Pesa via Busha."}</span>
           </div>
           <div
             className="docs-columns"
@@ -258,7 +258,7 @@ export default function DocsInstitutionsContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "11px 16px",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
               fontSize: "13px",
               alignItems: "baseline",
             }}
@@ -266,8 +266,8 @@ export default function DocsInstitutionsContent() {
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
               {"Ghana"}
             </span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"GHS"}</span>
-            <span style={{ color: "#3A3A3A" }}>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"GHS"}</span>
+            <span style={{ color: "var(--fg2)" }}>
               {"Mobile money via Bitnob. Sandbox only until Bitnob KYB."}
             </span>
           </div>
@@ -285,16 +285,16 @@ export default function DocsInstitutionsContent() {
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
               {"Indonesia, Philippines"}
             </span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"IDR, PHP"}</span>
-            <span style={{ color: "#3A3A3A" }}>{"TransFi. Listed, live after KYB."}</span>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"IDR, PHP"}</span>
+            <span style={{ color: "var(--fg2)" }}>{"TransFi. Listed, live after KYB."}</span>
           </div>
         </div>
         <div
           style={{
-            border: "1px solid #E6E6E6",
+            border: "1px solid var(--line)",
             borderRadius: "12px",
-            background: "#F6F6F6",
-            color: "#0A0A0A",
+            background: "var(--panel2)",
+            color: "var(--fg)",
             padding: "12px 14px",
             fontSize: "13px",
             lineHeight: "1.5",

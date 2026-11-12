@@ -15,7 +15,7 @@ export default function DocsPayoutsContent() {
         >
           {"Payouts"}
         </h1>
-        <p style={{ margin: "0", fontSize: "14px", color: "#6B6B6B", lineHeight: "1.5" }}>
+        <p style={{ margin: "0", fontSize: "14px", color: "var(--muted)", lineHeight: "1.5" }}>
           {
             "One call moves money. You pass a quote and a verified account, send USDC to the deposit address, and watch the state machine finish in about 20 seconds."
           }
@@ -34,9 +34,9 @@ export default function DocsPayoutsContent() {
               flexDirection: "column",
               gap: "6px",
               padding: "14px 16px",
-              border: "1px solid #E6E6E6",
+              border: "1px solid var(--line)",
               borderRadius: "12px",
-              background: "#ffffff",
+              background: "var(--panel)",
               minWidth: "0",
             }}
           >
@@ -46,8 +46,8 @@ export default function DocsPayoutsContent() {
                   width: "22px",
                   height: "22px",
                   borderRadius: "11px",
-                  background: "#111111",
-                  color: "#fff",
+                  background: "var(--ink)",
+                  color: "var(--ink-fg)",
                   fontSize: "11px",
                   fontWeight: 600,
                   display: "inline-flex",
@@ -59,7 +59,7 @@ export default function DocsPayoutsContent() {
               </span>
               <span style={{ fontSize: "13px", fontWeight: 600 }}>{"awaiting_deposit"}</span>
             </span>
-            <span style={{ fontSize: "12px", color: "#6B6B6B", lineHeight: "1.45" }}>
+            <span style={{ fontSize: "12px", color: "var(--muted)", lineHeight: "1.45" }}>
               {"Created. Deposit address and amount returned."}
             </span>
           </div>
@@ -84,9 +84,9 @@ export default function DocsPayoutsContent() {
               flexDirection: "column",
               gap: "6px",
               padding: "14px 16px",
-              border: "1px solid #E6E6E6",
+              border: "1px solid var(--line)",
               borderRadius: "12px",
-              background: "#ffffff",
+              background: "var(--panel)",
               minWidth: "0",
             }}
           >
@@ -96,8 +96,8 @@ export default function DocsPayoutsContent() {
                   width: "22px",
                   height: "22px",
                   borderRadius: "11px",
-                  background: "#111111",
-                  color: "#fff",
+                  background: "var(--ink)",
+                  color: "var(--ink-fg)",
                   fontSize: "11px",
                   fontWeight: 600,
                   display: "inline-flex",
@@ -109,7 +109,7 @@ export default function DocsPayoutsContent() {
               </span>
               <span style={{ fontSize: "13px", fontWeight: 600 }}>{"deposit_seen"}</span>
             </span>
-            <span style={{ fontSize: "12px", color: "#6B6B6B", lineHeight: "1.45" }}>
+            <span style={{ fontSize: "12px", color: "var(--muted)", lineHeight: "1.45" }}>
               {"USDC landed on NEAR. Provider order placed."}
             </span>
           </div>
@@ -134,9 +134,9 @@ export default function DocsPayoutsContent() {
               flexDirection: "column",
               gap: "6px",
               padding: "14px 16px",
-              border: "1px solid #E6E6E6",
+              border: "1px solid var(--line)",
               borderRadius: "12px",
-              background: "#ffffff",
+              background: "var(--panel)",
               minWidth: "0",
             }}
           >
@@ -146,8 +146,8 @@ export default function DocsPayoutsContent() {
                   width: "22px",
                   height: "22px",
                   borderRadius: "11px",
-                  background: "#111111",
-                  color: "#fff",
+                  background: "var(--ink)",
+                  color: "var(--ink-fg)",
                   fontSize: "11px",
                   fontWeight: 600,
                   display: "inline-flex",
@@ -159,7 +159,7 @@ export default function DocsPayoutsContent() {
               </span>
               <span style={{ fontSize: "13px", fontWeight: 600 }}>{"paying_out"}</span>
             </span>
-            <span style={{ fontSize: "12px", color: "#6B6B6B", lineHeight: "1.45" }}>
+            <span style={{ fontSize: "12px", color: "var(--muted)", lineHeight: "1.45" }}>
               {"Provider is sending over NIP or M-Pesa."}
             </span>
           </div>
@@ -184,9 +184,9 @@ export default function DocsPayoutsContent() {
               flexDirection: "column",
               gap: "6px",
               padding: "14px 16px",
-              border: "1px solid #E6E6E6",
+              border: "1px solid var(--line)",
               borderRadius: "12px",
-              background: "#ffffff",
+              background: "var(--panel)",
               minWidth: "0",
             }}
           >
@@ -196,8 +196,8 @@ export default function DocsPayoutsContent() {
                   width: "22px",
                   height: "22px",
                   borderRadius: "11px",
-                  background: "#111111",
-                  color: "#fff",
+                  background: "var(--ink)",
+                  color: "var(--ink-fg)",
                   fontSize: "11px",
                   fontWeight: 600,
                   display: "inline-flex",
@@ -209,12 +209,12 @@ export default function DocsPayoutsContent() {
               </span>
               <span style={{ fontSize: "13px", fontWeight: 600 }}>{"settled"}</span>
             </span>
-            <span style={{ fontSize: "12px", color: "#6B6B6B", lineHeight: "1.45" }}>
+            <span style={{ fontSize: "12px", color: "var(--muted)", lineHeight: "1.45" }}>
               {"Money in the account. NIP session attached."}
             </span>
           </div>
         </div>
-        <p style={{ margin: "0", fontSize: "13px", color: "#6B6B6B", lineHeight: "1.5" }}>
+        <p style={{ margin: "0", fontSize: "13px", color: "var(--muted)", lineHeight: "1.5" }}>
           {"Two side exits: "}
           <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
             {"refunded"}
@@ -313,7 +313,7 @@ export default function DocsPayoutsContent() {
           <span style={{ color: "#F2C879" }}>{'"2026-10-29T13:02:10Z"'}</span>
           {" }]\n}"}
         </CodeBlock>
-        <div style={{ border: "1px solid #E6E6E6", borderRadius: "14px", overflow: "hidden" }}>
+        <div style={{ border: "1px solid var(--line)", borderRadius: "14px", overflow: "hidden" }}>
           <div
             className="docs-columns"
             style={{
@@ -321,13 +321,13 @@ export default function DocsPayoutsContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "10px 16px",
-              background: "#F6F6F6",
+              background: "var(--panel2)",
               fontSize: "11px",
               fontWeight: 600,
-              color: "#6B6B6B",
+              color: "var(--muted)",
               letterSpacing: "0.04em",
               textTransform: "uppercase",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
             }}
           >
             <span>{"Field"}</span>
@@ -341,7 +341,7 @@ export default function DocsPayoutsContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "11px 16px",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
               fontSize: "13px",
               alignItems: "baseline",
             }}
@@ -349,8 +349,8 @@ export default function DocsPayoutsContent() {
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
               {"quote_id"}
             </span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"string"}</span>
-            <span style={{ color: "#3A3A3A" }}>{"From /quote. Must be younger than 90 seconds."}</span>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"string"}</span>
+            <span style={{ color: "var(--fg2)" }}>{"From /quote. Must be younger than 90 seconds."}</span>
           </div>
           <div
             className="docs-columns"
@@ -359,14 +359,14 @@ export default function DocsPayoutsContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "11px 16px",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
               fontSize: "13px",
               alignItems: "baseline",
             }}
           >
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>{"bank"}</span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"string"}</span>
-            <span style={{ color: "#3A3A3A" }}>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"string"}</span>
+            <span style={{ color: "var(--fg2)" }}>
               {"Institution code, e.g. 058 for GTBank. See Institutions."}
             </span>
           </div>
@@ -377,7 +377,7 @@ export default function DocsPayoutsContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "11px 16px",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
               fontSize: "13px",
               alignItems: "baseline",
             }}
@@ -385,8 +385,8 @@ export default function DocsPayoutsContent() {
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
               {"number"}
             </span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"string"}</span>
-            <span style={{ color: "#3A3A3A" }}>{"10-digit NUBAN or M-Pesa phone number."}</span>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"string"}</span>
+            <span style={{ color: "var(--fg2)" }}>{"10-digit NUBAN or M-Pesa phone number."}</span>
           </div>
           <div
             className="docs-columns"
@@ -395,7 +395,7 @@ export default function DocsPayoutsContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "11px 16px",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
               fontSize: "13px",
               alignItems: "baseline",
             }}
@@ -403,8 +403,8 @@ export default function DocsPayoutsContent() {
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
               {"Idempotency-Key"}
             </span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"header"}</span>
-            <span style={{ color: "#3A3A3A" }}>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"header"}</span>
+            <span style={{ color: "var(--fg2)" }}>
               {"Any string, kept 24 hours. Same key, same payout, no double send."}
             </span>
           </div>
@@ -415,7 +415,7 @@ export default function DocsPayoutsContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "11px 16px",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
               fontSize: "13px",
               alignItems: "baseline",
             }}
@@ -423,8 +423,8 @@ export default function DocsPayoutsContent() {
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
               {"reference"}
             </span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"string"}</span>
-            <span style={{ color: "#3A3A3A" }}>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"string"}</span>
+            <span style={{ color: "var(--fg2)" }}>
               {"Optional, yours. Shows on the receipt and in webhooks."}
             </span>
           </div>
@@ -442,8 +442,8 @@ export default function DocsPayoutsContent() {
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
               {"metadata"}
             </span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"object"}</span>
-            <span style={{ color: "#3A3A3A" }}>{"Optional, up to 1 KB. Returned untouched."}</span>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"object"}</span>
+            <span style={{ color: "var(--fg2)" }}>{"Optional, up to 1 KB. Returned untouched."}</span>
           </div>
         </div>
       </section>
@@ -451,7 +451,7 @@ export default function DocsPayoutsContent() {
         <h2 style={{ fontSize: "16px", fontWeight: 600, letterSpacing: "-0.01em" }}>
           {"Timeline from the fixture"}
         </h2>
-        <div style={{ border: "1px solid #E6E6E6", borderRadius: "14px", overflow: "hidden" }}>
+        <div style={{ border: "1px solid var(--line)", borderRadius: "14px", overflow: "hidden" }}>
           <div
             className="docs-columns"
             style={{
@@ -459,13 +459,13 @@ export default function DocsPayoutsContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "10px 16px",
-              background: "#F6F6F6",
+              background: "var(--panel2)",
               fontSize: "11px",
               fontWeight: 600,
-              color: "#6B6B6B",
+              color: "var(--muted)",
               letterSpacing: "0.04em",
               textTransform: "uppercase",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
             }}
           >
             <span>{"State"}</span>
@@ -479,7 +479,7 @@ export default function DocsPayoutsContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "11px 16px",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
               fontSize: "13px",
               alignItems: "baseline",
             }}
@@ -487,8 +487,8 @@ export default function DocsPayoutsContent() {
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
               {"awaiting_deposit"}
             </span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"13:02:10Z"}</span>
-            <span style={{ color: "#3A3A3A" }}>{"Payout created from q_31ad77e0."}</span>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"13:02:10Z"}</span>
+            <span style={{ color: "var(--fg2)" }}>{"Payout created from q_31ad77e0."}</span>
           </div>
           <div
             className="docs-columns"
@@ -497,7 +497,7 @@ export default function DocsPayoutsContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "11px 16px",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
               fontSize: "13px",
               alignItems: "baseline",
             }}
@@ -505,8 +505,8 @@ export default function DocsPayoutsContent() {
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
               {"deposit_seen"}
             </span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"13:02:11Z"}</span>
-            <span style={{ color: "#3A3A3A" }}>{"50.00 USDC at fliq-vault.testnet, 1 second later."}</span>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"13:02:11Z"}</span>
+            <span style={{ color: "var(--fg2)" }}>{"50.00 USDC at fliq-vault.testnet, 1 second later."}</span>
           </div>
           <div
             className="docs-columns"
@@ -515,7 +515,7 @@ export default function DocsPayoutsContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "11px 16px",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
               fontSize: "13px",
               alignItems: "baseline",
             }}
@@ -523,8 +523,8 @@ export default function DocsPayoutsContent() {
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
               {"paying_out"}
             </span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"13:02:13Z"}</span>
-            <span style={{ color: "#3A3A3A" }}>{"Paycrest order pc_8c9d1a4b10 placed."}</span>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"13:02:13Z"}</span>
+            <span style={{ color: "var(--fg2)" }}>{"Paycrest order pc_8c9d1a4b10 placed."}</span>
           </div>
           <div
             className="docs-columns"
@@ -540,8 +540,8 @@ export default function DocsPayoutsContent() {
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
               {"settled"}
             </span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"13:02:32Z"}</span>
-            <span style={{ color: "#3A3A3A" }}>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"13:02:32Z"}</span>
+            <span style={{ color: "var(--fg2)" }}>
               {"NIP 000013251029140213 in DARA OKONKWO's GTBank account. 21 seconds end to end."}
             </span>
           </div>
@@ -556,7 +556,7 @@ export default function DocsPayoutsContent() {
             alignItems: "center",
             gap: "12px",
             padding: "12px 16px",
-            border: "1px solid #E6E6E6",
+            border: "1px solid var(--line)",
             borderRadius: "12px",
             fontSize: "13px",
           }}
@@ -566,8 +566,8 @@ export default function DocsPayoutsContent() {
               width: "58px",
               height: "22px",
               borderRadius: "6px",
-              background: "#E6F4EA",
-              color: "#1B7A3A",
+              background: "var(--good-soft)",
+              color: "var(--good)",
               fontSize: "11px",
               fontWeight: 700,
               letterSpacing: "0.04em",
@@ -582,7 +582,7 @@ export default function DocsPayoutsContent() {
           <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
             {"/v1/payouts/{payoutId}"}
           </span>
-          <span style={{ color: "#6B6B6B" }}>{"The payout, history[] and receipt fields."}</span>
+          <span style={{ color: "var(--muted)" }}>{"The payout, history[] and receipt fields."}</span>
         </div>
         <div
           className="docs-flow"
@@ -591,7 +591,7 @@ export default function DocsPayoutsContent() {
             alignItems: "center",
             gap: "12px",
             padding: "12px 16px",
-            border: "1px solid #E6E6E6",
+            border: "1px solid var(--line)",
             borderRadius: "12px",
             fontSize: "13px",
           }}
@@ -601,8 +601,8 @@ export default function DocsPayoutsContent() {
               width: "58px",
               height: "22px",
               borderRadius: "6px",
-              background: "#E6F4EA",
-              color: "#1B7A3A",
+              background: "var(--good-soft)",
+              color: "var(--good)",
               fontSize: "11px",
               fontWeight: 700,
               letterSpacing: "0.04em",
@@ -617,7 +617,9 @@ export default function DocsPayoutsContent() {
           <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
             {"/v1/payouts"}
           </span>
-          <span style={{ color: "#6B6B6B" }}>{"Newest first. Filter by state, search name, id or NIP."}</span>
+          <span style={{ color: "var(--muted)" }}>
+            {"Newest first. Filter by state, search name, id or NIP."}
+          </span>
         </div>
         <div
           className="docs-flow"
@@ -626,7 +628,7 @@ export default function DocsPayoutsContent() {
             alignItems: "center",
             gap: "12px",
             padding: "12px 16px",
-            border: "1px solid #E6E6E6",
+            border: "1px solid var(--line)",
             borderRadius: "12px",
             fontSize: "13px",
           }}
@@ -636,8 +638,8 @@ export default function DocsPayoutsContent() {
               width: "58px",
               height: "22px",
               borderRadius: "6px",
-              background: "#E6F4EA",
-              color: "#1B7A3A",
+              background: "var(--good-soft)",
+              color: "var(--good)",
               fontSize: "11px",
               fontWeight: 700,
               letterSpacing: "0.04em",
@@ -652,7 +654,7 @@ export default function DocsPayoutsContent() {
           <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
             {"/v1/payouts/stats"}
           </span>
-          <span style={{ color: "#6B6B6B" }}>{"Today's count, volume and median seconds."}</span>
+          <span style={{ color: "var(--muted)" }}>{"Today's count, volume and median seconds."}</span>
         </div>
         <CodeBlock
           text={
@@ -689,10 +691,10 @@ export default function DocsPayoutsContent() {
         </CodeBlock>
         <div
           style={{
-            border: "1px solid #CDE9D5",
+            border: "1px solid var(--good)",
             borderRadius: "12px",
-            background: "#E6F4EA",
-            color: "#1B7A3A",
+            background: "var(--good-soft)",
+            color: "var(--good)",
             padding: "12px 14px",
             fontSize: "13px",
             lineHeight: "1.5",

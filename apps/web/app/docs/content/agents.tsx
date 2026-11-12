@@ -16,7 +16,7 @@ export default function DocsMCPContent() {
         >
           {"Agents and MCP"}
         </h1>
-        <p style={{ margin: "0", fontSize: "14px", color: "#6B6B6B", lineHeight: "1.5" }}>
+        <p style={{ margin: "0", fontSize: "14px", color: "var(--muted)", lineHeight: "1.5" }}>
           {
             "An AI agent pays people from your vault with a key that has caps. The caps live in the vault contract on NEAR, so the agent cannot talk its way past them and neither can anyone who steals the key."
           }
@@ -35,9 +35,9 @@ export default function DocsMCPContent() {
               flexDirection: "column",
               gap: "6px",
               padding: "14px 16px",
-              border: "1px solid #E6E6E6",
+              border: "1px solid var(--line)",
               borderRadius: "12px",
-              background: "#ffffff",
+              background: "var(--panel)",
               minWidth: "0",
             }}
           >
@@ -47,8 +47,8 @@ export default function DocsMCPContent() {
                   width: "22px",
                   height: "22px",
                   borderRadius: "11px",
-                  background: "#111111",
-                  color: "#fff",
+                  background: "var(--ink)",
+                  color: "var(--ink-fg)",
                   fontSize: "11px",
                   fontWeight: 600,
                   display: "inline-flex",
@@ -60,7 +60,7 @@ export default function DocsMCPContent() {
               </span>
               <span style={{ fontSize: "13px", fontWeight: 600 }}>{"Issue"}</span>
             </span>
-            <span style={{ fontSize: "12px", color: "#6B6B6B", lineHeight: "1.45" }}>
+            <span style={{ fontSize: "12px", color: "var(--muted)", lineHeight: "1.45" }}>
               {"Make an agent key in the app or dashboard. Set per-payout and daily caps with Face ID."}
             </span>
           </div>
@@ -85,9 +85,9 @@ export default function DocsMCPContent() {
               flexDirection: "column",
               gap: "6px",
               padding: "14px 16px",
-              border: "1px solid #E6E6E6",
+              border: "1px solid var(--line)",
               borderRadius: "12px",
-              background: "#ffffff",
+              background: "var(--panel)",
               minWidth: "0",
             }}
           >
@@ -97,8 +97,8 @@ export default function DocsMCPContent() {
                   width: "22px",
                   height: "22px",
                   borderRadius: "11px",
-                  background: "#111111",
-                  color: "#fff",
+                  background: "var(--ink)",
+                  color: "var(--ink-fg)",
                   fontSize: "11px",
                   fontWeight: 600,
                   display: "inline-flex",
@@ -110,7 +110,7 @@ export default function DocsMCPContent() {
               </span>
               <span style={{ fontSize: "13px", fontWeight: 600 }}>{"Connect"}</span>
             </span>
-            <span style={{ fontSize: "12px", color: "#6B6B6B", lineHeight: "1.45" }}>
+            <span style={{ fontSize: "12px", color: "var(--muted)", lineHeight: "1.45" }}>
               {"Add the MCP server to Claude, Cursor or your own runtime."}
             </span>
           </div>
@@ -135,9 +135,9 @@ export default function DocsMCPContent() {
               flexDirection: "column",
               gap: "6px",
               padding: "14px 16px",
-              border: "1px solid #E6E6E6",
+              border: "1px solid var(--line)",
               borderRadius: "12px",
-              background: "#ffffff",
+              background: "var(--panel)",
               minWidth: "0",
             }}
           >
@@ -147,8 +147,8 @@ export default function DocsMCPContent() {
                   width: "22px",
                   height: "22px",
                   borderRadius: "11px",
-                  background: "#111111",
-                  color: "#fff",
+                  background: "var(--ink)",
+                  color: "var(--ink-fg)",
                   fontSize: "11px",
                   fontWeight: 600,
                   display: "inline-flex",
@@ -160,7 +160,7 @@ export default function DocsMCPContent() {
               </span>
               <span style={{ fontSize: "13px", fontWeight: 600 }}>{"Pay"}</span>
             </span>
-            <span style={{ fontSize: "12px", color: "#6B6B6B", lineHeight: "1.45" }}>
+            <span style={{ fontSize: "12px", color: "var(--muted)", lineHeight: "1.45" }}>
               {"The agent calls pay(). fliq quotes, verifies the name, and asks the vault."}
             </span>
           </div>
@@ -185,9 +185,9 @@ export default function DocsMCPContent() {
               flexDirection: "column",
               gap: "6px",
               padding: "14px 16px",
-              border: "1px solid #E6E6E6",
+              border: "1px solid var(--line)",
               borderRadius: "12px",
-              background: "#ffffff",
+              background: "var(--panel)",
               minWidth: "0",
             }}
           >
@@ -197,8 +197,8 @@ export default function DocsMCPContent() {
                   width: "22px",
                   height: "22px",
                   borderRadius: "11px",
-                  background: "#111111",
-                  color: "#fff",
+                  background: "var(--ink)",
+                  color: "var(--ink-fg)",
                   fontSize: "11px",
                   fontWeight: 600,
                   display: "inline-flex",
@@ -210,7 +210,7 @@ export default function DocsMCPContent() {
               </span>
               <span style={{ fontSize: "13px", fontWeight: 600 }}>{"Enforce"}</span>
             </span>
-            <span style={{ fontSize: "12px", color: "#6B6B6B", lineHeight: "1.45" }}>
+            <span style={{ fontSize: "12px", color: "var(--muted)", lineHeight: "1.45" }}>
               {"Within caps the vault signs. Over caps it refuses and the owner gets a push."}
             </span>
           </div>
@@ -239,7 +239,7 @@ export default function DocsMCPContent() {
           <span style={{ color: "#F2C879" }}>{'"<YOUR_TEST_KEY>"'}</span>
           {" }\n    }\n  }\n}"}
         </CodeBlock>
-        <div style={{ border: "1px solid #E6E6E6", borderRadius: "14px", overflow: "hidden" }}>
+        <div style={{ border: "1px solid var(--line)", borderRadius: "14px", overflow: "hidden" }}>
           <div
             className="docs-columns"
             style={{
@@ -247,13 +247,13 @@ export default function DocsMCPContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "10px 16px",
-              background: "#F6F6F6",
+              background: "var(--panel2)",
               fontSize: "11px",
               fontWeight: 600,
-              color: "#6B6B6B",
+              color: "var(--muted)",
               letterSpacing: "0.04em",
               textTransform: "uppercase",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
             }}
           >
             <span>{"Name"}</span>
@@ -267,14 +267,14 @@ export default function DocsMCPContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "11px 16px",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
               fontSize: "13px",
               alignItems: "baseline",
             }}
           >
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>{"pay"}</span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"tool"}</span>
-            <span style={{ color: "#3A3A3A" }}>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"tool"}</span>
+            <span style={{ color: "var(--fg2)" }}>
               {"name or bank+number, amount, note. Returns the payout id and receipt."}
             </span>
           </div>
@@ -285,7 +285,7 @@ export default function DocsMCPContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "11px 16px",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
               fontSize: "13px",
               alignItems: "baseline",
             }}
@@ -293,8 +293,8 @@ export default function DocsMCPContent() {
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
               {"quote"}
             </span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"tool"}</span>
-            <span style={{ color: "#3A3A3A" }}>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"tool"}</span>
+            <span style={{ color: "var(--fg2)" }}>
               {"Preview the rate and receive amount without moving money."}
             </span>
           </div>
@@ -305,7 +305,7 @@ export default function DocsMCPContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "11px 16px",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
               fontSize: "13px",
               alignItems: "baseline",
             }}
@@ -313,8 +313,8 @@ export default function DocsMCPContent() {
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
               {"verify_account"}
             </span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"tool"}</span>
-            <span style={{ color: "#3A3A3A" }}>{"Bank name lookup, same as the API."}</span>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"tool"}</span>
+            <span style={{ color: "var(--fg2)" }}>{"Bank name lookup, same as the API."}</span>
           </div>
           <div
             className="docs-columns"
@@ -323,7 +323,7 @@ export default function DocsMCPContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "11px 16px",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
               fontSize: "13px",
               alignItems: "baseline",
             }}
@@ -331,8 +331,8 @@ export default function DocsMCPContent() {
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
               {"recipients"}
             </span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"tool"}</span>
-            <span style={{ color: "#3A3A3A" }}>{"The owner's saved people, masked."}</span>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"tool"}</span>
+            <span style={{ color: "var(--fg2)" }}>{"The owner's saved people, masked."}</span>
           </div>
           <div
             className="docs-columns"
@@ -348,8 +348,8 @@ export default function DocsMCPContent() {
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
               {"limits"}
             </span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"resource"}</span>
-            <span style={{ color: "#3A3A3A" }}>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"resource"}</span>
+            <span style={{ color: "var(--fg2)" }}>
               {"What this key may still spend today. Read it before planning a batch."}
             </span>
           </div>
@@ -359,16 +359,21 @@ export default function DocsMCPContent() {
         <h2 style={{ fontSize: "16px", fontWeight: 600, letterSpacing: "-0.01em" }}>{"A conversation"}</h2>
         <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
           <div
-            style={{ borderRadius: "12px", background: "#F6F6F6", padding: "12px 14px", fontSize: "13px" }}
+            style={{
+              borderRadius: "12px",
+              background: "var(--panel2)",
+              padding: "12px 14px",
+              fontSize: "13px",
+            }}
           >
-            <span style={{ color: "#6B6B6B" }}>{"You:"}</span>
+            <span style={{ color: "var(--muted)" }}>{"You:"}</span>
             {" Pay Dara ₦30,000 for the studio."}
           </div>
           <div
             className="docs-flow"
             style={{
               borderRadius: "12px",
-              background: "#F6F6F6",
+              background: "var(--panel2)",
               padding: "12px 14px",
               fontSize: "13px",
               display: "flex",
@@ -387,16 +392,21 @@ export default function DocsMCPContent() {
             </span>
           </div>
           <div
-            style={{ borderRadius: "12px", background: "#F6F6F6", padding: "12px 14px", fontSize: "13px" }}
+            style={{
+              borderRadius: "12px",
+              background: "var(--panel2)",
+              padding: "12px 14px",
+              fontSize: "13px",
+            }}
           >
-            <span style={{ color: "#6B6B6B" }}>{"You:"}</span>
+            <span style={{ color: "var(--muted)" }}>{"You:"}</span>
             {" Now send her ₦500,000."}
           </div>
           <div
             className="docs-flow"
             style={{
               borderRadius: "12px",
-              background: "#FFF3D6",
+              background: "var(--warn-soft)",
               padding: "12px 14px",
               fontSize: "13px",
               display: "flex",
@@ -455,10 +465,10 @@ export default function DocsMCPContent() {
         </CodeBlock>
         <div
           style={{
-            border: "1px solid #CDE9D5",
+            border: "1px solid var(--good)",
             borderRadius: "12px",
-            background: "#E6F4EA",
-            color: "#1B7A3A",
+            background: "var(--good-soft)",
+            color: "var(--good)",
             padding: "12px 14px",
             fontSize: "13px",
             lineHeight: "1.5",

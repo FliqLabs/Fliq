@@ -15,7 +15,7 @@ export default function DocsAuthContent() {
         >
           {"Authentication"}
         </h1>
-        <p style={{ margin: "0", fontSize: "14px", color: "#6B6B6B", lineHeight: "1.5" }}>
+        <p style={{ margin: "0", fontSize: "14px", color: "var(--muted)", lineHeight: "1.5" }}>
           {
             "Two audiences, two mechanisms. Servers and agents use API keys. People use passkeys in the app and the dashboard, with an emailed link as the fallback."
           }
@@ -23,7 +23,7 @@ export default function DocsAuthContent() {
       </div>
       <section style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
         <h2 style={{ fontSize: "16px", fontWeight: 600, letterSpacing: "-0.01em" }}>{"API keys"}</h2>
-        <p style={{ margin: "0", fontSize: "13px", color: "#6B6B6B", lineHeight: "1.5" }}>
+        <p style={{ margin: "0", fontSize: "13px", color: "var(--muted)", lineHeight: "1.5" }}>
           {"A key is a Bearer token scoped to one workspace and one environment. Sandbox keys start with "}
           <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
             {"rt_test_"}
@@ -60,10 +60,10 @@ export default function DocsAuthContent() {
         </CodeBlock>
         <div
           style={{
-            border: "1px solid #F2D9A0",
+            border: "1px solid var(--warn)",
             borderRadius: "12px",
-            background: "#FFF8E8",
-            color: "#8A5A00",
+            background: "var(--warn-soft)",
+            color: "var(--warn)",
             padding: "12px 14px",
             fontSize: "13px",
             lineHeight: "1.5",
@@ -76,7 +76,7 @@ export default function DocsAuthContent() {
       </section>
       <section style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
         <h2 style={{ fontSize: "16px", fontWeight: 600, letterSpacing: "-0.01em" }}>{"Passkeys (people)"}</h2>
-        <p style={{ margin: "0", fontSize: "13px", color: "#6B6B6B", lineHeight: "1.5" }}>
+        <p style={{ margin: "0", fontSize: "13px", color: "var(--muted)", lineHeight: "1.5" }}>
           {
             "No passwords anywhere. Registration and sign-in are both two calls: get options, verify the signed response. The session is a 15-minute access token plus a refresh token."
           }
@@ -92,9 +92,9 @@ export default function DocsAuthContent() {
               flexDirection: "column",
               gap: "6px",
               padding: "14px 16px",
-              border: "1px solid #E6E6E6",
+              border: "1px solid var(--line)",
               borderRadius: "12px",
-              background: "#ffffff",
+              background: "var(--panel)",
               minWidth: "0",
             }}
           >
@@ -104,8 +104,8 @@ export default function DocsAuthContent() {
                   width: "22px",
                   height: "22px",
                   borderRadius: "11px",
-                  background: "#111111",
-                  color: "#fff",
+                  background: "var(--ink)",
+                  color: "var(--ink-fg)",
                   fontSize: "11px",
                   fontWeight: 600,
                   display: "inline-flex",
@@ -117,7 +117,7 @@ export default function DocsAuthContent() {
               </span>
               <span style={{ fontSize: "13px", fontWeight: 600 }}>{"Options"}</span>
             </span>
-            <span style={{ fontSize: "12px", color: "#6B6B6B", lineHeight: "1.45" }}>
+            <span style={{ fontSize: "12px", color: "var(--muted)", lineHeight: "1.45" }}>
               {"POST /auth/passkeys/register/options returns a WebAuthn challenge."}
             </span>
           </div>
@@ -142,9 +142,9 @@ export default function DocsAuthContent() {
               flexDirection: "column",
               gap: "6px",
               padding: "14px 16px",
-              border: "1px solid #E6E6E6",
+              border: "1px solid var(--line)",
               borderRadius: "12px",
-              background: "#ffffff",
+              background: "var(--panel)",
               minWidth: "0",
             }}
           >
@@ -154,8 +154,8 @@ export default function DocsAuthContent() {
                   width: "22px",
                   height: "22px",
                   borderRadius: "11px",
-                  background: "#111111",
-                  color: "#fff",
+                  background: "var(--ink)",
+                  color: "var(--ink-fg)",
                   fontSize: "11px",
                   fontWeight: 600,
                   display: "inline-flex",
@@ -167,7 +167,7 @@ export default function DocsAuthContent() {
               </span>
               <span style={{ fontSize: "13px", fontWeight: 600 }}>{"Sign"}</span>
             </span>
-            <span style={{ fontSize: "12px", color: "#6B6B6B", lineHeight: "1.45" }}>
+            <span style={{ fontSize: "12px", color: "var(--muted)", lineHeight: "1.45" }}>
               {"The device signs it with Face ID or Touch ID."}
             </span>
           </div>
@@ -192,9 +192,9 @@ export default function DocsAuthContent() {
               flexDirection: "column",
               gap: "6px",
               padding: "14px 16px",
-              border: "1px solid #E6E6E6",
+              border: "1px solid var(--line)",
               borderRadius: "12px",
-              background: "#ffffff",
+              background: "var(--panel)",
               minWidth: "0",
             }}
           >
@@ -204,8 +204,8 @@ export default function DocsAuthContent() {
                   width: "22px",
                   height: "22px",
                   borderRadius: "11px",
-                  background: "#111111",
-                  color: "#fff",
+                  background: "var(--ink)",
+                  color: "var(--ink-fg)",
                   fontSize: "11px",
                   fontWeight: 600,
                   display: "inline-flex",
@@ -217,7 +217,7 @@ export default function DocsAuthContent() {
               </span>
               <span style={{ fontSize: "13px", fontWeight: 600 }}>{"Verify"}</span>
             </span>
-            <span style={{ fontSize: "12px", color: "#6B6B6B", lineHeight: "1.45" }}>
+            <span style={{ fontSize: "12px", color: "var(--muted)", lineHeight: "1.45" }}>
               {"POST …/register/verify opens the session and creates the user."}
             </span>
           </div>
@@ -242,9 +242,9 @@ export default function DocsAuthContent() {
               flexDirection: "column",
               gap: "6px",
               padding: "14px 16px",
-              border: "1px solid #E6E6E6",
+              border: "1px solid var(--line)",
               borderRadius: "12px",
-              background: "#ffffff",
+              background: "var(--panel)",
               minWidth: "0",
             }}
           >
@@ -254,8 +254,8 @@ export default function DocsAuthContent() {
                   width: "22px",
                   height: "22px",
                   borderRadius: "11px",
-                  background: "#111111",
-                  color: "#fff",
+                  background: "var(--ink)",
+                  color: "var(--ink-fg)",
                   fontSize: "11px",
                   fontWeight: 600,
                   display: "inline-flex",
@@ -267,7 +267,7 @@ export default function DocsAuthContent() {
               </span>
               <span style={{ fontSize: "13px", fontWeight: 600 }}>{"Refresh"}</span>
             </span>
-            <span style={{ fontSize: "12px", color: "#6B6B6B", lineHeight: "1.45" }}>
+            <span style={{ fontSize: "12px", color: "var(--muted)", lineHeight: "1.45" }}>
               {"POST /auth/refresh rotates the refresh token every 15 minutes."}
             </span>
           </div>
@@ -333,7 +333,7 @@ export default function DocsAuthContent() {
           <span style={{ color: "#F2C879" }}>{'"fliq-vault.testnet"'}</span>
           {" } }"}
         </CodeBlock>
-        <div style={{ border: "1px solid #E6E6E6", borderRadius: "14px", overflow: "hidden" }}>
+        <div style={{ border: "1px solid var(--line)", borderRadius: "14px", overflow: "hidden" }}>
           <div
             className="docs-columns"
             style={{
@@ -341,13 +341,13 @@ export default function DocsAuthContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "10px 16px",
-              background: "#F6F6F6",
+              background: "var(--panel2)",
               fontSize: "11px",
               fontWeight: 600,
-              color: "#6B6B6B",
+              color: "var(--muted)",
               letterSpacing: "0.04em",
               textTransform: "uppercase",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
             }}
           >
             <span>{"Field"}</span>
@@ -361,7 +361,7 @@ export default function DocsAuthContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "11px 16px",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
               fontSize: "13px",
               alignItems: "baseline",
             }}
@@ -369,8 +369,8 @@ export default function DocsAuthContent() {
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
               {"access_token"}
             </span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"string"}</span>
-            <span style={{ color: "#3A3A3A" }}>{"Bearer for the app and dashboard. 15 minutes."}</span>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"string"}</span>
+            <span style={{ color: "var(--fg2)" }}>{"Bearer for the app and dashboard. 15 minutes."}</span>
           </div>
           <div
             className="docs-columns"
@@ -379,7 +379,7 @@ export default function DocsAuthContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "11px 16px",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
               fontSize: "13px",
               alignItems: "baseline",
             }}
@@ -387,8 +387,8 @@ export default function DocsAuthContent() {
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
               {"refresh_token"}
             </span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"string"}</span>
-            <span style={{ color: "#3A3A3A" }}>{"Single use; rotated by /auth/refresh."}</span>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"string"}</span>
+            <span style={{ color: "var(--fg2)" }}>{"Single use; rotated by /auth/refresh."}</span>
           </div>
           <div
             className="docs-columns"
@@ -397,7 +397,7 @@ export default function DocsAuthContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "11px 16px",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
               fontSize: "13px",
               alignItems: "baseline",
             }}
@@ -405,8 +405,8 @@ export default function DocsAuthContent() {
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
               {"user.near_account"}
             </span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"string"}</span>
-            <span style={{ color: "#3A3A3A" }}>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"string"}</span>
+            <span style={{ color: "var(--fg2)" }}>
               {"The claimed name. The vault sub-account lives behind it."}
             </span>
           </div>
@@ -424,8 +424,8 @@ export default function DocsAuthContent() {
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
               {"user.vault"}
             </span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"string"}</span>
-            <span style={{ color: "#3A3A3A" }}>{"Vault account that receives deposits."}</span>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"string"}</span>
+            <span style={{ color: "var(--fg2)" }}>{"Vault account that receives deposits."}</span>
           </div>
         </div>
       </section>
@@ -433,7 +433,7 @@ export default function DocsAuthContent() {
         <h2 style={{ fontSize: "16px", fontWeight: 600, letterSpacing: "-0.01em" }}>
           {"Email link (fallback)"}
         </h2>
-        <p style={{ margin: "0", fontSize: "13px", color: "#6B6B6B", lineHeight: "1.5" }}>
+        <p style={{ margin: "0", fontSize: "13px", color: "var(--muted)", lineHeight: "1.5" }}>
           {"For a person without a passkey on this device. "}
           <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
             {"POST /auth/email-links"}
@@ -460,7 +460,7 @@ export default function DocsAuthContent() {
       </section>
       <section style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
         <h2 style={{ fontSize: "16px", fontWeight: 600, letterSpacing: "-0.01em" }}>{"Signing out"}</h2>
-        <p style={{ margin: "0", fontSize: "13px", color: "#6B6B6B", lineHeight: "1.5" }}>
+        <p style={{ margin: "0", fontSize: "13px", color: "var(--muted)", lineHeight: "1.5" }}>
           <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
             {"POST /auth/logout"}
           </span>

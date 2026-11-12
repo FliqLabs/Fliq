@@ -15,7 +15,7 @@ export default function DocsWebhooksContent() {
         >
           {"Webhooks"}
         </h1>
-        <p style={{ margin: "0", fontSize: "14px", color: "#6B6B6B", lineHeight: "1.5" }}>
+        <p style={{ margin: "0", fontSize: "14px", color: "var(--muted)", lineHeight: "1.5" }}>
           {
             "A signed POST for every state change. Three attempts, replay from the dashboard, and the payout id in every body so you never have to poll."
           }
@@ -23,7 +23,7 @@ export default function DocsWebhooksContent() {
       </div>
       <section style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
         <h2 style={{ fontSize: "16px", fontWeight: 600, letterSpacing: "-0.01em" }}>{"Events"}</h2>
-        <div style={{ border: "1px solid #E6E6E6", borderRadius: "14px", overflow: "hidden" }}>
+        <div style={{ border: "1px solid var(--line)", borderRadius: "14px", overflow: "hidden" }}>
           <div
             className="docs-columns"
             style={{
@@ -31,13 +31,13 @@ export default function DocsWebhooksContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "10px 16px",
-              background: "#F6F6F6",
+              background: "var(--panel2)",
               fontSize: "11px",
               fontWeight: 600,
-              color: "#6B6B6B",
+              color: "var(--muted)",
               letterSpacing: "0.04em",
               textTransform: "uppercase",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
             }}
           >
             <span>{"Event"}</span>
@@ -51,7 +51,7 @@ export default function DocsWebhooksContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "11px 16px",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
               fontSize: "13px",
               alignItems: "baseline",
             }}
@@ -59,8 +59,8 @@ export default function DocsWebhooksContent() {
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
               {"payout.deposit_seen"}
             </span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"always"}</span>
-            <span style={{ color: "#3A3A3A" }}>{'USDC arrived. Good moment to show "sending".'}</span>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"always"}</span>
+            <span style={{ color: "var(--fg2)" }}>{'USDC arrived. Good moment to show "sending".'}</span>
           </div>
           <div
             className="docs-columns"
@@ -69,7 +69,7 @@ export default function DocsWebhooksContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "11px 16px",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
               fontSize: "13px",
               alignItems: "baseline",
             }}
@@ -77,8 +77,8 @@ export default function DocsWebhooksContent() {
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
               {"payout.paying_out"}
             </span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"always"}</span>
-            <span style={{ color: "#3A3A3A" }}>{"Provider has the order."}</span>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"always"}</span>
+            <span style={{ color: "var(--fg2)" }}>{"Provider has the order."}</span>
           </div>
           <div
             className="docs-columns"
@@ -87,7 +87,7 @@ export default function DocsWebhooksContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "11px 16px",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
               fontSize: "13px",
               alignItems: "baseline",
             }}
@@ -95,8 +95,10 @@ export default function DocsWebhooksContent() {
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
               {"payout.settled"}
             </span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"always"}</span>
-            <span style={{ color: "#3A3A3A" }}>{"Money landed. Carries NIP session and vault receipt."}</span>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"always"}</span>
+            <span style={{ color: "var(--fg2)" }}>
+              {"Money landed. Carries NIP session and vault receipt."}
+            </span>
           </div>
           <div
             className="docs-columns"
@@ -105,7 +107,7 @@ export default function DocsWebhooksContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "11px 16px",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
               fontSize: "13px",
               alignItems: "baseline",
             }}
@@ -113,8 +115,8 @@ export default function DocsWebhooksContent() {
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
               {"payout.refunded"}
             </span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"always"}</span>
-            <span style={{ color: "#3A3A3A" }}>{"Provider failed. Funds back in the vault."}</span>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"always"}</span>
+            <span style={{ color: "var(--fg2)" }}>{"Provider failed. Funds back in the vault."}</span>
           </div>
           <div
             className="docs-columns"
@@ -123,7 +125,7 @@ export default function DocsWebhooksContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "11px 16px",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
               fontSize: "13px",
               alignItems: "baseline",
             }}
@@ -131,8 +133,8 @@ export default function DocsWebhooksContent() {
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
               {"payout.refused"}
             </span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"always"}</span>
-            <span style={{ color: "#3A3A3A" }}>{"Vault cap or policy refused it. Nothing moved."}</span>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"always"}</span>
+            <span style={{ color: "var(--fg2)" }}>{"Vault cap or policy refused it. Nothing moved."}</span>
           </div>
           <div
             className="docs-columns"
@@ -141,7 +143,7 @@ export default function DocsWebhooksContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "11px 16px",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
               fontSize: "13px",
               alignItems: "baseline",
             }}
@@ -149,8 +151,8 @@ export default function DocsWebhooksContent() {
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
               {"rate.alert"}
             </span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"opt in"}</span>
-            <span style={{ color: "#3A3A3A" }}>{"A corridor crossed a threshold you set."}</span>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"opt in"}</span>
+            <span style={{ color: "var(--fg2)" }}>{"A corridor crossed a threshold you set."}</span>
           </div>
           <div
             className="docs-columns"
@@ -166,8 +168,8 @@ export default function DocsWebhooksContent() {
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
               {"agent.connected"}
             </span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"opt in"}</span>
-            <span style={{ color: "#3A3A3A" }}>{"A new agent key was issued on the workspace."}</span>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"opt in"}</span>
+            <span style={{ color: "var(--fg2)" }}>{"A new agent key was issued on the workspace."}</span>
           </div>
         </div>
       </section>
@@ -240,7 +242,7 @@ export default function DocsWebhooksContent() {
           <span style={{ color: "#F2C879" }}>{'"payroll-2026-11-05-dara"'}</span>
           {"\n}"}
         </CodeBlock>
-        <p style={{ margin: "0", fontSize: "13px", color: "#6B6B6B", lineHeight: "1.5" }}>
+        <p style={{ margin: "0", fontSize: "13px", color: "var(--muted)", lineHeight: "1.5" }}>
           {"Verify with HMAC-SHA256 over "}
           <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
             {'t + "." + raw_body'}
@@ -273,9 +275,9 @@ export default function DocsWebhooksContent() {
               flexDirection: "column",
               gap: "6px",
               padding: "14px 16px",
-              border: "1px solid #E6E6E6",
+              border: "1px solid var(--line)",
               borderRadius: "12px",
-              background: "#ffffff",
+              background: "var(--panel)",
               minWidth: "0",
             }}
           >
@@ -285,8 +287,8 @@ export default function DocsWebhooksContent() {
                   width: "22px",
                   height: "22px",
                   borderRadius: "11px",
-                  background: "#111111",
-                  color: "#fff",
+                  background: "var(--ink)",
+                  color: "var(--ink-fg)",
                   fontSize: "11px",
                   fontWeight: 600,
                   display: "inline-flex",
@@ -298,7 +300,7 @@ export default function DocsWebhooksContent() {
               </span>
               <span style={{ fontSize: "13px", fontWeight: 600 }}>{"Attempt 1"}</span>
             </span>
-            <span style={{ fontSize: "12px", color: "#6B6B6B", lineHeight: "1.45" }}>
+            <span style={{ fontSize: "12px", color: "var(--muted)", lineHeight: "1.45" }}>
               {"Immediately. Any 2xx within 5s counts."}
             </span>
           </div>
@@ -323,9 +325,9 @@ export default function DocsWebhooksContent() {
               flexDirection: "column",
               gap: "6px",
               padding: "14px 16px",
-              border: "1px solid #E6E6E6",
+              border: "1px solid var(--line)",
               borderRadius: "12px",
-              background: "#ffffff",
+              background: "var(--panel)",
               minWidth: "0",
             }}
           >
@@ -335,8 +337,8 @@ export default function DocsWebhooksContent() {
                   width: "22px",
                   height: "22px",
                   borderRadius: "11px",
-                  background: "#111111",
-                  color: "#fff",
+                  background: "var(--ink)",
+                  color: "var(--ink-fg)",
                   fontSize: "11px",
                   fontWeight: 600,
                   display: "inline-flex",
@@ -348,7 +350,7 @@ export default function DocsWebhooksContent() {
               </span>
               <span style={{ fontSize: "13px", fontWeight: 600 }}>{"Attempt 2"}</span>
             </span>
-            <span style={{ fontSize: "12px", color: "#6B6B6B", lineHeight: "1.45" }}>
+            <span style={{ fontSize: "12px", color: "var(--muted)", lineHeight: "1.45" }}>
               {"After 1 second."}
             </span>
           </div>
@@ -373,9 +375,9 @@ export default function DocsWebhooksContent() {
               flexDirection: "column",
               gap: "6px",
               padding: "14px 16px",
-              border: "1px solid #E6E6E6",
+              border: "1px solid var(--line)",
               borderRadius: "12px",
-              background: "#ffffff",
+              background: "var(--panel)",
               minWidth: "0",
             }}
           >
@@ -385,8 +387,8 @@ export default function DocsWebhooksContent() {
                   width: "22px",
                   height: "22px",
                   borderRadius: "11px",
-                  background: "#111111",
-                  color: "#fff",
+                  background: "var(--ink)",
+                  color: "var(--ink-fg)",
                   fontSize: "11px",
                   fontWeight: 600,
                   display: "inline-flex",
@@ -398,7 +400,7 @@ export default function DocsWebhooksContent() {
               </span>
               <span style={{ fontSize: "13px", fontWeight: 600 }}>{"Attempt 3"}</span>
             </span>
-            <span style={{ fontSize: "12px", color: "#6B6B6B", lineHeight: "1.45" }}>
+            <span style={{ fontSize: "12px", color: "var(--muted)", lineHeight: "1.45" }}>
               {"After 10 seconds, then 60."}
             </span>
           </div>
@@ -423,9 +425,9 @@ export default function DocsWebhooksContent() {
               flexDirection: "column",
               gap: "6px",
               padding: "14px 16px",
-              border: "1px solid #E6E6E6",
+              border: "1px solid var(--line)",
               borderRadius: "12px",
-              background: "#ffffff",
+              background: "var(--panel)",
               minWidth: "0",
             }}
           >
@@ -435,8 +437,8 @@ export default function DocsWebhooksContent() {
                   width: "22px",
                   height: "22px",
                   borderRadius: "11px",
-                  background: "#111111",
-                  color: "#fff",
+                  background: "var(--ink)",
+                  color: "var(--ink-fg)",
                   fontSize: "11px",
                   fontWeight: 600,
                   display: "inline-flex",
@@ -448,17 +450,17 @@ export default function DocsWebhooksContent() {
               </span>
               <span style={{ fontSize: "13px", fontWeight: 600 }}>{"Dead"}</span>
             </span>
-            <span style={{ fontSize: "12px", color: "#6B6B6B", lineHeight: "1.45" }}>
+            <span style={{ fontSize: "12px", color: "var(--muted)", lineHeight: "1.45" }}>
               {"Kept 30 days. Replay from the dashboard or GET /payouts/{id}."}
             </span>
           </div>
         </div>
         <div
           style={{
-            border: "1px solid #F2D9A0",
+            border: "1px solid var(--warn)",
             borderRadius: "12px",
-            background: "#FFF8E8",
-            color: "#8A5A00",
+            background: "var(--warn-soft)",
+            color: "var(--warn)",
             padding: "12px 14px",
             fontSize: "13px",
             lineHeight: "1.5",

@@ -15,7 +15,7 @@ export default function DocsQuotesContent() {
         >
           {"Quotes"}
         </h1>
-        <p style={{ margin: "0", fontSize: "14px", color: "#6B6B6B", lineHeight: "1.5" }}>
+        <p style={{ margin: "0", fontSize: "14px", color: "var(--muted)", lineHeight: "1.5" }}>
           {
             "A quote is a promise: this many naira, from this provider, held for 90 seconds. Every payout starts from one."
           }
@@ -36,9 +36,9 @@ export default function DocsQuotesContent() {
               flexDirection: "column",
               gap: "6px",
               padding: "14px 16px",
-              border: "1px solid #E6E6E6",
+              border: "1px solid var(--line)",
               borderRadius: "12px",
-              background: "#ffffff",
+              background: "var(--panel)",
               minWidth: "0",
             }}
           >
@@ -48,8 +48,8 @@ export default function DocsQuotesContent() {
                   width: "22px",
                   height: "22px",
                   borderRadius: "11px",
-                  background: "#111111",
-                  color: "#fff",
+                  background: "var(--ink)",
+                  color: "var(--ink-fg)",
                   fontSize: "11px",
                   fontWeight: 600,
                   display: "inline-flex",
@@ -61,7 +61,7 @@ export default function DocsQuotesContent() {
               </span>
               <span style={{ fontSize: "13px", fontWeight: 600 }}>{"Fan out"}</span>
             </span>
-            <span style={{ fontSize: "12px", color: "#6B6B6B", lineHeight: "1.45" }}>
+            <span style={{ fontSize: "12px", color: "var(--muted)", lineHeight: "1.45" }}>
               {"Every eligible provider is asked in parallel, 1.5 second budget."}
             </span>
           </div>
@@ -86,9 +86,9 @@ export default function DocsQuotesContent() {
               flexDirection: "column",
               gap: "6px",
               padding: "14px 16px",
-              border: "1px solid #E6E6E6",
+              border: "1px solid var(--line)",
               borderRadius: "12px",
-              background: "#ffffff",
+              background: "var(--panel)",
               minWidth: "0",
             }}
           >
@@ -98,8 +98,8 @@ export default function DocsQuotesContent() {
                   width: "22px",
                   height: "22px",
                   borderRadius: "11px",
-                  background: "#111111",
-                  color: "#fff",
+                  background: "var(--ink)",
+                  color: "var(--ink-fg)",
                   fontSize: "11px",
                   fontWeight: 600,
                   display: "inline-flex",
@@ -111,7 +111,7 @@ export default function DocsQuotesContent() {
               </span>
               <span style={{ fontSize: "13px", fontWeight: 600 }}>{"Score"}</span>
             </span>
-            <span style={{ fontSize: "12px", color: "#6B6B6B", lineHeight: "1.45" }}>
+            <span style={{ fontSize: "12px", color: "var(--muted)", lineHeight: "1.45" }}>
               {"After-fee rate 70%, on-time rate 20%, speed 10%. Stale quotes (over 60s) are excluded."}
             </span>
           </div>
@@ -136,9 +136,9 @@ export default function DocsQuotesContent() {
               flexDirection: "column",
               gap: "6px",
               padding: "14px 16px",
-              border: "1px solid #E6E6E6",
+              border: "1px solid var(--line)",
               borderRadius: "12px",
-              background: "#ffffff",
+              background: "var(--panel)",
               minWidth: "0",
             }}
           >
@@ -148,8 +148,8 @@ export default function DocsQuotesContent() {
                   width: "22px",
                   height: "22px",
                   borderRadius: "11px",
-                  background: "#111111",
-                  color: "#fff",
+                  background: "var(--ink)",
+                  color: "var(--ink-fg)",
                   fontSize: "11px",
                   fontWeight: 600,
                   display: "inline-flex",
@@ -161,7 +161,7 @@ export default function DocsQuotesContent() {
               </span>
               <span style={{ fontSize: "13px", fontWeight: 600 }}>{"Hold"}</span>
             </span>
-            <span style={{ fontSize: "12px", color: "#6B6B6B", lineHeight: "1.45" }}>
+            <span style={{ fontSize: "12px", color: "var(--muted)", lineHeight: "1.45" }}>
               {"The best route is the quote. It holds for expires_in seconds."}
             </span>
           </div>
@@ -186,9 +186,9 @@ export default function DocsQuotesContent() {
               flexDirection: "column",
               gap: "6px",
               padding: "14px 16px",
-              border: "1px solid #E6E6E6",
+              border: "1px solid var(--line)",
               borderRadius: "12px",
-              background: "#ffffff",
+              background: "var(--panel)",
               minWidth: "0",
             }}
           >
@@ -198,8 +198,8 @@ export default function DocsQuotesContent() {
                   width: "22px",
                   height: "22px",
                   borderRadius: "11px",
-                  background: "#111111",
-                  color: "#fff",
+                  background: "var(--ink)",
+                  color: "var(--ink-fg)",
                   fontSize: "11px",
                   fontWeight: 600,
                   display: "inline-flex",
@@ -211,7 +211,7 @@ export default function DocsQuotesContent() {
               </span>
               <span style={{ fontSize: "13px", fontWeight: 600 }}>{"Pay"}</span>
             </span>
-            <span style={{ fontSize: "12px", color: "#6B6B6B", lineHeight: "1.45" }}>
+            <span style={{ fontSize: "12px", color: "var(--muted)", lineHeight: "1.45" }}>
               {"POST /payouts with the quote_id. After 90s you get quote_expired."}
             </span>
           </div>
@@ -219,7 +219,7 @@ export default function DocsQuotesContent() {
       </section>
       <section style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
         <h2 style={{ fontSize: "16px", fontWeight: 600, letterSpacing: "-0.01em" }}>{"POST /v1/quote"}</h2>
-        <p style={{ margin: "0", fontSize: "13px", color: "#6B6B6B", lineHeight: "1.5" }}>
+        <p style={{ margin: "0", fontSize: "13px", color: "var(--muted)", lineHeight: "1.5" }}>
           {"The short form: best route only. Use "}
           <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
             {"POST /v1/quotes"}
@@ -369,7 +369,7 @@ export default function DocsQuotesContent() {
           <span style={{ color: "#8ED1A0" }}>{"90"}</span>
           {"\n}"}
         </CodeBlock>
-        <div style={{ border: "1px solid #E6E6E6", borderRadius: "14px", overflow: "hidden" }}>
+        <div style={{ border: "1px solid var(--line)", borderRadius: "14px", overflow: "hidden" }}>
           <div
             className="docs-columns"
             style={{
@@ -377,13 +377,13 @@ export default function DocsQuotesContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "10px 16px",
-              background: "#F6F6F6",
+              background: "var(--panel2)",
               fontSize: "11px",
               fontWeight: 600,
-              color: "#6B6B6B",
+              color: "var(--muted)",
               letterSpacing: "0.04em",
               textTransform: "uppercase",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
             }}
           >
             <span>{"Field"}</span>
@@ -397,7 +397,7 @@ export default function DocsQuotesContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "11px 16px",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
               fontSize: "13px",
               alignItems: "baseline",
             }}
@@ -405,8 +405,8 @@ export default function DocsQuotesContent() {
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
               {"amount"}
             </span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"string"}</span>
-            <span style={{ color: "#3A3A3A" }}>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"string"}</span>
+            <span style={{ color: "var(--fg2)" }}>
               {"USD amount as a decimal string. Minimum 2.00 in sandbox."}
             </span>
           </div>
@@ -417,7 +417,7 @@ export default function DocsQuotesContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "11px 16px",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
               fontSize: "13px",
               alignItems: "baseline",
             }}
@@ -425,8 +425,8 @@ export default function DocsQuotesContent() {
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
               {"rate_before_fees"}
             </span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"number"}</span>
-            <span style={{ color: "#3A3A3A" }}>{"Provider mid rate before any fee."}</span>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"number"}</span>
+            <span style={{ color: "var(--fg2)" }}>{"Provider mid rate before any fee."}</span>
           </div>
           <div
             className="docs-columns"
@@ -435,7 +435,7 @@ export default function DocsQuotesContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "11px 16px",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
               fontSize: "13px",
               alignItems: "baseline",
             }}
@@ -443,8 +443,8 @@ export default function DocsQuotesContent() {
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
               {"fees.*"}
             </span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"integer"}</span>
-            <span style={{ color: "#3A3A3A" }}>{"Minor units (kobo). provider + network = total."}</span>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"integer"}</span>
+            <span style={{ color: "var(--fg2)" }}>{"Minor units (kobo). provider + network = total."}</span>
           </div>
           <div
             className="docs-columns"
@@ -453,14 +453,14 @@ export default function DocsQuotesContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "11px 16px",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
               fontSize: "13px",
               alignItems: "baseline",
             }}
           >
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>{"rate"}</span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"number"}</span>
-            <span style={{ color: "#3A3A3A" }}>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"number"}</span>
+            <span style={{ color: "var(--fg2)" }}>
               {"What the user actually gets per dollar, after fees. This is the number the app shows."}
             </span>
           </div>
@@ -471,7 +471,7 @@ export default function DocsQuotesContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "11px 16px",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
               fontSize: "13px",
               alignItems: "baseline",
             }}
@@ -479,8 +479,10 @@ export default function DocsQuotesContent() {
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
               {"receive"}
             </span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"integer"}</span>
-            <span style={{ color: "#3A3A3A" }}>{"Whole naira landing in the account. Never a float."}</span>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"integer"}</span>
+            <span style={{ color: "var(--fg2)" }}>
+              {"Whole naira landing in the account. Never a float."}
+            </span>
           </div>
           <div
             className="docs-columns"
@@ -489,7 +491,7 @@ export default function DocsQuotesContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "11px 16px",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
               fontSize: "13px",
               alignItems: "baseline",
             }}
@@ -497,8 +499,8 @@ export default function DocsQuotesContent() {
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
               {"routes[].status"}
             </span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"enum"}</span>
-            <span style={{ color: "#3A3A3A" }}>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"enum"}</span>
+            <span style={{ color: "var(--fg2)" }}>
               {"live, stale (quote older than 60s, excluded), paused (provider off)."}
             </span>
           </div>
@@ -516,8 +518,8 @@ export default function DocsQuotesContent() {
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
               {"expires_in"}
             </span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"integer"}</span>
-            <span style={{ color: "#3A3A3A" }}>{"Seconds the quote holds. 90 today."}</span>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"integer"}</span>
+            <span style={{ color: "var(--fg2)" }}>{"Seconds the quote holds. 90 today."}</span>
           </div>
         </div>
       </section>
@@ -525,7 +527,7 @@ export default function DocsQuotesContent() {
         <h2 style={{ fontSize: "16px", fontWeight: 600, letterSpacing: "-0.01em" }}>
           {"When the quote moves"}
         </h2>
-        <p style={{ margin: "0", fontSize: "13px", color: "#6B6B6B", lineHeight: "1.5" }}>
+        <p style={{ margin: "0", fontSize: "13px", color: "var(--muted)", lineHeight: "1.5" }}>
           {
             'If the rate changes by more than 0.1% while the user is looking, the app shows "Rate updated" and asks for a fresh confirm. Never pay on a stale quote; the API refuses it anyway with '
           }
@@ -536,10 +538,10 @@ export default function DocsQuotesContent() {
         </p>
         <div
           style={{
-            border: "1px solid #E6E6E6",
+            border: "1px solid var(--line)",
             borderRadius: "12px",
-            background: "#F6F6F6",
-            color: "#0A0A0A",
+            background: "var(--panel2)",
+            color: "var(--fg)",
             padding: "12px 14px",
             fontSize: "13px",
             lineHeight: "1.5",

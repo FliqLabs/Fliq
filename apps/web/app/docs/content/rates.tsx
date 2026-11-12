@@ -15,7 +15,7 @@ export default function DocsRatesContent() {
         >
           {"Rates (public)"}
         </h1>
-        <p style={{ margin: "0", fontSize: "14px", color: "#6B6B6B", lineHeight: "1.5" }}>
+        <p style={{ margin: "0", fontSize: "14px", color: "var(--muted)", lineHeight: "1.5" }}>
           {
             "The best after-fee rate for every corridor, refreshed every 10 seconds, with the official and P2P references beside it. No key, CORS open, free to embed."
           }
@@ -88,7 +88,7 @@ export default function DocsRatesContent() {
           <span style={{ color: "#F2C879" }}>{'"2026-10-29T13:02:13Z"'}</span>
           {"\n}"}
         </CodeBlock>
-        <div style={{ border: "1px solid #E6E6E6", borderRadius: "14px", overflow: "hidden" }}>
+        <div style={{ border: "1px solid var(--line)", borderRadius: "14px", overflow: "hidden" }}>
           <div
             className="docs-columns"
             style={{
@@ -96,13 +96,13 @@ export default function DocsRatesContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "10px 16px",
-              background: "#F6F6F6",
+              background: "var(--panel2)",
               fontSize: "11px",
               fontWeight: 600,
-              color: "#6B6B6B",
+              color: "var(--muted)",
               letterSpacing: "0.04em",
               textTransform: "uppercase",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
             }}
           >
             <span>{"Field"}</span>
@@ -116,14 +116,16 @@ export default function DocsRatesContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "11px 16px",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
               fontSize: "13px",
               alignItems: "baseline",
             }}
           >
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>{"rate"}</span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"number"}</span>
-            <span style={{ color: "#3A3A3A" }}>{"After fees, for $50. The headline number everywhere."}</span>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"number"}</span>
+            <span style={{ color: "var(--fg2)" }}>
+              {"After fees, for $50. The headline number everywhere."}
+            </span>
           </div>
           <div
             className="docs-columns"
@@ -132,7 +134,7 @@ export default function DocsRatesContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "11px 16px",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
               fontSize: "13px",
               alignItems: "baseline",
             }}
@@ -140,8 +142,8 @@ export default function DocsRatesContent() {
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
               {"spread"}
             </span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"number"}</span>
-            <span style={{ color: "#3A3A3A" }}>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"number"}</span>
+            <span style={{ color: "var(--fg2)" }}>
               {"P2P median minus our after-fee rate. How much the user keeps versus the street."}
             </span>
           </div>
@@ -152,7 +154,7 @@ export default function DocsRatesContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "11px 16px",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
               fontSize: "13px",
               alignItems: "baseline",
             }}
@@ -160,8 +162,10 @@ export default function DocsRatesContent() {
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
               {"official"}
             </span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"object"}</span>
-            <span style={{ color: "#3A3A3A" }}>{"CBN NFEM close. Context only; nobody pays out at it."}</span>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"object"}</span>
+            <span style={{ color: "var(--fg2)" }}>
+              {"CBN NFEM close. Context only; nobody pays out at it."}
+            </span>
           </div>
           <div
             className="docs-columns"
@@ -170,14 +174,14 @@ export default function DocsRatesContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "11px 16px",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
               fontSize: "13px",
               alignItems: "baseline",
             }}
           >
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>{"p2p"}</span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"object"}</span>
-            <span style={{ color: "#3A3A3A" }}>{"Median of Bybit's top 10 USDT/NGN offers."}</span>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"object"}</span>
+            <span style={{ color: "var(--fg2)" }}>{"Median of Bybit's top 10 USDT/NGN offers."}</span>
           </div>
           <div
             className="docs-columns"
@@ -186,7 +190,7 @@ export default function DocsRatesContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "11px 16px",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
               fontSize: "13px",
               alignItems: "baseline",
             }}
@@ -194,8 +198,8 @@ export default function DocsRatesContent() {
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
               {"providers_quoting"}
             </span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"integer"}</span>
-            <span style={{ color: "#3A3A3A" }}>{"How many of the 4 were live for this sample."}</span>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"integer"}</span>
+            <span style={{ color: "var(--fg2)" }}>{"How many of the 4 were live for this sample."}</span>
           </div>
           <div
             className="docs-columns"
@@ -211,8 +215,8 @@ export default function DocsRatesContent() {
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
               {"fetched_at"}
             </span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"timestamp"}</span>
-            <span style={{ color: "#3A3A3A" }}>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"timestamp"}</span>
+            <span style={{ color: "var(--fg2)" }}>
               {'Show it. Past 60s turn amber, past 5 minutes say "not live".'}
             </span>
           </div>
@@ -220,7 +224,7 @@ export default function DocsRatesContent() {
       </section>
       <section style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
         <h2 style={{ fontSize: "16px", fontWeight: 600, letterSpacing: "-0.01em" }}>{"Corridors"}</h2>
-        <div style={{ border: "1px solid #E6E6E6", borderRadius: "14px", overflow: "hidden" }}>
+        <div style={{ border: "1px solid var(--line)", borderRadius: "14px", overflow: "hidden" }}>
           <div
             className="docs-columns"
             style={{
@@ -228,13 +232,13 @@ export default function DocsRatesContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "10px 16px",
-              background: "#F6F6F6",
+              background: "var(--panel2)",
               fontSize: "11px",
               fontWeight: 600,
-              color: "#6B6B6B",
+              color: "var(--muted)",
               letterSpacing: "0.04em",
               textTransform: "uppercase",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
             }}
           >
             <span>{"Path"}</span>
@@ -248,7 +252,7 @@ export default function DocsRatesContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "11px 16px",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
               fontSize: "13px",
               alignItems: "baseline",
             }}
@@ -256,8 +260,8 @@ export default function DocsRatesContent() {
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
               {"usdc/ngn"}
             </span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"bank"}</span>
-            <span style={{ color: "#3A3A3A" }}>{"Nigeria, NIP. The hackathon corridor."}</span>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"bank"}</span>
+            <span style={{ color: "var(--fg2)" }}>{"Nigeria, NIP. The hackathon corridor."}</span>
           </div>
           <div
             className="docs-columns"
@@ -266,7 +270,7 @@ export default function DocsRatesContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "11px 16px",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
               fontSize: "13px",
               alignItems: "baseline",
             }}
@@ -274,8 +278,8 @@ export default function DocsRatesContent() {
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
               {"usdc/ngn?rail=opay"}
             </span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"mobile money"}</span>
-            <span style={{ color: "#3A3A3A" }}>{"Nigeria, OPay."}</span>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"mobile money"}</span>
+            <span style={{ color: "var(--fg2)" }}>{"Nigeria, OPay."}</span>
           </div>
           <div
             className="docs-columns"
@@ -284,7 +288,7 @@ export default function DocsRatesContent() {
               gridTemplateColumns: "200px 120px 1fr",
               gap: "14px",
               padding: "11px 16px",
-              borderBottom: "1px solid #E6E6E6",
+              borderBottom: "1px solid var(--line)",
               fontSize: "13px",
               alignItems: "baseline",
             }}
@@ -292,8 +296,8 @@ export default function DocsRatesContent() {
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
               {"usdt/ngn"}
             </span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"bank"}</span>
-            <span style={{ color: "#3A3A3A" }}>{"Nigeria, from USDT."}</span>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"bank"}</span>
+            <span style={{ color: "var(--fg2)" }}>{"Nigeria, from USDT."}</span>
           </div>
           <div
             className="docs-columns"
@@ -309,14 +313,14 @@ export default function DocsRatesContent() {
             <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
               {"usdc/kes"}
             </span>
-            <span style={{ color: "#6B6B6B", fontSize: "12px" }}>{"M-Pesa"}</span>
-            <span style={{ color: "#3A3A3A" }}>{"Kenya."}</span>
+            <span style={{ color: "var(--muted)", fontSize: "12px" }}>{"M-Pesa"}</span>
+            <span style={{ color: "var(--fg2)" }}>{"Kenya."}</span>
           </div>
         </div>
       </section>
       <section style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
         <h2 style={{ fontSize: "16px", fontWeight: 600, letterSpacing: "-0.01em" }}>{"Embedding"}</h2>
-        <p style={{ margin: "0", fontSize: "13px", color: "#6B6B6B", lineHeight: "1.5" }}>
+        <p style={{ margin: "0", fontSize: "13px", color: "var(--muted)", lineHeight: "1.5" }}>
           {"The public pages at "}
           <span style={{ fontFamily: "var(--font-docs-mono), monospace", fontSize: "12px" }}>
             {"fliq.money/rates"}
@@ -331,10 +335,10 @@ export default function DocsRatesContent() {
         </p>
         <div
           style={{
-            border: "1px solid #E6E6E6",
+            border: "1px solid var(--line)",
             borderRadius: "12px",
-            background: "#F6F6F6",
-            color: "#0A0A0A",
+            background: "var(--panel2)",
+            color: "var(--fg)",
             padding: "12px 14px",
             fontSize: "13px",
             lineHeight: "1.5",
