@@ -35,6 +35,9 @@ struct Quote: Codable, Sendable, Equatable {
     let expiresIn: Int
     var etaSeconds: Int?
     var savingVsNext: Int?
+    /// fliq's float on Base can pay the provider straight away. Nil from an API without the float; false when the
+    /// amount is larger than the float holds, so the cash-out waits on the bridge.
+    var instant: Bool?
 }
 
 struct QuoteRequest: Codable, Sendable, Equatable {

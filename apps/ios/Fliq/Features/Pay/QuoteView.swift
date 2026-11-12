@@ -24,10 +24,21 @@ struct QuoteView: View {
                 .font(.system(size: 15))
                 .foregroundStyle(Theme.textSecondary)
                 HeroAmount(symbol: quote.currency.symbol, value: quote.receive.formatted())
-                if let eta = quote.etaSeconds {
-                    Text("in about \(Self.duration(eta))")
+                switch quote.instant {
+                case true?:
+                    Label("Instant · usually under a minute", systemImage: "bolt.fill")
                         .font(.system(size: 16))
-                        .foregroundStyle(Theme.textSecondary)
+                        .foregroundStyle(Theme.confirmed)
+                case false?:
+                    Text("Larger amount · can take up to an hour")
+                        .font(.system(size: 16))
+                        .foregroundStyle(Theme.warning)
+                case nil:
+                    if let eta = quote.etaSeconds {
+                        Text("in about \(Self.duration(eta))")
+                            .font(.system(size: 16))
+                            .foregroundStyle(Theme.textSecondary)
+                    }
                 }
             }
             .padding(.horizontal, 16)
