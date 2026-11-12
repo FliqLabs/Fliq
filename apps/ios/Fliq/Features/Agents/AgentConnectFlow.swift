@@ -24,15 +24,17 @@ final class AgentConnectFlow {
 
     private let store: AgentStore
     private let rpcURL: String
+    private let apiURL: String
     private let makeKey: @Sendable () -> AgentKey
     private let activationPause: Duration
 
     init(
-        store: AgentStore, rpcURL: String, activationPause: Duration = .seconds(2),
+        store: AgentStore, rpcURL: String, apiURL: String = AgentSetup.bundledAPI, activationPause: Duration = .seconds(2),
         makeKey: @escaping @Sendable () -> AgentKey = AgentKey.generate
     ) {
         self.store = store
         self.rpcURL = rpcURL
+        self.apiURL = apiURL
         self.activationPause = activationPause
         self.makeKey = makeKey
     }
@@ -74,7 +76,7 @@ final class AgentConnectFlow {
         connected = agent
         isActive = await store.waitUntilActive(agent.id, pause: activationPause)
         if let key {
-            setup = AgentSetup(app: app, accountId: agent.id, secretKey: key.secretKey, rpcURL: rpcURL, vault: store.vaultAccount)
+            setup = AgentSetup(app: app, accountId: agent.id, secretKey: key.secretKey, rpcURL: rpcURL, apiURL: apiURL)
         }
         step = .done
     }
