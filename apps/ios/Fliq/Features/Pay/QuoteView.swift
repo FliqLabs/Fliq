@@ -24,11 +24,9 @@ struct QuoteView: View {
                 .font(.system(size: 15))
                 .foregroundStyle(Theme.textSecondary)
                 HeroAmount(symbol: quote.currency.symbol, value: quote.receive.formatted())
-                if let eta = quote.etaSeconds {
-                    Text("in about \(Self.duration(eta))")
-                        .font(.system(size: 16))
-                        .foregroundStyle(Theme.textSecondary)
-                }
+                Text("usually in minutes · can take up to an hour")
+                    .font(.system(size: 16))
+                    .foregroundStyle(Theme.textSecondary)
             }
             .padding(.horizontal, 16)
             .padding(.top, 36)
@@ -72,6 +70,19 @@ struct QuoteView: View {
             .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16))
             .padding(.top, 10)
 
+            // The NEAR Intents hop to the provider's network has been taking up to hours, so nobody is promised seconds.
+            HStack(alignment: .top, spacing: 12) {
+                Icon("bell.badge", size: 18).foregroundStyle(Theme.textSecondary)
+                Text("Bank payouts are slower than usual right now. Your money is safe the whole way, and we'll notify you the moment the bank is paid.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16))
+            .padding(.top, 10)
+
             Spacer()
 
             TimelineView(.periodic(from: .now, by: 1)) { context in
@@ -90,10 +101,6 @@ struct QuoteView: View {
         let route = quote.routes.first { $0.routed == true } ?? quote.routes.first { $0.provider == quote.provider }
         guard let onTime = route?.onTimePercent else { return nil }
         return "\(onTime)% on time · alert shows"
-    }
-
-    static func duration(_ seconds: Int) -> String {
-        seconds < 90 ? "\(seconds) seconds" : "\(Int((Double(seconds) / 60).rounded())) minutes"
     }
 
     private func countdown(_ quote: Quote, now: Date) -> some View {
