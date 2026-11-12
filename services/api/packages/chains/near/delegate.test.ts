@@ -130,6 +130,19 @@ describe("checkPolicy", () => {
         args: { receiver_id: VAULT, amount: "5000000", msg: "" },
       },
     ],
+    [
+      "USDC sent to a NEAR wallet outside fliq",
+      { receiverId: USDC, methodName: "ft_transfer", deposit: 1n, args: { receiver_id: "rejois.near", amount: "300000", memo: "fliq" } },
+    ],
+    [
+      "registering a NEAR wallet for USDC before a send",
+      {
+        receiverId: USDC,
+        methodName: "storage_deposit",
+        deposit: 1_250_000_000_000_000_000_000n,
+        args: { account_id: "rejois.near", registration_only: true },
+      },
+    ],
   ])("allows %s", async (_, spec) => {
     const delegate = verifySignedDelegate((await signDelegate(ada, spec)).base64);
     expect(() => checkPolicy(policy, delegate)).not.toThrow();
@@ -219,6 +232,23 @@ describe("checkPolicy", () => {
         receiverId: USDC,
         methodName: "ft_transfer_call",
         args: { receiver_id: VAULT, amount: "1", msg: "" },
+      },
+    ],
+    [
+      "a plain USDC transfer into the vault, which would not credit anyone",
+      { receiverId: USDC, methodName: "ft_transfer", deposit: 1n, args: { receiver_id: VAULT, amount: "1" } },
+    ],
+    [
+      "a USDC send without the one yocto",
+      { receiverId: USDC, methodName: "ft_transfer", args: { receiver_id: "rejois.near", amount: "1" } },
+    ],
+    [
+      "a registration that attaches more than USDC asks",
+      {
+        receiverId: USDC,
+        methodName: "storage_deposit",
+        deposit: 3_000_000_000_000_000_000_000n,
+        args: { account_id: "rejois.near", registration_only: true },
       },
     ],
     [

@@ -14,6 +14,8 @@ const U64_MAX = 2n ** 64n - 1n;
 // set_agent charges the owner for the policy's storage out of the attached deposit and refunds the rest.
 // A policy is a few hundred bytes, so 0.01 NEAR is ample and bounds what one relayed call can attach.
 export const MAX_AGENT_STORAGE_DEPOSIT = 10n ** 22n;
+// USDC's storage_balance_bounds().min on NEAR is 0.00125 NEAR. Twice that bounds what one registration can attach.
+export const MAX_USDC_REGISTRATION_DEPOSIT = 25n * 10n ** 20n;
 
 export type RelayPolicy = { vaultContractId: string; usdcContractId: string };
 
@@ -31,8 +33,7 @@ type Rule = {
 
 const exactly = (amount: bigint) => ({ min: amount, max: amount });
 
-// The only things the relayer pays gas for (architecture §11.2). Deposits come out of the sender's own balance in
-// a meta transaction, so storage registration is never relayed: the account creator sponsors it instead.
+// The only things the relayer pays gas for (architecture §11.2).
 function rules(policy: RelayPolicy): Map<string, Map<string, Rule>> {
   const orderOnly: Rule = { deposit: exactly(0n), checkArgs: (args) => exactKeys(args, ["order_id"], ["order_id"]) };
   // The vault refuses a payout whose amount or destination differs from the registered order, so the user signs both.
@@ -129,6 +130,34 @@ function rules(policy: RelayPolicy): Map<string, Map<string, Rule>> {
                 throw new PolicyError("amount must be a positive integer string");
               if (args.msg !== "")
                 throw new PolicyError("a top-up from NEAR credits the sender, so msg must be empty");
+            },
+          },
+        ],
+        // A send from the vault to a NEAR wallet outside fliq: withdraw to the user's own account, then these two.
+        [
+          "storage_deposit",
+          {
+            deposit: { min: ONE_YOCTO, max: MAX_USDC_REGISTRATION_DEPOSIT },
+            checkArgs: (args) => {
+              exactKeys(args, ["account_id", "registration_only"], ["account_id"]);
+              if (!NEAR_ACCOUNT.test(String(args.account_id))) throw new PolicyError("account_id must be a NEAR account id");
+              if (args.registration_only !== true) throw new PolicyError("registration_only must be true");
+            },
+          },
+        ],
+        [
+          "ft_transfer",
+          {
+            deposit: exactly(ONE_YOCTO),
+            checkArgs: (args) => {
+              exactKeys(args, ["receiver_id", "amount", "memo"], ["receiver_id", "amount"]);
+              if (!NEAR_ACCOUNT.test(String(args.receiver_id))) throw new PolicyError("receiver_id must be a NEAR account id");
+              if (args.receiver_id === policy.vaultContractId)
+                throw new PolicyError("USDC for the vault goes through ft_transfer_call");
+              if (!POSITIVE_INTEGER.test(String(args.amount)))
+                throw new PolicyError("amount must be a positive integer string");
+              if (args.memo !== undefined && (typeof args.memo !== "string" || args.memo.length > 64))
+                throw new PolicyError("memo must be a short string");
             },
           },
         ],

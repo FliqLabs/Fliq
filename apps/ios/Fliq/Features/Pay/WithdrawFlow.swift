@@ -51,7 +51,6 @@ final class WithdrawFlow {
     var amount: TokenAmount? { TokenAmount(decimalString: amountText) }
     var available: TokenAmount { vault?.balance ?? .zero }
 
-    var needsSetup: Bool { check == .ready(needsSetup: true) }
 
     var isOverBalance: Bool {
         guard let vault, let amount else { return false }
@@ -140,8 +139,6 @@ final class WithdrawFlow {
             errorMessage = "The vault didn't send it. Nothing moved."
         case .stillPending:
             errorMessage = "Still confirming on NEAR. Check Activity in a moment before trying again."
-        case .needsGas:
-            errorMessage = "Your fliq account needs a little NEAR for the network fee. Nothing moved."
         case .invalidAddress(let problem):
             errorMessage = problem
         case .notSetUp:
