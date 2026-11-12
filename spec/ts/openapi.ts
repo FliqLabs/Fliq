@@ -2296,7 +2296,7 @@ export interface components {
         /** @enum {string} */
         DepositTokenId: "usdc" | "usdt" | "btc";
         /** @enum {string} */
-        DepositChainId: "base" | "solana" | "tron" | "arbitrum" | "ethereum" | "polygon" | "bitcoin" | "near";
+        DepositChainId: "base" | "solana" | "tron" | "arbitrum" | "ethereum" | "polygon" | "bnb" | "monad" | "bitcoin" | "near";
         DepositSource: {
             token: components["schemas"]["DepositTokenId"];
             chain: components["schemas"]["DepositChainId"];

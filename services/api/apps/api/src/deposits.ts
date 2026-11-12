@@ -8,7 +8,7 @@ import { ApiError, invalidRequest, notFound } from "./errors.js";
 import { markRequestPaid } from "./requests.js";
 
 export type DepositToken = "usdc" | "usdt" | "btc";
-export type DepositChain = "base" | "solana" | "tron" | "arbitrum" | "ethereum" | "polygon" | "bitcoin" | "near";
+export type DepositChain = "base" | "solana" | "tron" | "arbitrum" | "ethereum" | "polygon" | "bnb" | "monad" | "bitcoin" | "near";
 
 interface Source {
   token: DepositToken;
@@ -23,10 +23,17 @@ interface Source {
 export const DEPOSIT_SOURCES: readonly Source[] = [
   { token: "usdc", chain: "base", group: "dollars", minimum: "1", etaSeconds: 35, watchMinutes: 10 },
   { token: "usdc", chain: "solana", group: "dollars", minimum: "1", etaSeconds: 35, watchMinutes: 10 },
-  { token: "usdt", chain: "tron", group: "dollars", minimum: "100", etaSeconds: 60, watchMinutes: 10 },
   { token: "usdc", chain: "arbitrum", group: "dollars", minimum: "1", etaSeconds: 35, watchMinutes: 10 },
   { token: "usdc", chain: "ethereum", group: "dollars", minimum: "1", etaSeconds: 90, watchMinutes: 10 },
   { token: "usdc", chain: "polygon", group: "dollars", minimum: "1", etaSeconds: 35, watchMinutes: 10 },
+  { token: "usdc", chain: "bnb", group: "dollars", minimum: "1", etaSeconds: 40, watchMinutes: 10 },
+  { token: "usdc", chain: "monad", group: "dollars", minimum: "1", etaSeconds: 25, watchMinutes: 10 },
+  { token: "usdt", chain: "solana", group: "dollars", minimum: "1", etaSeconds: 25, watchMinutes: 10 },
+  { token: "usdt", chain: "ethereum", group: "dollars", minimum: "1", etaSeconds: 90, watchMinutes: 10 },
+  { token: "usdt", chain: "bnb", group: "dollars", minimum: "1", etaSeconds: 40, watchMinutes: 10 },
+  { token: "usdt", chain: "polygon", group: "dollars", minimum: "1", etaSeconds: 35, watchMinutes: 10 },
+  // 1Click refuses Tron swaps under $100 for now, and its fee takes a $100 deposit just under the line.
+  { token: "usdt", chain: "tron", group: "dollars", minimum: "110", etaSeconds: 60, watchMinutes: 10 },
   { token: "btc", chain: "bitcoin", group: "bitcoin", minimum: "0.0001", etaSeconds: 600, watchMinutes: 60 },
   { token: "usdc", chain: "near", group: "near", minimum: "0.01", etaSeconds: 2, watchMinutes: 0 },
 ];
@@ -38,6 +45,8 @@ const ONECLICK_BLOCKCHAIN: Record<DepositChain, string> = {
   arbitrum: "arb",
   ethereum: "eth",
   polygon: "pol",
+  bnb: "bsc",
+  monad: "monad",
   bitcoin: "btc",
   near: "near",
 };

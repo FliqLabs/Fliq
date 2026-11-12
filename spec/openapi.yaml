@@ -3723,7 +3723,7 @@ components:
       enum: [usdc, usdt, btc]
     DepositChainId:
       type: string
-      enum: [base, solana, tron, arbitrum, ethereum, polygon, bitcoin, near]
+      enum: [base, solana, tron, arbitrum, ethereum, polygon, bnb, monad, bitcoin, near]
     DepositSource:
       type: object
       required: [token, chain, group, minimum, eta_seconds, direct, available, address]
