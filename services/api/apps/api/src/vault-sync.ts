@@ -7,6 +7,7 @@ import {
   type VaultClient,
   type VaultReceipt,
 } from "../../../packages/chains/vault/index.js";
+import { releaseReservation } from "../../../packages/ledger/post.js";
 import type { Unit } from "./db.js";
 
 export type VaultAction =
@@ -86,9 +87,14 @@ export async function syncVaultReceipts(deps: VaultSyncDeps): Promise<SyncResult
 
 async function syncOne(deps: VaultSyncDeps, payout: SyncedPayout): Promise<SyncResult> {
   try {
-    const action = planVaultSync(payout, await deps.vault.getReceipt(payout.id));
+    const receipt = await deps.vault.getReceipt(payout.id);
+    const action = planVaultSync(payout, receipt);
     if (action.kind === "set_status") await deps.vault.setStatus(payout.id, action.status, action.refs);
     if (action.kind === "release") await deps.vault.releaseOrder(payout.id);
+    // A release on chain must free the mirror's reservation too, or the API keeps refusing money the vault holds.
+    if (receipt && (receipt.state === "released" || action.kind === "release")) {
+      await deps.unit((tx) => releaseReservation(tx, payout.id, receipt.payer, "USDC", receipt.amount));
+    }
     return { payoutId: payout.id, action: action.kind };
   } catch (error) {
     const code = error instanceof VaultError ? error.code : (error as Error).name;
