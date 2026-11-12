@@ -136,7 +136,7 @@ final class WithdrawFlowTests: XCTestCase {
         let flow = WithdrawFlow(withdrawals: Undelivered(), vault: vault, recents: recents(), onLeftVault: { refreshed = true })
         flow.addressText = "bob.testnet"
         await flow.checkAddress()
-        XCTAssertTrue(flow.needsSetup)
+        XCTAssertEqual(flow.check, .ready(needsSetup: true))
         flow.enterAmount("5")
 
         let sent = await flow.send()
