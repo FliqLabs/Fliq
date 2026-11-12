@@ -44,3 +44,17 @@ export function quickstartExamples(quoteId: string, payoutId: string) {
     },
   ];
 }
+
+export const sdkPlaygroundExample = `// The docs playground provides a preconfigured demo client.
+const fliq = new Fliq();
+const account = await fliq.accounts.verify({ bank: "058", number: "0123456789" });
+console.log(account);
+
+const quote = await fliq.quotes.create({ token: "usdc", currency: "ngn", amount: "50.00" });
+console.log(quote);
+
+const payout = await fliq.payouts.create({ quoteId: quote.quote_id, bank: "058", number: "0123456789" });
+console.log(payout);
+for await (const state of fliq.payouts.watch(payout.payout_id)) {
+  console.log(state);
+}`;

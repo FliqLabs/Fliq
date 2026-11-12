@@ -3,7 +3,15 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { CopyButton } from "../components/copy-button";
 
-export function CodeBlock({ text, children }: { text: string; children?: ReactNode }) {
+export function CodeBlock({
+  text,
+  children,
+  mode = "playground",
+}: {
+  text: string;
+  children?: ReactNode;
+  mode?: "playground" | "reference";
+}) {
   const [edited, setEdited] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [result, setResult] = useState<{ output: string; error: boolean } | null>(null);
@@ -34,38 +42,44 @@ export function CodeBlock({ text, children }: { text: string; children?: ReactNo
   return (
     <div className="min-w-0 overflow-hidden rounded-xl bg-[#0f0f0f] text-[#e5e5e5]">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 px-3 py-2">
-        <span className="text-[11px] text-zinc-400">Playground · no API key</span>
+        <span className="text-[11px] text-zinc-400">
+          {mode === "playground" ? "Playground · no API key" : "Integration reference"}
+        </span>
         <div className="flex items-center gap-2">
           <CopyButton text={source} />
-          <button
-            type="button"
-            className={buttonClass}
-            aria-pressed={editing}
-            onClick={() => setEditing(!editing)}
-          >
-            {editing ? "Preview" : "Edit"}
-          </button>
-          {edited !== null && (
-            <button
-              type="button"
-              className={buttonClass}
-              disabled={running}
-              onClick={() => {
-                setEdited(null);
-                setResult(null);
-              }}
-            >
-              Reset
-            </button>
+          {mode === "playground" && (
+            <>
+              <button
+                type="button"
+                className={buttonClass}
+                aria-pressed={editing}
+                onClick={() => setEditing(!editing)}
+              >
+                {editing ? "Preview" : "Edit"}
+              </button>
+              {edited !== null && (
+                <button
+                  type="button"
+                  className={buttonClass}
+                  disabled={running}
+                  onClick={() => {
+                    setEdited(null);
+                    setResult(null);
+                  }}
+                >
+                  Reset
+                </button>
+              )}
+              <button
+                type="button"
+                className={`${buttonClass} bg-white text-black hover:bg-zinc-200`}
+                disabled={running}
+                onClick={run}
+              >
+                {running ? "Running…" : "Run ▶"}
+              </button>
+            </>
           )}
-          <button
-            type="button"
-            className={`${buttonClass} bg-white text-black hover:bg-zinc-200`}
-            disabled={running}
-            onClick={run}
-          >
-            {running ? "Running…" : "Run ▶"}
-          </button>
         </div>
       </div>
       {editing ? (
@@ -90,8 +104,9 @@ export function CodeBlock({ text, children }: { text: string; children?: ReactNo
         </pre>
       )}
       <p className="border-t border-white/10 px-3 py-2 text-[10px] leading-4 text-zinc-400">
-        No API key needed. Run JSON, curl or JavaScript with local test responses. No real API calls. Install
-        commands and server integrations need your terminal.
+        {mode === "playground"
+          ? "No API key needed. Run JSON, curl or JavaScript with local test responses. No real API calls. Install commands and server integrations need your terminal."
+          : "Run this setup or integration reference in your own environment. Supply credentials only for protected API calls."}
       </p>
       {result && (
         <div
