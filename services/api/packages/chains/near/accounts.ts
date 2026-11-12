@@ -63,10 +63,12 @@ export type ProvisionDeps = {
 
 // Creates <label>.<root> owned by the user's own key, or links it if that exact key already controls it, then
 // registers its storage. Idempotent: a retry after "pending" finishes the job without creating anything twice.
+// An agent's account never holds a balance, so it skips storage registration: two fewer transactions to wait for.
 export async function provisionAccount(
   deps: ProvisionDeps,
   accountId: string,
   userPublicKey: string,
+  options: { registerStorage?: boolean } = {},
 ): Promise<ProvisionResult> {
   checkName(accountId, deps.root.accountId);
   const publicKey = checkKey(userPublicKey);
@@ -94,10 +96,18 @@ export async function provisionAccount(
     }
 
     const storage: Record<string, StorageState> = {};
-    for (const contract of deps.storageContracts) {
-      const registration = await registerStorage(deps, contract, accountId);
-      storage[contract] = registration.state;
-      if (registration.txHash) txHashes.push(registration.txHash);
+    if (options.registerStorage === false) return { status, accountId, publicKey, txHashes, storage };
+    // The checks are reads, so they run together. The deposits share the root key and go one after another.
+    const needs = await Promise.all(deps.storageContracts.map((contract) => storageNeed(deps, contract, accountId)));
+    for (const [index, contract] of deps.storageContracts.entries()) {
+      const need = needs[index] as StorageNeed;
+      if ("state" in need) {
+        storage[contract] = need.state;
+        continue;
+      }
+      const outcome = await rootTransaction(deps, contract, storageDepositActions(accountId, need.deposit));
+      storage[contract] = outcome.status === "pending" ? "pending" : "registered";
+      txHashes.push(outcome.txHash);
     }
     return { status, accountId, publicKey, txHashes, storage };
   } finally {
@@ -176,25 +186,22 @@ async function controls(rpc: NearRpc, accountId: string, publicKey: string): Pro
   return key?.permission === "FullAccess";
 }
 
-async function registerStorage(
-  deps: ProvisionDeps,
-  contract: string,
-  accountId: string,
-): Promise<{ state: StorageState; txHash?: string }> {
-  const code = await read(() => deps.rpc.account(contract));
+type StorageNeed = { state: StorageState } | { deposit: bigint };
+
+async function storageNeed(deps: ProvisionDeps, contract: string, accountId: string): Promise<StorageNeed> {
+  const [code, balance, bounds] = await Promise.all([
+    read(() => deps.rpc.account(contract)),
+    read(() => deps.rpc.callView(contract, "storage_balance_of", { account_id: accountId })).catch(() => undefined),
+    read(() => deps.rpc.callView(contract, "storage_balance_bounds", {})).catch(() => undefined),
+  ]);
   if (!code || code.codeHash === NO_CONTRACT) return { state: "not_deployed" };
-  const balance = await read(() =>
-    deps.rpc.callView(contract, "storage_balance_of", { account_id: accountId }),
-  );
+  if (balance === undefined || bounds === undefined) throw new AccountError("rpc_unavailable", `${contract} did not answer`);
   if (balance !== null) return { state: "already_registered" };
-  const bounds = (await read(() => deps.rpc.callView(contract, "storage_balance_bounds", {}))) as {
-    min?: unknown;
-  };
-  if (typeof bounds?.min !== "string" || !/^\d+$/.test(bounds.min)) {
+  const min = (bounds as { min?: unknown } | null)?.min;
+  if (typeof min !== "string" || !/^\d+$/.test(min)) {
     throw new AccountError("chain_failure", `${contract} returned no storage minimum`);
   }
-  const outcome = await rootTransaction(deps, contract, storageDepositActions(accountId, BigInt(bounds.min)));
-  return { state: outcome.status === "pending" ? "pending" : "registered", txHash: outcome.txHash };
+  return { deposit: BigInt(min) };
 }
 
 async function rootTransaction(

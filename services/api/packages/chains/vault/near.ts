@@ -113,6 +113,8 @@ export class NearVault implements VaultClient {
   readonly #options: NearVaultOptions;
   readonly #publicKey: string;
   #queue: Promise<unknown> = Promise.resolve();
+  // The last nonce this process signed with, in case the node answering the read is a block behind the send.
+  #lastNonce = 0n;
 
   constructor(options: NearVaultOptions) {
     this.#options = options;
@@ -128,10 +130,11 @@ export class NearVault implements VaultClient {
         rpc.finalBlock(),
       ]);
       if (!key) throw new VaultCallError(method, "the registration key is not on the registration account");
+      this.#lastNonce = (key.nonce > this.#lastNonce ? key.nonce : this.#lastNonce) + 1n;
       const tx = await signTransaction({
         signer: registration,
         receiverId: contractId,
-        nonce: key.nonce + 1n,
+        nonce: this.#lastNonce,
         blockHash: block.hash,
         actions: functionCallActions(method, args, GAS_TGAS[method]),
       });

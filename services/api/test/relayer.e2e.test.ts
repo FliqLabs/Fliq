@@ -58,10 +58,10 @@ describe.skipIf(!enabled)("creating NEAR accounts and relaying calls through the
     relayStatus: (hash) => real.relayStatus(hash),
     health: () => real.health(),
     fundAgentDeposit: (accountId, agentId) => real.fundAgentDeposit(accountId, agentId),
-    async provisionAccount(accountId, publicKey) {
+    async provisionAccount(accountId, publicKey, options) {
       if (trouble.slowOnce) {
         trouble.slowOnce = false;
-        await real.provisionAccount(accountId, publicKey);
+        await real.provisionAccount(accountId, publicKey, options);
         throw new RelayerClientError(0, "relayer_timeout", "the relayer did not answer in time");
       }
       if (trouble.down) return createRelayerClient({ url: "http://127.0.0.1:1", authToken: TOKEN }).provisionAccount(accountId, publicKey);
@@ -69,7 +69,7 @@ describe.skipIf(!enabled)("creating NEAR accounts and relaying calls through the
         trouble.pendingOnce = false;
         return { status: "pending", account_id: accountId, public_key: publicKey, tx_hashes: [], storage: {} };
       }
-      return real.provisionAccount(accountId, publicKey);
+      return real.provisionAccount(accountId, publicKey, options);
     },
   };
 
@@ -146,8 +146,11 @@ describe.skipIf(!enabled)("creating NEAR accounts and relaying calls through the
     const connect = () => app.inject({ method: "POST", url: "/v1/agents", payload: input, headers: { ...headers, "idempotency-key": randomBytes(8).toString("hex") } });
     const toOwner = () => rpc.sent.filter((tx) => tx.receiverId === user.accountId && tx.actionKinds.join() === "transfer");
 
+    const before = rpc.sent.length;
     const first = await connect();
     expect(first.statusCode, first.body).toBe(201);
+    // The agent's account only signs, so connecting costs two transactions: its account and the owner's top-up.
+    expect(rpc.sent.slice(before).map((tx) => tx.actionKinds.join())).toEqual(["createAccount,addKey", "transfer"]);
     expect(toOwner()).toHaveLength(1);
     expect(toOwner()[0]).toMatchObject({ signerId: ROOT });
     const owner = await rpc.account(user.accountId);
