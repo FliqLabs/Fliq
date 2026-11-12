@@ -218,27 +218,36 @@ export default function DocsMCPContent() {
       </section>
       <section style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
         <h2 style={{ fontSize: "16px", fontWeight: 600, letterSpacing: "-0.01em" }}>{"MCP config"}</h2>
-        <CodeBlock
-          text={
-            '{\n  "mcpServers": {\n    "fliq": {\n      "url": "https://mcp.fliq.money",\n      "env": { "FLIQ_KEY": "<YOUR_TEST_KEY>" }\n    }\n  }\n}'
-          }
-        >
-          {"{\n  "}
-          <span style={{ color: "#F2C879" }}>{'"mcpServers"'}</span>
-          {": {\n    "}
-          <span style={{ color: "#F2C879" }}>{'"fliq"'}</span>
-          {": {\n      "}
-          <span style={{ color: "#F2C879" }}>{'"url"'}</span>
-          {": "}
-          <span style={{ color: "#F2C879" }}>{'"https://mcp.fliq.money"'}</span>
-          {",\n      "}
-          <span style={{ color: "#F2C879" }}>{'"env"'}</span>
-          {": { "}
-          <span style={{ color: "#F2C879" }}>{'"FLIQ_KEY"'}</span>
-          {": "}
-          <span style={{ color: "#F2C879" }}>{'"<YOUR_TEST_KEY>"'}</span>
-          {" }\n    }\n  }\n}"}
-        </CodeBlock>
+        <details className="rounded-xl border border-[var(--line)] p-4">
+          <summary className="cursor-pointer text-[13px] font-semibold">
+            Optional: configure a real agent connection
+          </summary>
+          <p className="my-3 text-[12px] leading-6 text-[var(--fg2)]">
+            Reading the guide needs no key. A real agent connection uses credentials from your workspace.
+          </p>{" "}
+          <CodeBlock
+            mode="reference"
+            text={
+              '{\n  "mcpServers": {\n    "fliq": {\n      "url": "https://mcp.fliq.money",\n      "env": { "FLIQ_KEY": "<YOUR_TEST_KEY>" }\n    }\n  }\n}'
+            }
+          >
+            {"{\n  "}
+            <span style={{ color: "#F2C879" }}>{'"mcpServers"'}</span>
+            {": {\n    "}
+            <span style={{ color: "#F2C879" }}>{'"fliq"'}</span>
+            {": {\n      "}
+            <span style={{ color: "#F2C879" }}>{'"url"'}</span>
+            {": "}
+            <span style={{ color: "#F2C879" }}>{'"https://mcp.fliq.money"'}</span>
+            {",\n      "}
+            <span style={{ color: "#F2C879" }}>{'"env"'}</span>
+            {": { "}
+            <span style={{ color: "#F2C879" }}>{'"FLIQ_KEY"'}</span>
+            {": "}
+            <span style={{ color: "#F2C879" }}>{'"<YOUR_TEST_KEY>"'}</span>
+            {" }\n    }\n  }\n}"}
+          </CodeBlock>
+        </details>
         <div style={{ border: "1px solid var(--line)", borderRadius: "14px", overflow: "hidden" }}>
           <div
             className="docs-columns"

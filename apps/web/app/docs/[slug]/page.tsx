@@ -71,16 +71,15 @@ async function ResolvedDocsArticle({ params }: { params: Promise<{ slug: string 
 
   return (
     <main id="docs-content" className="docs-article">
-      {slug !== "api" && (
-        <aside className="rounded-lg border border-[var(--warn)] bg-[var(--warn-soft)] px-4 py-3 text-[11px] leading-5 text-[var(--warn)]">
-          Sandbox documentation preview. Some features shown in the product design are still being
-          implemented. Use the{" "}
-          <Link href="/docs/api" className="font-semibold underline">
-            current API contract
-          </Link>{" "}
-          for request schemas and endpoint availability.
-        </aside>
-      )}
+      <aside className="rounded-lg border border-[var(--line)] bg-[var(--panel2)] px-4 py-3 text-[12px] leading-6 text-[var(--fg2)]">
+        <strong className="font-semibold text-[var(--fg)]">Explore without an API key.</strong> All guides are
+        public. Supported playground examples run locally without sign-in or credentials. Some integration
+        features are previews; check the{" "}
+        <Link href="/docs/api" className="font-semibold underline">
+          current API contract
+        </Link>{" "}
+        for authentication, request schemas and endpoint availability when connecting your own app.
+      </aside>
       <Article />
       <nav
         aria-label="Previous and next article"

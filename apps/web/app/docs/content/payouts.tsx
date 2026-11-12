@@ -1,3 +1,4 @@
+import { PlaygroundRequest } from "../request-example";
 import { CodeBlock } from "../code-block";
 
 export default function DocsPayoutsContent() {
@@ -228,91 +229,7 @@ export default function DocsPayoutsContent() {
       </section>
       <section style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
         <h2 style={{ fontSize: "16px", fontWeight: 600, letterSpacing: "-0.01em" }}>{"POST /v1/payouts"}</h2>
-        <CodeBlock
-          text={
-            '# Create a payout from a quote\ncurl -X POST https://fliq-yclq.onrender.com/v1/payouts \\\n  -H "Authorization: Bearer <YOUR_TEST_KEY>" \\\n  -H "Idempotency-Key: payroll-2026-11-05-dara" \\\n  -d "quote_id=q_31ad77e0&bank=058&number=0123456789"\n\n# 201 Created\n{\n  "payout_id": "po_9c2f71aa",\n  "state": "awaiting_deposit",\n  "account_name": "DARA OKONKWO",\n  "amount": "50.00", "receive": 68816, "currency": "ngn",\n  "rate": 1376.32, "fees": { "provider": 25000, "network": 9400, "total": 34400 },\n  "provider": "paycrest",\n  "deposit": { "chain": "near", "address": "fliq-vault.testnet", "amount": "50.00" },\n  "history": [{ "state": "awaiting_deposit", "at": "2026-10-29T13:02:10Z" }]\n}'
-          }
-        >
-          <span style={{ color: "#7A7A7A" }}>{"# Create a payout from a quote"}</span>
-          {"\ncurl -X POST https://fliq-yclq.onrender.com/v1/payouts \\\n  -H "}
-          <span style={{ color: "#F2C879" }}>{'"Authorization: Bearer <YOUR_TEST_KEY>"'}</span>
-          {" \\\n  -H "}
-          <span style={{ color: "#F2C879" }}>{'"Idempotency-Key: payroll-2026-11-05-dara"'}</span>
-          {" \\\n  -d "}
-          <span style={{ color: "#F2C879" }}>{'"quote_id=q_31ad77e0&bank=058&number=0123456789"'}</span>
-          <span style={{ color: "#7A7A7A" }}>{"# 201 Created"}</span>
-          {"\n{\n  "}
-          <span style={{ color: "#F2C879" }}>{'"payout_id"'}</span>
-          {": "}
-          <span style={{ color: "#F2C879" }}>{'"po_9c2f71aa"'}</span>
-          {",\n  "}
-          <span style={{ color: "#F2C879" }}>{'"state"'}</span>
-          {": "}
-          <span style={{ color: "#F2C879" }}>{'"awaiting_deposit"'}</span>
-          {",\n  "}
-          <span style={{ color: "#F2C879" }}>{'"account_name"'}</span>
-          {": "}
-          <span style={{ color: "#F2C879" }}>{'"DARA OKONKWO"'}</span>
-          {",\n  "}
-          <span style={{ color: "#F2C879" }}>{'"amount"'}</span>
-          {": "}
-          <span style={{ color: "#F2C879" }}>{'"50.00"'}</span>
-          {", "}
-          <span style={{ color: "#F2C879" }}>{'"receive"'}</span>
-          {": "}
-          <span style={{ color: "#8ED1A0" }}>{"68816"}</span>
-          {", "}
-          <span style={{ color: "#F2C879" }}>{'"currency"'}</span>
-          {": "}
-          <span style={{ color: "#F2C879" }}>{'"ngn"'}</span>
-          {",\n  "}
-          <span style={{ color: "#F2C879" }}>{'"rate"'}</span>
-          {": "}
-          <span style={{ color: "#8ED1A0" }}>{"1376.32"}</span>
-          {", "}
-          <span style={{ color: "#F2C879" }}>{'"fees"'}</span>
-          {": { "}
-          <span style={{ color: "#F2C879" }}>{'"provider"'}</span>
-          {": "}
-          <span style={{ color: "#8ED1A0" }}>{"25000"}</span>
-          {", "}
-          <span style={{ color: "#F2C879" }}>{'"network"'}</span>
-          {": "}
-          <span style={{ color: "#8ED1A0" }}>{"9400"}</span>
-          {", "}
-          <span style={{ color: "#F2C879" }}>{'"total"'}</span>
-          {": "}
-          <span style={{ color: "#8ED1A0" }}>{"34400"}</span>
-          {" },\n  "}
-          <span style={{ color: "#F2C879" }}>{'"provider"'}</span>
-          {": "}
-          <span style={{ color: "#F2C879" }}>{'"paycrest"'}</span>
-          {",\n  "}
-          <span style={{ color: "#F2C879" }}>{'"deposit"'}</span>
-          {": { "}
-          <span style={{ color: "#F2C879" }}>{'"chain"'}</span>
-          {": "}
-          <span style={{ color: "#F2C879" }}>{'"near"'}</span>
-          {", "}
-          <span style={{ color: "#F2C879" }}>{'"address"'}</span>
-          {": "}
-          <span style={{ color: "#F2C879" }}>{'"fliq-vault.testnet"'}</span>
-          {", "}
-          <span style={{ color: "#F2C879" }}>{'"amount"'}</span>
-          {": "}
-          <span style={{ color: "#F2C879" }}>{'"50.00"'}</span>
-          {" },\n  "}
-          <span style={{ color: "#F2C879" }}>{'"history"'}</span>
-          {": [{ "}
-          <span style={{ color: "#F2C879" }}>{'"state"'}</span>
-          {": "}
-          <span style={{ color: "#F2C879" }}>{'"awaiting_deposit"'}</span>
-          {", "}
-          <span style={{ color: "#F2C879" }}>{'"at"'}</span>
-          {": "}
-          <span style={{ color: "#F2C879" }}>{'"2026-10-29T13:02:10Z"'}</span>
-          {" }]\n}"}
-        </CodeBlock>
+        <PlaygroundRequest id="payout" />
         <div style={{ border: "1px solid var(--line)", borderRadius: "14px", overflow: "hidden" }}>
           <div
             className="docs-columns"

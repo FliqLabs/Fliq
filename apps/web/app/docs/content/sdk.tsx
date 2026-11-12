@@ -1,3 +1,4 @@
+import { sdkPlaygroundExample } from "./quickstart-examples";
 import { CodeBlock } from "../code-block";
 
 export default function DocsSDKContent() {
@@ -22,8 +23,10 @@ export default function DocsSDKContent() {
         </p>
       </div>
       <section style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-        <h2 style={{ fontSize: "16px", fontWeight: 600, letterSpacing: "-0.01em" }}>{"Install"}</h2>
-        <CodeBlock text={"npm install @fliq/sdk\n\n// or\npnpm add @fliq/sdk"}>
+        <h2 style={{ fontSize: "16px", fontWeight: 600, letterSpacing: "-0.01em" }}>
+          {"Install in your own app (optional)"}
+        </h2>
+        <CodeBlock mode="reference" text={"npm install @fliq/sdk\n\n// or\npnpm add @fliq/sdk"}>
           {"npm install @fliq/sdk\n\n"}
           <span style={{ color: "#7A7A7A" }}>{"// or"}</span>
           {"\npnpm add @fliq/sdk"}
@@ -33,41 +36,11 @@ export default function DocsSDKContent() {
         <h2 style={{ fontSize: "16px", fontWeight: 600, letterSpacing: "-0.01em" }}>
           {"Pay someone in ten lines"}
         </h2>
-        <CodeBlock
-          text={
-            'import { Fliq } from "@fliq/sdk";\n\nconst fliq = new Fliq({ key: process.env.FLIQ_KEY });   // <YOUR_TEST_KEY>\n\nconst account = await fliq.accounts.verify({ bank: "058", number: "0123456789" });\n// account.account_name === "DARA OKONKWO"\n\nconst quote = await fliq.quotes.create({ token: "usdc", currency: "ngn", amount: "50.00" });\n// quote.receive === 68816, quote.expires_in === 90\n\nconst payout = await fliq.payouts.create({ quoteId: quote.quote_id, bank: "058", number: "0123456789" }, { idempotencyKey: "payroll-2026-11-05-dara" });\n\nfor await (const state of fliq.payouts.watch(payout.payout_id)) {\n  console.log(state);   // deposit_seen → paying_out → settled\n}'
-          }
-        >
-          {"import { Fliq } from "}
-          <span style={{ color: "#F2C879" }}>{'"@fliq/sdk"'}</span>
-          {";\n\nconst fliq = new Fliq({ key: process.env.FLIQ_KEY });   "}
-          <span style={{ color: "#7A7A7A" }}>{"// <YOUR_TEST_KEY>"}</span>
-          {"\n\nconst account = await fliq.accounts.verify({ bank: "}
-          <span style={{ color: "#F2C879" }}>{'"058"'}</span>
-          {", number: "}
-          <span style={{ color: "#F2C879" }}>{'"0123456789"'}</span>
-          {" });\n"}
-          <span style={{ color: "#7A7A7A" }}>{'// account.account_name === "DARA OKONKWO"'}</span>
-          {"\n\nconst quote = await fliq.quotes.create({ token: "}
-          <span style={{ color: "#F2C879" }}>{'"usdc"'}</span>
-          {", currency: "}
-          <span style={{ color: "#F2C879" }}>{'"ngn"'}</span>
-          {", amount: "}
-          <span style={{ color: "#F2C879" }}>{'"50.00"'}</span>
-          {" });\n"}
-          <span style={{ color: "#7A7A7A" }}>{"// quote.receive === 68816, quote.expires_in === 90"}</span>
-          {"\n\nconst payout = await fliq.payouts.create({ quoteId: quote.quote_id, bank: "}
-          <span style={{ color: "#F2C879" }}>{'"058"'}</span>
-          {", number: "}
-          <span style={{ color: "#F2C879" }}>{'"0123456789"'}</span>
-          {" }, { idempotencyKey: "}
-          <span style={{ color: "#F2C879" }}>{'"payroll-2026-11-05-dara"'}</span>
-          {
-            " });\n\nfor await (const state of fliq.payouts.watch(payout.payout_id)) {\n  console.log(state);   "
-          }
-          <span style={{ color: "#7A7A7A" }}>{"// deposit_seen → paying_out → settled"}</span>
-          {"\n}"}
-        </CodeBlock>
+        <p className="text-[13px] leading-6 text-[var(--fg2)]">
+          The docs playground preconfigures a demo client. No installation or API key is needed to run this
+          example here. For your own app, configure the SDK using the authentication guide.
+        </p>
+        <CodeBlock text={sdkPlaygroundExample} />
       </section>
       <section style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
         <h2 style={{ fontSize: "16px", fontWeight: 600, letterSpacing: "-0.01em" }}>{"What it gives you"}</h2>
@@ -192,6 +165,7 @@ export default function DocsSDKContent() {
       <section style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
         <h2 style={{ fontSize: "16px", fontWeight: 600, letterSpacing: "-0.01em" }}>{"Verify a webhook"}</h2>
         <CodeBlock
+          mode="reference"
           text={
             'import { webhooks } from "@fliq/sdk";\n\napp.post("/hooks", express.raw({ type: "*/*" }), (req, res) => {\n  const event = webhooks.verify(req.body, req.header("Fliq-Signature"), process.env.FLIQ_WEBHOOK_SECRET);\n  if (event.type === "payout.settled") markPaid(event.payout_id, event.bank_reference);\n  res.sendStatus(200);\n});'
           }

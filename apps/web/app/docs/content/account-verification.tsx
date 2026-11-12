@@ -1,4 +1,4 @@
-import { CodeBlock } from "../code-block";
+import { PlaygroundRequest } from "../request-example";
 
 export default function DocsVerifyContent() {
   return (
@@ -25,45 +25,7 @@ export default function DocsVerifyContent() {
         <h2 style={{ fontSize: "16px", fontWeight: 600, letterSpacing: "-0.01em" }}>
           {"POST /v1/accounts/verify"}
         </h2>
-        <CodeBlock
-          text={
-            'curl -X POST https://fliq-yclq.onrender.com/v1/accounts/verify \\\n  -H "Authorization: Bearer <YOUR_TEST_KEY>" \\\n  -d "bank=058&number=0123456789"\n\n{ "bank": "058", "number": "0123456789", "account_name": "DARA OKONKWO", "institution": "GTBank" }\n\n# unknown account\n{ "error": { "code": "account_not_found", "message": "GTBank returned no name for 0123456780." } }'
-          }
-        >
-          {"curl -X POST https://fliq-yclq.onrender.com/v1/accounts/verify \\\n  -H "}
-          <span style={{ color: "#F2C879" }}>{'"Authorization: Bearer <YOUR_TEST_KEY>"'}</span>
-          {" \\\n  -d "}
-          <span style={{ color: "#F2C879" }}>{'"bank=058&number=0123456789"'}</span>
-          {"\n\n{ "}
-          <span style={{ color: "#F2C879" }}>{'"bank"'}</span>
-          {": "}
-          <span style={{ color: "#F2C879" }}>{'"058"'}</span>
-          {", "}
-          <span style={{ color: "#F2C879" }}>{'"number"'}</span>
-          {": "}
-          <span style={{ color: "#F2C879" }}>{'"0123456789"'}</span>
-          {", "}
-          <span style={{ color: "#F2C879" }}>{'"account_name"'}</span>
-          {": "}
-          <span style={{ color: "#F2C879" }}>{'"DARA OKONKWO"'}</span>
-          {", "}
-          <span style={{ color: "#F2C879" }}>{'"institution"'}</span>
-          {": "}
-          <span style={{ color: "#F2C879" }}>{'"GTBank"'}</span>
-          {" }\n\n"}
-          <span style={{ color: "#7A7A7A" }}>{"# unknown account"}</span>
-          {"\n{ "}
-          <span style={{ color: "#F2C879" }}>{'"error"'}</span>
-          {": { "}
-          <span style={{ color: "#F2C879" }}>{'"code"'}</span>
-          {": "}
-          <span style={{ color: "#F2C879" }}>{'"account_not_found"'}</span>
-          {", "}
-          <span style={{ color: "#F2C879" }}>{'"message"'}</span>
-          {": "}
-          <span style={{ color: "#F2C879" }}>{'"GTBank returned no name for 0123456780."'}</span>
-          {" } }"}
-        </CodeBlock>
+        <PlaygroundRequest id="verify" />
         <div style={{ border: "1px solid var(--line)", borderRadius: "14px", overflow: "hidden" }}>
           <div
             className="docs-columns"
