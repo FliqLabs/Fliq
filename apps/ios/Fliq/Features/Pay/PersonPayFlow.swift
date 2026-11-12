@@ -19,6 +19,8 @@ final class PersonPayFlow {
     private(set) var isSending = false
     private(set) var errorMessage: String?
     private(set) var paid: TokenAmount?
+    /// False from Face ID until the vault confirms the transfer.
+    private(set) var isConfirmed = false
 
     private let api: any FliqAPI
     private let transfers: any VaultTransfers
@@ -69,18 +71,26 @@ final class PersonPayFlow {
         isSending = true
         defer { isSending = false }
         do {
-            _ = try await transfers.send(amount, to: person.nearAccount)
+            isConfirmed = false
+            _ = try await transfers.send(amount, to: person.nearAccount) { [weak self] in
+                await MainActor.run { self?.paid = amount }
+            }
             vault?.debit(amount)
             paid = amount
+            isConfirmed = true
             errorMessage = nil
             return true
         } catch TransferError.refused(let reason) where reason.contains("INSUFFICIENT_BALANCE") || reason.contains("Insufficient") {
+            paid = nil
             errorMessage = "Your vault doesn't have enough for this."
         } catch TransferError.stillPending {
+            paid = nil
             errorMessage = "Still confirming on NEAR. Check Activity in a moment before paying again."
         } catch let error as KeychainError where error.status == errSecUserCanceled || error.status == errSecAuthFailed {
+            paid = nil
             errorMessage = nil
         } catch {
+            paid = nil
             errorMessage = "The payment didn't go through. Nothing moved."
         }
         return false

@@ -3,8 +3,17 @@ import Foundation
 /// Moves dollars from the user's vault balance to another fliq user's, instantly and without a fee.
 protocol VaultTransfers: Sendable {
     func send(_ amount: TokenAmount, to recipient: String) async throws -> RelayResult?
+    /// The same send, telling the caller the moment Face ID has passed, before the chain answers.
+    func send(_ amount: TokenAmount, to recipient: String, onSigned: @Sendable () async -> Void) async throws -> RelayResult?
     /// Signs the vault `payout` for a cash-out the API registered, so the vault releases its USDC to the deposit address.
     func release(_ payout: Payout) async throws -> RelayResult?
+}
+
+extension VaultTransfers {
+    func send(_ amount: TokenAmount, to recipient: String, onSigned: @Sendable () async -> Void) async throws -> RelayResult? {
+        await onSigned()
+        return try await send(amount, to: recipient)
+    }
 }
 
 enum TransferError: Error, Equatable {
@@ -24,9 +33,13 @@ struct RelayedVaultTransfers: VaultTransfers {
     var pollAttempts = 20
 
     func send(_ amount: TokenAmount, to recipient: String) async throws -> RelayResult? {
+        try await send(amount, to: recipient, onSigned: {})
+    }
+
+    func send(_ amount: TokenAmount, to recipient: String, onSigned: @Sendable () async -> Void) async throws -> RelayResult? {
         guard amount > .zero, let sender = await sender(), let vault = await vault() else { throw TransferError.notSetUp }
         let relay = DelegateRelay(api: api, rpc: rpc, keys: keys, pollInterval: pollInterval, pollAttempts: pollAttempts)
-        return try await relay.submit(from: sender, reason: "Pay \(recipient)") { nonce, height, key in
+        return try await relay.submit(from: sender, reason: "Pay \(recipient)", onSigned: onSigned) { nonce, height, key in
             .vaultTransfer(from: sender, to: recipient, units: UInt64(amount.baseUnits), vault: vault, nonce: nonce, blockHeight: height, publicKey: key)
         }
     }
@@ -54,6 +67,7 @@ struct DelegateRelay: Sendable {
     func submit(
         from sender: String,
         reason: String,
+        onSigned: @Sendable () async -> Void = {},
         _ build: @Sendable (_ nonce: UInt64, _ blockHeight: UInt64, _ publicKey: Data) -> DelegateAction
     ) async throws -> RelayResult {
         let publicKey = try keys.publicKey()
@@ -62,6 +76,7 @@ struct DelegateRelay: Sendable {
         async let height = rpc.finalBlockHeight()
         let action = build(try await nonce + 1, try await height, rawKey)
         let signature = try keys.sign(action.signingHash, reason: reason)
+        await onSigned()
         return try await follow(try await api.relay(signedDelegate: action.signed(with: signature)))
     }
 
