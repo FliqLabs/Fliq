@@ -34,8 +34,9 @@ final class AgentStore {
     func waitUntilActive(_ agentId: String, tries: Int = 10, pause: Duration = .seconds(2)) async -> Bool {
         for _ in 0..<tries {
             if agent(id: agentId)?.status == .active { return true }
-            try? await Task.sleep(for: pause)
             if let fresh = try? await api.agents(vault: vault()), fresh.contains(where: { $0.id == agentId }) { agents = fresh }
+            if agent(id: agentId)?.status == .active { return true }
+            try? await Task.sleep(for: pause)
         }
         return agent(id: agentId)?.status == .active
     }
