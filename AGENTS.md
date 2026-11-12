@@ -37,8 +37,6 @@ This file applies to every AI coding agent working in this repository: Claude Co
 
 ## Dates
 
-- 9 November 2026, 23:59 UTC: `apps/web`, `services/api` and `spec` freeze.
-- 12 November 2026, 23:59 UTC: `contracts/` freezes.
 - 14 November 2026, 23:59 UTC: submission. The repository becomes public before then.
 
-CI enforces the freezes. Do not try to work around them.
+There are no code freezes. Frank lifted them on 12 November so fixes can land until submission.
