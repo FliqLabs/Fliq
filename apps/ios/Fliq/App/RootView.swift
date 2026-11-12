@@ -121,6 +121,7 @@ struct RootView: View {
             onPerson: { account in leaveSheet { startPersonPayment(to: account) } },
             onNewAccount: { account, save in leaveSheet { startPayment(to: account, save: save) } },
             onWallet: { leaveSheet { startWithdraw() } },
+            onScanWallet: { address in leaveSheet { startWithdraw(to: address) } },
             onBankDeposit: { leaveSheet { startBankDeposit() } }
         )
     }
@@ -156,7 +157,7 @@ struct RootView: View {
         environment.router.push(.payPerson)
     }
 
-    private func startWithdraw() {
+    private func startWithdraw(to address: String? = nil) {
         withdrawFlow = WithdrawFlow(
             withdrawals: environment.withdrawals,
             vault: environment.vault,
@@ -166,6 +167,7 @@ struct RootView: View {
                 await environment.inbox.load()
             }
         )
+        if let address { withdrawFlow?.pick(address) }
         environment.router.push(.withdraw)
     }
 
