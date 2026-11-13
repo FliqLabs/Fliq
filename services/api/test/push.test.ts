@@ -77,6 +77,11 @@ describe("push messages", () => {
     expect(transferOutMessage("u1", "tr_1", 5_000_000n, "ada.fliqaccount.near")).toMatchObject({
       userId: "u1",
       title: "Sent $5.00 to @ada",
+      body: "It's in their vault now.",
+    });
+    expect(transferOutMessage("u1", "tr_2", 5_000_000n, "frank.near", true)).toMatchObject({
+      title: "Sent $5.00 to frank.near",
+      body: "It's in their wallet now.",
     });
     expect(depositMessage("u1", "dep_1", 9_990_000n, "usdc", "solana")).toMatchObject({
       title: "$9.99 arrived in your vault",

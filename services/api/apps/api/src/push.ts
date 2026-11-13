@@ -2,6 +2,7 @@ import { createPrivateKey, sign, type KeyObject } from "node:crypto";
 import { connect, type ClientHttp2Session } from "node:http2";
 import { decrypt } from "../../../packages/db/src/crypto.js";
 import type { Db, Unit } from "./db.js";
+import { OUTSIDE_FLIQ } from "./people.js";
 import { DEFAULT_NOTIFICATIONS, type NotificationSettings } from "./settings.js";
 
 export type PushKind = "transfer_in" | "transfer_out" | "payout" | "deposit" | "refused";
@@ -159,12 +160,13 @@ export const transferOutMessage = (
   refId: string,
   units: bigint,
   to: string,
+  outsideFliq = false,
 ): PushMessage => ({
   userId,
   kind: "transfer_out",
   refId,
   title: `Sent ${dollars(units)} to ${handle(to)}`,
-  body: "It's in their vault now.",
+  body: outsideFliq ? "It's in their wallet now." : "It's in their vault now.",
   setting: null,
 });
 
@@ -268,16 +270,21 @@ async function pending(tx: Db, since: Date, dataKey: Buffer): Promise<Pending[]>
   });
 
   const all: Pending[] = [
-    ...transfers.flatMap((row) => [
-      {
-        messageId: `${row.id}:in`,
-        build: async () => transferInMessage(row.toUserId, row.id, row.amount, row.fromAccount),
-      },
-      {
+    ...transfers.flatMap((row) => {
+      const outsideFliq = row.toUserId === OUTSIDE_FLIQ;
+      const out = {
         messageId: `${row.id}:out`,
-        build: async () => transferOutMessage(row.fromUserId, row.id, row.amount, row.toAccount),
-      },
-    ]),
+        build: async () => transferOutMessage(row.fromUserId, row.id, row.amount, row.toAccount, outsideFliq),
+      };
+      if (outsideFliq) return [out];
+      return [
+        {
+          messageId: `${row.id}:in`,
+          build: async () => transferInMessage(row.toUserId, row.id, row.amount, row.fromAccount),
+        },
+        out,
+      ];
+    }),
     ...deposits.map((row) => ({
       messageId: row.id,
       build: async () =>
