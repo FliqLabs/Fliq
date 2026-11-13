@@ -3,10 +3,8 @@ import SwiftUI
 struct WelcomeView: View {
     let onStart: () -> Void
     let onExistingAccount: () -> Void
-    var onSkip: (() -> Void)? = nil
     var isWorking = false
     var message: String?
-    var onEmail: (() -> Void)?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -56,35 +54,16 @@ struct WelcomeView: View {
             .disabled(isWorking)
             .padding(.top, 34)
 
-            VStack(spacing: 12) {
-                if let message {
-                    Text(message)
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(Theme.danger)
-                        .multilineTextAlignment(.center)
-                }
-                if let onEmail {
-                    Button("Use email instead", action: onEmail)
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(Theme.textSecondary)
-                        .frame(minHeight: 44)
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.top, 8)
+            Text(message ?? " ")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Theme.danger)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity, minHeight: 36)
+                .padding(.top, 8)
         }
         .padding(.horizontal, 26)
         .padding(.bottom, 12)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .overlay(alignment: .topTrailing) {
-            if let onSkip {
-                Button("Skip", action: onSkip)
-                    .font(.system(size: 17, weight: .medium))
-                    .foregroundStyle(Theme.textPrimary)
-                    .padding(.trailing, 24)
-                    .padding(.top, 12)
-            }
-        }
         .background { backdrop }
         .toolbar(.hidden, for: .navigationBar)
     }
@@ -139,5 +118,5 @@ private struct WelcomeButtonStyle: ButtonStyle {
 }
 
 #Preview {
-    WelcomeView(onStart: {}, onExistingAccount: {}, onSkip: {})
+    WelcomeView(onStart: {}, onExistingAccount: {})
 }

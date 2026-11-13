@@ -1,10 +1,10 @@
 import SwiftUI
 
 enum OnboardingStep: Hashable {
-    case signIn, claimName, profile, ownAccount
+    case claimName, profile, ownAccount
 }
 
-/// Welcome, a passkey (or email) when talking to the real API, claim a name, add a face, add your own account, then Home.
+/// Welcome, a passkey when talking to the real API, claim a name, add a face, add your own account, then Home.
 struct OnboardingView: View {
     private let profile: ProfileStore
     private let accounts: AccountBook
@@ -15,7 +15,6 @@ struct OnboardingView: View {
     @State private var passkeyMessage: String?
     private let memory = PasskeyMemory()
     @State private var flow: OnboardingFlow
-    @State private var signIn: SignInFlow
     @State private var path: [OnboardingStep] = []
 
     init(environment: AppEnvironment) {
@@ -24,7 +23,6 @@ struct OnboardingView: View {
         isLive = environment.isLive
         api = environment.api
         _flow = State(initialValue: OnboardingFlow(api: environment.api, names: environment.names, isLive: environment.isLive, photos: environment.photos))
-        _signIn = State(initialValue: SignInFlow(api: environment.api))
     }
 
     var body: some View {
@@ -32,10 +30,8 @@ struct OnboardingView: View {
             WelcomeView(
                 onStart: start,
                 onExistingAccount: existingAccount,
-                onSkip: skip,
                 isWorking: passkeyWorking,
-                message: passkeyMessage,
-                onEmail: email
+                message: passkeyMessage
             )
             .navigationDestination(for: OnboardingStep.self, destination: screen)
         }
@@ -45,10 +41,8 @@ struct OnboardingView: View {
     @ViewBuilder
     private func screen(_ step: OnboardingStep) -> some View {
         switch step {
-        case .signIn:
-            SignInView(flow: signIn, onSignedIn: signedIn)
         case .claimName:
-            ClaimNameView(flow: flow, onContinue: claim, onSkip: { path.append(.ownAccount) })
+            ClaimNameView(flow: flow, onContinue: claim)
         case .profile:
             ProfileSetupView(flow: flow, onContinue: { path.append(.ownAccount) })
         case .ownAccount:
@@ -60,18 +54,6 @@ struct OnboardingView: View {
     private var existingAccount: () -> Void {
         if isLive { return { usePasskey(.login) } }
         return { finish() }
-    }
-
-    /// The demo build can skip to Home. The live build cannot.
-    private var skip: (() -> Void)? {
-        if isLive { return nil }
-        return { finish() }
-    }
-
-    /// The live build offers email when a passkey is not an option.
-    private var email: (() -> Void)? {
-        if isLive { return { path.append(.signIn) } }
-        return nil
     }
 
     private func start() {
@@ -124,7 +106,7 @@ struct OnboardingView: View {
 
     private func couldNotCreate(_ error: any Error) {
         if case PasskeyError.cancelled = error { return }
-        passkeyMessage = "We couldn't create your passkey. Try again or use email."
+        passkeyMessage = "We couldn't create your passkey. Try again."
     }
 
     private func usePasskey(_ purpose: PasskeyPurpose) {
@@ -143,8 +125,8 @@ struct OnboardingView: View {
                 return
             } catch {
                 passkeyMessage = purpose == .register
-                    ? "We couldn't create your passkey. Try again or use email."
-                    : "That passkey isn't for a fliq account here. Try another, or use email."
+                    ? "We couldn't create your passkey. Try again."
+                    : "That passkey isn't for a fliq account here. Try another."
             }
         }
     }
