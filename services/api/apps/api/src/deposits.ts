@@ -1,5 +1,6 @@
 import type { DepositState, VaultDeposit } from "@prisma/client";
 import { OneClickError, type OneClickClient, type OneClickExecution, type OneClickQuote, type OneClickToken } from "../../../packages/chains/oneclick/index.js";
+import type { Arrival } from "../../../packages/chains/watchers/index.js";
 import { newId } from "../../../packages/db/src/ids.js";
 import { postEntry } from "../../../packages/ledger/post.js";
 import { vaultCredited } from "../../../packages/ledger/postings.js";
@@ -65,6 +66,8 @@ export interface DepositDeps {
   usdcContract: string;
   slippageBps: number;
   now?: () => Date;
+  // Reads the sending chain directly, so the user hears their money came before 1Click notices it.
+  arrivals?: Partial<Record<DepositChain, (deposit: { address: string; mint: string; since: Date }) => Promise<Arrival | null>>>;
   // On chain, 1Click's ft_transfer_call has already credited the vault. A stand-in vault has to be told.
   onLanded?: (landing: { account: string; units: bigint; message: string }) => Promise<void> | void;
 }
@@ -310,6 +313,28 @@ export function createDeposits(deps: DepositDeps) {
     return depositView(row);
   }
 
+  async function arrival(row: VaultDeposit): Promise<Arrival | null> {
+    const look = deps.arrivals?.[row.chain as DepositChain];
+    if (!look || !deps.client) return null;
+    try {
+      const list = await tokenList(deps.client);
+      const mint = list.find((item) => item.blockchain === ONECLICK_BLOCKCHAIN[row.chain as DepositChain] && item.symbol.toLowerCase() === row.token)?.contractAddress;
+      const found = mint ? await look({ address: row.depositAddress, mint, since: row.createdAt }) : null;
+      // 1Click decides what a short payment becomes, so one is left for it to report.
+      return found && found.amount >= row.minimumUnits ? found : null;
+    } catch (error) {
+      console.error("[deposits] origin lookup failed", (error as Error).message);
+      return null;
+    }
+  }
+
+  // 1Click's docs say naming the transaction can speed it up. It is only a hint: polling carries on whatever the answer.
+  function tellOneClick(row: VaultDeposit) {
+    void deps.client
+      ?.submitDeposit({ txHash: row.originTx as string, depositAddress: row.depositAddress, ...(row.depositMemo ? { memo: row.depositMemo } : {}) })
+      .catch((error) => console.error("[deposits] deposit submit failed", (error as Error).message));
+  }
+
   // The 1Click call happens outside any transaction. The row is then locked, so two pollers cannot both credit a landing.
   async function advance(unit: Unit, row: VaultDeposit): Promise<VaultDeposit> {
     let execution: OneClickExecution | undefined;
@@ -319,19 +344,24 @@ export function createDeposits(deps: DepositDeps) {
         throw error;
       });
     }
+    const arrived = execution?.status === "PENDING_DEPOSIT" && row.state === "waiting" ? await arrival(row) : null;
     const at = now();
-    const { updated, landed } = await unit(async (tx) => {
+    const { updated, landed, sighted } = await unit(async (tx) => {
       await tx.$queryRaw`SELECT id FROM core.vault_deposits WHERE id = ${row.id} FOR UPDATE`;
       const current = await tx.vaultDeposit.findUniqueOrThrow({ where: { id: row.id } });
-      const next = nextDeposit(current, execution, at);
+      const followed = nextDeposit(current, execution, at);
+      // Our own sighting only changes what the user is told. The balance is credited when 1Click delivers, below.
+      const sightedNow = arrived !== null && followed.state === "waiting";
+      const next = sightedNow ? { ...followed, state: "seen" as const, receivedUnits: arrived.amount, originTx: arrived.txHash, seenAt: at } : followed;
       const landedNow = current.state !== "landed" && next.state === "landed" && next.landedUnits !== null;
       const saved = await tx.vaultDeposit.update({ where: { id: row.id }, data: { ...next, polledAt: at, updatedAt: next.state === current.state ? current.updatedAt : at } });
       if (landedNow) {
         await postEntry(tx, vaultCredited(saved.id, saved.account, "USDC", saved.landedUnits as bigint));
         await markRequestPaid(tx, saved);
       }
-      return { updated: saved, landed: landedNow };
+      return { updated: saved, landed: landedNow, sighted: sightedNow };
     });
+    if (sighted) tellOneClick(updated);
     if (landed) await deps.onLanded?.({ account: updated.account, units: updated.landedUnits as bigint, message: topUpMessage(updated.account) });
     return updated;
   }
