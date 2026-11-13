@@ -1,8 +1,10 @@
 import type { OneClickClient } from "../../../packages/chains/oneclick/client.js";
+import type { OneClickExecution } from "../../../packages/chains/oneclick/types.js";
 import type { PayoutState } from "../../../packages/domain/payout-state.js";
 import { transitionPayout } from "../../../packages/domain/transition.js";
 import type { OrderSnapshot, ProviderAdapter } from "../../../packages/providers/types.js";
 import type { Unit } from "./db.js";
+import { hopReporter } from "./hop-watch.js";
 import { applyOrderStatus } from "./webhooks.js";
 
 export type WatchDeps = {
@@ -11,6 +13,7 @@ export type WatchDeps = {
   oneClick?: Pick<OneClickClient, "status">;
   now: () => Date;
   log: (message: string) => void;
+  reportHop?: ReturnType<typeof hopReporter>;
   windowMs?: number;
   batch?: number;
 };
@@ -40,6 +43,7 @@ type Watched = {
   routeKind: string;
   depositAddress: string | null;
   depositMemo: string | null;
+  depositValidUntil: Date | null;
   createdAt: Date;
 };
 
@@ -58,6 +62,7 @@ export async function watchPayouts(deps: WatchDeps): Promise<WatchResult[]> {
         routeKind: true,
         depositAddress: true,
         depositMemo: true,
+        depositValidUntil: true,
         createdAt: true,
       },
       orderBy: { updatedAt: "asc" },
@@ -85,8 +90,9 @@ async function poll(deps: WatchDeps, adapter: ProviderAdapter, payout: Watched):
   if (!payout.providerOrderId) return "no_order";
   let snapshot = await adapter.getOrder({ providerOrderId: payout.providerOrderId });
   if (!snapshot) return "not_found";
-  if (snapshot.status === "awaiting_deposit" && adapter.confirmFunding) {
-    snapshot = (await confirmDelivered(deps, adapter, payout)) ?? snapshot;
+  if (snapshot.status === "awaiting_deposit") {
+    const leg = await hopOf(deps, payout);
+    if (leg && adapter.confirmFunding) snapshot = (await confirmDelivered(deps, adapter, payout, leg)) ?? snapshot;
   }
   return apply(deps, payout, snapshot);
 }
@@ -104,15 +110,28 @@ function apply(deps: WatchDeps, payout: Watched, snapshot: OrderSnapshot): Promi
   );
 }
 
+// The swap that carries the USDC to the provider. A provider still waiting for its deposit is the one moment the
+// swap can be stuck, so that is when it is read and reported. A failed read never holds up the provider poll.
+async function hopOf(deps: WatchDeps, payout: Watched): Promise<OneClickExecution | null> {
+  if (payout.routeKind !== "intents" || !deps.oneClick || !payout.depositAddress) return null;
+  try {
+    const leg = await deps.oneClick.status(payout.depositAddress, payout.depositMemo ?? undefined);
+    deps.reportHop?.({ payoutId: payout.id, createdAt: payout.createdAt, validUntil: payout.depositValidUntil }, leg, deps.now());
+    return leg;
+  } catch (error) {
+    deps.log(`[payout-watch] ${payout.id}: 1Click status ${(error as Error).name}`);
+    return null;
+  }
+}
+
 // Only one delivery transfer can be the deposit. Zero or several means a person must look, never a guess.
 async function confirmDelivered(
   deps: WatchDeps,
   adapter: ProviderAdapter,
   payout: Watched,
+  leg: OneClickExecution,
 ): Promise<OrderSnapshot | null> {
-  if (payout.routeKind !== "intents" || !deps.oneClick || !payout.depositAddress || !payout.providerOrderId)
-    return null;
-  const leg = await deps.oneClick.status(payout.depositAddress, payout.depositMemo ?? undefined);
+  if (!payout.providerOrderId) return null;
   if (leg.status !== "SUCCESS") return null;
   if (leg.destinationTxHashes.length !== 1) {
     deps.log(
@@ -145,7 +164,8 @@ async function resolveUnknown(deps: WatchDeps, adapter: ProviderAdapter, payout:
   });
 }
 
-export function startPayoutWatch(deps: WatchDeps, intervalMs = 20_000): () => void {
+export function startPayoutWatch(input: WatchDeps, intervalMs = 20_000): () => void {
+  const deps = { ...input, reportHop: input.reportHop ?? hopReporter(input.log) };
   let running = false;
   const tick = async () => {
     if (running) return;
