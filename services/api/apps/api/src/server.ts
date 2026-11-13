@@ -1,6 +1,7 @@
 import { createOneClickClient } from "../../../packages/chains/oneclick/index.js";
 import { createNearRpc, createRelayerClient, TokenStorage, type NearRpc } from "../../../packages/chains/near/index.js";
 import { MockVault, NearVault, type VaultClient } from "../../../packages/chains/vault/index.js";
+import { createSolanaRpc, latestSolanaArrival } from "../../../packages/chains/watchers/index.js";
 import { DEFAULT_ROUTING_CONFIG, NO_SIGNALS } from "../../../packages/domain/routing.js";
 import { withCache } from "../../../packages/providers/cache.js";
 import { enabledAdapters } from "../../../packages/providers/enabled.js";
@@ -103,11 +104,13 @@ const probes: Probe[] = [
   })),
 ];
 
+const solanaRpc = createSolanaRpc({ url: process.env.SOLANA_RPC_URL ?? "https://api.mainnet-beta.solana.com", commitment: "confirmed", timeoutMs: 3_000 });
 const deposits = createDeposits({
   client: oneClick,
   vaultAccount: config.vaultAccount,
   usdcContract,
   slippageBps: Number(process.env.ONECLICK_DEPOSIT_SLIPPAGE_BPS ?? 200),
+  arrivals: { solana: ({ address, mint, since }) => latestSolanaArrival(solanaRpc, address, mint, since) },
   // The MockVault stands in for the chain, so it is handed the ft_transfer_call 1Click makes to the real vault.
   ...(mockVault
     ? {
