@@ -118,19 +118,22 @@ your AI agents with their limits.
 </tr>
 </table>
 
-Two payments on mainnet, recorded in real time and not sped up:
+Recorded on mainnet. The two payments are in real time, not sped up or cut. The bank transfer is
+shortened: the switch to the bank app and the wait of about a minute and a half for the money to
+land are cut out.
 
 <table>
 <tr>
 <td><a href="docs/videos/pay-a-fliq-user.mp4"><img src="docs/videos/pay-a-fliq-user.gif" width="260" alt="Paying a fliq user by name: search, type the amount, Face ID, and the balance drops"></a></td>
 <td><a href="docs/videos/send-and-receipt.mp4"><img src="docs/videos/send-and-receipt.gif" width="260" alt="Sending 3 dollars to a fliq user, then opening the receipt from Activity"></a></td>
+<td><a href="docs/videos/add-money-by-bank-transfer.mp4"><img src="docs/videos/add-money-by-bank-transfer.gif" width="260" alt="Adding money by bank transfer: 5,000 Naira in, the bank details to pay, then 3.43 dollars added to the vault"></a></td>
 </tr>
 <tr>
-<td align="center">Pay a fliq user by name</td><td align="center">Send, then open the receipt</td>
+<td align="center">Pay a fliq user by name</td><td align="center">Send, then open the receipt</td><td align="center">Add money by bank transfer (shortened)</td>
 </tr>
 </table>
 
-Click either one for the video file.
+Click any of them for the video file.
 
 - **Passkeys, not seed phrases.** One "Continue with passkey" button signs you in, or creates
   your account if you have none. Your NEAR account's key is made on the phone, kept in the
