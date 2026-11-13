@@ -37,6 +37,7 @@ export default function DocsAuthContent() {
           }
         </p>
         <CodeBlock
+          mode="reference"
           text={
             'curl https://fliq-yclq.onrender.com/v1/vault \\\n  -H "Authorization: Bearer <YOUR_TEST_KEY>"\n\n# 401 when the key is missing, revoked, or a sandbox key hits the live API\n{ "error": { "code": "unauthorized", "message": "Missing or invalid API key." } }'
           }
@@ -273,6 +274,7 @@ export default function DocsAuthContent() {
           </div>
         </div>
         <CodeBlock
+          mode="reference"
           text={
             'POST /v1/auth/passkeys/register/options\n{ "challenge_id": "chl_6e90b3f1", "options": { "challenge": "Zm9yLWRlbW8tb25seQ", "rp": { "id": "fliq.cash", "name": "fliq" }, "timeout": 60000 } }\n\nPOST /v1/auth/passkeys/register/verify\n{ "access_token": "at_demo_f3k9", "expires_in": 900, "refresh_token": "rf_demo_b81q",\n  "user": { "user_id": "usr_5d1c0a9e", "near_account": "frank.fliq.near", "display_name": "Frank", "vault": "fliq-vault.testnet" } }'
           }
@@ -445,6 +447,7 @@ export default function DocsAuthContent() {
           {" exchanges the token for the same session shape."}
         </p>
         <CodeBlock
+          mode="reference"
           text={'POST /v1/auth/email-links  { "email": "frank@fliq.money" }\n→ { "status": "sent" }'}
         >
           {"POST /v1/auth/email-links  { "}

@@ -51,13 +51,19 @@ describe("parseOutcome", () => {
 });
 
 describe("createNearRpc", () => {
-  it("sends the signed transaction and waits for FINAL", async () => {
+  it("sends the signed transaction and waits for every receipt to execute", async () => {
     const { rpc, sent } = rpcReturning({ jsonrpc: "2.0", id: 1, result: outcome([]) });
     await rpc.sendTransaction("AAAA");
     expect(sent[0]).toMatchObject({
       method: "send_tx",
-      params: { signed_tx_base64: "AAAA", wait_until: "FINAL" },
+      params: { signed_tx_base64: "AAAA", wait_until: "EXECUTED_OPTIMISTIC" },
     });
+  });
+
+  it("reads the optimistic head, so a read straight after a send sees what it did", async () => {
+    const { rpc, sent } = rpcReturning({ jsonrpc: "2.0", id: 1, result: { amount: "1", storage_usage: 1, code_hash: "h" } });
+    await rpc.account("ada.testnet");
+    expect(sent[0]).toMatchObject({ method: "query", params: { finality: "optimistic", request_type: "view_account" } });
   });
 
   it("returns null for an unknown account or key", async () => {

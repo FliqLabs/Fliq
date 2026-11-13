@@ -61,6 +61,13 @@ describe("provisionAccount", () => {
     });
   });
 
+  it("skips storage registration for an account that never holds a balance, such as an agent's", async () => {
+    const agent = newUser("claude-ada.fliq.testnet");
+    const result = await provisionAccount(deps, agent.accountId, agent.publicKey, { registerStorage: false });
+    expect(result).toMatchObject({ status: "created", storage: {} });
+    expect(rpc.sent.map((tx) => tx.actionKinds)).toEqual([["createAccount", "addKey"]]);
+  });
+
   it("funds the new account when configured", async () => {
     deps.fundingYocto = 10n ** 21n;
     const ada = newUser("ada.fliq.testnet");

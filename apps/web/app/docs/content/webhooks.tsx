@@ -178,6 +178,7 @@ export default function DocsWebhooksContent() {
           {"Body and signature"}
         </h2>
         <CodeBlock
+          mode="reference"
           text={
             'POST https://api.yourapp.dev/hooks\nFliq-Signature: t=1762350152,v1=5f8a3c…e21d\nContent-Type: application/json\n\n{\n  "id": "evt_8d1c40aa", "type": "payout.settled", "created_at": "2026-10-29T13:02:32Z",\n  "payout_id": "po_9c2f71aa", "state": "settled",\n  "amount": "50.00", "receive": 68816, "currency": "ngn", "provider": "paycrest",\n  "provider_order": "pc_8c9d1a4b10", "vault_receipt": "ord_7f3a9ec21e", "bank_reference": "000013251029140213",\n  "seconds": 21, "reference": "payroll-2026-11-05-dara"\n}'
           }
@@ -252,6 +253,7 @@ export default function DocsWebhooksContent() {
           }
         </p>
         <CodeBlock
+          mode="reference"
           text={
             '// node\nconst [t, v1] = sig.split(",").map(p => p.split("=")[1]);\nconst expected = crypto.createHmac("sha256", SECRET).update(`${t}.${raw}`).digest("hex");\nif (!crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(v1))) return res.status(401).end();'
           }

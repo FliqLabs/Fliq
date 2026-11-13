@@ -27,6 +27,31 @@ final class PersonPayTests: XCTestCase {
         XCTAssertEqual(flow.available, TokenAmount(baseUnits: 75_000_000))
     }
 
+    func testThePaidScreenShowsAfterFaceIDAndConfirmsWhenTheVaultAnswers() async {
+        let flow = flow()
+        await flow.lookUp()
+        flow.enterAmount("25")
+        XCTAssertFalse(flow.isConfirmed)
+
+        _ = await flow.pay()
+
+        XCTAssertEqual(flow.paid, TokenAmount(baseUnits: 25_000_000))
+        XCTAssertTrue(flow.isConfirmed)
+    }
+
+    func testARefusalAfterFaceIDTakesThePaidScreenBack() async {
+        let flow = flow(transfers: Refusing(reason: "Smart contract panicked: nope"))
+        await flow.lookUp()
+        flow.enterAmount("25")
+
+        let paid = await flow.pay()
+
+        XCTAssertFalse(paid)
+        XCTAssertNil(flow.paid, "Refusing signs first, so the paid screen had opened")
+        XCTAssertFalse(flow.isConfirmed)
+        XCTAssertEqual(flow.available, TokenAmount(baseUnits: 100_000_000))
+    }
+
     func testMoreThanTheVaultHoldsCannotBePaid() async {
         let flow = flow(balance: 10_000_000)
         await flow.lookUp()

@@ -32,6 +32,7 @@ export default function ApiContent() {
           </Link>
         </div>
         <CodeBlock
+          mode="reference"
           text={
             "# Base URL\nhttps://fliq-yclq.onrender.com/v1\n\nAuthorization: Bearer <YOUR_API_KEY>\nContent-Type: application/json\nIdempotency-Key: <UNIQUE_REQUEST_KEY>"
           }
@@ -92,6 +93,7 @@ export default function ApiContent() {
                         <strong>Response codes:</strong> {operation.responses.join(", ")}
                       </p>
                       <CodeBlock
+                        mode="reference"
                         text={`curl -X ${operation.method} "https://fliq-yclq.onrender.com${operation.path}"${operation.public ? "" : ' \\\n  -H "Authorization: Bearer <YOUR_API_KEY>"'}${operation.requestSchema ? " \\\n  -H \"Content-Type: application/json\" \\\n  -d '<JSON_BODY_FROM_OPENAPI>'" : ""}`}
                       />
                     </div>

@@ -126,7 +126,14 @@ export async function runExample(source, fixtures) {
     };
   }
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
-  const execute = new AsyncFunction("fetch", "console", "process", "Fliq", "quote", runnable);
+  const execute = new AsyncFunction(
+    "fetch",
+    "console",
+    "process",
+    "Fliq",
+    "quote",
+    `return (async () => {\n${runnable}\n})();`,
+  );
   const result = await execute(
     request,
     { log: print, error: print, warn: print, info: print },

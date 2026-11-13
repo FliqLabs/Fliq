@@ -134,7 +134,8 @@ export async function connectAgent(unit: Unit, deps: AgentDeps, userId: string, 
   const taken = existing && (existing.userId !== userId || (existing.state !== "revoked" && existing.publicKey !== input.public_key));
   if (taken) throw conflict(`An agent called ${name} is already connected. Pick another name or revoke it first.`);
   const units = await usdcCaps(deps, caps);
-  await deps.provisioner.createAccount(agentId, input.public_key);
+  // The agent's account only signs. It holds no USDC and no vault balance, so it needs no storage registration.
+  await deps.provisioner.createAccount(agentId, input.public_key, { registerStorage: false });
   await deps.provisioner.fundAgentDeposit(owner, agentId);
   const now = deps.now?.() ?? new Date();
   const agent = await unit((tx) =>

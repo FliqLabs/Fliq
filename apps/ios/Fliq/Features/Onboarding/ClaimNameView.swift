@@ -3,7 +3,6 @@ import SwiftUI
 struct ClaimNameView: View {
     @Bindable var flow: OnboardingFlow
     let onContinue: () -> Void
-    let onSkip: () -> Void
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -58,11 +57,6 @@ struct ClaimNameView: View {
             .padding(.bottom, 14)
         }
         .fliqScreen(ground: Theme.onboardingGround, aurora: Aurora(accent: accent))
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("Skip", action: onSkip).fontWeight(.semibold).disabled(flow.isClaiming)
-            }
-        }
         .onAppear { focused = true }
     }
 
