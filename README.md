@@ -118,6 +118,20 @@ your AI agents with their limits.
 </tr>
 </table>
 
+Two payments on mainnet, recorded in real time and not sped up:
+
+<table>
+<tr>
+<td><a href="docs/videos/pay-a-fliq-user.mp4"><img src="docs/videos/pay-a-fliq-user.gif" width="260" alt="Paying a fliq user by name: search, type the amount, Face ID, and the balance drops"></a></td>
+<td><a href="docs/videos/send-and-receipt.mp4"><img src="docs/videos/send-and-receipt.gif" width="260" alt="Sending 3 dollars to a fliq user, then opening the receipt from Activity"></a></td>
+</tr>
+<tr>
+<td align="center">Pay a fliq user by name</td><td align="center">Send, then open the receipt</td>
+</tr>
+</table>
+
+Click either one for the video file.
+
 - **Passkeys, not seed phrases.** One "Continue with passkey" button signs you in, or creates
   your account if you have none. Your NEAR account's key is made on the phone, kept in the
   Keychain and used only after Face ID; it never leaves the device.
