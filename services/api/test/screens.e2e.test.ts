@@ -294,6 +294,10 @@ describe.skipIf(!enabled)("the app's activity, agents, requests and settings", (
     const other = (await send("POST", "/v1/requests", { amount: "5.00", note: "Studio rent, Nov", cash_out_on_arrival: true }, frank.headers)).json();
     expect((await send("DELETE", `/v1/requests/${other.request_id}`, undefined, frank.headers)).json().state).toBe("cancelled");
     expect((await get("/v1/requests", frank.headers)).json().items.map((item: { state: string }) => item.state)).toEqual(["cancelled", "paid"]);
+
+    const bare = await send("POST", "/v1/requests", { amount: "3.00", note: "  ", cash_out_on_arrival: false }, frank.headers);
+    expect(bare.statusCode).toBe(201);
+    expect(bare.json().note).toBe("");
   }, 90_000);
 
   it("connects an agent with caps in naira, shows it active once the vault holds its policy, and revokes it", async () => {
