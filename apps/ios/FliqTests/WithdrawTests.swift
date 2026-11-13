@@ -62,6 +62,15 @@ final class WithdrawAddressTests: XCTestCase {
     }
 }
 
+final class RecipientCurrencyTests: XCTestCase {
+    func testOnlyUSDCToANEARWalletIsOfferedAsAStablecoin() {
+        XCTAssertEqual(PayoutCurrency.stablecoins.map(\.code), ["USDC"])
+        XCTAssertTrue(PayoutCurrency.stablecoins.allSatisfy { $0.isLive && $0.toNearWallet })
+        XCTAssertTrue(PayoutCurrency.live.allSatisfy(\.isLive))
+        XCTAssertFalse(PayoutCurrency.soon.contains(where: \.isLive))
+    }
+}
+
 @MainActor
 final class WithdrawFlowTests: XCTestCase {
     private struct Undelivered: Withdrawals {

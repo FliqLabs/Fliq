@@ -36,6 +36,28 @@ final class PayToUITests: XCTestCase {
     }
 
     @MainActor
+    func testNewRecipientInUSDCOpensSendToAWallet() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--onboarded", "--funded", "--sample-recipients"]
+        app.launch()
+
+        app.buttons["Transfer"].tap()
+        XCTAssertTrue(app.buttons["Send"].waitForExistence(timeout: 3))
+        app.buttons["Send"].tap()
+        XCTAssertTrue(app.buttons["New recipient"].waitForExistence(timeout: 3))
+        app.buttons["New recipient"].tap()
+        XCTAssertTrue(app.buttons["USDC"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["USDC"].isEnabled)
+        XCTAssertFalse(app.buttons["GBP"].isEnabled)
+        snap("p5-new-recipient-currency")
+
+        app.buttons["USDC"].tap()
+        XCTAssertTrue(app.buttons["Next"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Vault"].exists)
+        snap("p6-send-to-wallet")
+    }
+
+    @MainActor
     private func snap(_ name: String) {
         let png = XCUIScreen.main.screenshot().pngRepresentation
         add(XCTAttachment(data: png, uniformTypeIdentifier: "public.png"))
