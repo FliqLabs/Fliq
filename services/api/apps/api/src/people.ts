@@ -27,7 +27,7 @@ export async function lookupPerson(tx: Db, config: Config, name: string) {
 }
 
 export async function recentPeople(tx: Db, userId: string) {
-  const sent = await tx.transfer.findMany({ where: { fromUserId: userId }, orderBy: { createdAt: "desc" }, take: 50 });
+  const sent = await tx.transfer.findMany({ where: { fromUserId: userId, toUserId: { not: OUTSIDE_FLIQ } }, orderBy: { createdAt: "desc" }, take: 50 });
   const lastPaid = new Map<string, Date>();
   for (const transfer of sent) if (!lastPaid.has(transfer.toUserId)) lastPaid.set(transfer.toUserId, transfer.createdAt);
   const people = await tx.user.findMany({ where: { id: { in: [...lastPaid.keys()].slice(0, 10) } } });
@@ -36,6 +36,9 @@ export async function recentPeople(tx: Db, userId: string) {
     .sort((a, b) => b.last_paid_at.localeCompare(a.last_paid_at));
   return { items };
 }
+
+// A send to a NEAR wallet outside fliq has no user on the other side, so its transfer row carries this in their place.
+export const OUTSIDE_FLIQ = "";
 
 export interface ObservedTransfer {
   txHash: string;
@@ -65,4 +68,14 @@ export async function recordObservedTransfer(tx: Db, observed: ObservedTransfer)
   });
   await postEntry(tx, vaultTransfer(transferId, observed.from, observed.to, "USDC", observed.amount));
   return { status: "recorded", transferId };
+}
+
+// USDC the user sent on from their own NEAR account to a wallet outside fliq. It left the vault with the withdraw
+// before it, which the ledger does not mirror, so this only records it for Activity, once per transaction.
+export async function recordOutsideSend(tx: Db, userId: string, observed: ObservedTransfer): Promise<void> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`transfer:${observed.txHash}`}, 0))`;
+  if (await tx.transfer.findUnique({ where: { txHash: observed.txHash }, select: { id: true } })) return;
+  await tx.transfer.create({
+    data: { id: newId("tr"), txHash: observed.txHash, fromUserId: userId, toUserId: OUTSIDE_FLIQ, fromAccount: observed.from, toAccount: observed.to, asset: "USDC", amount: observed.amount },
+  });
 }

@@ -258,6 +258,28 @@ describe.skipIf(!enabled)("creating NEAR accounts and relaying calls through the
     expect(deposits[0]).toMatchObject({ status: "received", usd: "20.00", token: "20 USDC", party: { name: "Received from NEAR" } });
   });
 
+  it("shows USDC sent to a NEAR wallet outside fliq in Activity, once however often it is relayed", async () => {
+    const headers = await signIn("outside");
+    const user = newUser(`outside${suffix}.${ROOT}`);
+    expect((await claim(headers, `o-${suffix}`, { name: `outside${suffix}`, public_key: user.publicKey })).statusCode).toBe(201);
+
+    const onward = await signDelegate(user, {
+      receiverId: USDC,
+      methodName: "ft_transfer",
+      args: { receiver_id: "frank.near", amount: "7500000", memo: "fliq" },
+      deposit: 1n,
+    });
+    const relayed = await app.inject({ method: "POST", url: "/v1/relays", payload: { signed_delegate: onward.base64 }, headers });
+    expect(relayed.statusCode, relayed.body).toBe(200);
+    expect(relayed.json().status).toBe("succeeded");
+    await app.inject({ method: "POST", url: "/v1/relays", payload: { signed_delegate: onward.base64 }, headers });
+
+    const activity = (await app.inject({ method: "GET", url: "/v1/activity", headers })).json();
+    expect(activity.items).toHaveLength(1);
+    expect(activity.items[0]).toMatchObject({ kind: "transfer_out", status: "sent", usd: "7.50", party: { name: "frank.near", near_account: "frank.near", photo_url: null } });
+    expect((await app.inject({ method: "GET", url: "/v1/people/recent", headers })).json().items).toEqual([]);
+  });
+
   it("passes the relayer's own refusals through, such as a call outside its allowlist", async () => {
     const headers = await signIn("allow");
     const user = newUser(`allow${suffix}.${ROOT}`);

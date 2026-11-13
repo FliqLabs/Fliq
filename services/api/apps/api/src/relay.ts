@@ -6,7 +6,7 @@ import { newId } from "../../../packages/db/src/ids.js";
 import type { Db, Unit } from "./db.js";
 import { ApiError, invalidRequest, notFound } from "./errors.js";
 import type { Reply } from "./idempotency.js";
-import { recordObservedTransfer } from "./people.js";
+import { recordObservedTransfer, recordOutsideSend } from "./people.js";
 
 type DelegateCall = { receiverId: string; method: string; args: Record<string, unknown> };
 type Decoded = { sender: string; call: DelegateCall | null };
@@ -83,12 +83,21 @@ async function recordDirectTopUp(tx: Db, userId: string, delegate: Decoded, txHa
 const isDirectTopUp = (call: DelegateCall, contracts: RelayContracts) =>
   call.receiverId === contracts.usdc && call.method === "ft_transfer_call" && call.args.receiver_id === contracts.vault && call.args.msg === "";
 
+// The last step of a send to a NEAR wallet outside fliq. Like a direct top-up, nothing else records it.
+const isOutsideSend = (call: DelegateCall, contracts: RelayContracts) => call.receiverId === contracts.usdc && call.method === "ft_transfer";
+
 // A transfer between two vaults is recorded once the chain ran it; an agent payout the vault refused is recorded
 // because nothing moved and nothing else would show it.
 async function recordOutcome(tx: Db, userId: string, delegate: Decoded, result: RelayResponse, contracts: RelayContracts): Promise<void> {
   const call = delegate.call;
   if (call && isDirectTopUp(call, contracts)) {
     if (result.status === "succeeded" && result.tx_hash) await recordDirectTopUp(tx, userId, delegate, result.tx_hash);
+    return;
+  }
+  if (call && isOutsideSend(call, contracts)) {
+    const amount = String(call.args.amount ?? "");
+    if (result.status === "succeeded" && result.tx_hash && UNITS.test(amount))
+      await recordOutsideSend(tx, userId, { txHash: result.tx_hash, from: delegate.sender, to: String(call.args.receiver_id), amount: BigInt(amount) });
     return;
   }
   if (!call || call.receiverId !== contracts.vault) return;
