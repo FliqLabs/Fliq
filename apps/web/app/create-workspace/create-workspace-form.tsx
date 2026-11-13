@@ -38,6 +38,9 @@ export function CreateWorkspaceForm() {
     queryKey: ["workspace"],
     queryFn: () => fliqApi<Workspace>("workspaces/current"),
     enabled: account.isSuccess && Boolean(account.data.near_account),
+    retry: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
   const create = useMutation({
     mutationFn: () =>
@@ -46,8 +49,7 @@ export function CreateWorkspaceForm() {
         headers: { "Idempotency-Key": idempotencyKey.current ?? crypto.randomUUID() },
         body: JSON.stringify({ name: name.trim(), use_case: useCase, countries }),
       }),
-    onSuccess: ({ workspace, sandbox_key }) => {
-      queryClient.setQueryData(["workspace"], workspace);
+    onSuccess: ({ sandbox_key }) => {
       if (account.data) queryClient.setQueryData(["created-sandbox-key", account.data.user_id], sandbox_key);
     },
   });
@@ -104,12 +106,13 @@ export function CreateWorkspaceForm() {
           {create.data.sandbox_key.key}
         </div>
         <div className="mt-3"><CopyButton text={create.data.sandbox_key.key} label="Copy key" /></div>
-        <Link
-          href="/dashboard"
-          className="mt-6 block rounded-lg bg-zinc-950 px-5 py-3 text-center text-sm font-semibold text-white"
+        <button
+          type="button"
+          onClick={() => queryClient.setQueryData(["workspace"], create.data.workspace)}
+          className="mt-6 block w-full rounded-lg bg-zinc-950 px-5 py-3 text-center text-sm font-semibold text-white"
         >
           Continue to dashboard
-        </Link>
+        </button>
       </section>
     );
   }

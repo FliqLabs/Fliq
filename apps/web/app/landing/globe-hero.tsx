@@ -48,7 +48,7 @@ function HeroCopy({ copyRef }: { copyRef?: RefObject<HTMLDivElement | null> }) {
       </p>
       <div className="flex flex-wrap items-center justify-center gap-2.5">
         <Link
-          href="/create-workspace"
+          href="/dashboard"
           className="inline-flex h-11 items-center gap-[9px] rounded-full bg-white px-[18px] text-sm font-semibold tracking-[-0.02em] text-black transition-transform duration-[280ms] ease-[cubic-bezier(.34,1.56,.64,1)] hover:scale-[1.04] active:scale-[0.96] active:duration-[170ms] motion-reduce:transform-none sm:h-12 sm:px-5 sm:text-base"
         >
           Get started

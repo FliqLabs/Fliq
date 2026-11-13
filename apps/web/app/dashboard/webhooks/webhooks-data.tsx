@@ -61,7 +61,7 @@ export function WebhooksData() {
   if (error instanceof ApiError && error.status === 404) {
     return (
       <main className="py-16 text-center">
-        <Link href="/create-workspace" className="text-sm font-semibold underline">
+        <Link href="/dashboard" className="text-sm font-semibold underline">
           Create a workspace first
         </Link>
       </main>
