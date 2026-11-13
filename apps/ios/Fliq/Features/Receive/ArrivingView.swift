@@ -99,6 +99,7 @@ struct ArrivingView: View {
     private func caption(_ deposit: DepositAddress, now: Date) -> String {
         if stage == .landed { return "in your vault" }
         if stage == .waiting { return "We'll show it here the moment it arrives" }
+        if stage == .seen || stage == .bridging { return "Received. Arriving in your vault" }
         let left = secondsLeft(deposit, now: now)
         if left >= 120 { return "about \(left / 60) minutes left" }
         return left == 1 ? "about a second left" : "about \(left) seconds left"
