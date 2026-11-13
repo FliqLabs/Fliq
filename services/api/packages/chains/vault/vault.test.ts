@@ -167,3 +167,25 @@ describe("topUpMessage", () => {
     expect(JSON.parse(topUpMessage("ada.testnet"))).toEqual({ top_up: { account_id: "ada.testnet" } });
   });
 });
+
+describe("the vault's review-fix events", () => {
+  const line = (event: string, data: Record<string, unknown>) =>
+    `EVENT_JSON:${JSON.stringify({ standard: "fliq_vault", version: "1.0.0", event, data: [data] })}`;
+
+  it.each([
+    ["withdrawn", { account_id: "ada.testnet", amount: "5" }],
+    ["withdraw_failed", { account_id: "ada.testnet", amount: "5" }],
+    ["payout_failed", { order_id: "po_1", payer: "ada.testnet", amount: "5" }],
+    ["payout_resolved", { order_id: "po_1", transferred: false, resolved_by: "owner.testnet" }],
+    ["payout_timeout_set", { payout_timeout: "600000000000" }],
+    ["agent_spend_reversed", { owner: "ada.testnet", agent_id: "agent-1.ada.testnet", order_id: "po_1", amount: "5" }],
+  ])("reads %s", (event, data) => {
+    expect(parseVaultEvents(line(event, data))?.[0]?.event).toBe(event);
+  });
+
+  it("refuses a resolution whose transferred flag is not a boolean", () => {
+    expect(() =>
+      parseVaultEvents(line("payout_resolved", { order_id: "po_1", transferred: "no", resolved_by: "owner.testnet" })),
+    ).toThrow();
+  });
+});

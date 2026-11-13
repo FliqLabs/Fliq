@@ -4,7 +4,7 @@ import { formatTokenAmount } from "./dashboard.js";
 import type { Db, Unit } from "./db.js";
 import { conflict, notFound } from "./errors.js";
 import type { Reply } from "./idempotency.js";
-import { developerIdFor, requestQuote, type QuoteDeps, type QuoteInput } from "./quotes.js";
+import { developerIdFor, quoteAndSave, type QuoteDeps, type QuoteInput } from "./quotes.js";
 
 const RETRYABLE: ReadonlySet<string> = new Set(["refunded", "failed", "expired"]);
 const REVERSAL_AFTER_MS = 24 * 60 * 60_000;
@@ -68,7 +68,7 @@ async function ownedPayout(tx: Db, userId: string, payoutId: string) {
 }
 
 export async function quoteRetry(unit: Unit, deps: QuoteDeps, userId: string, payoutId: string) {
-  return unit(async (tx) => {
+  const { input, provider } = await unit(async (tx) => {
     const payout = await ownedPayout(tx, userId, payoutId);
     if (!RETRYABLE.has(payout.state)) throw conflict("Only a refunded, failed or expired payout can be tried again.");
     const quote = await tx.quote.findUniqueOrThrow({ where: { id: payout.quoteId } });
@@ -78,8 +78,9 @@ export async function quoteRetry(unit: Unit, deps: QuoteDeps, userId: string, pa
       amount: formatTokenAmount(payout.amountIn),
       source_chain: quote.sourceChain,
     };
-    return requestQuote(tx, { ...deps, adapters: deps.adapters.filter((adapter) => adapter.id !== payout.provider) }, userId, input);
+    return { input, provider: payout.provider };
   });
+  return quoteAndSave(unit, { ...deps, adapters: deps.adapters.filter((adapter) => adapter.id !== provider) }, userId, input);
 }
 
 export async function openClaim(tx: Db, userId: string, payoutId: string, bankReference: (events: readonly PayoutEvent[]) => string | null): Promise<Reply> {

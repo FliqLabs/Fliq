@@ -34,7 +34,7 @@ export default function PricingPage() {
         <aside aria-label="Worked fee example" className="mt-10 border border-[#2c2c2c] p-6 lg:-mx-6">
           <Image src={workedExampleIcon} alt="Nigeria" className="h-[22px] w-auto" />
           <p className="mt-4 text-sm leading-[21px] text-[#a3a3a3]">
-            Worked example: $50 at ₦1,383.20 provider rate, fees ₦344 (Paycrest ₦250, network ₦94), lands as ₦68,816. The fliq&apos;s share is inside the ₦344 and shown on the quote.
+            Illustrative fee calculation: the provider rate, provider fees, network fees, and Fliq&apos;s share are shown together on every quote. This is not a live rate or payout record.
           </p>
         </aside>
       </main>

@@ -51,7 +51,7 @@ Architecture diagrams: [docs/architecture.md](docs/architecture.md).
 
 - Baseline: the first commit is tagged `pre-hackathon`; the submission is tagged `hackathon-submission`. The hackathon work is the diff between them.
 - No existing product on another chain.
-- AI-generated code is listed in [docs/AI_USAGE.md](docs/AI_USAGE.md). The iOS app is built with Claude Code, directed and reviewed by Frank.
+- AI coding tools were used across the repo. The iOS app is built with Claude Code, directed and reviewed by Frank.
 
 ## Libraries
 
@@ -68,8 +68,12 @@ Architecture diagrams: [docs/architecture.md](docs/architecture.md).
 | near-api-js, borsh | services/api | NEAR transaction and delegate-action encoding, signing and verification for the relayer and account creation |
 | @simplewebauthn/server | services/api | Verify passkey registration and sign-in (WebAuthn) |
 | ioredis | services/api | Redis client for the atomic token-bucket rate limiter |
+| qrcode-generator | apps/web | Draw scannable QR codes for deposit addresses in the wallet, with no runtime dependencies |
+| three | apps/web | Render the rotating tile globe in the landing hero with WebGL, loaded only on the landing page |
+| lenis | apps/web | Run the landing hero's scroll handoff as one eased, reversible scroll that native scrolling cannot interrupt |
 | yaml | services/api | Read spec/openapi.yaml at startup to register routes |
 | prettier | root | Formatting |
+| Hugeicons free icons (SVG files, MIT) | apps/ios | The app's icon set, bundled as template vectors; notice in apps/ios/THIRD_PARTY_NOTICES.md |
 
 ## Contributing
 

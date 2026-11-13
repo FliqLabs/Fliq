@@ -52,7 +52,7 @@ import { bankReference, createPayout, getPayout, type PayoutDeps, type PayoutInp
 import { openClaim, quoteRetry } from "./recovery.js";
 import { createRateBoard, type RateBoard } from "./rate-board.js";
 import { createRates } from "./rates.js";
-import { requestQuote, type QuoteDeps, type QuoteInput } from "./quotes.js";
+import { quoteAndSave, type QuoteDeps, type QuoteInput } from "./quotes.js";
 import { createWorkspace } from "./workspaces.js";
 import type { Resolve } from "../../../packages/webhooks/destination.js";
 import {
@@ -203,7 +203,7 @@ export function createHandlers({
     }),
     claimName: (request) =>
       claimName(unit, config, provisioner, auth(request).userId, request.headers["idempotency-key"] as string | undefined, body<ClaimInput>(request)),
-    relay: (request) => relayDelegate(unit, relayer, auth(request).userId, body<{ signed_delegate: string }>(request).signed_delegate, config.vaultAccount),
+    relay: (request) => relayDelegate(unit, relayer, auth(request).userId, body<{ signed_delegate: string }>(request).signed_delegate, { vault: config.vaultAccount, usdc: config.usdcContract }),
     getRelay: (request) => getRelay(unit, relayer, auth(request).userId, (request.params as { delegateHash: string }).delegateHash),
 
     getCurrentWorkspace: async (request) => ({
@@ -305,7 +305,7 @@ export function createHandlers({
 
     requestQuote: async (request) => ({
       status: 200,
-      body: await unit((tx) => requestQuote(tx, quotes, auth(request).userId, body<QuoteInput>(request))),
+      body: await quoteAndSave(unit, quotes, auth(request).userId, body<QuoteInput>(request)),
     }),
 
     createPayout: async (request) =>
@@ -377,7 +377,7 @@ export function createHandlers({
       body: await getAgentPayout(unit, config, agentOf(request).agentId, (request.params as { payoutId: string }).payoutId),
     }),
     relayForAgent: (request) =>
-      relayDelegate(unit, relayer, agentOf(request).ownerId, body<{ signed_delegate: string }>(request).signed_delegate, config.vaultAccount, agentOf(request).agentId),
+      relayDelegate(unit, relayer, agentOf(request).ownerId, body<{ signed_delegate: string }>(request).signed_delegate, { vault: config.vaultAccount, usdc: config.usdcContract }, agentOf(request).agentId),
     connectAgent: async (request) => ({ status: 201, body: await connectAgent(unit, agentDeps, auth(request).userId, body<AgentInput>(request)) }),
     updateAgentLimits: async (request) => ({
       status: 200,

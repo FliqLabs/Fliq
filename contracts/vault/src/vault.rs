@@ -270,6 +270,31 @@ impl Vault {
         Ok(())
     }
 
+    /// Like commit_outflow, but a withdrawal can never be refunded, so it keeps no refund record and its key
+    /// is free for the next withdrawal.
+    pub(crate) fn commit_withdrawal(&mut self, key: &str) -> Result<(), ReservationError> {
+        let reservation = self.reservation(key)?;
+        let Some(balance) = self.balances.get(&reservation.payer) else {
+            return Err(ReservationError::NotFound);
+        };
+        let Some(reserved) = balance.reserved.checked_sub(reservation.amount) else {
+            return Err(ReservationError::ArithmeticOverflow);
+        };
+        let Some(total_liabilities) = self.total_liabilities.checked_sub(reservation.amount) else {
+            return Err(ReservationError::ArithmeticOverflow);
+        };
+        self.balances.insert(
+            &reservation.payer,
+            &Balance {
+                available: balance.available,
+                reserved,
+            },
+        );
+        self.total_liabilities = total_liabilities;
+        self.reservations.remove(&key.to_owned());
+        Ok(())
+    }
+
     #[allow(dead_code)]
     pub(crate) fn release_reservation(&mut self, order_id: &str) -> Result<(), ReservationError> {
         let reservation = self.reservation(order_id)?;

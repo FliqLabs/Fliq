@@ -14,11 +14,23 @@ struct QuoteView: View {
     private func content(_ quote: Quote) -> some View {
         VStack(spacing: 0) {
             VStack(spacing: 8) {
-                Text(flow.verified.map { "\($0.accountName) receives" } ?? "They receive")
-                    .font(.system(size: 14))
-                    .foregroundStyle(Theme.textSecondary)
+                HStack(spacing: 8) {
+                    if let verified = flow.verified {
+                        InstitutionLogo(logoKey: verified.logoKey, name: verified.institution, size: 20)
+                    }
+                    Text(flow.verified.map { "\($0.accountName) receives" } ?? "They receive")
+                        .lineLimit(1)
+                }
+                .font(.system(size: 15))
+                .foregroundStyle(Theme.textSecondary)
                 HeroAmount(symbol: quote.currency.symbol, value: quote.receive.formatted())
+                if let eta = quote.etaSeconds {
+                    Text("in about \(Self.duration(eta))")
+                        .font(.system(size: 16))
+                        .foregroundStyle(Theme.textSecondary)
+                }
             }
+            .padding(.horizontal, 16)
             .padding(.top, 36)
 
             DetailCard {
@@ -29,13 +41,12 @@ struct QuoteView: View {
                     DetailRow(label: "Route", isLast: true) {
                         HStack(spacing: 8) {
                             Text("Best of \(quote.bestOf)")
-                            if let advantage = Money.routeAdvantage(quote) {
+                            if let advantage = quote.savingVsNext.flatMap({ $0 > 0 ? $0 : nil }) ?? Money.routeAdvantage(quote) {
                                 Text("+" + Money.local(advantage, quote.currency))
                                     .font(.system(size: 13))
                                     .foregroundStyle(Theme.confirmed)
                             }
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 13, weight: .semibold))
+                            Icon("chevron.right", size: 16)
                                 .foregroundStyle(Theme.textTertiary)
                         }
                     }
@@ -45,12 +56,16 @@ struct QuoteView: View {
             .padding(.top, 32)
 
             HStack(spacing: 14) {
-                Image(systemName: "checkmark.seal")
-                    .font(.system(size: 20))
-                    .frame(width: 40, height: 40)
-                    .background(Theme.surfaceRaised, in: Circle())
-                Text("Paid out by \(quote.provider.displayName)")
-                    .font(.system(size: 15, weight: .medium))
+                ProviderMark(provider: quote.provider, size: 44)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Paid out by \(quote.provider.displayName)")
+                        .font(.system(size: 16, weight: .medium))
+                    if let detail = providerDetail(quote) {
+                        Text(detail)
+                            .font(.system(size: 13))
+                            .foregroundStyle(Theme.textSecondary)
+                    }
+                }
                 Spacer()
             }
             .padding(14)
@@ -68,6 +83,17 @@ struct QuoteView: View {
             RoutesSheet(quote: quote)
                 .presentationDetents([.fraction(0.68)])
         }
+    }
+
+    /// "96% on time · alert shows": the chosen route's record, from the quote.
+    private func providerDetail(_ quote: Quote) -> String? {
+        let route = quote.routes.first { $0.routed == true } ?? quote.routes.first { $0.provider == quote.provider }
+        guard let onTime = route?.onTimePercent else { return nil }
+        return "\(onTime)% on time · alert shows"
+    }
+
+    static func duration(_ seconds: Int) -> String {
+        seconds < 90 ? "\(seconds) seconds" : "\(Int((Double(seconds) / 60).rounded())) minutes"
     }
 
     private func countdown(_ quote: Quote, now: Date) -> some View {
@@ -102,7 +128,7 @@ struct QuoteView: View {
                     .buttonStyle(PrimaryButtonStyle())
             } else {
                 Button { confirm() } label: {
-                    Label("Confirm with Face ID", systemImage: "faceid")
+                    IconLabel("Confirm with Face ID", icon: "faceid")
                 }
                 .buttonStyle(PrimaryButtonStyle(filled: true))
                 .disabled(flow.isSending)

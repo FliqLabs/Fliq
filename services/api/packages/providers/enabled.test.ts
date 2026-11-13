@@ -3,8 +3,14 @@ import { hmac } from "../webhooks/hmac";
 import { enabledAdapters, type Env } from "./enabled";
 import { WEBHOOK_SETTLED_V2 } from "./paycrest/paycrest.fixtures";
 import { PAYCREST_SIGNATURE_HEADER } from "./paycrest/paycrest";
+import { TRANSFI_SIGNATURE_HEADER } from "./transfi/transfi";
+import { WEBHOOK_FUND_SETTLED } from "./transfi/transfi.fixtures";
 
-const deps = { alert: () => undefined };
+// Adapters that load their catalogue at startup must not reach the network from a test.
+const deps = {
+  alert: () => undefined,
+  fetch: (async () => new Response("{}", { status: 503 })) as typeof fetch,
+};
 
 const PAYCREST: Env = { PAYCREST_API_KEY: "pk", PAYCREST_API_SECRET: "current" };
 const BITNOB: Env = {
@@ -23,6 +29,16 @@ const FONBNK: Env = {
   FONBNK_USER_IP: "203.0.113.10",
 };
 
+const TRANSFI: Env = {
+  TRANSFI_USERNAME: "user",
+  TRANSFI_PASSWORD: "password",
+  TRANSFI_MID: "SABCDEF_SCT8YW_NA",
+  TRANSFI_ENVIRONMENT: "sandbox",
+  TRANSFI_WEBHOOK_SECRET: "current",
+  TRANSFI_SENDER_USER_ID: "UX-250930062608488",
+  TRANSFI_SENDER_IP: "203.0.113.10",
+};
+
 const ids = (env: Env) => enabledAdapters(env, deps).map((adapter) => adapter.id);
 
 describe("enabled adapters", () => {
@@ -39,6 +55,10 @@ describe("enabled adapters", () => {
     expect(() => ids({ ...FONBNK, FONBNK_USER_IP: "" })).toThrow(
       "Fonbnk is partly configured: set FONBNK_USER_IP",
     );
+    expect(ids(TRANSFI)).toEqual(["transfi"]);
+    expect(() => ids({ ...TRANSFI, TRANSFI_SENDER_USER_ID: " " })).toThrow(
+      "TransFi is partly configured: set TRANSFI_SENDER_USER_ID",
+    );
   });
 
   it("refuses a partly configured provider and names what is missing", () => {
@@ -50,9 +70,21 @@ describe("enabled adapters", () => {
     );
   });
 
+  it("shows Busha's prices with no key, but needs a key and webhook secret to pay", () => {
+    const [prices] = enabledAdapters({ BUSHA_ENVIRONMENT: "production", BUSHA_PUBLIC_QUOTES: "1" }, deps);
+    expect(prices?.capabilities().funding).toEqual({ direct: false, hop: false });
+    expect(() => ids({ BUSHA_ENVIRONMENT: "production" })).toThrow(
+      "set BUSHA_SECRET_KEY, or BUSHA_PUBLIC_QUOTES=1",
+    );
+    expect(() => ids({ ...BUSHA, BUSHA_WEBHOOK_SECRET: "" })).toThrow("set BUSHA_WEBHOOK_SECRET");
+  });
+
   it("refuses an unknown environment", () => {
     expect(() => ids({ ...BUSHA, BUSHA_ENVIRONMENT: "live" })).toThrow(
       'Busha environment must be "sandbox" or "production"',
+    );
+    expect(() => ids({ ...TRANSFI, TRANSFI_ENVIRONMENT: "live" })).toThrow(
+      'TransFi environment must be "sandbox" or "production"',
     );
   });
 
@@ -62,6 +94,15 @@ describe("enabled adapters", () => {
     for (const secret of ["current", "previous"]) {
       const headers = { [PAYCREST_SIGNATURE_HEADER]: hmac("sha256", secret, rawBody, "hex") };
       expect(paycrest?.parseWebhook({ headers, rawBody }).order.status).toBe("paid");
+    }
+  });
+
+  it("accepts the current and the previous TransFi webhook secret", () => {
+    const [transfi] = enabledAdapters({ ...TRANSFI, TRANSFI_WEBHOOK_SECRET_PREVIOUS: "previous" }, deps);
+    const rawBody = JSON.stringify(WEBHOOK_FUND_SETTLED);
+    for (const secret of ["current", "previous"]) {
+      const headers = { [TRANSFI_SIGNATURE_HEADER]: hmac("sha256", secret, rawBody, "hex") };
+      expect(transfi?.parseWebhook({ headers, rawBody }).order.status).toBe("paid");
     }
   });
 });

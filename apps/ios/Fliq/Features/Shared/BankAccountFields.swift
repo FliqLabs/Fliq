@@ -14,11 +14,14 @@ struct BankAccountFields: View {
         .onAppear { numberFocused = true }
         .task { await entry.loadInstitutions() }
         .onChange(of: entry.number) {
-            entry.number = String(entry.number.filter(\.isNumber).prefix(AccountEntry.numberLength))
-            if entry.isComplete {
-                numberFocused = false
-                Task { await entry.verify() }
-            }
+            entry.number = String(entry.number.filter(\.isNumber).prefix(entry.maxLength))
+            if entry.checksOnLastDigit { numberFocused = false }
+        }
+        .task(id: "\(entry.institution.code)-\(entry.number)") {
+            guard entry.isComplete, entry.verified == nil else { return }
+            if !entry.checksOnLastDigit { try? await Task.sleep(for: .milliseconds(800)) }
+            guard !Task.isCancelled else { return }
+            await entry.verify()
         }
     }
 
@@ -28,39 +31,38 @@ struct BankAccountFields: View {
                 ForEach(entry.institutions, id: \.self) { Text($0.name).tag($0) }
             }
         } label: {
-            HStack {
-                Image(systemName: "building.columns")
-                    .foregroundStyle(Theme.textSecondary)
+            HStack(spacing: 12) {
+                InstitutionLogo(logoKey: entry.institution.logoKey, name: entry.institution.name, size: 30)
                 Text(entry.institution.name)
                     .foregroundStyle(Theme.textPrimary)
                 Spacer()
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 14))
+                Icon("chevron.down", size: 17)
                     .foregroundStyle(Theme.textTertiary)
             }
-            .font(.system(size: 16))
+            .font(.system(size: 17))
             .padding(.horizontal, 16)
-            .frame(height: 54)
-            .background(Theme.field, in: RoundedRectangle(cornerRadius: 12))
+            .frame(height: 64)
+            .background(Theme.field, in: RoundedRectangle(cornerRadius: 14))
         }
+        .disabled(entry.institutions.isEmpty)
     }
 
     private var numberField: some View {
         HStack {
-            TextField("Account number", text: $entry.number)
+            TextField(entry.institution.type == .mobileMoney ? "Phone number" : "Account number", text: $entry.number)
                 .keyboardType(.numberPad)
                 .focused($numberFocused)
-                .font(.system(size: 18).monospacedDigit())
-                .tracking(1)
-            Text("\(entry.number.count)/\(AccountEntry.numberLength)")
-                .font(.system(size: 12))
+                .font(.system(size: 22, weight: .medium).monospacedDigit())
+                .tracking(2.5)
+            Text("\(entry.number.count)/\(entry.maxLength)")
+                .font(.system(size: 13))
                 .foregroundStyle(Theme.textTertiary)
         }
-        .padding(.horizontal, 16)
-        .frame(height: 54)
-        .background(Theme.field, in: RoundedRectangle(cornerRadius: 12))
+        .padding(.horizontal, 20)
+        .frame(height: 64)
+        .background(Theme.field, in: RoundedRectangle(cornerRadius: 14))
         .overlay {
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: 14)
                 .strokeBorder(entry.verified == nil ? .clear : Theme.confirmed)
         }
     }
@@ -70,7 +72,7 @@ struct BankAccountFields: View {
         Group {
             if let verified = entry.verified {
                 HStack(spacing: 6) {
-                    Image(systemName: "checkmark.circle")
+                    Icon("checkmark.circle", size: 18)
                     Text(verified.accountName).fontWeight(.semibold)
                     Text("· confirmed by \(verified.institution)").foregroundStyle(Theme.textTertiary)
                 }

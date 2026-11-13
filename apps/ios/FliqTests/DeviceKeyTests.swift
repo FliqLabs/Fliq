@@ -16,6 +16,13 @@ final class DeviceKeyTests: XCTestCase {
         XCTAssertNotNil(encoded.range(of: "^ed25519:[1-9A-HJ-NP-Za-km-z]{43,44}$", options: .regularExpression), encoded)
     }
 
+    func testAWrittenKeyReadsBackToItsBytes() {
+        let key = Curve25519.Signing.PrivateKey().publicKey.rawRepresentation
+        XCTAssertEqual(NEARKey.decode(NEARKey.encode(key)), key)
+        XCTAssertEqual(NEARKey.decode("ed25519:9C6hybhQ6Aycep9jaUnP6uL9ZYvDjUp1aSkFWPUFJtpj")?.count, 32)
+        XCTAssertNil(NEARKey.decode("secp256k1:abc"))
+    }
+
     func testTheDeviceKeyIsMadeOnceAndKept() throws {
         let keys = KeychainDeviceKeys(service: "cash.fliq.near-key.tests.\(UUID().uuidString)")
         let first: String
@@ -46,7 +53,7 @@ final class ClaimWithDeviceKeyTests: XCTestCase {
 
         let claimed = await flow.claim()
         XCTAssertTrue(claimed)
-        XCTAssertEqual(flow.claimed, "frank.fliq.near")
+        XCTAssertEqual(flow.claimed, "frank" + FliqName.suffix)
     }
 
     func testNoDeviceKeyMeansNoClaim() async throws {

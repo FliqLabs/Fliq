@@ -159,6 +159,7 @@ export class NearVault implements VaultClient {
       amount: input.amount.toString(),
       expires_at_ns: input.expiresAtNs.toString(),
       corridor: input.corridor,
+      ...(input.agentId ? { agent_id: input.agentId } : {}),
     });
   }
 

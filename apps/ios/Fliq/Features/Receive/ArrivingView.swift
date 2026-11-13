@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ArrivingView: View {
     let flow: ReceiveFlow
+    let onDone: () -> Void
     @Environment(AppEnvironment.self) private var environment
 
     var body: some View {
@@ -37,7 +38,7 @@ struct ArrivingView: View {
 
             Spacer()
 
-            Button("Back to vault") { environment.router.reset() }
+            Button("Back to vault", action: onDone)
                 .buttonStyle(PrimaryButtonStyle())
                 .padding(.bottom, 6)
         }
@@ -48,7 +49,7 @@ struct ArrivingView: View {
         .onAppear { if sentAt == nil { sentAt = .now } }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button { environment.router.reset() } label: { Image(systemName: "xmark") }
+                Button(action: onDone) { Icon("xmark") }
                     .accessibilityLabel("Close")
             }
         }
@@ -104,7 +105,7 @@ struct ArrivingView: View {
     }
 
     private func seenLogo(_ deposit: DepositAddress) -> String {
-        deposit.source.group == .bitcoin ? "TokenBTC" : "Chain\(deposit.source.chain)"
+        deposit.source.group == .bitcoin ? "TokenBTC" : deposit.source.chainImage
     }
 
     private var vaultDetail: String {
@@ -171,8 +172,7 @@ private struct StepIcon: View {
             .overlay { ring }
             .overlay(alignment: .bottomTrailing) {
                 if state == .done {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 6, weight: .black))
+                    Icon("checkmark", size: 7)
                         .foregroundStyle(.white)
                         .frame(width: 13, height: 13)
                         .background(Theme.confirmed, in: Circle())

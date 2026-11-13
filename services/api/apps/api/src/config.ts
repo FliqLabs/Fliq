@@ -1,4 +1,5 @@
 import { parseKey } from "../../../packages/db/src/crypto.js";
+import { refundAddressesFrom } from "./refund-address.js";
 
 export interface Config {
   port: number;
@@ -10,6 +11,11 @@ export interface Config {
   origins: string[];
   nearRootAccount: string;
   vaultAccount: string;
+  // The USDC contract the vault accepts, so a top-up the user relays from their own account can be recognised.
+  usdcContract: string;
+  // Where a provider refunds a payout funded on each network, from PROVIDER_REFUND_ADDRESS_<NETWORK>. An Intents payout
+  // funds the provider on another network, so the vault's NEAR account cannot receive that refund.
+  providerRefundAddresses: Partial<Record<string, string>>;
   emailLinkBaseUrl: string;
   emailFrom: string;
   resendApiKey: string | undefined;
@@ -35,6 +41,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     origins: (env.WEBAUTHN_ORIGINS ?? "http://localhost:3000").split(",").map((origin) => origin.trim()).filter(Boolean),
     nearRootAccount: env.NEAR_ROOT_ACCOUNT ?? "fliq.near",
     vaultAccount: env.VAULT_ACCOUNT ?? "fliq-vault.testnet",
+    usdcContract: env.USDC_CONTRACT_ID ?? "usdc.test.near",
+    providerRefundAddresses: refundAddressesFrom(env),
     emailLinkBaseUrl: env.EMAIL_LINK_BASE_URL ?? "http://localhost:3000",
     emailFrom: env.EMAIL_FROM ?? "FLIQ <noreply@fliq.cash>",
     resendApiKey: env.RESEND_API_KEY || undefined,

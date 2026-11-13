@@ -6,6 +6,7 @@ import {
   publicKeyOf,
   signTransaction,
   storageDepositActions,
+  transferActions,
   type SigningKey,
 } from "./transactions";
 
@@ -14,6 +15,13 @@ const NO_CONTRACT = "11111111111111111111111111111111";
 const LOCK_TTL_MS = 60_000;
 const LABEL = /^[a-z0-9]+([-_][a-z0-9]+)*$/;
 const MAX_ACCOUNT_ID = 64;
+// What set_agent attaches (MAX_AGENT_STORAGE_DEPOSIT in policy.ts) twice over: the vault refunds what the policy's
+// storage does not use, so this covers connecting the agent and later changes to its limits.
+export const AGENT_DEPOSIT_FLOOR = 2n * 10n ** 22n;
+// Each NEAR account byte locks this much; the deposit must come from what is left over.
+const YOCTO_PER_BYTE = 10n ** 19n;
+// One top-up per agent account, ever. The marker outlives any agent policy, so revoking and reconnecting is free.
+const AGENT_FUNDED_TTL_MS = 5 * 365 * 24 * 60 * 60_000;
 
 export type StorageState = "registered" | "already_registered" | "not_deployed" | "pending";
 
@@ -95,6 +103,54 @@ export async function provisionAccount(
   } finally {
     await deps.store.release(lock);
   }
+}
+
+export type AgentDepositResult = {
+  status: "funded" | "already_funded" | "not_needed" | "pending";
+  accountId: string;
+  agentId: string;
+  yocto: string;
+  txHash: string | null;
+};
+
+// A fresh fliq account holds almost no NEAR, but set_agent is a delegate action and its storage deposit comes from
+// the owner's own balance. The root tops the owner up to AGENT_DEPOSIT_FLOOR, once per agent account, so a key that
+// spends its NEAR elsewhere cannot keep refilling it: at most the floor per agent, and every agent costs an account.
+export async function fundAgentDeposit(deps: ProvisionDeps, accountId: string, agentId: string): Promise<AgentDepositResult> {
+  checkName(accountId, deps.root.accountId);
+  checkName(agentId, deps.root.accountId);
+  if (agentId === accountId) throw new AccountError("invalid_name", "agent_id must differ from account_id");
+  const agent = await read(() => deps.rpc.account(agentId));
+  if (!agent) throw new AccountError("invalid_name", `${agentId} does not exist yet`);
+  const marker = `agent-deposit:${agentId}`;
+  const earlier = await deps.store.claim(marker, LOCK_TTL_MS);
+  if (earlier?.state === "in_progress") throw new AccountError("in_progress", `${agentId} is already being funded`);
+  if (earlier) return { status: "already_funded", accountId, agentId, yocto: "0", txHash: null };
+  try {
+    const owner = await read(() => deps.rpc.account(accountId));
+    if (!owner) throw new AccountError("invalid_name", `${accountId} does not exist`);
+    const locked = BigInt(owner.storageUsage) * YOCTO_PER_BYTE;
+    const free = owner.amount > locked ? owner.amount - locked : 0n;
+    const shortfall = AGENT_DEPOSIT_FLOOR - free;
+    if (shortfall <= 0n) {
+      await markFunded(deps, marker, accountId, null);
+      return { status: "not_needed", accountId, agentId, yocto: "0", txHash: null };
+    }
+    const outcome = await rootTransaction(deps, accountId, transferActions(shortfall));
+    await markFunded(deps, marker, accountId, outcome.txHash);
+    return { status: outcome.status === "pending" ? "pending" : "funded", accountId, agentId, yocto: shortfall.toString(), txHash: outcome.txHash };
+  } catch (error) {
+    await deps.store.forget(marker);
+    throw error;
+  }
+}
+
+async function markFunded(deps: ProvisionDeps, marker: string, accountId: string, txHash: string | null) {
+  await deps.store.save(
+    marker,
+    { state: "succeeded", txHash: txHash ?? "", senderId: deps.root.accountId, receiverId: accountId, failures: [] },
+    AGENT_FUNDED_TTL_MS,
+  );
 }
 
 export function checkName(accountId: string, rootAccountId: string): void {

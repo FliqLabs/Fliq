@@ -6,6 +6,19 @@ use crate::vault::{BalanceView, RefundError, ReservationError, Vault};
 use near_sdk::json_types::U128;
 use near_sdk::{AccountId, env};
 
+pub fn reserve_for_withdrawal(vault: &mut Vault, key: &str, account: &AccountId, amount: Amount) {
+    if let Err(error) = vault.reserve_for_order(key, account, amount) {
+        match error {
+            ReservationError::AlreadyExists => env::panic_str(errors::WITHDRAW_IN_PROGRESS),
+            ReservationError::AmountMustBePositive => env::panic_str(errors::INVALID_AMOUNT),
+            ReservationError::InsufficientBalance => env::panic_str(errors::INSUFFICIENT_BALANCE),
+            ReservationError::ArithmeticOverflow | ReservationError::NotFound => {
+                env::panic_str(errors::VAULT_RESERVATION_FAILED)
+            }
+        }
+    }
+}
+
 pub fn reserve_for_order(vault: &mut Vault, order_id: &str, payer: &AccountId, amount: Amount) {
     if let Err(error) = vault.reserve_for_order(order_id, payer, amount) {
         match error {
@@ -37,11 +50,26 @@ pub fn authorize_payout(
     contract: &mut Contract,
     caller: &AccountId,
     payer: &AccountId,
+    bound_agent: Option<&AccountId>,
     order_id: &str,
     amount: Amount,
     corridor: &str,
 ) {
-    policies::authorize_payout(contract, caller, payer, order_id, amount, corridor);
+    policies::authorize_payout(
+        contract,
+        caller,
+        payer,
+        bound_agent,
+        order_id,
+        amount,
+        corridor,
+    );
+}
+
+pub fn commit_withdrawal(vault: &mut Vault, key: &str) {
+    if vault.commit_withdrawal(key).is_err() {
+        env::panic_str(errors::VAULT_COMMIT_FAILED);
+    }
 }
 
 pub fn release_pending(contract: &mut Contract, order_id: &str) {
@@ -76,4 +104,8 @@ pub fn recredit_refund(
 
 pub fn get_balance(vault: &Vault, account: &AccountId) -> BalanceView {
     vault.balance_of(account).into()
+}
+
+pub fn get_liabilities(vault: &Vault) -> Amount {
+    vault.total_liabilities()
 }

@@ -12,7 +12,7 @@ final class AgentsUITests: XCTestCase {
         app.launchArguments = ["--ui-testing", "--onboarded"]
         app.launch()
 
-        app.buttons["Menu"].tap()
+        app.buttons["Profile"].tap()
         let agentsRow = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Agents")).firstMatch
         XCTAssertTrue(agentsRow.waitForExistence(timeout: 3))
         agentsRow.tap()
@@ -23,7 +23,7 @@ final class AgentsUITests: XCTestCase {
 
         app.buttons["Change limits"].tap()
         XCTAssertTrue(app.buttons["Save with Face ID"].waitForExistence(timeout: 3))
-        app.buttons["More daily cap"].tap()
+        app.buttons["More per day"].tap()
         snap("g2-limits")
         app.buttons["Save with Face ID"].tap()
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "160,000")).firstMatch
@@ -36,8 +36,19 @@ final class AgentsUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Key revoked. It can't pay from your vault."].waitForExistence(timeout: 3))
 
         app.buttons["Connect an agent"].tap()
+        XCTAssertTrue(app.buttons["agent-app-claude"].waitForExistence(timeout: 3))
+        snap("g4-choose-app")
+        app.buttons["agent-app-claude"].tap()
         XCTAssertTrue(app.buttons["Connect with Face ID"].waitForExistence(timeout: 3))
-        snap("g4-connect")
+        snap("g5-limits")
+        app.buttons["Connect with Face ID"].tap()
+        XCTAssertTrue(app.staticTexts["Claude is connected"].waitForExistence(timeout: 5))
+        snap("g6-connected")
+        app.swipeUp()
+        snap("g7-setup")
+        app.buttons["Done"].tap()
+        XCTAssertTrue(app.staticTexts["Spent today"].waitForExistence(timeout: 3))
+        snap("g8-list")
     }
 
     @MainActor

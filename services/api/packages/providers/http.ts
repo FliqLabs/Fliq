@@ -1,4 +1,4 @@
-import { ProviderError, type ProviderOperation } from "./errors";
+import { ProviderError, providerReason, type ProviderOperation } from "./errors";
 import type { ProviderId } from "./types";
 
 export const OPERATION_TIMEOUT_MS: Record<Exclude<ProviderOperation, "parseWebhook">, number> = {
@@ -53,7 +53,8 @@ export function createProviderHttp(options: ProviderHttpOptions): ProviderHttp {
       kind: "timeout" | "unavailable" | "rejected" | "invalid_response",
       detail: string,
       status?: number,
-    ) => new ProviderError(options.provider, request.operation, kind, detail, status);
+      reason?: string,
+    ) => new ProviderError(options.provider, request.operation, kind, detail, status, reason);
 
     const remaining = deadline - Date.now();
     if (remaining <= 0) throw fail("timeout", "deadline passed before the call");
@@ -85,7 +86,7 @@ export function createProviderHttp(options: ProviderHttpOptions): ProviderHttp {
       const text = await response.text();
       if (!response.ok && !request.acceptStatuses?.includes(response.status)) {
         const transient = response.status >= 500 || response.status === 429;
-        throw fail(transient ? "unavailable" : "rejected", `http ${response.status}`, response.status);
+        throw fail(transient ? "unavailable" : "rejected", `http ${response.status}`, response.status, providerReason(text));
       }
       return {
         status: response.status,

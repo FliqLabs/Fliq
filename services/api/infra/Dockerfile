@@ -1,3 +1,5 @@
+# Production image for the API and the relayer on Railway. SERVICE_ROLE=relayer starts the relayer; anything else
+# applies pending migrations and starts the API. Build from the repo root: docker build -f services/api/infra/Dockerfile .
 FROM node:22-slim
 
 WORKDIR /app

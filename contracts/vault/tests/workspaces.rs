@@ -63,6 +63,7 @@ async fn view_json<T: DeserializeOwned>(
     Ok(contract.view(method).args_json(args).await?.json()?)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn register_order(
     worker: &Worker<near_workspaces::network::Sandbox>,
     registration: &Account,
@@ -72,23 +73,23 @@ async fn register_order(
     deposit_address: &Account,
     amount: u128,
     margin_ns: u64,
+    agent: Option<&Account>,
 ) -> Result<()> {
-    call(
-        registration,
-        vault.id(),
-        "register_order",
-        json!({
-            "order_id": order_id,
-            "payer": payer.id(),
-            "deposit_address": deposit_address.id(),
-            "amount": amount.to_string(),
-            "expires_at_ns": expiry_ns(worker, margin_ns).await?,
-            "corridor": "NG-NGN-bank"
-        }),
-        0,
-    )
-    .await?
-    .into_result()?;
+    let mut args = json!({
+        "order_id": order_id,
+        "payer": payer.id(),
+        "deposit_address": deposit_address.id(),
+        "amount": amount.to_string(),
+        "expires_at_ns": expiry_ns(worker, margin_ns).await?,
+        "corridor": "NG-NGN-bank"
+    });
+    // Leaving agent_id out entirely, as the backend does today, must keep working.
+    if let Some(agent) = agent {
+        args["agent_id"] = json!(agent.id());
+    }
+    call(registration, vault.id(), "register_order", args, 0)
+        .await?
+        .into_result()?;
     Ok(())
 }
 
@@ -210,6 +211,7 @@ async fn payout_cases_run_in_a_local_sandbox() -> Result<()> {
         &recipient,
         50 * USDC_UNIT,
         HOUR_NS,
+        None,
     )
     .await?;
     register_order(
@@ -221,6 +223,7 @@ async fn payout_cases_run_in_a_local_sandbox() -> Result<()> {
         &recipient,
         20 * USDC_UNIT,
         HOUR_NS,
+        Some(&agent),
     )
     .await?;
 
@@ -308,6 +311,7 @@ async fn payout_cases_run_in_a_local_sandbox() -> Result<()> {
         &recipient,
         10 * USDC_UNIT,
         HOUR_NS,
+        None,
     )
     .await?;
     call(
@@ -378,6 +382,7 @@ async fn payout_cases_run_in_a_local_sandbox() -> Result<()> {
         &recipient,
         USDC_UNIT,
         MINUTE_NS,
+        None,
     )
     .await?;
     worker.fast_forward(7_200).await?;
@@ -412,6 +417,7 @@ async fn payout_cases_run_in_a_local_sandbox() -> Result<()> {
         &recipient,
         5 * USDC_UNIT,
         HOUR_NS,
+        None,
     )
     .await?;
     call(
@@ -423,6 +429,50 @@ async fn payout_cases_run_in_a_local_sandbox() -> Result<()> {
     )
     .await?
     .into_result()?;
+
+    let wallet_before: String =
+        view_json(&mock, "ft_balance_of", json!({ "account_id": payer.id() })).await?;
+    let vault_before: serde_json::Value =
+        view_json(&vault, "get_balance", json!({ "account_id": payer.id() })).await?;
+    let withdrawn = call(
+        &payer,
+        vault.id(),
+        "withdraw",
+        json!({ "amount": (3 * USDC_UNIT).to_string() }),
+        1,
+    )
+    .await?;
+    if withdrawn.is_failure() {
+        anyhow::bail!("withdraw failures: {:?}", withdrawn.failures());
+    }
+    let wallet_after: String =
+        view_json(&mock, "ft_balance_of", json!({ "account_id": payer.id() })).await?;
+    let vault_after: serde_json::Value =
+        view_json(&vault, "get_balance", json!({ "account_id": payer.id() })).await?;
+    assert_eq!(
+        wallet_after.parse::<u128>()? - wallet_before.parse::<u128>()?,
+        3 * USDC_UNIT
+    );
+    assert_eq!(
+        vault_before["available"]
+            .as_str()
+            .unwrap_or_default()
+            .parse::<u128>()?
+            - vault_after["available"]
+                .as_str()
+                .unwrap_or_default()
+                .parse::<u128>()?,
+        3 * USDC_UNIT
+    );
+    assert_eq!(vault_after["reserved"], vault_before["reserved"]);
+    expect_failure(
+        &outsider,
+        vault.id(),
+        "withdraw",
+        json!({ "amount": "1" }),
+        1,
+    )
+    .await?;
 
     let invariant: serde_json::Value =
         view_json(&vault, "get_balance", json!({ "account_id": payer.id() })).await?;
@@ -453,7 +503,7 @@ async fn payout_cases_run_in_a_local_sandbox() -> Result<()> {
         ("recredit", json!({}), 0),
         (
             "transfer",
-            json!({ "to_account": recipient.id(), "amount": "1" }),
+            json!({ "to_account": recipient.id(), "amount": "1", "request_id": null }),
             1,
         ),
         (

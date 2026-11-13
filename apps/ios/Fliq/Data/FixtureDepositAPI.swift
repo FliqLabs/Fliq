@@ -11,15 +11,18 @@ struct FixtureDepositAPI: DepositAPI {
 
     private let clock = DepositClock()
 
+    /// The same sources, minimums and times as `spec/fixtures/deposit.sources.json`.
     func sources() async throws -> [DepositSource] {
-        [
-            DepositSource(token: "USDC", chain: "Base", group: .dollars),
-            DepositSource(token: "USDC", chain: "Solana", group: .dollars),
-            DepositSource(token: "USDT", chain: "Tron", group: .dollars, minimum: TokenAmount(baseUnits: 100_000_000)),
-            DepositSource(token: "USDC", chain: "Arbitrum", group: .dollars),
-            DepositSource(token: "USDC", chain: "Ethereum", group: .dollars, note: "Ethereum · Polygon"),
-            DepositSource(token: "BTC", chain: "Bitcoin", group: .bitcoin, note: "Lands as dollars · about 10 min"),
-            DepositSource(token: "USDC", chain: "NEAR", group: .near, note: "NEAR · your vault address"),
+        let dollar = TokenAmount(baseUnits: 1_000_000)
+        return [
+            DepositSource(tokenId: "usdc", chainId: "base", group: .dollars, minimum: dollar, etaSeconds: 35),
+            DepositSource(tokenId: "usdc", chainId: "solana", group: .dollars, minimum: dollar, etaSeconds: 35),
+            DepositSource(tokenId: "usdt", chainId: "tron", group: .dollars, minimum: TokenAmount(baseUnits: 100_000_000), etaSeconds: 60),
+            DepositSource(tokenId: "usdc", chainId: "arbitrum", group: .dollars, minimum: dollar, etaSeconds: 35),
+            DepositSource(tokenId: "usdc", chainId: "ethereum", group: .dollars, minimum: dollar, etaSeconds: 90),
+            DepositSource(tokenId: "usdc", chainId: "polygon", group: .dollars, minimum: dollar, etaSeconds: 35),
+            DepositSource(tokenId: "btc", chainId: "bitcoin", group: .bitcoin, minimum: TokenAmount(baseUnits: 100), etaSeconds: 600),
+            DepositSource(tokenId: "usdc", chainId: "near", group: .near, minimum: TokenAmount(baseUnits: 10_000), etaSeconds: 2),
         ]
     }
 
@@ -30,7 +33,7 @@ struct FixtureDepositAPI: DepositAPI {
             minimum: source.minimum ?? Self.anyAmountFloor,
             fee: source.isDirect ? .zero : Self.fee,
             reservedUntil: .now.addingTimeInterval(Self.watchWindow),
-            estimatedSeconds: source.group == .bitcoin ? 600 : 35,
+            estimatedSeconds: source.etaSeconds,
             isDemo: true
         )
         await clock.start(deposit.address)

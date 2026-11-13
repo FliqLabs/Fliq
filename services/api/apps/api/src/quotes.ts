@@ -12,7 +12,7 @@ import { newId } from "../../../packages/db/src/ids.js";
 import { InvalidAmountError, toUnits } from "../../../packages/providers/money.js";
 import type { Asset, Chain, Country, FiatCurrency, PayoutType, ProviderAdapter, ProviderQuote, QuoteAmount } from "../../../packages/providers/types.js";
 import { formatTokenAmount } from "./dashboard.js";
-import type { Db } from "./db.js";
+import type { Db, Unit } from "./db.js";
 import { ApiError, invalidRequest } from "./errors.js";
 
 export interface QuoteDeps {
@@ -95,14 +95,16 @@ export async function developerIdFor(tx: Db, userId: string): Promise<string> {
   return workspace?.id ?? userId;
 }
 
-export async function requestQuote(tx: Db, deps: QuoteDeps, userId: string, input: QuoteInput) {
+// Pricing calls every provider and can take seconds, so it never runs inside a transaction: a held transaction keeps a
+// pool connection, and a few slow quotes at once would leave every other request waiting for one.
+export async function priceQuote(deps: QuoteDeps, input: QuoteInput) {
   const amount = parseAmount(input);
   const requested = amount.side === "send" ? amount.units : amount.minorUnits;
   if (requested <= 0n) throw invalidRequest("amount must be greater than zero.");
 
   const now = deps.now();
   const currency = input.currency.toUpperCase() as FiatCurrency;
-  const { routes, dropped, expiresAt } = await quoteRoutes(
+  const priced = await quoteRoutes(
     deps.adapters,
     {
       corridor: { country: COUNTRY[input.currency], currency, payoutType: input.payout_type ?? "bank" },
@@ -115,6 +117,14 @@ export async function requestQuote(tx: Db, deps: QuoteDeps, userId: string, inpu
     now,
     deps.hop,
   );
+  logTimeouts("quote", input.currency, priced.dropped);
+  return { ...priced, now };
+}
+
+export type PricedQuote = Awaited<ReturnType<typeof priceQuote>>;
+
+export async function saveQuote(tx: Db, userId: string, input: QuoteInput, priced: PricedQuote) {
+  const { routes, dropped, expiresAt, now } = priced;
   const best = routes[0];
   if (!best || expiresAt <= now) throw new ApiError(422, "no_route", "No provider can pay this out right now.");
 
@@ -199,4 +209,19 @@ export async function requestQuote(tx: Db, deps: QuoteDeps, userId: string, inpu
     eta_seconds: best.etaSeconds,
     saving_vs_next: next ? wholeUnits(best.amountOutMinor - next.amountOutMinor) : 0,
   };
+}
+
+export async function requestQuote(tx: Db, deps: QuoteDeps, userId: string, input: QuoteInput) {
+  return saveQuote(tx, userId, input, await priceQuote(deps, input));
+}
+
+// Prices first, then opens the transaction only to store the quote.
+export async function quoteAndSave(unit: Unit, deps: QuoteDeps, userId: string, input: QuoteInput) {
+  const priced = await priceQuote(deps, input);
+  return unit((tx) => saveQuote(tx, userId, input, priced));
+}
+
+export function logTimeouts(operation: string, currency: string, dropped: readonly Dropped[]): void {
+  const slow = dropped.filter((drop) => drop.reason === "timeout").map((drop) => drop.provider);
+  if (slow.length > 0) console.warn(`[routing] ${operation} ${currency}: no answer in time from ${slow.join(", ")}`);
 }

@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>fliq</string>
+	<string>$(FLIQ_DISPLAY_NAME)</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -35,15 +35,29 @@
 	<string>$(FLIQ_API_BASE_URL)</string>
 	<key>FliqAPIKey</key>
 	<string>$(FLIQ_API_KEY)</string>
+	<key>FliqCloudinaryCloud</key>
+	<string>$(FLIQ_CLOUDINARY_CLOUD)</string>
+	<key>FliqCloudinaryPreset</key>
+	<string>$(FLIQ_CLOUDINARY_PRESET)</string>
 	<key>FliqDataSource</key>
 	<string>$(FLIQ_DATA_SOURCE)</string>
+	<key>FliqNameSuffix</key>
+	<string>$(FLIQ_NAME_SUFFIX)</string>
+	<key>FliqNearNetwork</key>
+	<string>$(FLIQ_NEAR_NETWORK)</string>
+	<key>FliqNearRPCURL</key>
+	<string>$(FLIQ_NEAR_RPC_URL)</string>
+	<key>FliqPajTestRecipient</key>
+	<string>$(FLIQ_PAJ_TEST_RECIPIENT)</string>
+	<key>FliqWebBaseURL</key>
+	<string>$(FLIQ_WEB_BASE_URL)</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
 	<key>NSCameraUsageDescription</key>
-	<string>fliq uses the camera only when you take a profile photo.</string>
+	<string>fliq uses the camera to scan payment codes and take your profile photo.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>fliq asks for Face ID before any money leaves your vault.</string>
 	<key>NSLocalNetworkUsageDescription</key>

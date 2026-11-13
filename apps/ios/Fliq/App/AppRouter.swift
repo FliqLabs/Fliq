@@ -2,20 +2,22 @@ import Observation
 
 enum AppRoute: Hashable {
     case payNew
+    case payPerson
     case payAmount
     case payQuote
     case paySending
     case payPaid
     case payRefunded
-    case receiveAddress
-    case receiveArriving
-    case activity
     case agents
     case settings
     case settingsAccounts
     case settingsSecurity
     case settingsNotifications
     case agentConnect
+    case withdraw
+    case withdrawTo
+    case withdrawReview
+    case bankDeposit
     case receipt(payoutId: String)
 }
 

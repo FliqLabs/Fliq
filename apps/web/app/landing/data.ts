@@ -54,16 +54,16 @@ export const steps = [
   },
   {
     number: "02",
-    title: "Best of four, every time",
+    title: "Compare available routes",
     description:
-      "Four providers are quoted in parallel. Your payout takes the best available route, after fees.",
+      "Fliq checks available payout routes and selects the best option after fees.",
     icons: providerIcons,
     iconLabel: "Payout providers",
   },
   {
     number: "03",
-    title: "In the bank in 21 seconds",
-    description: "Bank or mobile money in Nigeria and Kenya. A clear receipt from start to settled.",
+    title: "Track every payout",
+    description: "Follow your payout from initiation through its final status, with a clear record of its progress.",
     icons: bankIcons,
     iconLabel: "Banks and mobile money",
   },
@@ -86,6 +86,6 @@ export const trustPoints = [
     image: gtbank,
     title: "A receipt the bank recognises",
     description:
-      "Every payout carries the chain hash, the provider order and the NIP session ID. Check any of them yourself.",
+      "Payout records show available transaction references, helping you follow each transfer.",
   },
 ];

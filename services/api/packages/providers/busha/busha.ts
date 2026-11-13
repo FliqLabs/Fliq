@@ -16,6 +16,7 @@ import type {
   OrderStatus,
   ProviderAdapter,
   ProviderQuote,
+  QuoteAmount,
 } from "../types";
 
 // Sources: services/Project MD/EXTERNAL_ADAPTERS/BUSHA.md, verified against docs.busha.io and bushaHQ/openapi.
@@ -24,11 +25,28 @@ export const BUSHA_SIGNATURE_HEADER = "x-bu-signature";
 
 export type BushaEnvironment = keyof typeof BUSHA_BASE_URL;
 
-// Network codes differ per environment: sandbox Polygon is the AMOY testnet and sandbox offers no Solana.
-const NETWORKS: Record<BushaEnvironment, Partial<Record<Chain, string>>> = {
-  production: { base: "BASE", polygon: "POL", solana: "SOL" },
-  sandbox: { base: "BASE", polygon: "AMOY" },
+type Networks = Partial<Record<Chain, string>>;
+
+// Where Busha sold USDC for fiat on 10 Nov 2026 (GET /v1/currencies/USDC), used until the live list loads.
+const DEFAULT_NETWORKS: Record<BushaEnvironment, Networks> = {
+  production: { solana: "SOL" },
+  sandbox: { base: "BASE" },
 };
+const CHAIN_BY_NETWORK: Readonly<Record<string, Chain>> = { BASE: "base", POL: "polygon", SOL: "solana" };
+const NETWORK_REFRESH_MS = 60 * 60 * 1000;
+
+// Busha allows 20 quotes a minute, shared by the rate board, user quotes and firm quotes.
+const INDICATIVE_MEMO_MS = 10_000;
+const QUOTE_TOLERANCE_BPS = 30n;
+const BPS = 10_000n;
+
+// Busha's minimum USDC deposit is 2. Its upper limits are published in fiat and enforced by the firm quote.
+const SEND_LIMITS = { side: "send", min: 2_000_000n, max: 1_000_000_000_000n } as const;
+
+const CORRIDORS: Corridor[] = [
+  { country: "NG", currency: "NGN", payoutType: "bank" },
+  { country: "KE", currency: "KES", payoutType: "mobile_money" },
+];
 
 type Route = { payOut: "bank_transfer" | "mobile_money"; recipientType: "ngn_bank" | "mpesa_mobile_money" };
 
@@ -39,13 +57,20 @@ const ROUTES: Record<string, Route> = {
 
 // Busha prices the payout fee only once a recipient exists, which a fan-out quote never has. These are the
 // published flat fees (docs.busha.io fees page); the firm quote at createOrder carries the real ones.
+// KES 330 is an upper bound: M-Pesa fees are tiered and usually lower, so Kenyan quotes err on the low side.
 const ESTIMATED_PAYOUT_FEE_MINOR: Partial<Record<FiatCurrency, bigint>> = { NGN: 10_750n, KES: 33_000n };
 
 const MPESA: Institution = { code: "MPESA", name: "M-Pesa", type: "mobile_money" };
-const RETRYABLE_FAILURES: ReadonlySet<string> = new Set(["insufficient_funds"]);
+const MPESA_NUMBER = /^\+254(7|1)\d{8}$/;
+const FIAT_PAY_OUTS: ReadonlySet<unknown> = new Set(["bank_transfer", "mobile_money"]);
 
 export type BushaOptions = {
-  secretKey: string;
+  // Absent only with publicQuotes: the adapter then shows Busha's public prices and can never pay out.
+  secretKey?: string;
+  publicQuotes?: boolean;
+  // Busha refunds a failed payout into our balance, not to the sender, so production payouts stay off until
+  // someone handles those refunds.
+  allowProduction?: boolean;
   webhookSecrets: readonly string[];
   environment: BushaEnvironment;
   deps: AdapterDeps;
@@ -54,27 +79,71 @@ export type BushaOptions = {
 };
 
 export function createBushaAdapter(options: BushaOptions): ProviderAdapter {
-  const networks = NETWORKS[options.environment];
+  const secretKey = options.secretKey?.trim() ?? "";
+  const quotesOnly = secretKey === "";
+  if (quotesOnly && !options.publicQuotes) {
+    throw new Error("Busha needs a secret key unless it runs in public quotes mode");
+  }
+  const now = () => (options.deps.now ?? (() => new Date()))().getTime();
   const webhookSecrets = options.webhookSecrets.map((secret) => secret.trim()).filter(Boolean);
   const bankNames = new Map<string, string>();
-  const http = createProviderHttp({
-    provider: "busha",
+  const indicative = new Map<string, { quote: Promise<ProviderQuote>; at: number }>();
+  const refundsAlerted = new Set<string>();
+  const connection = {
+    provider: "busha" as const,
     baseUrl: options.baseUrl ?? BUSHA_BASE_URL[options.environment],
     maxConcurrent: options.maxConcurrent ?? 4,
     ...(options.deps.fetch ? { fetch: options.deps.fetch } : {}),
-    authHeaders: () => ({ Authorization: `Bearer ${options.secretKey}` }),
-  });
-
-  const capabilities: Capabilities = {
-    provider: "busha",
-    custody: "per_quote_transfer",
-    corridors: [
-      { country: "NG", currency: "NGN", payoutType: "bank" },
-      { country: "KE", currency: "KES", payoutType: "mobile_money" },
-    ],
-    sources: Object.keys(networks).map((chain) => ({ asset: "USDC" as const, chain: chain as Chain })),
-    limits: {},
   };
+  const publicHttp = createProviderHttp(connection);
+  const http = quotesOnly
+    ? publicHttp
+    : createProviderHttp({ ...connection, authHeaders: () => ({ Authorization: `Bearer ${secretKey}` }) });
+
+  let networks = DEFAULT_NETWORKS[options.environment];
+  let networksCheckedAt = Number.NEGATIVE_INFINITY;
+  let capabilities = buildCapabilities();
+
+  function buildCapabilities(): Capabilities {
+    return {
+      provider: "busha",
+      custody: "per_quote_transfer",
+      corridors: CORRIDORS,
+      sources: Object.keys(networks).map((chain) => ({ asset: "USDC" as const, chain: chain as Chain })),
+      limits: { NGN: SEND_LIMITS, KES: SEND_LIMITS },
+      sandbox: options.environment === "sandbox",
+      // A Busha quote lasts 3 minutes, too short to survive a 1Click hop.
+      funding: quotesOnly ? { direct: false, hop: false } : { direct: true, hop: false },
+    };
+  }
+
+  async function refreshNetworks(): Promise<void> {
+    networksCheckedAt = now();
+    const read = jsonReader("busha", "institutions");
+    const response = await publicHttp.request({
+      operation: "institutions",
+      method: "GET",
+      path: "/v1/currencies/USDC",
+    });
+    const data = read.object(read.object(response.body, "body").data, "data");
+    const live: Networks = {};
+    for (const entry of read.array(data.supported_networks, "supported_networks")) {
+      const network = read.object(entry, "network");
+      const code = read.string(network, "network");
+      const chain = CHAIN_BY_NETWORK[code];
+      const sells =
+        network.status === "active" && network.deposit === true && network.is_ramp_sell_supported === true;
+      if (chain && sells) live[chain] = code;
+    }
+    if (Object.keys(live).length === 0) return;
+    networks = live;
+    capabilities = buildCapabilities();
+  }
+
+  function requireKey(operation: "createOrder" | "getOrder" | "verifyAccount"): void {
+    if (quotesOnly)
+      throw new ProviderError("busha", operation, "not_supported", "public quotes mode has no key");
+  }
 
   function routeFor(corridor: Corridor, operation: "quote" | "createOrder"): Route {
     const route = ROUTES[`${corridor.country}:${corridor.payoutType}`];
@@ -98,13 +167,22 @@ export function createBushaAdapter(options: BushaOptions): ProviderAdapter {
     return network;
   }
 
+  function alertRefund(transfer: JsonObject): void {
+    const id = typeof transfer.id === "string" ? transfer.id : "unknown";
+    if (refundsAlerted.has(id)) return;
+    refundsAlerted.add(id);
+    options.deps.alert({
+      provider: "busha",
+      kind: "custodial_refund",
+      detail: `transfer ${id} refunded into the Busha balance`,
+    });
+  }
+
   function toStatus(status: string, transfer: JsonObject): OrderStatus | null {
-    const payOut =
-      typeof transfer.pay_out === "object" && transfer.pay_out !== null
-        ? (transfer.pay_out as JsonObject)
-        : {};
-    const error =
-      typeof transfer.error === "object" && transfer.error !== null ? (transfer.error as JsonObject) : {};
+    const payOut = objectOrEmpty(transfer.pay_out);
+    const fiatReference =
+      typeof payOut.session_id === "string" && payOut.session_id !== "" ? payOut.session_id : undefined;
+    const paid: OrderStatus = fiatReference ? { status: "paid", fiatReference } : { status: "paid" };
     switch (status) {
       // Busha sends "processing" before "funds_received" in every documented sequence, so it is not yet a deposit.
       case "pending":
@@ -115,23 +193,23 @@ export function createBushaAdapter(options: BushaOptions): ProviderAdapter {
       case "funds_converted":
       case "outgoing_payment_sent":
         return { status: "processing" };
-      case "funds_delivered": {
-        const fiatReference =
-          typeof payOut.session_id === "string" && payOut.session_id !== "" ? payOut.session_id : undefined;
-        return fiatReference ? { status: "paid", fiatReference } : { status: "paid" };
-      }
+      case "funds_delivered":
+        return paid;
+      // Busha also calls a plain crypto sale completed; only a fiat withdrawal means the recipient was paid.
+      case "completed":
+        return hasFiatPayOut(transfer, payOut) ? paid : { status: "processing" };
       case "funds_not_delivered":
       case "reverse_fund_conversion":
         return { status: "refunding" };
-      // The refund lands in our Busha balance, not on-chain, so there is no refund hash to report.
+      // The refund lands in our Busha balance, not with the sender, so an operator still has to send it back.
       case "funds_refunded":
-        return { status: "refunded" };
+        alertRefund(transfer);
+        return { status: "refunding" };
       case "cancelled":
-        return { status: "failed", code: "cancelled", retryable: true };
-      case "failed": {
-        const code = typeof error.code === "string" && error.code !== "" ? error.code : "failed";
-        return { status: "failed", code, retryable: RETRYABLE_FAILURES.has(code) };
-      }
+      case "failed":
+        return deposited(transfer)
+          ? { status: "refunding" }
+          : { status: "failed", code: "deposit_expired", retryable: true };
       default:
         return null;
     }
@@ -171,12 +249,62 @@ export function createBushaAdapter(options: BushaOptions): ProviderAdapter {
     });
     return {
       id: read.string(data, "id"),
-      sendUnits: read.units(data, "source_amount", ASSET_DECIMALS[asset]),
+      sendUnits: read.units(data, "source_amount", ASSET_DECIMALS[asset], "up"),
       targetMinorUnits: read.units(data, "target_amount", FIAT_DECIMALS[currency], "down"),
       rate: read.string(read.object(data.rate, "rate"), "rate"),
       fees,
       expiresAt: read.date(data, "expires_at"),
     };
+  }
+
+  async function publicQuote(currency: FiatCurrency, network: string, requested: QuoteAmount) {
+    const estimatedFee = ESTIMATED_PAYOUT_FEE_MINOR[currency] ?? 0n;
+    const amount =
+      requested.side === "send"
+        ? { source_amount: toDecimalString(requested.units, ASSET_DECIMALS.USDC) }
+        : { target_amount: toDecimalString(requested.minorUnits + estimatedFee, FIAT_DECIMALS[currency]) };
+    const response = await publicHttp.request({
+      operation: "quote",
+      method: "POST",
+      path: "/v1/quotes/unauthenticated",
+      body: {
+        source_currency: "USDC",
+        target_currency: currency,
+        ...amount,
+        pay_in: { type: "address", network },
+      },
+    });
+    const quote = readQuote(response.body, "quote", currency, "USDC");
+    const fees: Fee[] =
+      quote.fees.length > 0 ? quote.fees : [{ kind: "provider", amount: estimatedFee, unit: currency }];
+    const receiveMinorUnits =
+      quote.fees.length > 0 ? quote.targetMinorUnits : quote.targetMinorUnits - estimatedFee;
+    const result: ProviderQuote = {
+      provider: "busha",
+      providerQuoteId: quote.id,
+      sendUnits: quote.sendUnits,
+      receiveMinorUnits,
+      rate: quote.rate,
+      fees,
+      expiresAt: quote.expiresAt,
+    };
+    return result;
+  }
+
+  function memoizedQuote(currency: FiatCurrency, network: string, requested: QuoteAmount) {
+    const amount = requested.side === "send" ? `send:${requested.units}` : `receive:${requested.minorUnits}`;
+    const key = `${currency}:${network}:${amount}`;
+    const time = now();
+    const cached = indicative.get(key);
+    if (cached && time - cached.at < INDICATIVE_MEMO_MS) return cached.quote;
+    for (const [stale, entry] of indicative)
+      if (time - entry.at >= INDICATIVE_MEMO_MS) indicative.delete(stale);
+    const quote = publicQuote(currency, network, requested);
+    indicative.set(key, { quote, at: time });
+    quote.catch(() => {
+      if (indicative.get(key)?.quote === quote) indicative.delete(key);
+    });
+    return quote;
   }
 
   async function bankName(code: string, deadline: number): Promise<string> {
@@ -263,49 +391,44 @@ export function createBushaAdapter(options: BushaOptions): ProviderAdapter {
     return snapshot(match);
   }
 
+  async function answersSuccess(path: string, query?: Record<string, string>): Promise<boolean> {
+    const response = await http.request({
+      operation: "health",
+      method: "GET",
+      path,
+      ...(query ? { query } : {}),
+    });
+    const body = response.body as { status?: unknown } | null;
+    return body?.status === "success";
+  }
+
+  refreshNetworks().catch(() => undefined);
+
   return {
     id: "busha",
 
-    capabilities: () => capabilities,
+    capabilities() {
+      if (now() - networksCheckedAt >= NETWORK_REFRESH_MS) refreshNetworks().catch(() => undefined);
+      return capabilities;
+    },
 
+    // Fan-out quotes use Busha's public endpoint, which carries no recipient and so no fees; createOrder re-prices.
     async quote(request): Promise<ProviderQuote> {
       routeFor(request.corridor, "quote");
       const network = networkFor(request, "quote");
-      const currency = request.corridor.currency;
-      const estimatedFee = ESTIMATED_PAYOUT_FEE_MINOR[currency] ?? 0n;
-      const fiatDecimals = FIAT_DECIMALS[currency];
-      const amount =
-        request.amount.side === "send"
-          ? { source_amount: toDecimalString(request.amount.units, ASSET_DECIMALS.USDC) }
-          : { target_amount: toDecimalString(request.amount.minorUnits + estimatedFee, fiatDecimals) };
-      const response = await http.request({
-        operation: "quote",
-        method: "POST",
-        path: "/v1/quotes",
-        body: {
-          source_currency: "USDC",
-          target_currency: currency,
-          ...amount,
-          pay_in: { type: "address", network },
-        },
-      });
-      const quote = readQuote(response.body, "quote", currency, "USDC");
-      const fees: Fee[] =
-        quote.fees.length > 0 ? quote.fees : [{ kind: "provider", amount: estimatedFee, unit: currency }];
-      const receiveMinorUnits =
-        quote.fees.length > 0 ? quote.targetMinorUnits : quote.targetMinorUnits - estimatedFee;
-      return {
-        provider: "busha",
-        providerQuoteId: quote.id,
-        sendUnits: quote.sendUnits,
-        receiveMinorUnits,
-        rate: quote.rate,
-        fees,
-        expiresAt: quote.expiresAt,
-      };
+      return memoizedQuote(request.corridor.currency, network, request.amount);
     },
 
     async createOrder(request) {
+      requireKey("createOrder");
+      if (options.environment === "production" && !options.allowProduction) {
+        throw new ProviderError(
+          "busha",
+          "createOrder",
+          "not_supported",
+          "production payouts are locked until custodial refunds are handled",
+        );
+      }
       const read = jsonReader("busha", "createOrder");
       const route = routeFor(request.corridor, "createOrder");
       const network = networkFor(request, "createOrder");
@@ -328,7 +451,7 @@ export function createBushaAdapter(options: BushaOptions): ProviderAdapter {
       });
       const firm = readQuote(quoteResponse.body, "createOrder", request.corridor.currency, "USDC");
       // Stop before the transfer: an untransferred quote simply expires, so nothing needs cancelling.
-      if (firm.targetMinorUnits < request.quote.receiveMinorUnits) {
+      if (firm.targetMinorUnits * BPS < request.quote.receiveMinorUnits * (BPS - QUOTE_TOLERANCE_BPS)) {
         throw new ProviderError("busha", "createOrder", "rejected", "quote_changed");
       }
       const transferResponse = await http.request({
@@ -351,13 +474,14 @@ export function createBushaAdapter(options: BushaOptions): ProviderAdapter {
           chain: request.source.chain,
           asset: "USDC",
           address: read.string(payIn, "address"),
-          units: read.units(transfer, "source_amount", ASSET_DECIMALS.USDC),
+          units: read.units(transfer, "source_amount", ASSET_DECIMALS.USDC, "up"),
           validUntil,
         },
       };
     },
 
     async getOrder(lookup) {
+      requireKey("getOrder");
       if ("reference" in lookup) return findByReference(lookup.reference);
       const read = jsonReader("busha", "getOrder");
       const response = await http.request({
@@ -371,6 +495,13 @@ export function createBushaAdapter(options: BushaOptions): ProviderAdapter {
     },
 
     async verifyAccount(check) {
+      requireKey("verifyAccount");
+      // Busha has no M-Pesa name lookup, so a well-formed number is all it can confirm; the sender types the name.
+      if (check.country === "KE") {
+        const valid =
+          check.institutionCode === MPESA.code && MPESA_NUMBER.test(kenyanPhone(check.accountNumber));
+        return valid ? { found: true, accountName: null } : { found: false };
+      }
       if (check.country !== "NG") {
         throw new ProviderError("busha", "verifyAccount", "not_supported", `country ${check.country}`);
       }
@@ -433,13 +564,27 @@ export function createBushaAdapter(options: BushaOptions): ProviderAdapter {
       return { eventId: `${id}:${event}`, providerOrderId: id, ...(reference ? { reference } : {}), order };
     },
 
-    // GET /health answers on both hosts but is not in Busha's public docs, so treat it as best effort.
+    // GET /health answers on both hosts but is not in Busha's public docs, so a documented read backs it up.
     async health() {
-      const response = await http.request({ operation: "health", method: "GET", path: "/health" });
-      const body = response.body as { status?: unknown } | null;
-      return { healthy: body?.status === "success" };
+      if (await answersSuccess("/health").catch(() => false)) return { healthy: true };
+      return { healthy: await answersSuccess("/v1/countries", { country: "NG" }) };
     },
   };
+}
+
+function objectOrEmpty(value: unknown): JsonObject {
+  return typeof value === "object" && value !== null ? (value as JsonObject) : {};
+}
+
+function hasFiatPayOut(transfer: JsonObject, payOut: JsonObject): boolean {
+  const stages = Array.isArray(transfer.stages) ? transfer.stages : [];
+  return FIAT_PAY_OUTS.has(payOut.type) || stages.includes("withdrawal");
+}
+
+// A deposit leaves its transaction hash on pay_in; Busha's sample webhooks without one carry no deposit.
+function deposited(transfer: JsonObject): boolean {
+  const hash = objectOrEmpty(transfer.pay_in).blockchain_hash;
+  return typeof hash === "string" && hash !== "";
 }
 
 function kenyanPhone(value: string): string {

@@ -30,6 +30,16 @@ final class AgentStore {
         }
     }
 
+    /// Re-reads the agents until this one is active, so the screen only says "connected" once the vault agrees.
+    func waitUntilActive(_ agentId: String, tries: Int = 10, pause: Duration = .seconds(2)) async -> Bool {
+        for _ in 0..<tries {
+            if agent(id: agentId)?.status == .active { return true }
+            try? await Task.sleep(for: pause)
+            if let fresh = try? await api.agents(vault: vault()), fresh.contains(where: { $0.id == agentId }) { agents = fresh }
+        }
+        return agent(id: agentId)?.status == .active
+    }
+
     func agent(id: String) -> Agent? {
         agents.first { $0.id == id }
     }
@@ -41,7 +51,7 @@ final class AgentStore {
             agents.append(agent)
             return agent
         } catch {
-            errorMessage = "The vault didn't accept this key."
+            errorMessage = "The vault didn't accept this agent. Nothing changed."
             return nil
         }
     }

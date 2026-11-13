@@ -1,0 +1,12 @@
+{
+  "images" : [
+    {
+      "filename" : "stanbic-ibtc.png",
+      "idiom" : "universal"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}

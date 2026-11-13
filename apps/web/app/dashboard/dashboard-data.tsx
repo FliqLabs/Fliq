@@ -7,17 +7,11 @@ import {
   fliqApi,
   type Onboarding,
   type PayoutList,
+  type PayoutStats,
   type User,
   type Workspace,
 } from "../lib/fliq-api";
 import { PayoutsDashboard, type DashboardSummary, type PayoutRow } from "./payouts-dashboard";
-
-const unavailableSummary: DashboardSummary = {
-  settledToday: null,
-  medianSecondsToBank: null,
-  refusedByVaultCaps: null,
-  bestRate: null,
-};
 
 export function DashboardData() {
   const account = useQuery({ queryKey: ["me"], queryFn: () => fliqApi<User>("me") });
@@ -39,7 +33,14 @@ export function DashboardData() {
     queryFn: () => fliqApi<Onboarding>("onboarding"),
     enabled: workspace.isSuccess && payouts.isSuccess,
   });
-
+  const stats = useQuery({
+    queryKey: ["payout-stats", workspace.data?.workspace_id],
+    queryFn: () =>
+      fliqApi<PayoutStats>(
+        `payouts/stats?tz=${encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone)}`,
+      ),
+    enabled: workspace.isSuccess,
+  });
   if (account.isPending) return <Status message="Checking your session…" />;
   if (account.error instanceof ApiError && account.error.status === 401) {
     return <Status message="Sign in to see your payouts." href="/sign-in" action="Sign in" />;
@@ -70,14 +71,21 @@ export function DashboardData() {
       amount: item.receive,
       currency: item.currency,
       provider: item.provider,
-      state: item.state.replaceAll("_", " "),
+      state: item.state,
       when: new Date(item.created_at).toLocaleDateString("en-NG"),
     })),
   );
+  const summary: DashboardSummary = {
+    settledToday: stats.data?.settled.count ?? null,
+    medianSecondsToBank: stats.data?.median_seconds_to_bank ?? null,
+    refusedByVaultCaps: stats.data?.refused.count ?? null,
+  };
 
   return (
     <PayoutsDashboard
-      summary={unavailableSummary}
+      summary={summary}
+      summaryLoading={stats.isPending}
+      summaryError={stats.error?.message}
       payouts={rows}
       onboarding={onboarding.data}
       hasMore={payouts.hasNextPage}
@@ -90,11 +98,11 @@ export function DashboardData() {
 function Status({ message, href, action }: { message: string; href?: string; action?: string }) {
   return (
     <main className="mx-auto max-w-lg py-16 text-center">
-      <p className="text-sm text-zinc-500">{message}</p>
+      <p className="text-sm text-app-muted">{message}</p>
       {href && action && (
         <Link
           href={href}
-          className="mt-5 inline-flex rounded-lg bg-zinc-950 px-4 py-2.5 text-sm font-semibold text-white"
+          className="mt-5 inline-flex rounded-lg bg-app-ink px-4 py-2.5 text-sm font-semibold text-app-ink-fg"
         >
           {action}
         </Link>

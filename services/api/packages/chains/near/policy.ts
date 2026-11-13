@@ -94,11 +94,20 @@ function rules(policy: RelayPolicy): Map<string, Map<string, Rule>> {
       if (!POSITIVE_INTEGER.test(String(args.amount))) throw new PolicyError("amount must be a positive integer string");
     },
   };
+  // The user's own available USDC back to their own account. One yoctoNEAR, like transfer.
+  const withdraw: Rule = {
+    deposit: exactly(ONE_YOCTO),
+    checkArgs: (args) => {
+      exactKeys(args, ["amount"], ["amount"]);
+      if (!POSITIVE_INTEGER.test(String(args.amount))) throw new PolicyError("amount must be a positive integer string");
+    },
+  };
   return new Map([
     [
       policy.vaultContractId,
       new Map([
         ["payout", payout],
+        ["withdraw", withdraw],
         ["release_order", orderOnly],
         ["set_agent", setAgent],
         ["remove_agent", removeAgent],

@@ -42,7 +42,7 @@ describe.skipIf(!databaseEnabled)("webhook dashboard against a real database", (
       payload: {
         quote_id: quote.json().quote_id,
         account: { bank: "058", number: "0123456789" },
-        refund_address: "frank.fliq.near",
+        refund_address: "0x1111111111111111111111111111111111111111",
       },
       token: developer.access,
       headers: { "idempotency-key": `po-${randomBytes(6).toString("hex")}` },

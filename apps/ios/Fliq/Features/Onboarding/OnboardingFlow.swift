@@ -15,6 +15,7 @@ final class OnboardingFlow {
     }
     private(set) var status = NameStatus.empty
     private(set) var suggestions: [String] = []
+    private(set) var isClaiming = false
 
     var displayName = ""
     var bio = ""
@@ -29,9 +30,17 @@ final class OnboardingFlow {
     private let isLive: Bool
     private let names: any NameDirectory
     private let keys: any DeviceKeys
+    private let photos: (any PhotoUploads)?
     private var check: Task<Void, Never>?
 
-    init(api: any FliqAPI, names: any NameDirectory, isLive: Bool = false, keys: any DeviceKeys = KeychainDeviceKeys()) {
+    init(
+        api: any FliqAPI,
+        names: any NameDirectory,
+        isLive: Bool = false,
+        keys: any DeviceKeys = KeychainDeviceKeys(),
+        photos: (any PhotoUploads)? = nil
+    ) {
+        self.photos = photos
         self.api = api
         self.isLive = isLive
         self.names = names
@@ -40,12 +49,14 @@ final class OnboardingFlow {
     }
 
     var name: FliqName? { FliqName(nameText) }
-    var canClaim: Bool { status == .available && name != nil }
+    var canClaim: Bool { status == .available && name != nil && !isClaiming }
 
     /// Claims the name on the server before moving on, so a name taken in the meantime shows here.
     func claim() async -> Bool {
         guard canClaim, let name else { return false }
         guard isLive else { return true }
+        isClaiming = true
+        defer { isClaiming = false }
         guard let publicKey = try? keys.publicKey() else {
             status = .unreachable
             return false
@@ -64,8 +75,10 @@ final class OnboardingFlow {
     }
 
     func saveProfile() async {
-        guard isLive, !displayName.isEmpty else { return }
-        _ = try? await api.updateProfile(displayName: displayName)
+        guard isLive else { return }
+        if !displayName.isEmpty { _ = try? await api.updateProfile(displayName: displayName) }
+        guard let photo, let photos, let jpeg = ProfilePhoto.prepare(photo), let url = try? await photos.upload(jpeg) else { return }
+        _ = try? await api.updateProfilePhoto(url)
     }
 
     func pick(_ suggestion: String) {

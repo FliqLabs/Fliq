@@ -77,6 +77,9 @@ export interface RouteRequest {
   source: SourceAsset;
   amount: QuoteAmount;
   preference: Preference;
+  // Prices for display only (the public rate board): no payout follows, so providers that cannot be funded
+  // the way a payout would fund them still show their price.
+  display?: boolean;
 }
 
 export interface Breakdown {
@@ -127,11 +130,23 @@ function withinLimits(adapter: ProviderAdapter, request: RouteRequest): boolean 
   return true;
 }
 
+function fundable(adapter: ProviderAdapter, request: RouteRequest, way: "direct" | "hop"): boolean {
+  if (request.display) return true;
+  const { funding } = adapter.capabilities();
+  return funding ? funding[way] : true;
+}
+
+// 1Click only moves real funds, so a sandbox provider is never reached through a hop, not even for display.
+function hoppable(adapter: ProviderAdapter, request: RouteRequest): boolean {
+  return !adapter.capabilities().sandbox && fundable(adapter, request, "hop");
+}
+
 function accepts(adapter: ProviderAdapter, request: RouteRequest): Dropped["reason"] | null {
   const { corridors, sources } = adapter.capabilities();
   const { country, currency, payoutType } = request.corridor;
   if (!corridors.some((c) => c.country === country && c.currency === currency && c.payoutType === payoutType)) return "corridor";
   if (!sources.some((s) => s.asset === request.source.asset && s.chain === request.source.chain)) return "source";
+  if (!fundable(adapter, request, "direct")) return "source";
   return withinLimits(adapter, request) ? null : "limits";
 }
 
@@ -188,9 +203,12 @@ function smoothed(outcomes: Outcomes | null, config: RoutingConfig): number {
 }
 
 // The first chain this provider accepts for the asset that the hop can reach from the sender's chain.
-async function hopChain(adapter: ProviderAdapter, request: RouteRequest, hop: HopPricer): Promise<Chain | null> {
+// A hop that cannot say whether it reaches a chain in time counts as not reaching it.
+async function hopChain(adapter: ProviderAdapter, request: RouteRequest, hop: HopPricer, waitMs: number): Promise<Chain | null> {
   for (const source of adapter.capabilities().sources) {
-    if (source.asset === request.source.asset && (await hop.reachable(source.asset, request.source.chain, source.chain))) return source.chain;
+    if (source.asset !== request.source.asset || source.chain === request.source.chain) continue;
+    const reachable = await Promise.race([hop.reachable(source.asset, request.source.chain, source.chain), timeout(waitMs)]).catch(() => false);
+    if (reachable) return source.chain;
   }
   return null;
 }
@@ -231,8 +249,8 @@ export async function quoteRoutes(
   for (const adapter of adapters) {
     let refusal = accepts(adapter, request);
     let via: Chain | null = null;
-    if (refusal === "source" && hop) {
-      via = await hopChain(adapter, request, hop);
+    if (refusal === "source" && hop && hoppable(adapter, request)) {
+      via = await hopChain(adapter, request, hop, config.hopFanOutMs);
       if (via) refusal = withinLimits(adapter, request) ? null : "limits";
     }
     const state = signals.breaker(adapter.id, request.corridor);

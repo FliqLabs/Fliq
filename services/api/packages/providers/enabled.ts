@@ -1,7 +1,9 @@
 import { createBitnobAdapter } from "./bitnob/bitnob";
 import { createBushaAdapter } from "./busha/busha";
 import { createFonbnkAdapter } from "./fonbnk/fonbnk";
+import { withInstitutionCodes } from "./institutions/translate";
 import { createPaycrestAdapter } from "./paycrest/paycrest";
+import { createTransfiAdapter } from "./transfi/transfi";
 import type { AdapterDeps, ProviderAdapter } from "./types";
 
 export type Env = Readonly<Record<string, string | undefined>>;
@@ -69,11 +71,27 @@ export function enabledAdapters(env: Env, deps: AdapterDeps): ProviderAdapter[] 
     );
   }
 
-  const busha = section(env, "Busha", ["BUSHA_SECRET_KEY", "BUSHA_ENVIRONMENT", "BUSHA_WEBHOOK_SECRET"]);
+  // Busha's public quote endpoint needs no key, so BUSHA_PUBLIC_QUOTES=1 alone shows its prices on the rate board.
+  const busha = section(
+    env,
+    "Busha",
+    ["BUSHA_ENVIRONMENT"],
+    ["BUSHA_SECRET_KEY", "BUSHA_WEBHOOK_SECRET", "BUSHA_PUBLIC_QUOTES", "BUSHA_ALLOW_PRODUCTION"],
+  );
   if (busha) {
+    const secretKey = busha("BUSHA_SECRET_KEY");
+    const publicQuotes = busha("BUSHA_PUBLIC_QUOTES") === "1";
+    if (!secretKey && !publicQuotes)
+      throw new Error(
+        "Busha is partly configured: set BUSHA_SECRET_KEY, or BUSHA_PUBLIC_QUOTES=1 for prices only",
+      );
+    if (secretKey && !busha("BUSHA_WEBHOOK_SECRET"))
+      throw new Error("Busha is partly configured: set BUSHA_WEBHOOK_SECRET");
     adapters.push(
       createBushaAdapter({
-        secretKey: busha("BUSHA_SECRET_KEY"),
+        ...(secretKey ? { secretKey } : {}),
+        publicQuotes,
+        allowProduction: busha("BUSHA_ALLOW_PRODUCTION") === "1",
         environment: environment("Busha", busha("BUSHA_ENVIRONMENT")),
         webhookSecrets: webhookSecrets(env, "BUSHA_WEBHOOK_SECRET"),
         deps,
@@ -92,10 +110,11 @@ export function enabledAdapters(env: Env, deps: AdapterDeps): ProviderAdapter[] 
       "FONBNK_USER_EMAIL",
       "FONBNK_USER_IP",
     ],
-    ["FONBNK_WEBHOOK_URL"],
+    ["FONBNK_WEBHOOK_URL", "FONBNK_DEFAULT_PHONE"],
   );
   if (fonbnk) {
     const webhookUrl = fonbnk("FONBNK_WEBHOOK_URL");
+    const defaultPhone = fonbnk("FONBNK_DEFAULT_PHONE");
     adapters.push(
       createFonbnkAdapter({
         clientId: fonbnk("FONBNK_CLIENT_ID"),
@@ -104,10 +123,34 @@ export function enabledAdapters(env: Env, deps: AdapterDeps): ProviderAdapter[] 
         webhookSecrets: webhookSecrets(env, "FONBNK_WEBHOOK_SECRET"),
         endUser: { email: fonbnk("FONBNK_USER_EMAIL"), ip: fonbnk("FONBNK_USER_IP") },
         ...(webhookUrl ? { webhookUrl } : {}),
+        ...(defaultPhone ? { defaultPhone } : {}),
         deps,
       }),
     );
   }
 
-  return adapters;
+  const transfi = section(env, "TransFi", [
+    "TRANSFI_USERNAME",
+    "TRANSFI_PASSWORD",
+    "TRANSFI_MID",
+    "TRANSFI_ENVIRONMENT",
+    "TRANSFI_WEBHOOK_SECRET",
+    "TRANSFI_SENDER_USER_ID",
+    "TRANSFI_SENDER_IP",
+  ]);
+  if (transfi) {
+    adapters.push(
+      createTransfiAdapter({
+        username: transfi("TRANSFI_USERNAME"),
+        password: transfi("TRANSFI_PASSWORD"),
+        mid: transfi("TRANSFI_MID"),
+        environment: environment("TransFi", transfi("TRANSFI_ENVIRONMENT")),
+        webhookSecrets: webhookSecrets(env, "TRANSFI_WEBHOOK_SECRET"),
+        sender: { userId: transfi("TRANSFI_SENDER_USER_ID"), ip: transfi("TRANSFI_SENDER_IP") },
+        deps,
+      }),
+    );
+  }
+
+  return adapters.map((adapter) => withInstitutionCodes(adapter));
 }

@@ -6,14 +6,15 @@ import { InsufficientVaultBalance, postEntry, reserveVault } from "../../../pack
 import { orderCommitted, vaultReleased } from "../../../packages/ledger/postings.js";
 import { MAX_ORDER_TTL_MS, type VaultClient } from "../../../packages/chains/vault/index.js";
 import { ProviderError } from "../../../packages/providers/errors.js";
-import type { Asset, Chain, CreatedOrder, FiatCurrency, ProviderAdapter } from "../../../packages/providers/types.js";
+import type { AccountCheck, Asset, Chain, CreatedOrder, FiatCurrency, ProviderAdapter } from "../../../packages/providers/types.js";
 import type { Config } from "./config.js";
 import { formatTokenAmount } from "./dashboard.js";
 import type { Db, Unit } from "./db.js";
 import { ApiError, conflict, invalidRequest, notFound } from "./errors.js";
 import { hashOf, type Reply } from "./idempotency.js";
-import { INSTITUTIONS } from "./institutions.js";
+import { institutionType } from "./institutions.js";
 import type { OneClickHops } from "./hop.js";
+import { isAddressOn } from "./refund-address.js";
 import { COUNTRY, developerIdFor, requestQuote, reviveHop, reviveProviderQuote, type QuoteDeps, type QuoteInput } from "./quotes.js";
 import { resolveName } from "./recipients.js";
 import { recoveryView } from "./recovery.js";
@@ -157,18 +158,24 @@ export async function createPayout(unit: Unit, deps: PayoutDeps, userId: string,
     const intents = route.kind === "intents";
     if (intents && !user?.nearAccount) throw invalidRequest("Claim a fliq name before paying from your vault.");
     const payer = user?.nearAccount ?? null;
-    // An Intents refund goes to the vault contract, which holds it unattributed until recredit returns it to the payer.
-    const refundAddress = intents ? deps.config.vaultAccount : (input.refund_address ?? payer);
-    if (!refundAddress) throw invalidRequest("refund_address is required when the account has no fliq name.");
-    return { developerId, quote, route, payer, refundAddress, intents, hop: reviveHop(route.providerQuote) };
+    const hop = reviveHop(route.providerQuote);
+    const refundAddress = intents ? intentsRefundAddress(deps.config, hop?.chain) : directRefundAddress(quote.sourceChain, input.refund_address, payer);
+    return { developerId, quote, route, payer, refundAddress, intents, hop };
   });
 
   const adapter = deps.adapters.find((candidate) => candidate.id === prepared.route.provider);
   if (!adapter) throw new ApiError(422, "no_route", "That provider is not available right now.");
   const country = COUNTRY[prepared.quote.currency as keyof typeof COUNTRY];
-  const verification = await adapter.verifyAccount({ institutionCode: input.account.bank, accountNumber: input.account.number, country });
+  const verification = await adapter.verifyAccount({ institutionCode: input.account.bank, accountNumber: input.account.number, country }).catch((error: unknown) => {
+    if (!(error instanceof ProviderError)) throw error;
+    if (error.kind === "not_supported") throw new ApiError(422, "route_unavailable", "The provider on this route cannot check or pay this account.");
+    // A bank that does not answer in time is not a missing account: nothing has moved, so the payer can simply retry.
+    if (error.transient) throw new ApiError(422, "route_unavailable", "The bank did not answer in time. Nothing moved; try again in a moment.");
+    throw new ApiError(422, "account_not_found", "The bank could not find that account.");
+  });
   if (!verification.found) throw new ApiError(422, "account_not_found", "The bank could not find that account.");
-  const accountName = resolveName(verification.accountName, input.account_name).name;
+  const bankName = verification.accountName ?? (await nameFromOtherProviders(deps.adapters, adapter, { institutionCode: input.account.bank, accountNumber: input.account.number, country }));
+  const accountName = resolveName(bankName, input.account_name).name;
 
   // Phase one: everything that must exist before the provider is called, committed together.
   const committed = await unit(async (tx) => {
@@ -254,20 +261,21 @@ export async function createPayout(unit: Unit, deps: PayoutDeps, userId: string,
 
   // Phase two: the provider call, only after the commitment is durable.
   const { payoutId, providerQuote } = committed;
-  const institution = INSTITUTIONS.find((item) => item.code === input.account.bank);
-  const corridor = { country, currency: prepared.quote.currency.toUpperCase() as FiatCurrency, payoutType: institution?.kind ?? ("bank" as const) };
+  const corridor = { country, currency: prepared.quote.currency.toUpperCase() as FiatCurrency, payoutType: institutionType(input.account.bank) };
   const asset = prepared.quote.tokenSymbol as Asset;
 
   const opened = await openOrder({
     deps,
     unit,
     adapter,
+    userId,
     payoutId,
     providerQuote,
     corridor,
     asset,
     prepared,
     recipient: { institutionCode: input.account.bank, accountNumber: input.account.number, accountName },
+    ...(options.agentId ? { agentId: options.agentId } : {}),
   });
 
   return unit(async (tx) => {
@@ -278,6 +286,37 @@ export async function createPayout(unit: Unit, deps: PayoutDeps, userId: string,
     });
     return reply;
   });
+}
+
+// Some providers can pay an account but cannot tell whose it is. A bank name is the same whichever provider reads it
+// (NIP in Nigeria), so another provider's answer confirms it; failing that, the sender types the name.
+async function nameFromOtherProviders(adapters: readonly ProviderAdapter[], chosen: ProviderAdapter, check: AccountCheck): Promise<string | null> {
+  for (const other of adapters) {
+    if (other === chosen) continue;
+    const found = await other.verifyAccount(check).catch(() => null);
+    if (found?.found && found.accountName) return found.accountName;
+  }
+  return null;
+}
+
+// An Intents payout funds the provider on the hop's network, so the provider refunds there, to the address fliq keeps
+// on that network. The 1Click leg refunds on NEAR to the vault instead (see openHop). Without an address for the
+// network the payout is refused before any provider order exists.
+function intentsRefundAddress(config: Config, chain: string | undefined): string {
+  const address = chain ? config.providerRefundAddresses[chain] : undefined;
+  if (!chain || !address) {
+    console.warn(`[payouts] no provider refund address for ${chain ?? "an unknown network"}: set PROVIDER_REFUND_ADDRESS_${(chain ?? "").toUpperCase()}`);
+    throw new ApiError(422, "route_unavailable", "That route is not available right now. Try again.");
+  }
+  return address;
+}
+
+// A direct payout is funded on the quote's source network, so its refund address must be one there too.
+function directRefundAddress(chain: string, requested: string | undefined, payer: string | null): string {
+  const address = requested ?? (chain === "near" ? payer : null);
+  if (!address) throw invalidRequest(`refund_address is required for a payout funded on ${chain}.`);
+  if (!isAddressOn(chain, address)) throw invalidRequest(`refund_address must be an address on ${chain}.`);
+  return address;
 }
 
 type Prepared = {
@@ -303,12 +342,14 @@ interface OpenInput {
   deps: PayoutDeps;
   unit: Unit;
   adapter: ProviderAdapter;
+  userId: string;
   payoutId: string;
   providerQuote: ReturnType<typeof reviveProviderQuote>;
   corridor: { country: ReturnType<typeof countryFor>; currency: FiatCurrency; payoutType: "bank" | "mobile_money" };
   asset: Asset;
   prepared: Prepared;
   recipient: { institutionCode: string; accountNumber: string; accountName: string };
+  agentId?: string;
 }
 
 const countryFor = (currency: string) => COUNTRY[currency as keyof typeof COUNTRY];
@@ -332,8 +373,10 @@ async function openOrder(input: OpenInput): Promise<Opened> {
       source: { asset, chain: (prepared.hop?.chain ?? prepared.quote.sourceChain) as Chain },
       recipient,
       refundAddress: prepared.refundAddress,
+      sender: { pseudonym: keyedHash(`sender:${input.userId}`, deps.config.hashKey).toString("hex") },
     });
   } catch (error) {
+    logProviderFailure(payoutId, error);
     return isDefiniteRejection(error) ? { kind: "rejected" } : { kind: "unknown" };
   }
 
@@ -350,6 +393,14 @@ async function openOrder(input: OpenInput): Promise<Opened> {
   }
   if (funding.kind !== "deposit_address") return { kind: "route_unavailable" };
   return openHop({ ...input, intents, hop: prepared.hop, order, funding });
+}
+
+// Enough to tell why a provider refused an order, without the recipient's account number or any credential.
+function logProviderFailure(payoutId: string, error: unknown): void {
+  if (!(error instanceof ProviderError)) return console.error(`[payouts] ${payoutId} createOrder failed: ${(error as Error)?.name ?? "error"}`);
+  const status = error.httpStatus === undefined ? "" : ` http ${error.httpStatus}`;
+  const reason = error.reason ? `: ${error.reason}` : "";
+  console.error(`[payouts] ${payoutId} ${error.provider} ${error.operation} ${error.kind}${status}${reason}`);
 }
 
 async function openHop(
@@ -370,7 +421,8 @@ async function openHop(
       to: hop.chain,
       amountOut: funding.units,
       recipient: funding.address,
-      refundTo: prepared.refundAddress,
+      // A swap that cannot complete is refunded on NEAR, into the vault, which holds it until recredit returns it.
+      refundTo: deps.config.vaultAccount,
       deadline,
     });
   } catch {
@@ -400,6 +452,7 @@ async function openHop(
       amount: deposit.units,
       expiresAtNs: BigInt(deadline.getTime()) * 1_000_000n,
       corridor: `${input.corridor.country}-${input.corridor.currency}-${input.corridor.payoutType}`,
+      ...(input.agentId ? { agentId: input.agentId } : {}),
     });
   } catch {
     // The reservation was committed first, so a refused registration must give the funds back.

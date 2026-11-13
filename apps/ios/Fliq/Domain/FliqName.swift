@@ -1,8 +1,9 @@
 import Foundation
 
-/// A fliq name: the `frank` in `frank.fliq.near`, a NEAR sub-account the user is paid by.
+/// A fliq name: the `frank` in `frank.fliqaccount.testnet`, a NEAR sub-account the user is paid by.
 struct FliqName: Hashable, Sendable {
-    static let suffix = ".fliq.near"
+    /// The API's NEAR root account, from the build settings. Fixture builds use `.fliq.near` like the fixtures.
+    static let suffix = (Bundle.main.object(forInfoDictionaryKey: "FliqNameSuffix") as? String).flatMap { $0.isEmpty ? nil : $0 } ?? ".fliq.near"
     static let maxLength = 32
 
     let value: String
@@ -20,6 +21,20 @@ struct FliqName: Hashable, Sendable {
     }
 
     var account: String { value + Self.suffix }
+
+    /// How a person sees an account: "@frank" for a fliq name, any other NEAR account unchanged.
+    static func display(_ account: String) -> String {
+        guard account.hasSuffix(suffix), account.count > suffix.count else { return account }
+        return "@" + account.dropLast(suffix.count)
+    }
+
+    /// What a person types or pastes in a name field: "frank", "@frank" or a full account, as an account.
+    static func account(typed raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let bare = trimmed.hasPrefix("@") ? String(trimmed.dropFirst()) : trimmed
+        if bare.hasSuffix(suffix) { return FliqName(String(bare.dropLast(suffix.count)))?.account }
+        return FliqName(bare)?.account
+    }
 }
 
 protocol NameDirectory: Sendable {

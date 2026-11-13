@@ -2,6 +2,7 @@ import { newId } from "../../../../packages/db/src/ids.js";
 import type { Config } from "../config.js";
 import type { Db } from "../db.js";
 import { unauthorized } from "../errors.js";
+import { renderSignInEmail } from "./email-template.js";
 import { openSession } from "./sessions.js";
 import { EMAIL_LINK_TTL_SECONDS, hashToken, newOpaqueToken } from "./tokens.js";
 
@@ -16,15 +17,11 @@ export class ResendSender implements EmailSender {
   ) {}
 
   async sendSignInLink(to: string, link: string): Promise<void> {
+    const { subject, html, text } = renderSignInEmail(link, EMAIL_LINK_TTL_SECONDS / 60);
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${this.apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        from: this.from,
-        to,
-        subject: "Your fliq sign-in link",
-        text: `Sign in to fliq: ${link}\n\nThis link works once and expires in 15 minutes. If you did not ask for it, ignore this email.`,
-      }),
+      body: JSON.stringify({ from: this.from, to, subject, html, text }),
     });
     if (!response.ok) throw new Error(`resend responded ${response.status}`);
   }

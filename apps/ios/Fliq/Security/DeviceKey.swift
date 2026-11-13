@@ -8,6 +8,15 @@ import Security
 protocol DeviceKeys: Sendable {
     /// The public half as NEAR writes it, `ed25519:<base58>`. The key is made on first use.
     func publicKey() throws -> String
+    /// Asks for Face ID or the passcode, then signs with the private half.
+    func sign(_ message: Data, reason: String) throws -> Data
+    /// Signs several messages behind one Face ID prompt.
+    func sign(_ messages: [Data], reason: String) throws -> [Data]
+}
+
+extension DeviceKeys {
+    func sign(_ message: Data, reason: String) throws -> Data { throw KeychainError(status: errSecUnimplemented) }
+    func sign(_ messages: [Data], reason: String) throws -> [Data] { try messages.map { try sign($0, reason: reason) } }
 }
 
 struct KeychainDeviceKeys: DeviceKeys {
@@ -26,6 +35,10 @@ struct KeychainDeviceKeys: DeviceKeys {
 
     /// The Keychain releases the private key only after Face ID or the device passcode.
     func sign(_ message: Data, reason: String) throws -> Data {
+        try sign([message], reason: reason)[0]
+    }
+
+    func sign(_ messages: [Data], reason: String) throws -> [Data] {
         let context = LAContext()
         context.localizedReason = reason
         var query = privateQuery
@@ -35,7 +48,8 @@ struct KeychainDeviceKeys: DeviceKeys {
         var result: AnyObject?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
         guard status == errSecSuccess, let raw = result as? Data else { throw KeychainError(status: status) }
-        return try Curve25519.Signing.PrivateKey(rawRepresentation: raw).signature(for: message)
+        let key = try Curve25519.Signing.PrivateKey(rawRepresentation: raw)
+        return try messages.map { try key.signature(for: $0) }
     }
 
     private func savePrivate(_ raw: Data) throws {
@@ -62,6 +76,31 @@ enum NEARKey {
     }
 
     private static let alphabet = Array("123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz")
+
+    /// The raw 32 bytes of an `ed25519:<base58>` key.
+    static func decode(_ encoded: String) -> Data? {
+        guard encoded.hasPrefix("ed25519:"), let raw = base58Decode(String(encoded.dropFirst("ed25519:".count))) else { return nil }
+        return raw.count == 32 ? raw : nil
+    }
+
+    /// Any base58 string, such as a block hash.
+    static func base58Decode(_ encoded: String) -> Data? {
+        var bytes: [UInt8] = []
+        for character in encoded {
+            guard var carry = alphabet.firstIndex(of: character) else { return nil }
+            for index in bytes.indices {
+                carry += Int(bytes[index]) * 58
+                bytes[index] = UInt8(carry & 0xFF)
+                carry >>= 8
+            }
+            while carry > 0 {
+                bytes.append(UInt8(carry & 0xFF))
+                carry >>= 8
+            }
+        }
+        let zeros = encoded.prefix { $0 == "1" }.count
+        return Data(repeating: 0, count: zeros) + Data(bytes.reversed())
+    }
 
     static func base58(_ bytes: Data) -> String {
         var digits: [Int] = []

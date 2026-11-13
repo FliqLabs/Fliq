@@ -1,0 +1,12 @@
+{
+  "images" : [
+    {
+      "filename" : "globus-bank.png",
+      "idiom" : "universal"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}

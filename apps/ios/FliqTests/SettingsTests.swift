@@ -24,7 +24,7 @@ final class SettingsTests: XCTestCase {
     func testPayingWithSaveOnKeepsTheRecipient() async {
         let book = AccountBook(keychain: nil)
         let flow = PayFlow(api: FixtureClient(), accounts: book)
-        flow.tapKey("5")
+        flow.enterAmount("5")
         _ = await flow.fetchQuote()
         flow.recipient.number = "0123456789"
         await flow.recipient.verify()
@@ -37,7 +37,7 @@ final class SettingsTests: XCTestCase {
         let book = AccountBook(keychain: nil)
         let flow = PayFlow(api: FixtureClient(), accounts: book)
         flow.saveAccount = false
-        flow.tapKey("5")
+        flow.enterAmount("5")
         _ = await flow.fetchQuote()
         flow.recipient.number = "0123456789"
         await flow.recipient.verify()

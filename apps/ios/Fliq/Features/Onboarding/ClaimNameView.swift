@@ -30,6 +30,7 @@ struct ClaimNameView: View {
                 HStack(spacing: 8) {
                     ForEach(flow.suggestions, id: \.self) { suggestion in
                         Button(suggestion) { flow.pick(suggestion) }
+                            .disabled(flow.isClaiming)
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(Theme.textPrimary)
                             .padding(.horizontal, 14)
@@ -46,7 +47,11 @@ struct ClaimNameView: View {
                 statusChip
                 Spacer()
                 Button(action: onContinue) {
-                    ChipLabel(text: "Continue", symbol: "chevron.right", color: flow.canClaim ? Theme.confirmed : Theme.textTertiary)
+                    if flow.isClaiming {
+                        ChipLabel(text: "Claiming", color: Theme.textMuted, working: true)
+                    } else {
+                        ChipLabel(text: "Continue", symbol: "chevron.right", color: flow.canClaim ? Theme.confirmed : Theme.textTertiary)
+                    }
                 }
                 .disabled(!flow.canClaim)
             }
@@ -55,7 +60,7 @@ struct ClaimNameView: View {
         .fliqScreen(ground: Theme.onboardingGround, aurora: Aurora(accent: accent))
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button("Skip", action: onSkip).fontWeight(.semibold)
+                Button("Skip", action: onSkip).fontWeight(.semibold).disabled(flow.isClaiming)
             }
         }
         .onAppear { focused = true }
@@ -63,6 +68,10 @@ struct ClaimNameView: View {
 
     private var nameCapsule: some View {
         HStack(spacing: 0) {
+            Text("@")
+                .foregroundStyle(Theme.textPrimary.opacity(0.7))
+                .padding(.trailing, 2)
+                .accessibilityHidden(true)
             Text(flow.nameText.isEmpty ? "yourname" : flow.nameText)
                 .tracking(-0.26)
                 .hidden()
@@ -76,15 +85,10 @@ struct ClaimNameView: View {
                         .keyboardType(.asciiCapable)
                         .submitLabel(.done)
                         .onSubmit { if flow.canClaim { onContinue() } }
+                        .disabled(flow.isClaiming)
                         .accessibilityLabel("Name")
-                        .accessibilityHint("Ends in \(FliqName.suffix)")
                 }
-                .padding(.trailing, 6)
-            Text(FliqName.suffix)
-                .foregroundStyle(Theme.textPrimary.opacity(0.7))
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
-                .layoutPriority(-1)
+            Spacer(minLength: 0)
         }
         .font(.system(size: 26, weight: .bold))
         .padding(.horizontal, 24)
@@ -109,16 +113,17 @@ struct ClaimNameView: View {
         case .checking:
             ChipLabel(text: "Checking…", symbol: "hourglass", color: Theme.textMuted)
         case .available:
-            ChipLabel(text: "Available", symbol: "checkmark.circle.fill", color: Theme.confirmed, badge: true)
+            ChipLabel(text: "Available", symbol: "checkmark.circle.fill", color: Theme.confirmed)
         case .taken:
-            ChipLabel(text: "Taken", symbol: "xmark.circle.fill", color: Theme.danger, badge: true)
+            ChipLabel(text: "Taken", symbol: "xmark.circle.fill", color: Theme.danger)
         case .unreachable:
             ChipLabel(text: "Can't check right now", symbol: "wifi.exclamationmark", color: Theme.warning)
         }
     }
 
     private var hint: String {
-        switch flow.status {
+        if flow.isClaiming { return "Creating your account. This can take up to a minute." }
+        return switch flow.status {
         case .invalid, .taken: "Letters, digits and hyphens, up to \(FliqName.maxLength)"
         case .checking: " "
         default: "Free · yours for life · one tap to claim"

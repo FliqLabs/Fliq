@@ -66,6 +66,9 @@ describe.skipIf(!enabled)("an agent paying from its owner's vault through the MC
     provisionAccount: async () => {
       throw new Error("not used");
     },
+    fundAgentDeposit: async () => {
+      throw new Error("not used");
+    },
   };
   const rpc: NearRpc = {
     accessKey: async () => ({ nonce: 1n, permission: "FullAccess" }),

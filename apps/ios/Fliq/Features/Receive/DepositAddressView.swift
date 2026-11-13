@@ -1,163 +1,233 @@
 import SwiftUI
 import UIKit
 
+/// The address to send to, on one network: who it belongs to, a QR code, what lands and when, and one big Copy.
 struct DepositAddressView: View {
     let flow: ReceiveFlow
-    @Environment(AppEnvironment.self) private var environment
+    /// Called once the transfer shows up on its chain, to move on to Arriving.
+    let onSeen: () -> Void
     @State private var copied = false
+    @State private var showingInfo = false
 
     var body: some View {
         if let deposit = flow.deposit {
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 content(deposit, expired: !deposit.source.isDirect && flow.secondsLeft(at: context.date) == 0, now: context.date)
             }
+            .task(id: deposit.address) { await flow.track() }
+            .onChange(of: flow.status?.stage) { _, stage in
+                if let stage, stage >= .seen { onSeen() }
+            }
         }
     }
 
     private func content(_ deposit: DepositAddress, expired: Bool, now: Date) -> some View {
         VStack(spacing: 0) {
-            Text(heading(deposit))
-                .font(.system(size: 22, weight: .semibold))
-                .tracking(-0.44)
-                .lineSpacing(2)
-                .multilineTextAlignment(.center)
-                .padding(.top, 36)
-
-            Text(amountRule(deposit))
-                .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(Theme.textSecondary)
-                .padding(.top, 10)
-
-            if deposit.isDemo {
-                Label("Demo address. Don't send real funds to it.", systemImage: "exclamationmark.triangle.fill")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Theme.warning)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(Theme.warning.opacity(0.12), in: Capsule())
-                    .padding(.top, 14)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    title(deposit)
+                    if deposit.isDemo {
+                        IconLabel("Demo address. Don't send real money to it.", icon: "exclamationmark.triangle.fill")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Theme.warning)
+                            .padding(.top, 14)
+                    }
+                    card(deposit, expired: expired)
+                        .padding(.top, 22)
+                    details(deposit, now: now)
+                        .padding(.top, 8)
+                    TestNetworkNote(network: flow.network)
+                        .padding(.top, 16)
+                }
+                .padding(.horizontal, 16)
             }
+            .scrollIndicators(.hidden)
 
-            QRCode(text: deposit.address)
-                .padding(16)
-                .frame(width: 232, height: 232)
-                .background(.white, in: RoundedRectangle(cornerRadius: 20))
-                .blur(radius: expired ? 10 : 0)
-                .opacity(expired ? 0.25 : 1)
-                .overlay {
-                    if expired {
-                        Text("This address has expired")
-                            .font(.system(size: 17, weight: .semibold))
-                            .multilineTextAlignment(.center)
-                    }
+            Group {
+                if expired {
+                    Button("Get a new address") { Task { _ = await flow.reserve(deposit.source) } }
+                        .buttonStyle(PrimaryButtonStyle(filled: true))
+                        .disabled(flow.isReserving)
+                } else {
+                    Button(copied ? "Copied" : "Copy address") { copy(deposit.address) }
+                        .buttonStyle(PrimaryButtonStyle(filled: true))
                 }
-                .accessibilityHidden(expired)
-                .padding(.top, 24)
-
-            HStack(spacing: 8) {
-                Button {
-                    UIPasteboard.general.string = deposit.address
-                    copied = true
-                } label: {
-                    HStack(spacing: 10) {
-                        Text(Self.short(deposit.address)).font(.system(size: 15, design: .monospaced))
-                        Image(systemName: copied ? "checkmark" : "square.on.square").font(.system(size: 15))
-                    }
-                    .padding(.horizontal, 16)
-                    .frame(height: 44)
-                    .background(Theme.field, in: Capsule())
-                }
-                .accessibilityLabel(copied ? "Address copied" : "Copy address")
-                ShareLink(item: deposit.address) {
-                    Image(systemName: "square.and.arrow.up")
-                        .frame(width: 44, height: 44)
-                        .background(Theme.field, in: Circle())
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 12)
+        }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                ShareLink(item: deposit.address, subject: Text("My \(deposit.source.token) address on \(deposit.source.chain)")) {
+                    Icon("square.and.arrow.up")
                 }
                 .accessibilityLabel("Share address")
             }
-            .foregroundStyle(Theme.textPrimary)
-            .opacity(expired ? 0.3 : 1)
-            .disabled(expired)
-            .padding(.top, 22)
+        }
+        .sheet(isPresented: $showingInfo) {
+            DepositInfoSheet(deposit: deposit)
+                .presentationDetents([.medium, .large])
+                .presentationBackground(Color(hex: 0x161616))
+        }
+        .sensoryFeedback(.success, trigger: copied)
+    }
 
-            if !deposit.source.isDirect {
-                reservation(deposit, now: now)
-                    .padding(.top, 26)
-            }
+    private func title(_ deposit: DepositAddress) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Receive \(deposit.source.token)")
+                .font(.system(size: 32, weight: .bold))
+                .tracking(-0.7)
+            networkSwitcher(deposit)
+        }
+        .padding(.top, 4)
+    }
 
-            Spacer()
-
-            if expired {
-                Button("Get a new address") { Task { _ = await flow.reserve() } }
-                    .buttonStyle(PrimaryButtonStyle(filled: true))
-                    .disabled(flow.isReserving)
-                    .padding(.bottom, 6)
-            } else {
-                Button("I have sent it") { environment.router.push(.receiveArriving) }
-                    .buttonStyle(PrimaryButtonStyle())
-                    .padding(.bottom, 6)
+    @ViewBuilder
+    private func networkSwitcher(_ deposit: DepositAddress) -> some View {
+        let others = flow.networks(for: deposit.source.tokenId).filter { $0 != deposit.source && flow.reason(unavailable: $0) == nil }
+        let label = HStack(spacing: 6) {
+            Text("on the").foregroundStyle(Theme.textSecondary)
+            ChainLogo(source: deposit.source, size: 22)
+            Text(deposit.source.isDirect ? "NEAR network" : "\(deposit.source.chain) network")
+            if !others.isEmpty {
+                Icon("chevron.up.chevron.down", size: 16).foregroundStyle(Theme.textSecondary)
             }
         }
-        .fliqScreen()
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                HStack(spacing: 8) {
-                    SourceBadge(source: deposit.source, size: 26, ring: Theme.field)
-                    Text(deposit.source.title)
+        .font(.system(size: 17, weight: .medium))
+
+        if others.isEmpty {
+            label
+        } else {
+            Menu {
+                ForEach(others) { source in
+                    Button("\(source.chain) · \(source.eta)") { Task { _ = await flow.reserve(source) } }
                 }
-                .font(.system(size: 14, weight: .medium))
-                .padding(.leading, 6)
-                .padding(.trailing, 12)
-                .frame(height: 36)
-                .background(Theme.field, in: Capsule())
-                .fixedSize()
-            }
+            } label: { label }
+                .foregroundStyle(Theme.textPrimary)
+                .accessibilityLabel("Network: \(deposit.source.chain). Change network")
         }
     }
 
-    private func reservation(_ deposit: DepositAddress, now: Date) -> some View {
-        let left = flow.secondsLeft(at: now)
-        return VStack(spacing: 10) {
-            HStack {
-                Text("Open until \(deposit.reservedUntil.formatted(date: .omitted, time: .shortened))")
-                Spacer()
-                Text(Duration.seconds(left).formatted(.time(pattern: .minuteSecond)))
-                    .foregroundStyle(Theme.textPrimary)
-                    .fontWeight(.medium)
-                    .monospacedDigit()
-            }
-            .font(.system(size: 13))
-            .foregroundStyle(Theme.textSecondary)
-            GeometryReader { proxy in
-                Capsule().fill(Color(hex: 0x262626))
-                    .overlay(alignment: .leading) {
-                        Rectangle().fill(.white)
-                            .frame(width: proxy.size.width * min(1, Double(left) / FixtureDepositAPI.watchWindow))
+    private func card(_ deposit: DepositAddress, expired: Bool) -> some View {
+        HStack(alignment: .top, spacing: 16) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 8) {
+                    PersonAvatar(name: flow.name ?? "f", size: 26)
+                    Text(flow.name.map { $0.split(separator: ".").first.map(String.init) ?? $0 } ?? "Your vault")
+                        .font(.system(size: 16, weight: .semibold))
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 24)
+                Text("Address").font(.system(size: 15, weight: .medium))
+                Button { copy(deposit.address) } label: {
+                    HStack(spacing: 8) {
+                        Text(Self.short(deposit.address)).font(.system(size: 15, design: .monospaced)).foregroundStyle(Theme.textSecondary)
+                        Icon(copied ? "checkmark" : "doc.on.doc", size: 17).foregroundStyle(Theme.textSecondary)
                     }
-                    .clipShape(Capsule())
-            }
-            .frame(height: 2)
-            .animation(.linear(duration: 1), value: left)
-            Text("Send within 10 minutes. After that, get a new address.")
-                .font(.system(size: 13))
-                .foregroundStyle(Color(hex: 0x8E8E8E))
-                .multilineTextAlignment(.center)
+                }
                 .padding(.top, 4)
+                .accessibilityLabel(copied ? "Address copied" : "Copy address")
+                if let memo = deposit.memo {
+                    Text("Memo \(memo)")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Theme.warning)
+                        .padding(.top, 6)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            QRCode(text: deposit.address, color: .white) {
+                SourceBadge(source: deposit.source, size: 34, ring: Color(hex: 0x1C1C1C))
+                    .padding(4)
+                    .background(Color(hex: 0x1C1C1C), in: Circle())
+            }
+            .frame(width: 132, height: 132)
+            .blur(radius: expired ? 8 : 0)
+            .opacity(expired ? 0.3 : 1)
+            .overlay {
+                if expired { Text("Expired").font(.system(size: 15, weight: .semibold)) }
+            }
+        }
+        .padding(18)
+        .frame(minHeight: 170)
+        .fliqGlass(RoundedRectangle(cornerRadius: 28))
+    }
+
+    private func details(_ deposit: DepositAddress, now: Date) -> some View {
+        VStack(spacing: 0) {
+            DetailRow("Arrives as", deposit.source.group == .bitcoin ? "USDC in your vault" : "1 \(deposit.source.token) ≈ $1.00")
+            DetailRow("Minimum", deposit.minimum == .zero ? "Any amount" : "\(deposit.source.group == .bitcoin ? deposit.minimum.decimalString : Money.dollars(deposit.minimum)) \(deposit.source.token)")
+            DetailRow("Fees", deposit.fee == .zero ? "None" : "≈ $\(deposit.fee.decimalString)")
+            DetailRow("Arrives in", deposit.source.eta)
+            if !deposit.source.isDirect {
+                DetailRow("Address open for", Duration.seconds(flow.secondsLeft(at: now)).formatted(.time(pattern: .minuteSecond)))
+            }
+            Button { showingInfo = true } label: {
+                HStack {
+                    Text("Learn more about deposits").foregroundStyle(Theme.textSecondary)
+                    Spacer()
+                    Icon("chevron.right", size: 17).foregroundStyle(Theme.textTertiary)
+                }
+                .font(.system(size: 15))
+                .padding(.horizontal, 16)
+                .padding(.vertical, 15)
+                .contentShape(Rectangle())
+            }
         }
     }
 
-    private func heading(_ deposit: DepositAddress) -> String {
-        if deposit.source.isDirect { return "Send \(deposit.source.token) on NEAR\nto your vault" }
-        return "Send \(deposit.source.token)\non \(deposit.source.chain) only"
-    }
-
-    private func amountRule(_ deposit: DepositAddress) -> String {
-        if deposit.source.isDirect { return "Any amount. This address never changes." }
-        return "Any amount over $\(Money.dollars(deposit.minimum))"
+    private func copy(_ address: String) {
+        UIPasteboard.general.string = address
+        copied = true
     }
 
     static func short(_ address: String) -> String {
-        guard address.count > 14 else { return address }
-        return "\(address.prefix(6))…\(address.suffix(4))"
+        guard address.count > 16 else { return address }
+        return "\(address.prefix(8))…\(address.suffix(5))"
+    }
+}
+
+/// How a top-up works, for the network it is on.
+private struct DepositInfoSheet: View {
+    let deposit: DepositAddress
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(spacing: 0) {
+            SourceBadge(source: deposit.source, size: 64, ring: Color(hex: 0x161616))
+                .padding(.top, 28)
+            Text("\(deposit.source.token) on \(deposit.source.chain)")
+                .font(.system(size: 24, weight: .bold))
+                .padding(.top, 14)
+            VStack(spacing: 0) {
+                item("arrow.down.to.line", "How it lands", deposit.source.isDirect
+                     ? "Sent straight into your vault on NEAR."
+                     : "NEAR Intents moves it to NEAR and your vault receives it as USDC.")
+                item("tag", "Fees", deposit.fee == .zero ? "fliq charges nothing to receive." : "About $\(deposit.fee.decimalString) in network and NEAR Intents fees. fliq adds nothing.")
+                item("exclamationmark.shield", "Only this network", "Send \(deposit.source.token) on \(deposit.source.chain) only. Other coins or networks sent here can be lost.")
+                item("arrow.uturn.backward", "If something goes wrong", "Less than the minimum, or a transfer that can't finish, is refunded to your NEAR account.", isLast: true)
+            }
+            .padding(.top, 20)
+            Spacer()
+            Button("Done") { dismiss() }
+                .buttonStyle(PrimaryButtonStyle())
+                .padding(.bottom, 12)
+        }
+        .padding(.horizontal, 20)
+    }
+
+    private func item(_ symbol: String, _ title: String, _ detail: String, isLast: Bool = false) -> some View {
+        HStack(alignment: .top, spacing: 16) {
+            Icon(symbol, size: 22).foregroundStyle(Theme.textSecondary).frame(width: 24)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title).font(.system(size: 17, weight: .semibold))
+                Text(detail).font(.system(size: 15)).foregroundStyle(Theme.textSecondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 14)
+        .overlay(alignment: .bottom) {
+            if !isLast { Rectangle().fill(Color.white.opacity(0.07)).frame(height: 1).padding(.leading, 40) }
+        }
     }
 }

@@ -1,10 +1,18 @@
 export type PayoutState =
+  | "created"
+  | "provider_timeout"
+  | "awaiting_recon"
   | "awaiting_deposit"
   | "deposit_seen"
+  | "routing"
+  | "with_provider"
   | "paying_out"
   | "settled"
+  | "refunding"
   | "refused"
   | "refunded"
+  | "expired"
+  | "failed"
   | "not_received";
 
 export type Payout = {
@@ -42,6 +50,6 @@ export function formatTimestamp(value: string) {
   }).format(new Date(value));
 }
 
-export function stateLabel(state: PayoutState) {
+export function stateLabel(state: string) {
   return state.replaceAll("_", " ").replace(/^\w/, (letter) => letter.toUpperCase());
 }

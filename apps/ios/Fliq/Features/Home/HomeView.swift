@@ -2,10 +2,8 @@ import SwiftUI
 
 struct HomeView: View {
     @State var model: HomeModel
-    var onSend: () -> Void = {}
-    var onActivity: () -> Void = {}
-    var onReceive: () -> Void = {}
     var onMenu: () -> Void = {}
+    var onQR: () -> Void = {}
 
     var body: some View {
         VStack(spacing: 0) {
@@ -13,9 +11,9 @@ struct HomeView: View {
             Spacer()
             balance
             Spacer()
-            ActionBar(items: actions)
+            WalletArrivedCard(inbox: model.inbox)
                 .padding(.horizontal, 16)
-                .padding(.bottom, 12)
+                .padding(.bottom, 16)
         }
         .background(Theme.ground.ignoresSafeArea())
         .task { await model.load() }
@@ -24,22 +22,26 @@ struct HomeView: View {
     private var header: some View {
         HStack {
             Button(action: onMenu) {
-                Circle()
-                    .fill(Theme.surfaceRaised)
-                    .frame(width: 32, height: 32)
-                    .overlay(Image(systemName: "person.fill").font(.system(size: 14)).foregroundStyle(Theme.textSecondary))
+                if let photo = model.photoURL {
+                    PersonAvatar(name: model.me?.displayName ?? "f", photoURL: photo, size: 36)
+                } else {
+                    Circle()
+                        .fill(Theme.surfaceRaised)
+                        .frame(width: 36, height: 36)
+                        .overlay(Icon("person.fill", size: 18).foregroundStyle(Theme.textSecondary))
+                }
             }
             .accessibilityLabel("Profile")
             Spacer()
             Wordmark()
             Spacer()
-            Button(action: onMenu) {
-                Image(systemName: "line.3.horizontal.decrease")
-                    .font(.system(size: 18))
+            Button(action: onQR) {
+                Icon("qrcode", size: 22)
                     .foregroundStyle(Theme.textSecondary)
                     .frame(width: 32, height: 32)
             }
-            .accessibilityLabel("Menu")
+            .accessibilityLabel("Receive with a QR code")
+            .accessibilityIdentifier("home.qr")
         }
         .padding(.horizontal, 24)
         .padding(.top, 16)
@@ -47,7 +49,7 @@ struct HomeView: View {
 
     private var balance: some View {
         VStack(spacing: 14) {
-            Label("Vault balance", systemImage: "eye")
+            IconLabel("Vault balance", icon: "eye")
                 .labelStyle(TrailingIconLabelStyle())
                 .font(.system(size: 14))
                 .foregroundStyle(Theme.textSecondary)
@@ -91,15 +93,6 @@ struct HomeView: View {
                 .frame(width: 200, height: 32)
                 .padding(.top, 6)
         }
-    }
-
-    private var actions: [ActionBarItem] {
-        [
-            ActionBarItem(title: "Receive", symbol: "square.and.arrow.down", action: onReceive),
-            ActionBarItem(title: "Send", symbol: "paperplane", action: onSend),
-            ActionBarItem(title: "Request", symbol: "link", isEnabled: model.hasBalance) {},
-            ActionBarItem(title: "Activity", symbol: "clock.arrow.circlepath", action: onActivity),
-        ]
     }
 }
 

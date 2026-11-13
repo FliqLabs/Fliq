@@ -21,6 +21,7 @@ import { startHealthChecks, type Probe } from "./status.js";
 import { createWebhookHandler } from "./webhooks.js";
 import { startWebhookDelivery } from "./webhook-delivery.js";
 import { startVaultSync } from "./vault-sync.js";
+import { startPayoutWatch } from "./payout-watch.js";
 import { usageRecorder } from "./usage.js";
 import { httpsTransport } from "../../../packages/webhooks/transport.js";
 
@@ -34,7 +35,7 @@ const configured = enabledAdapters(process.env, {
 const adapters = configured.length > 0 ? configured : sandboxAdapters();
 
 // The deployed vault when an RPC and the registration key are set; otherwise Ladipeo's in-memory model for local runs.
-const usdcContract = process.env.USDC_CONTRACT_ID ?? "usdc.test.near";
+const usdcContract = config.usdcContract;
 const registrationAccount = process.env.NEAR_REGISTRATION_ACCOUNT_ID ?? "registrar.test.near";
 const registrationKey = process.env.NEAR_REGISTRATION_PRIVATE_KEY?.trim();
 const nearRpcUrl = process.env.NEAR_RPC_URL?.trim();
@@ -164,6 +165,10 @@ await app.listen({ port: config.port, host: "0.0.0.0" });
 startHealthChecks(unit, probes, Number(process.env.HEALTH_CHECK_INTERVAL_MS ?? 60_000));
 startRateSampler(rateBoard, Number(process.env.RATE_SAMPLE_INTERVAL_MS ?? 60_000));
 startDepositWatch(unit, deposits, Number(process.env.DEPOSIT_WATCH_INTERVAL_MS ?? 10_000));
+startPayoutWatch(
+  { unit, adapters, ...(oneClick ? { oneClick } : {}), now: () => new Date(), log: (message) => app.log.warn(message) },
+  Number(process.env.PAYOUT_WATCH_INTERVAL_MS ?? 20_000),
+);
 startVaultSync(
   { unit, vault, now: () => new Date(), log: (message) => app.log.warn(message) },
   Number(process.env.VAULT_SYNC_INTERVAL_MS ?? 15_000),

@@ -1,5 +1,5 @@
 import Image from "next/image";
-import { JoinWaitlistLink } from "../components/join-waitlist-link";
+import { MarketingActionLink } from "../components/marketing-action-link";
 import { siteContainer } from "../components/site-container";
 import { IconRow, eyebrow } from "./components";
 import { claudeIcon, steps, trustPoints } from "./data";
@@ -42,7 +42,10 @@ export function Developers() {
           Quote, create, watch the webhook. One API for the messy part between crypto and a bank account.
         </p>
         <div className="flex flex-wrap gap-2.5">
-          <JoinWaitlistLink />
+          <MarketingActionLink href="/create-workspace">Get a sandbox key</MarketingActionLink>
+          <MarketingActionLink href="#quickstart" variant="secondary">
+            Read the quickstart
+          </MarketingActionLink>
         </div>
       </div>
       <div id="quickstart" className="overflow-hidden rounded-xl bg-[#0f0f0f]">
@@ -50,14 +53,14 @@ export function Developers() {
           <code>{`# quote
 curl https://api.fliq.money/v1/quote \\
   -H "Authorization: Bearer rt_test_…" \\
-  -d "token=USDC&currency=NGN&amount=50"
+  -d "token=USDC&currency=NGN&amount=<amount>"
 
-{ "rate": 1376.32, "receive": 68816,
-  "provider": "paycrest", "best_of": 4 }
+{ "rate": "<quote rate>", "receive": "<recipient amount>",
+  "provider": "<selected provider>", "routes": "<available routes>" }
 
 # pay, then the webhook brings the bank reference
 { "event": "payout.settled",
-  "bank_reference": "000013251029140213" }`}</code>
+  "bank_reference": "<bank reference>" }`}</code>
         </pre>
       </div>
     </section>
@@ -85,7 +88,7 @@ export function Agents() {
           the boundaries.
         </p>
         <div className="flex flex-wrap gap-2.5">
-          <JoinWaitlistLink />
+          <MarketingActionLink href="/create-workspace">Start building</MarketingActionLink>
         </div>
       </div>
       <div className="grid gap-2.5 text-sm">
@@ -95,15 +98,15 @@ export function Agents() {
         </div>
         <div className="flex gap-2 rounded-xl bg-[#111] p-3.5">
           <span className="text-brand">✓</span>
-          <p>Paid ₦68,816 to DARA OKONKWO via Paycrest.</p>
+          <p>Payout settled to the recipient through the selected provider.</p>
         </div>
         <div className="flex gap-2 rounded-xl bg-[#111] p-3.5">
           <span className="text-zinc-500">You:</span>
-          <p>Now send her ₦500,000.</p>
+          <p>Now send another payout over the configured cap.</p>
         </div>
         <div className="flex gap-2 rounded-xl border border-[#5a4712] bg-[#2a2208] p-3.5">
           <span>⊘</span>
-          <p>Refused by the vault. ₦500,000 is over the ₦50,000 per-payout cap.</p>
+          <p>The vault refuses it before anything moves.</p>
         </div>
       </div>
     </section>
