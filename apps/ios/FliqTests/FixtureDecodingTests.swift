@@ -35,6 +35,7 @@ final class FixtureDecodingTests: XCTestCase {
             "VaultBalance": decode(VaultBalance.self),
             "Person": decode(Person.self),
             "RecentPeopleList": decode(RecentPeopleList.self),
+            "ActivityList": decode(ActivityList.self),
         ]
     }()
 

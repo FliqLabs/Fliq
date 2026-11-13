@@ -27,7 +27,7 @@ struct AmountView: View {
                 if flow.isQuoting { ProgressView() } else { Text("Get quote") }
             }
             .buttonStyle(PrimaryButtonStyle())
-            .disabled((flow.amount ?? .zero) <= .zero || flow.isQuoting)
+            .disabled((flow.amount ?? .zero) <= .zero || flow.isOverBalance || flow.isQuoting)
             .padding(.bottom, 12)
         }
         .fliqScreen()
@@ -60,6 +60,10 @@ struct AmountView: View {
                     .foregroundStyle(Theme.textSecondary)
                     .padding(.top, 6)
             }
+            Text(flow.isOverBalance ? "More than the $\(Money.dollars(flow.available)) in your vault" : "In your vault $\(Money.dollars(flow.available))")
+                .font(.system(size: 14))
+                .foregroundStyle(flow.isOverBalance ? Theme.warning : Theme.textTertiary)
+                .padding(.top, 2)
         }
     }
 

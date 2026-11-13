@@ -9,7 +9,7 @@ final class ActivityUITests: XCTestCase {
     @MainActor
     func testRoutesRefundAndActivity() {
         let app = XCUIApplication()
-        app.launchArguments = ["--ui-testing", "--onboarded"]
+        app.launchArguments = ["--ui-testing", "--onboarded", "--funded"]
         app.launch()
 
         app.buttons["Activity"].tap()

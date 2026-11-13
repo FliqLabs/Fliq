@@ -202,6 +202,11 @@ struct PajSessionStore: Sendable {
     func save(_ session: Paj.Session) {
         try? keychain.save(session, for: "session")
     }
+
+    /// The email or phone last confirmed with Paj, kept after the session expires so signing in again is one tap.
+    func lastContact() -> String? {
+        keychain.load(Paj.Session.self, for: "session")?.contact
+    }
 }
 
 enum PajMessage {
@@ -234,7 +239,7 @@ actor FixturePaj: PajAPI, PajSignIn {
 
     func order(_ id: String, session: Paj.Session) async throws -> Paj.Order {
         polls += 1
-        return Self.demoOrder(naira: 5000, status: polls < 2 ? .paid : .completed)
+        return Self.demoOrder(naira: 5000, status: polls < 2 ? .initiated : polls < 3 ? .paid : .completed)
     }
 
     private static func demoOrder(naira: Int, status: Paj.Order.Status) -> Paj.Order {

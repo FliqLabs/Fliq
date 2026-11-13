@@ -48,11 +48,16 @@ final class ReceiveFlow {
         offered.count == 1 ? offered.first : nil
     }
 
+    /// Everything this network could take, working or not, so the pickers can show what is coming soon.
+    var listed: [DepositSource] {
+        sources.filter { network.receivesFromOtherChains || $0.isDirect }
+    }
+
     /// One row per token, grouped the way Choose currency shows them. USDC on NEAR is one of USDC's networks.
     var currencies: [(group: DepositSource.Group, tokens: [String])] {
         [DepositSource.Group.dollars, .bitcoin].compactMap { group in
             var tokens: [String] = []
-            for source in offered where (source.isDirect ? .dollars : source.group) == group && !tokens.contains(source.tokenId) {
+            for source in listed where (source.isDirect ? .dollars : source.group) == group && !tokens.contains(source.tokenId) {
                 tokens.append(source.tokenId)
             }
             return tokens.isEmpty ? nil : (group, tokens)
@@ -66,8 +71,13 @@ final class ReceiveFlow {
         }
     }
 
+    /// The working networks first, then the ones coming soon.
+    func choices(for token: String) -> [DepositSource] {
+        networks(for: token) + listed.filter { $0.tokenId == token && !offered.contains($0) }
+    }
+
     func reason(unavailable source: DepositSource) -> String? {
-        guard source.available else { return "Not offered right now" }
+        guard source.available else { return "Coming soon" }
         return unavailable[source.id]
     }
 

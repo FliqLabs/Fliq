@@ -3,7 +3,9 @@ import type { Asset, Chain, FiatCurrency, PayoutType } from "../../../packages/p
 import { ApiError, invalidRequest } from "./errors.js";
 import { COUNTRY, logTimeouts, rateOf, total, type QuoteDeps, type QuoteInput } from "./quotes.js";
 
-export const RATE_TTL_MS = 10_000;
+// The public rate is a display figure for Home and the rate board; a quote always prices live. Thirty seconds lets
+// most Home loads hit the cache, where ten made most of them wait on every provider.
+export const RATE_TTL_MS = 30_000;
 // A public rate answers fast or says no route: past this, nobody is waiting for it.
 export const RATE_DEADLINE_MS = 8_000;
 // Fees are partly flat, so a rate only means something for a stated size. 100 tokens in 6-decimal units.

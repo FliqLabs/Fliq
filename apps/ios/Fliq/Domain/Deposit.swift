@@ -37,7 +37,7 @@ struct DepositSource: Hashable, Sendable, Identifiable {
         etaSeconds < 60 ? "~\(etaSeconds)s" : "~\(Int((Double(etaSeconds) / 60).rounded())) min"
     }
 
-    private static let chainNames = ["near": "NEAR", "bnb": "BNB Smart Chain"]
+    private static let chainNames = ["near": "NEAR", "bnb": "BNB Smart Chain", "monad": "Monad"]
 }
 
 /// A deposit address for one top-up. It takes any amount from `minimum` up and lands it in the vault as USDC.

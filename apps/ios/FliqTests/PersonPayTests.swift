@@ -7,6 +7,7 @@ final class PersonPayTests: XCTestCase {
     private struct Refusing: VaultTransfers {
         let reason: String
         func send(_ amount: TokenAmount, to recipient: String) async throws -> RelayResult? { throw TransferError.refused(reason) }
+        func release(_ payout: Payout) async throws -> RelayResult? { throw TransferError.refused(reason) }
     }
 
     private func flow(transfers: any VaultTransfers = FixtureVaultTransfers(), balance: Int64 = 100_000_000) -> PersonPayFlow {
@@ -24,6 +25,31 @@ final class PersonPayTests: XCTestCase {
         XCTAssertTrue(paid)
         XCTAssertEqual(flow.paid, TokenAmount(baseUnits: 25_000_000))
         XCTAssertEqual(flow.available, TokenAmount(baseUnits: 75_000_000))
+    }
+
+    func testThePaidScreenShowsAfterFaceIDAndConfirmsWhenTheVaultAnswers() async {
+        let flow = flow()
+        await flow.lookUp()
+        flow.enterAmount("25")
+        XCTAssertFalse(flow.isConfirmed)
+
+        _ = await flow.pay()
+
+        XCTAssertEqual(flow.paid, TokenAmount(baseUnits: 25_000_000))
+        XCTAssertTrue(flow.isConfirmed)
+    }
+
+    func testARefusalAfterFaceIDTakesThePaidScreenBack() async {
+        let flow = flow(transfers: Refusing(reason: "Smart contract panicked: nope"))
+        await flow.lookUp()
+        flow.enterAmount("25")
+
+        let paid = await flow.pay()
+
+        XCTAssertFalse(paid)
+        XCTAssertNil(flow.paid, "Refusing signs first, so the paid screen had opened")
+        XCTAssertFalse(flow.isConfirmed)
+        XCTAssertEqual(flow.available, TokenAmount(baseUnits: 100_000_000))
     }
 
     func testMoreThanTheVaultHoldsCannotBePaid() async {

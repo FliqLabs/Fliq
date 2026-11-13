@@ -3,7 +3,36 @@ import Foundation
 /// Sends dollars from the vault to a NEAR address outside fliq.
 protocol Withdrawals: Sendable {
     func check(_ address: String) async -> AddressCheck
-    func send(_ amount: TokenAmount, to address: String) async throws -> WithdrawReceipt
+    /// Everything the send needs from the network, read while the person looks at Review, so Face ID appears the
+    /// moment they tap.
+    func prepare(_ amount: TokenAmount, to address: String) async throws -> PreparedWithdraw
+    /// Face ID and nothing else.
+    func sign(_ prepared: PreparedWithdraw) throws -> SignedWithdraw
+    func deliver(_ signed: SignedWithdraw) async throws -> WithdrawReceipt
+}
+
+extension Withdrawals {
+    func send(_ amount: TokenAmount, to address: String) async throws -> WithdrawReceipt {
+        try await deliver(try sign(try await prepare(amount, to: address)))
+    }
+}
+
+/// The withdraw and the onward steps, built and ready to sign.
+struct PreparedWithdraw: Sendable {
+    let amount: TokenAmount
+    let address: String
+    let actions: [DelegateAction]
+    var preparedAt = Date.now
+
+    /// The nonce and block height stay valid for minutes; a minute keeps well inside that.
+    func isFresh(for amount: TokenAmount, to address: String, at now: Date = .now) -> Bool {
+        self.amount == amount && self.address == address && now.timeIntervalSince(preparedAt) < 60
+    }
+}
+
+struct SignedWithdraw: Sendable {
+    let actions: [DelegateAction]
+    let signatures: [Data]
 }
 
 enum AddressCheck: Equatable {
@@ -19,7 +48,6 @@ struct WithdrawReceipt: Equatable, Sendable {
 
 enum WithdrawError: Error, Equatable {
     case notSetUp
-    case needsGas
     case invalidAddress(String)
     /// The vault refused, so nothing moved.
     case refused(String)
@@ -61,9 +89,8 @@ enum WithdrawAddress {
     }
 }
 
-/// Two steps behind one Face ID: the relayer runs the vault's `withdraw` to the user's own account for free, then
-/// the phone sends that USDC on with a plain transaction. The relayer has no rule for a transfer out, so the user's
-/// account pays that gas, about $0.001.
+/// Two steps behind one Face ID, both relayed for free: the vault's `withdraw` to the user's own account, then the
+/// USDC on to the outside wallet, registering it first when it has never held USDC.
 struct RelayedWithdrawals: Withdrawals {
     let api: any FliqAPI
     let rpc: NEARRPC
@@ -72,10 +99,6 @@ struct RelayedWithdrawals: Withdrawals {
     let vault: @Sendable () async -> String?
     var pollInterval: Duration = .seconds(1.5)
     var pollAttempts = 20
-
-    /// 30 Tgas of prepaid gas at one and a half times the minimum gas price, in yoctoNEAR.
-    static let gasAllowance = Decimal(string: "4500000000000000000000")!
-    private static let yoctoPerStorageByte = Decimal(string: "10000000000000000000")!
 
     func check(_ typed: String) async -> AddressCheck {
         let address = WithdrawAddress.normalized(typed)
@@ -92,7 +115,7 @@ struct RelayedWithdrawals: Withdrawals {
         }
     }
 
-    func send(_ amount: TokenAmount, to typed: String) async throws -> WithdrawReceipt {
+    func prepare(_ amount: TokenAmount, to typed: String) async throws -> PreparedWithdraw {
         let address = WithdrawAddress.normalized(typed)
         guard amount > .zero, let owner = await owner(), let vault = await vault() else { throw WithdrawError.notSetUp }
         let usdc = try await rpc.vaultUSDC(vault: vault)
@@ -103,47 +126,48 @@ struct RelayedWithdrawals: Withdrawals {
         guard let rawKey = NEARKey.decode(publicKey) else { throw WithdrawError.notSetUp }
 
         async let registered = rpc.isRegistered(address, on: usdc)
-        async let account = rpc.account(owner)
         async let block = rpc.finalBlock()
         async let nonce = rpc.accessKeyNonce(account: owner, publicKey: publicKey)
         let registration = try await registered ? nil : try await rpc.registrationCost(on: usdc)
-        guard let state = try await account, Self.covers(state, registration: registration) else { throw WithdrawError.needsGas }
         let header = try await block
-        guard let hash = header.hash, let blockHash = NEARKey.base58Decode(hash), blockHash.count == 32 else { throw WithdrawError.notSetUp }
         let next = try await nonce + 1
         let units = UInt64(amount.baseUnits)
 
+        var onward: [DelegateAction] = []
+        if let registration {
+            onward.append(.usdcRegistration(from: owner, for: address, cost: registration, usdc: usdc, nonce: next + 1, blockHeight: header.height, publicKey: rawKey))
+        }
+        onward.append(.usdcTransfer(from: owner, to: address, units: units, usdc: usdc, nonce: next + 1 + UInt64(onward.count), blockHeight: header.height, publicKey: rawKey))
         let withdraw = DelegateAction.vaultWithdraw(from: owner, units: units, vault: vault, nonce: next, blockHeight: header.height, publicKey: rawKey)
-        let transfer = NEARTransaction.usdcTransfer(
-            from: owner, to: address, units: units, usdc: usdc, registration: registration,
-            nonce: next + 1, blockHash: blockHash, publicKey: rawKey
-        )
-        let signatures = try keys.sign([withdraw.signingHash, transfer.signingHash], reason: "Send $\(Money.dollars(amount)) to \(address)")
+        return PreparedWithdraw(amount: amount, address: address, actions: [withdraw] + onward)
+    }
 
+    func sign(_ prepared: PreparedWithdraw) throws -> SignedWithdraw {
+        let signatures = try keys.sign(prepared.actions.map(\.signingHash), reason: "Send $\(Money.dollars(prepared.amount)) to \(prepared.address)")
+        return SignedWithdraw(actions: prepared.actions, signatures: signatures)
+    }
+
+    func deliver(_ signed: SignedWithdraw) async throws -> WithdrawReceipt {
+        guard let withdraw = signed.actions.first, let first = signed.signatures.first else { throw WithdrawError.notSetUp }
         let relay = DelegateRelay(api: api, rpc: rpc, keys: keys, pollInterval: pollInterval, pollAttempts: pollAttempts)
         do {
-            _ = try await relay.follow(try await api.relay(signedDelegate: withdraw.signed(with: signatures[0])))
+            _ = try await relay.follow(try await api.relay(signedDelegate: withdraw.signed(with: first)))
         } catch TransferError.refused(let reason) {
             throw WithdrawError.refused(reason)
         } catch TransferError.stillPending {
             throw WithdrawError.stillPending
         }
 
-        let outcome: NEARRPC.Outcome
+        // Relayed like every other step, so the user's account needs no NEAR for gas.
+        var last: RelayResult?
         do {
-            outcome = try await rpc.send(signedTransaction: transfer.signed(with: signatures[1]))
+            for (action, signature) in zip(signed.actions.dropFirst(), signed.signatures.dropFirst()) {
+                last = try await relay.follow(try await api.relay(signedDelegate: action.signed(with: signature)))
+            }
         } catch {
             throw WithdrawError.notDelivered(String(describing: error))
         }
-        if let failure = outcome.failure { throw WithdrawError.notDelivered(failure) }
-        return WithdrawReceipt(transactionHash: outcome.hash)
-    }
-
-    /// NEAR checks the prepaid gas and any deposit against what the account holds beyond its own storage.
-    static func covers(_ account: NEARRPC.Account, registration: Yocto?) -> Bool {
-        guard let balance = Decimal(string: account.amount) else { return false }
-        let spendable = balance - Decimal(account.storageUsage) * yoctoPerStorageByte
-        return spendable >= gasAllowance + (registration?.decimal ?? 0)
+        return WithdrawReceipt(transactionHash: last?.txHash ?? "")
     }
 }
 
@@ -155,7 +179,15 @@ struct FixtureWithdrawals: Withdrawals {
         return .ready(needsSetup: false)
     }
 
-    func send(_ amount: TokenAmount, to address: String) async throws -> WithdrawReceipt {
+    func prepare(_ amount: TokenAmount, to address: String) async throws -> PreparedWithdraw {
+        PreparedWithdraw(amount: amount, address: WithdrawAddress.normalized(address), actions: [])
+    }
+
+    func sign(_ prepared: PreparedWithdraw) throws -> SignedWithdraw {
+        SignedWithdraw(actions: [], signatures: [])
+    }
+
+    func deliver(_ signed: SignedWithdraw) async throws -> WithdrawReceipt {
         WithdrawReceipt(transactionHash: "")
     }
 }

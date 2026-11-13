@@ -22,6 +22,7 @@ import { createWebhookHandler } from "./webhooks.js";
 import { startWebhookDelivery } from "./webhook-delivery.js";
 import { startVaultSync } from "./vault-sync.js";
 import { startPayoutWatch } from "./payout-watch.js";
+import { apnsFromEnv, createApnsSender, startPushDispatch } from "./push.js";
 import { usageRecorder } from "./usage.js";
 import { httpsTransport } from "../../../packages/webhooks/transport.js";
 
@@ -172,6 +173,11 @@ startPayoutWatch(
 startVaultSync(
   { unit, vault, now: () => new Date(), log: (message) => app.log.warn(message) },
   Number(process.env.VAULT_SYNC_INTERVAL_MS ?? 15_000),
+);
+const apns = apnsFromEnv(process.env);
+startPushDispatch(
+  { unit, send: apns ? createApnsSender(apns) : null, dataKey: config.dataKey, now: () => new Date(), log: (message) => app.log.warn(message) },
+  Number(process.env.PUSH_INTERVAL_MS ?? 3_000),
 );
 startWebhookDelivery(
   { unit, config, transport: httpsTransport(), now: () => new Date() },

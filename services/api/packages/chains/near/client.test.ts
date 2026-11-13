@@ -33,6 +33,16 @@ describe("createRelayerClient", () => {
     });
   });
 
+  it("asks for no storage registration only when told to skip it", async () => {
+    const { client, calls } = clientReturning(201, { status: "created", account_id: "claude-ada.fliq.testnet" });
+    await client.provisionAccount("claude-ada.fliq.testnet", "ed25519:abc", { registerStorage: false });
+    expect(JSON.parse(String(calls[0]!.init.body))).toEqual({
+      account_id: "claude-ada.fliq.testnet",
+      public_key: "ed25519:abc",
+      register_storage: false,
+    });
+  });
+
   it("turns relayer errors into typed errors with the relayer's code", async () => {
     const { client } = clientReturning(429, { error: { code: "rate_limited", message: "slow down" } });
     const error = (await client.relay("AAAA").catch((e: unknown) => e)) as RelayerClientError;

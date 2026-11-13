@@ -369,6 +369,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Register this device for push notifications, with the APNs gateway and app it belongs to */
+        post: operations["registerDevice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/devices/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Stop push notifications to this device, for example on sign out */
+        delete: operations["removeDevice"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/agents": {
         parameters: {
             query?: never;
@@ -1791,6 +1825,18 @@ export interface components {
             /** @enum {string} */
             platform: "ios" | "android";
         };
+        DeviceRequest: {
+            /** @description The APNs device token in hex */
+            token: string;
+            /** @enum {string} */
+            platform: "ios";
+            /**
+             * @description production for TestFlight and App Store builds, sandbox for builds run from Xcode
+             * @enum {string}
+             */
+            environment: "production" | "sandbox";
+            bundle_id: string;
+        };
         AgentRef: {
             agent_id: string;
             name: string;
@@ -2296,7 +2342,7 @@ export interface components {
         /** @enum {string} */
         DepositTokenId: "usdc" | "usdt" | "btc";
         /** @enum {string} */
-        DepositChainId: "base" | "solana" | "tron" | "arbitrum" | "ethereum" | "polygon" | "bitcoin" | "near";
+        DepositChainId: "base" | "solana" | "tron" | "arbitrum" | "ethereum" | "polygon" | "bnb" | "monad" | "bitcoin" | "near";
         DepositSource: {
             token: components["schemas"]["DepositTokenId"];
             chain: components["schemas"]["DepositChainId"];
@@ -3147,6 +3193,49 @@ export interface operations {
                 content?: never;
             };
             400: components["responses"]["Error"];
+        };
+    };
+    registerDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceRequest"];
+            };
+        };
+        responses: {
+            /** @description Registered; a token already registered moves to this user */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Error"];
+        };
+    };
+    removeDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed, or it was not registered to this user */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     listAgents: {

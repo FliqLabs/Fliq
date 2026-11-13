@@ -546,6 +546,10 @@ model PushToken {
   token     String   @id @db.Text
   userId    String   @map("user_id") @db.Text
   platform  String   @db.Text
+  // APNs has a production and a sandbox gateway; a TestFlight or App Store build is production.
+  environment String  @default("production") @db.Text
+  // The app the token belongs to, sent as apns-topic. Null for tokens registered before it was asked for.
+  bundleId  String?  @map("bundle_id") @db.Text
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
 

@@ -4,7 +4,7 @@ import { siteContainer } from "./site-container";
 
 const navigation = [
   { label: "Rates", href: "/rates" },
-  { label: "Docs", href: "/#developers" },
+  { label: "Docs", href: "/docs/quickstart" },
   { label: "Trust", href: "/#trust" },
   { label: "Sandbox", href: "/#sandbox" },
 ];

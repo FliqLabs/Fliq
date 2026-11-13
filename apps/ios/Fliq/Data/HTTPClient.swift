@@ -44,6 +44,10 @@ struct HTTPClient: FliqAPI {
         try await send("GET", "payouts")
     }
 
+    func activity() async throws -> ActivityList {
+        try await send("GET", "activity", query: ["limit": "50"])
+    }
+
     var needsSignIn: Bool {
         get async { await !sessions.isSignedIn }
     }
@@ -104,6 +108,18 @@ struct HTTPClient: FliqAPI {
 
     func updateProfilePhoto(_ url: URL) async throws -> User {
         try await send("PATCH", "me", body: ["photo_url": url.absoluteString])
+    }
+
+    func removeProfilePhoto() async throws -> User {
+        try await send("PATCH", "me", body: ["photo_url": String?.none])
+    }
+
+    func registerDevice(_ device: PushDevice) async throws {
+        let _: Empty = try await send("POST", "devices", body: device)
+    }
+
+    func unregisterDevice(token: String) async throws {
+        let _: Empty = try await send("DELETE", "devices/\(token)")
     }
 
     func institutions(in country: Country) async throws -> [Institution] {

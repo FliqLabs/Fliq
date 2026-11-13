@@ -21,6 +21,8 @@ export class TokenStorage {
   readonly #options: TokenStorageOptions;
   readonly #publicKey: string;
   #queue: Promise<unknown> = Promise.resolve();
+  // The last nonce this process signed with, in case the node answering the read is a block behind the send.
+  #lastNonce = 0n;
 
   constructor(options: TokenStorageOptions) {
     this.#options = options;
@@ -42,10 +44,11 @@ export class TokenStorage {
       const { rpc, tokenContractId, payer } = this.#options;
       const [key, block] = await Promise.all([rpc.accessKey(payer.accountId, this.#publicKey), rpc.finalBlock()]);
       if (!key) throw new TokenStorageError("the payer key is not on the payer account");
+      this.#lastNonce = (key.nonce > this.#lastNonce ? key.nonce : this.#lastNonce) + 1n;
       const tx = await signTransaction({
         signer: payer,
         receiverId: tokenContractId,
-        nonce: key.nonce + 1n,
+        nonce: this.#lastNonce,
         blockHash: block.hash,
         actions: storageDepositActions(accountId, depositYocto),
       });

@@ -12,6 +12,8 @@ type RequestJson = Omit<PublicKeyCredentialRequestOptions, "challenge" | "allowC
   allowCredentials?: JsonDescriptor[];
 };
 
+export class PasskeyPromptError extends Error {}
+
 function decode(value: string): ArrayBuffer {
   const binary = atob(value.replace(/-/g, "+").replace(/_/g, "/"));
   return Uint8Array.from(binary, (character) => character.charCodeAt(0)).buffer;
@@ -43,8 +45,8 @@ async function requestCredential(
   try {
     return (await request) as PublicKeyCredential | null;
   } catch (error) {
-    if (error instanceof DOMException && error.name === "NotAllowedError") {
-      throw new Error(
+    if (error instanceof DOMException && ["NotAllowedError", "NotFoundError"].includes(error.name)) {
+      throw new PasskeyPromptError(
         mode === "login"
           ? "Passkey sign-in did not complete. Use the device where you saved your passkey. If using a phone, check that it has a passkey for this site and that Bluetooth and internet are available on both devices."
           : "Passkey setup did not complete. If you used a phone, check Bluetooth and internet on both devices, then try again. You can also save the passkey on this computer.",
@@ -142,7 +144,7 @@ export async function signInWithPasskey(mode: "login" | "register"): Promise<Use
     }),
     "login",
   );
-  if (!credential) throw new Error("Passkey sign-in was cancelled.");
+  if (!credential) throw new PasskeyPromptError("Passkey sign-in was cancelled.");
   const response = credential.response as AuthenticatorAssertionResponse;
   const result = await fliqApi<{ user: User }>(`${base}/verify`, {
     method: "POST",

@@ -5,6 +5,14 @@ import XCTest
 final class PayFlowTests: XCTestCase {
     private func makeFlow() -> PayFlow { PayFlow(api: FixtureClient()) }
 
+    func testAnAmountOverTheVaultCannotBeQuoted() {
+        let flow = PayFlow(api: FixtureClient(), vault: VaultStore(balance: TokenAmount(baseUnits: 20_000_000)))
+        _ = flow.enterAmount("20")
+        XCTAssertFalse(flow.isOverBalance)
+        _ = flow.enterAmount("25")
+        XCTAssertTrue(flow.isOverBalance)
+    }
+
     func testTypedAmountBecomesAValidAmount() {
         let flow = makeFlow()
         XCTAssertEqual(flow.enterAmount("50.0"), "50.0")

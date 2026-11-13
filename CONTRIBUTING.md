@@ -60,16 +60,14 @@ From 5 November 2026, spec changes are additive only.
 - Real values live in Vercel, Fly and GitHub Environments. Shared development values live in the team password vault.
 - If you commit a secret by accident, tell the team immediately and rotate it. Deleting the commit is not enough.
 
-## Freezes
+## Dates
 
-| Date (UTC) | Frozen |
+| Date (UTC) | What happens |
 | --- | --- |
-| 9 Nov 2026, 23:59 | `apps/web`, `services/`, `spec/` |
-| 12 Nov 2026, 23:59 | `contracts/` |
 | 13 Nov 2026 | Demo recorded from a tagged green commit |
 | 14 Nov 2026, 23:59 | Submission; repository public |
 
-CI rejects PRs into frozen areas. A fix after a freeze needs the `freeze-exception` label, which only the leads can add.
+There are no code freezes. Frank lifted them on 12 November, so fixes in any area can land until submission.
 
 ## Releases and deploys
 

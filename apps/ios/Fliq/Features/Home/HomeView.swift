@@ -4,19 +4,46 @@ struct HomeView: View {
     @State var model: HomeModel
     var onMenu: () -> Void = {}
     var onQR: () -> Void = {}
+    var onRefresh: () async -> Void = {}
+    var activity: ActivityStore?
+    var onSeeAll: () -> Void = {}
+    var onOpenPayout: (String) -> Void = { _ in }
+    @State private var selected: ActivityLine?
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Spacer()
-            balance
-            Spacer()
-            WalletArrivedCard(inbox: model.inbox)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 16)
+        GeometryReader { proxy in
+            ScrollView {
+                VStack(spacing: 0) {
+                    header
+                    Spacer()
+                    balance
+                    Spacer()
+                    VStack(spacing: 12) {
+                        if let lines = activity?.lines.prefix(2), !lines.isEmpty {
+                            HomeRecentCard(lines: Array(lines), onSeeAll: onSeeAll) { selected = $0 }
+                        }
+                        WalletArrivedCard(inbox: model.inbox)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 64)
+                    .animation(.smooth(duration: 0.3), value: activity?.rows)
+                }
+                .frame(minHeight: proxy.size.height)
+            }
+            .scrollIndicators(.hidden)
+            .refreshable {
+                await onRefresh()
+                await model.load()
+            }
         }
         .background(Theme.ground.ignoresSafeArea())
         .task { await model.load() }
+        .sheet(item: $selected) { line in
+            ActivityDetailSheet(line: line, onReceipt: onOpenPayout)
+                .presentationDragIndicator(.visible)
+                .presentationCornerRadius(32)
+                .presentationBackground(Color(hex: 0x161616))
+        }
     }
 
     private var header: some View {

@@ -132,12 +132,22 @@ struct PersonPayView: View {
     private func done(_ paid: TokenAmount, to person: Person) -> some View {
         VStack(spacing: 14) {
             Spacer()
-            Icon("checkmark", size: 34)
-                .foregroundStyle(.black)
-                .frame(width: 72, height: 72)
-                .background(Theme.confirmed, in: Circle())
+            ZStack(alignment: .bottomTrailing) {
+                PersonAvatar(name: person.displayName ?? person.nearAccount, photoURL: person.photoUrl.flatMap(URL.init(string:)), size: 76)
+                    .padding(flow.isConfirmed ? 0 : 6)
+                    .overlay { if !flow.isConfirmed { SpinningRing() } }
+                if flow.isConfirmed {
+                    Icon("checkmark", size: 14)
+                        .foregroundStyle(.black)
+                        .frame(width: 28, height: 28)
+                        .background(Theme.confirmed, in: Circle())
+                        .overlay(Circle().strokeBorder(Theme.ground, lineWidth: 3))
+                        .transition(.scale.combined(with: .opacity))
+                }
+            }
+            .animation(.spring(duration: 0.4), value: flow.isConfirmed)
             HeroAmount(symbol: "$", value: Money.dollars(paid))
-            Text("Paid to \(person.displayName ?? FliqName.display(person.nearAccount))")
+            Text("\(flow.isConfirmed ? "Paid to" : "Paying") \(person.displayName ?? FliqName.display(person.nearAccount))")
                 .font(.system(size: 16))
                 .foregroundStyle(Theme.textSecondary)
             Text(FliqName.display(person.nearAccount))

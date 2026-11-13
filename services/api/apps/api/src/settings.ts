@@ -97,6 +97,19 @@ export async function listPasskeys(tx: Db, userId: string) {
 }
 
 // A token moves to whoever registered it last, since a phone signed in as someone else must not get their alerts.
+export type DeviceInput = { token: string; platform: string; environment: string; bundle_id: string };
+
+// A token belongs to one phone, so registering it again, even as someone else, moves it to the latest sign-in.
+export async function registerDevice(tx: Db, userId: string, input: DeviceInput): Promise<void> {
+  const token = input.token.toLowerCase();
+  const fields = { userId, platform: input.platform, environment: input.environment, bundleId: input.bundle_id };
+  await tx.pushToken.upsert({ where: { token }, create: { token, ...fields }, update: { ...fields, updatedAt: new Date() } });
+}
+
+export async function removeDevice(tx: Db, userId: string, token: string): Promise<void> {
+  await tx.pushToken.deleteMany({ where: { token: token.toLowerCase(), userId } });
+}
+
 export async function registerPushToken(tx: Db, userId: string, token: string, platform: string): Promise<void> {
   await tx.pushToken.upsert({ where: { token }, create: { token, userId, platform }, update: { userId, platform, updatedAt: new Date() } });
 }

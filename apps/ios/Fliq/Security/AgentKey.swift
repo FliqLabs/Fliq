@@ -30,20 +30,24 @@ struct AgentSetup: Equatable, Sendable {
     let accountId: String
     let secretKey: String
     let rpcURL: String
-    let vault: String
+    /// The fliq API this app talks to. The connector defaults to the testnet API, so mainnet must say so.
+    let apiURL: String
 
-    static let apiKeyPlaceholder = "<your fliq API key>"
+    /// The connector on npm. It reads the names below; an API key would switch it to developer mode.
+    static let package = "@fliqlabs/mcp"
     static var bundledRPC: String {
         Bundle.main.object(forInfoDictionaryKey: "FliqNearRPCURL") as? String ?? "https://rpc.testnet.near.org"
+    }
+    static var bundledAPI: String {
+        Bundle.main.object(forInfoDictionaryKey: "FliqAPIBaseURL") as? String ?? "https://api-production-54e10.up.railway.app/v1"
     }
 
     private var environment: [(String, String)] {
         [
-            ("FLIQ_API_KEY", Self.apiKeyPlaceholder),
-            ("FLIQ_AGENT_ACCOUNT_ID", accountId),
+            ("FLIQ_AGENT_ID", accountId),
             ("FLIQ_AGENT_PRIVATE_KEY", secretKey),
+            ("FLIQ_API_URL", apiURL),
             ("FLIQ_NEAR_RPC_URL", rpcURL),
-            ("FLIQ_VAULT_CONTRACT_ID", vault),
         ]
     }
 
@@ -61,13 +65,13 @@ struct AgentSetup: Equatable, Sendable {
         switch app {
         case .claude:
             let flags = environment.map { "  --env \($0.0)=\($0.1) \\" }.joined(separator: "\n")
-            return "claude mcp add fliq \\\n\(flags)\n  -- npx -y @fliq/mcp"
+            return "claude mcp add fliq \\\n\(flags)\n  -- npx -y \(Self.package)"
         case .openai:
             let env = environment.map { "\($0.0) = \"\($0.1)\"" }.joined(separator: ", ")
-            return "[mcp_servers.fliq]\ncommand = \"npx\"\nargs = [\"-y\", \"@fliq/mcp\"]\nenv = { \(env) }"
+            return "[mcp_servers.fliq]\ncommand = \"npx\"\nargs = [\"-y\", \"\(Self.package)\"]\nenv = { \(env) }"
         case .cursor, .other:
             let env = environment.map { "        \"\($0.0)\": \"\($0.1)\"" }.joined(separator: ",\n")
-            return "{\n  \"mcpServers\": {\n    \"fliq\": {\n      \"command\": \"npx\",\n      \"args\": [\"-y\", \"@fliq/mcp\"],\n      \"env\": {\n\(env)\n      }\n    }\n  }\n}"
+            return "{\n  \"mcpServers\": {\n    \"fliq\": {\n      \"command\": \"npx\",\n      \"args\": [\"-y\", \"\(Self.package)\"],\n      \"env\": {\n\(env)\n      }\n    }\n  }\n}"
         }
     }
 }

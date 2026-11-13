@@ -105,6 +105,7 @@ struct ScanToPayView: View {
     let model: ScanToPayModel
     let onPay: (VerifiedAccount) -> Void
     let onPerson: (String) -> Void
+    var onWallet: (String) -> Void = { _ in }
     let onTypeInstead: () -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var torch = false
@@ -210,6 +211,7 @@ struct ScanToPayView: View {
                 model: model,
                 onPay: onPay,
                 onPerson: onPerson,
+                onWallet: onWallet,
                 onTypeInstead: onTypeInstead,
                 onClose: { dismiss() }
             )
@@ -249,6 +251,7 @@ private struct ScanResultCard: View {
     let model: ScanToPayModel
     let onPay: (VerifiedAccount) -> Void
     let onPerson: (String) -> Void
+    var onWallet: (String) -> Void = { _ in }
     let onTypeInstead: () -> Void
     let onClose: () -> Void
 
@@ -305,6 +308,10 @@ private struct ScanResultCard: View {
         case .fliqName(let name):
             message("Pay \(FliqName.display(name))", detail: "A fliq user. They get it instantly, with no fee.")
             primary("Continue") { onPerson(name) }
+            secondary("Scan again", action: model.scanAgain)
+        case .nearWallet(let address):
+            message("Send to \(WithdrawAddress.short(address))", detail: "A NEAR wallet. USDC from your vault arrives in seconds.")
+            primary("Continue") { onWallet(address) }
             secondary("Scan again", action: model.scanAgain)
         case .nothing:
             message("Nothing to pay here", detail: "We couldn't find a bank account in that code.")

@@ -1,6 +1,7 @@
 const DEFAULT_TIMEOUT_MS = 10_000;
 const SEND_TIMEOUT_MS = 30_000;
 const MAX_DETAIL = 300;
+const SEND_WAIT = "EXECUTED_OPTIMISTIC";
 
 export type NearRpcErrorKind =
   | "unavailable"
@@ -50,7 +51,9 @@ export interface NearRpc {
   account(accountId: string): Promise<AccountView | null>;
   callView(contractId: string, method: string, args: unknown): Promise<unknown>;
   finalBlock(): Promise<FinalBlock>;
-  // Waits for FINAL. Throws NearRpcError with outcomeUnknown on a timeout: look the hash up later.
+  // Waits until every receipt has executed (EXECUTED_OPTIMISTIC), not for finality, which costs about two more
+  // seconds and tells the caller nothing new: a failed receipt is already in the outcome. Throws NearRpcError with
+  // outcomeUnknown on a timeout: look the hash up later.
   sendTransaction(signedTxBase64: string): Promise<TxOutcome>;
   transactionStatus(txHash: string, senderId: string): Promise<TxOutcome | null>;
 }
@@ -97,7 +100,9 @@ export function createNearRpc(options: NearRpcOptions): NearRpc {
 
   async function query(params: Record<string, unknown>) {
     try {
-      return record("query", await call("query", { finality: "final", ...params }));
+      // Reads follow sends that answer on execution, so they read the same optimistic head. A "final" read made
+      // straight after would miss the transaction: a stale nonce, or an account that looks not yet created.
+      return record("query", await call("query", { finality: "optimistic", ...params }));
     } catch (error) {
       if (error instanceof NearRpcError && error.kind === "not_found") return null;
       throw error;
@@ -146,7 +151,7 @@ export function createNearRpc(options: NearRpcOptions): NearRpc {
     async sendTransaction(signedTxBase64) {
       const result = await call(
         "send_tx",
-        { signed_tx_base64: signedTxBase64, wait_until: "FINAL" },
+        { signed_tx_base64: signedTxBase64, wait_until: SEND_WAIT },
         SEND_TIMEOUT_MS,
       );
       return parseOutcome(result);
@@ -157,7 +162,7 @@ export function createNearRpc(options: NearRpcOptions): NearRpc {
         const result = await call("tx", {
           tx_hash: txHash,
           sender_account_id: senderId,
-          wait_until: "FINAL",
+          wait_until: SEND_WAIT,
         });
         return parseOutcome(result);
       } catch (error) {

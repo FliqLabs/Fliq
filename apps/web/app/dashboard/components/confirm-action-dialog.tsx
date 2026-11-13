@@ -60,7 +60,7 @@ export function ConfirmActionDialog({
           type="button"
           disabled={disabled}
           onClick={onConfirm}
-          className={`rounded-lg px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50 ${tone === "danger" ? "bg-app-bad hover:opacity-90" : "bg-app-warn hover:opacity-90"}`}
+          className={`cursor-pointer rounded-lg border px-4 py-2.5 text-sm font-semibold hover:opacity-85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-accent disabled:cursor-not-allowed disabled:opacity-50 ${tone === "danger" ? "border-app-bad bg-app-bad-soft text-app-bad" : "border-app-warn bg-app-warn-soft text-app-warn"}`}
         >
           {confirmLabel}
         </button>

@@ -225,14 +225,8 @@ private struct DoneStep: View {
                     )
                     .padding(.top, 14)
                     notice(
-                        icon: "key",
-                        text: "Replace \(AgentSetup.apiKeyPlaceholder) with an API key from fliq.cash/dashboard/api-keys.",
-                        tint: Theme.textSecondary
-                    )
-                    .padding(.top, 8)
-                    notice(
-                        icon: "shippingbox",
-                        text: "The fliq connector (@fliq/mcp) is in preview and not on npm yet. Keep this setup; it works once it's published.",
+                        icon: "arrow.clockwise",
+                        text: "Restart the app after adding it. It needs Node 20 or newer for npx.",
                         tint: Theme.textSecondary
                     )
                     .padding(.top, 8)

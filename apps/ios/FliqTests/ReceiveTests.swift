@@ -91,12 +91,16 @@ final class ReceiveTests: XCTestCase {
         XCTAssertNil(flow.onlyOption)
     }
 
-    func testASourceTheAPIMarksUnavailableIsHiddenNotGreyedOut() async {
+    func testASourceTheAPIMarksUnavailableShowsAsComingSoon() async throws {
         let flow = ReceiveFlow(api: PartlyAvailable(), vault: VaultStore(), vaultAccount: "frank.fliq.near")
         await flow.loadSources()
 
-        XCTAssertFalse(flow.networks(for: "usdc").contains { $0.chainId == "base" })
-        XCTAssertFalse(flow.currencies.contains { $0.group == .bitcoin }, "A currency left with no source disappears")
+        XCTAssertFalse(flow.networks(for: "usdc").contains { $0.chainId == "base" }, "It can't be picked")
+        let base = try XCTUnwrap(flow.choices(for: "usdc").last)
+        XCTAssertEqual(base.chainId, "base", "It is listed after the working networks")
+        XCTAssertEqual(flow.reason(unavailable: base), "Coming soon")
+        XCTAssertTrue(flow.currencies.contains { $0.group == .bitcoin }, "A currency with no working source stays, as coming soon")
+        XCTAssertTrue(flow.networks(for: "btc").isEmpty)
     }
 
     func testASourceRefusedWhenReservingDropsOutWithANote() async throws {

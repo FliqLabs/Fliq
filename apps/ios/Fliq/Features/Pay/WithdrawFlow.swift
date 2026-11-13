@@ -11,7 +11,10 @@ final class WithdrawFlow {
     struct Sent: Equatable {
         let amount: TokenAmount
         let address: String
-        let explorer: URL?
+        var explorer: URL?
+        /// False from Face ID until NEAR confirms the USDC reached the wallet.
+        var delivered = false
+        var at = Date.now
     }
 
     var addressText = "" {
@@ -23,6 +26,7 @@ final class WithdrawFlow {
     private(set) var isSending = false
     private(set) var errorMessage: String?
     private(set) var sent: Sent?
+    private var prepared: PreparedWithdraw?
 
     private(set) var recentAddresses: [SentAddresses.Entry]
 
@@ -51,7 +55,6 @@ final class WithdrawFlow {
     var amount: TokenAmount? { TokenAmount(decimalString: amountText) }
     var available: TokenAmount { vault?.balance ?? .zero }
 
-    var needsSetup: Bool { check == .ready(needsSetup: true) }
 
     var isOverBalance: Bool {
         guard let vault, let amount else { return false }
@@ -105,28 +108,39 @@ final class WithdrawFlow {
         check = result
     }
 
+    /// Reads what the send needs while Review is on screen, so the Face ID tap goes straight to Face ID.
+    func prepare() async {
+        guard let amount, hasAddress, !isSending else { return }
+        if let prepared, prepared.isFresh(for: amount, to: address) { return }
+        prepared = try? await withdrawals.prepare(amount, to: address)
+    }
+
     func send() async -> Bool {
         guard canSend, let amount else { return false }
         isSending = true
         defer { isSending = false }
         do {
-            let receipt = try await withdrawals.send(amount, to: address)
+            let ready = if let prepared, prepared.isFresh(for: amount, to: address) { prepared } else { try await withdrawals.prepare(amount, to: address) }
+            prepared = nil
+            let signed = try withdrawals.sign(ready)
+            sent = Sent(amount: amount, address: address)
+            let receipt = try await withdrawals.deliver(signed)
             vault?.debit(amount)
             recents.record(address)
             recentAddresses = recents.entries()
-            sent = Sent(
-                amount: amount,
-                address: address,
-                explorer: receipt.transactionHash.isEmpty ? nil : network.explorer(transaction: receipt.transactionHash)
-            )
+            sent?.delivered = true
+            sent?.explorer = receipt.transactionHash.isEmpty ? nil : network.explorer(transaction: receipt.transactionHash)
             errorMessage = nil
             await onLeftVault()
             return true
         } catch let error as WithdrawError {
+            sent = nil
             await explain(error, amount: amount)
         } catch let error as KeychainError where error.status == errSecUserCanceled || error.status == errSecAuthFailed {
+            sent = nil
             errorMessage = nil
         } catch {
+            sent = nil
             errorMessage = "Couldn't reach NEAR. Nothing moved."
         }
         return false
@@ -140,8 +154,6 @@ final class WithdrawFlow {
             errorMessage = "The vault didn't send it. Nothing moved."
         case .stillPending:
             errorMessage = "Still confirming on NEAR. Check Activity in a moment before trying again."
-        case .needsGas:
-            errorMessage = "Your fliq account needs a little NEAR for the network fee. Nothing moved."
         case .invalidAddress(let problem):
             errorMessage = problem
         case .notSetUp:

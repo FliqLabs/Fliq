@@ -89,7 +89,8 @@ describe("syncVaultReceipts", () => {
     }
     vault.payout(PAYER, "po_paid");
     const rows = [payout("with_provider", { id: "po_paid" }), payout("expired", { id: "po_unpaid" }), payout("routing", { id: "po_missing" })];
-    const unit = (async (fn: (tx: unknown) => unknown) => fn({ payout: { findMany: async () => rows } })) as unknown as Unit;
+    const unit = (async (fn: (tx: unknown) => unknown) =>
+      fn({ payout: { findMany: async () => rows }, journalEntry: { findUnique: async () => null } })) as unknown as Unit;
     const logs: string[] = [];
     return { vault, rows, deps: { unit, vault, now: () => new Date(0), log: (m: string) => logs.push(m) }, logs };
   };

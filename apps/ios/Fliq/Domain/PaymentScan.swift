@@ -12,6 +12,8 @@ enum ScanResult: Equatable {
     case choose([String], institution: Institution?)
     /// A fliq user, from a request link or a fliq name.
     case fliqName(String)
+    /// A NEAR wallet outside fliq, such as rejois.near or a 64 character implicit account.
+    case nearWallet(String)
     /// A payment code whose checksum doesn't match: misread or altered.
     case damaged
     case nothing
@@ -87,6 +89,7 @@ enum PaymentScan {
         let text = payload.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return .nothing }
         if let name = fliqName(in: text) { return .fliqName(name) }
+        if let wallet = nearWallet(in: text) { return .nearWallet(wallet) }
         if let upi = UPICode.parse(text) { return .code(upi) }
         if EMVCode.looksLikeEMV(text) {
             guard let fields = EMVCode.fields(text) else { return .damaged }
@@ -104,6 +107,25 @@ enum PaymentScan {
         guard lower.hasSuffix(suffix), !lower.contains(" ") else { return nil }
         let name = String(lower.dropLast(suffix.count))
         return name.isEmpty ? nil : name
+    }
+
+    // MARK: NEAR
+
+    /// Wallet apps show a bare account in their receive QR, sometimes as a `near:` link. Only names ending in a NEAR
+    /// top-level account count, so an ordinary word is never taken for a wallet.
+    private static func nearWallet(in text: String) -> String? {
+        var lower = text.lowercased()
+        if lower.hasPrefix("near:") { lower = String(lower.dropFirst(5)) }
+        lower = lower.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        if WithdrawAddress.isImplicit(lower) { return lower }
+        guard lower.count <= 64, [".near", ".tg", ".testnet"].contains(where: lower.hasSuffix) else { return nil }
+        let parts = lower.split(separator: ".", omittingEmptySubsequences: false)
+        let allowed = Set("abcdefghijklmnopqrstuvwxyz0123456789-_")
+        let valid = parts.allSatisfy { part in
+            !part.isEmpty && part.allSatisfy(allowed.contains) && part.first != "-" && part.first != "_"
+                && part.last != "-" && part.last != "_"
+        }
+        return valid ? lower : nil
     }
 
     // MARK: Text

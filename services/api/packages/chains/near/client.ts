@@ -50,7 +50,8 @@ export type RelayerClientOptions = {
 export type RelayerClient = {
   relay(signedDelegateBase64: string): Promise<RelayResponse>;
   relayStatus(delegateHash: string): Promise<RelayResponse>;
-  provisionAccount(accountId: string, publicKey: string): Promise<AccountResponse>;
+  // registerStorage false is for agent accounts, which never hold a balance. Left out, the relayer registers.
+  provisionAccount(accountId: string, publicKey: string, options?: { registerStorage?: boolean }): Promise<AccountResponse>;
   fundAgentDeposit(accountId: string, agentId: string): Promise<AgentDepositResponse>;
   health(): Promise<{ status: string }>;
 };
@@ -91,8 +92,12 @@ export function createRelayerClient(options: RelayerClientOptions): RelayerClien
   return {
     relay: (signedDelegate) => call("POST", "/v1/relays", { signed_delegate: signedDelegate }),
     relayStatus: (delegateHash) => call("GET", `/v1/relays/${encodeURIComponent(delegateHash)}`),
-    provisionAccount: (accountId, publicKey) =>
-      call("POST", "/v1/accounts", { account_id: accountId, public_key: publicKey }),
+    provisionAccount: (accountId, publicKey, options) =>
+      call("POST", "/v1/accounts", {
+        account_id: accountId,
+        public_key: publicKey,
+        ...(options?.registerStorage === false ? { register_storage: false } : {}),
+      }),
     fundAgentDeposit: (accountId, agentId) =>
       call("POST", "/v1/accounts/agent-deposit", { account_id: accountId, agent_id: agentId }),
     health: () => call("GET", "/health"),

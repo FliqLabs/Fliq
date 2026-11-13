@@ -144,6 +144,13 @@ describe("relayer HTTP", () => {
     ).toBe(404);
   });
 
+  it("creates an agent's account without storage registration when asked to skip it", async () => {
+    const agent = newUser("claude-bob.fliq.testnet");
+    const created = await post("/v1/accounts", { account_id: agent.accountId, public_key: agent.publicKey, register_storage: false });
+    expect(created.statusCode).toBe(201);
+    expect(created.json()).toMatchObject({ status: "created", storage: {} });
+  });
+
   it("creates an account with 201, then links it with 200", async () => {
     const bob = newUser("bob.fliq.testnet");
     const created = await post("/v1/accounts", { account_id: bob.accountId, public_key: bob.publicKey });

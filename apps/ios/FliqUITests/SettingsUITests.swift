@@ -9,7 +9,7 @@ final class SettingsUITests: XCTestCase {
     @MainActor
     func testSettingsAccountsSecurityNotifications() {
         let app = XCUIApplication()
-        app.launchArguments = ["--ui-testing", "--onboarded"]
+        app.launchArguments = ["--ui-testing", "--onboarded", "--funded"]
         app.launch()
 
         app.buttons["Transfer"].tap()

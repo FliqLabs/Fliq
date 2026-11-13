@@ -15,6 +15,9 @@ final class AppEnvironment {
     let profile: ProfileStore
     let activity: ActivityStore
     let vault: VaultStore
+    /// The amount that just landed, shown as a banner over any screen for a few seconds.
+    private(set) var arrival: TokenAmount?
+    @ObservationIgnored private var arrivalWatch: Task<Void, Never>?
     let deposits: any DepositAPI
     let agents: AgentStore
     let accounts: AccountBook
@@ -163,6 +166,7 @@ final class AppEnvironment {
 
     /// Forgot the app passcode: sign out and clear the lock. Signing back in with the passkey loses nothing.
     func forgotPasscode() async {
+        await PushNotifications.shared.signOut()
         await api.signOut()
         lock.reset()
         signedOutByServer()
@@ -174,9 +178,48 @@ final class AppEnvironment {
         vault.sync(balance)
     }
 
+    /// Loads the account's history. Fixture builds keep Activity to what this device did, as the UI tests expect,
+    /// unless `--sample-activity` asks for the fixture history.
+    func refreshActivity() async {
+        guard isLive || ProcessInfo.processInfo.arguments.contains("--sample-activity") else { return }
+        await activity.load(from: api)
+    }
+
+    /// Deposits land minutes after the person has left the screen they started on, and nothing pushes the news to
+    /// the phone, so once a deposit starts the app checks the balance quietly until it rises or the window closes.
+    func watchForArrival(every interval: Duration = .seconds(5), for window: Duration = .seconds(900)) {
+        guard isLive else { return }
+        arrivalWatch?.cancel()
+        arrivalWatch = Task { [weak self] in
+            guard let self else { return }
+            await refreshVault()
+            var floor = vault.balance.baseUnits
+            let end = ContinuousClock.now + window
+            while !Task.isCancelled, ContinuousClock.now < end {
+                try? await Task.sleep(for: interval)
+                await refreshVault()
+                let now = vault.balance.baseUnits
+                if now > floor {
+                    announceArrival(TokenAmount(baseUnits: now - floor))
+                    await refreshActivity()
+                    return
+                }
+                floor = min(floor, now)
+            }
+        }
+    }
+
+    func announceArrival(_ amount: TokenAmount) {
+        arrival = amount
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(5))
+            if self?.arrival == amount { self?.arrival = nil }
+        }
+    }
+
     #if DEBUG
     /// `--ui-testing` runs on fixtures with a fresh profile and no Face ID prompt.
-    /// Add `--onboarded` to start on Home.
+    /// Add `--onboarded` to start on Home, and `--funded` for $100 in the vault so a cash-out can be quoted.
     private static func uiTesting(bundle: Bundle) -> AppEnvironment? {
         let arguments = ProcessInfo.processInfo.arguments
         guard arguments.contains("--ui-testing"), let defaults = UserDefaults(suiteName: "ui-testing") else { return nil }
@@ -186,7 +229,7 @@ final class AppEnvironment {
         let accounts = AccountBook(keychain: nil)
         if arguments.contains("--sample-recipients") { seedRecipients(accounts) }
         return AppEnvironment(
-            api: FixtureClient(bundle: bundle), profile: profile, accounts: accounts,
+            api: FixtureClient(bundle: bundle), profile: profile, vault: VaultStore(balance: TokenAmount(baseUnits: arguments.contains("--funded") ? 100_000_000 : 0)), accounts: accounts,
             preferences: Preferences(defaults: defaults), biometrics: AlwaysApprove(), lock: uiTestingLock(arguments, defaults: defaults)
         )
     }

@@ -14,6 +14,9 @@ import {
   listSessions,
   notificationSettings,
   registerPushToken,
+  registerDevice,
+  removeDevice,
+  type DeviceInput,
   rememberDevice,
   revokeSession,
   saveNotificationSettings,
@@ -357,6 +360,14 @@ export function createHandlers({
       status: 200,
       body: await unit((tx) => listNotifications(tx, config, auth(request).userId, parseLimit((request.query as { limit?: string }).limit))),
     }),
+    registerDevice: async (request) => {
+      await unit((tx) => registerDevice(tx, auth(request).userId, body<DeviceInput>(request)));
+      return { status: 204, body: undefined };
+    },
+    removeDevice: async (request) => {
+      await unit((tx) => removeDevice(tx, auth(request).userId, (request.params as { token: string }).token));
+      return { status: 204, body: undefined };
+    },
     registerPushToken: async (request) => {
       const { token, platform } = body<{ token: string; platform: string }>(request);
       await unit((tx) => registerPushToken(tx, auth(request).userId, token, platform));

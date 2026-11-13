@@ -30,12 +30,13 @@ final class HomeModel {
     }
 
     func load() async {
-        await loadProfile()
+        async let profile: Void = loadProfile()
         do {
             rate = try await api.rate(.usdc, .ngn)
             rateFailed = false
         } catch {
             rateFailed = true
         }
+        await profile
     }
 }

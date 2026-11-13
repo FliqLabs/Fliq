@@ -104,17 +104,18 @@ export function WebhooksDashboard({
         </div>
         <form onSubmit={createEndpoint} className="flex w-full flex-wrap gap-2 sm:w-auto">
           <input
+            aria-label="Webhook endpoint URL"
             type="url"
             required
             placeholder="https://your-site.com/webhook"
             value={url}
             onChange={(event) => setUrl(event.target.value)}
-            className="min-w-0 flex-1 rounded-lg border border-app-line px-3 py-2.5 text-xs sm:w-64"
+            className="min-w-0 flex-1 rounded-lg border border-app-line bg-app-panel px-3 py-2.5 text-xs text-app-fg outline-none placeholder:text-app-muted focus:border-app-accent focus:ring-1 focus:ring-app-accent sm:w-64"
           />
           <button
             type="submit"
             disabled={creating || !onCreate}
-            className="rounded-lg border border-app-line px-4 py-2.5 text-xs font-semibold disabled:opacity-50"
+            className="cursor-pointer rounded-lg bg-app-ink px-4 py-2.5 text-xs font-semibold text-app-ink-fg transition-opacity hover:opacity-85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-accent disabled:cursor-not-allowed disabled:opacity-50"
           >
             {creating ? "Adding…" : "Add endpoint"}
           </button>
@@ -126,7 +127,10 @@ export function WebhooksDashboard({
         </p>
       )}
       {createdSecret && (
-        <div role="status" className="mt-3 rounded-lg border border-app-warn-soft bg-app-warn-soft p-4 text-xs">
+        <div
+          role="status"
+          className="mt-3 rounded-lg border border-app-warn-soft bg-app-warn-soft p-4 text-xs"
+        >
           <p className="font-semibold">Save this signing secret now. It is shown only once.</p>
           <p className="mt-2 break-all font-mono">{createdSecret}</p>
         </div>
@@ -145,7 +149,7 @@ export function WebhooksDashboard({
           value={search}
           onChange={(event) => setSearch(event.target.value)}
           placeholder="Search by event or payout ID"
-          className="h-10 w-full max-w-xs rounded-lg border border-app-line px-4 text-sm outline-none placeholder:text-app-dim focus:border-app-accent"
+          className="h-10 w-full max-w-xs rounded-lg border border-app-line bg-app-panel px-4 text-sm text-app-fg outline-none placeholder:text-app-muted focus:border-app-accent"
         />
       </div>
       {replayError && (
@@ -208,7 +212,7 @@ export function WebhooksDashboard({
                   type="button"
                   disabled={!onReplay || pendingId !== null}
                   onClick={() => setSelectedReplayId(delivery.id)}
-                  className="w-fit rounded-lg border border-app-line px-3 py-2 text-xs font-semibold disabled:cursor-not-allowed disabled:text-app-dim"
+                  className="w-fit cursor-pointer rounded-lg border border-app-line bg-app-panel px-3 py-2 text-xs font-semibold text-app-fg transition-colors hover:bg-app-hover focus-visible:outline-2 focus-visible:outline-app-accent disabled:cursor-not-allowed disabled:text-app-dim"
                 >
                   {pendingId === delivery.id ? "Replaying…" : "Replay"}
                 </button>

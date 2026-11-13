@@ -43,6 +43,10 @@ struct FixtureClient: FliqAPI {
         return path.with(id: id).upTo(step: min(step, path.history.count - 1))
     }
 
+    func activity() async throws -> ActivityList {
+        try load("activity.list")
+    }
+
     func payouts() async throws -> PayoutList {
         try load("payouts.list")
     }
@@ -92,6 +96,10 @@ struct FixtureClient: FliqAPI {
     func updateProfilePhoto(_ url: URL) async throws -> User {
         let user: User = try load("user.new")
         return user.photographed(url)
+    }
+
+    func removeProfilePhoto() async throws -> User {
+        try load("user.new")
     }
 
     func institutions(in country: Country) async throws -> [Institution] {

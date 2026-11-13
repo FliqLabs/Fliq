@@ -6,7 +6,7 @@ const navigation = [
   { label: "Rates", href: "/rates", visibility: "md:inline-flex" },
   { label: "Agents", href: "/agents", visibility: "md:inline-flex" },
   { label: "Pricing", href: "/pricing", visibility: "md:inline-flex" },
-  { label: "Docs", href: "/#developers", visibility: "md:inline-flex" },
+  { label: "Docs", href: "/docs/quickstart", visibility: "md:inline-flex" },
   { label: "Status", href: "/status", visibility: "lg:inline-flex" },
 ];
 
@@ -47,7 +47,16 @@ export function SiteHeader({ activeHref, brandClassName }: { activeHref?: string
                 aria-label="Menu"
                 className="grid size-10 cursor-pointer list-none place-items-center rounded-full text-zinc-300 hover:text-white [&::-webkit-details-marker]:hidden"
               >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  aria-hidden="true"
+                >
                   <path d="M4 8h16M4 16h16" />
                 </svg>
               </summary>
@@ -56,7 +65,11 @@ export function SiteHeader({ activeHref, brandClassName }: { activeHref?: string
                 className="absolute top-12 right-0 flex w-52 flex-col rounded-2xl border border-white/[0.08] bg-[#161616] p-2 shadow-2xl"
               >
                 {[...navigation, { label: "Log in", href: "/sign-in" }].map(({ label, href }) => (
-                  <Link key={label} href={href} className="rounded-xl px-3 py-2.5 text-[15px] text-zinc-300 hover:bg-white/[0.06] hover:text-white">
+                  <Link
+                    key={label}
+                    href={href}
+                    className="rounded-xl px-3 py-2.5 text-[15px] text-zinc-300 hover:bg-white/[0.06] hover:text-white"
+                  >
                     {label}
                   </Link>
                 ))}
