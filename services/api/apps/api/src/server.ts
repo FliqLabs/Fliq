@@ -104,7 +104,7 @@ const probes: Probe[] = [
   })),
 ];
 
-const solanaRpc = createSolanaRpc({ url: process.env.SOLANA_RPC_URL ?? "https://api.mainnet-beta.solana.com", commitment: "confirmed", timeoutMs: 3_000 });
+const solanaRpc = createSolanaRpc({ url: process.env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com", commitment: "confirmed", timeoutMs: 3_000 });
 const deposits = createDeposits({
   client: oneClick,
   vaultAccount: config.vaultAccount,
