@@ -37,6 +37,10 @@ class FakeSolana implements SolanaRpc {
     this.#txs.set(address, list);
   }
 
+  async tokenAccounts(): Promise<never[]> {
+    return [];
+  }
+
   async signatures(address: string, page: SignaturePage): Promise<SignatureInfo[]> {
     this.signatureCalls += 1;
     const newestFirst = [...(this.#txs.get(address) ?? [])].reverse();

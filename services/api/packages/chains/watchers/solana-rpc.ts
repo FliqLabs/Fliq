@@ -11,7 +11,11 @@ export type TokenCredit = { mint: string; amount: bigint; from: string; slot: bi
 
 export type SignaturePage = { until?: string; before?: string; limit: number };
 
+export type TokenAccount = { address: string; amount: bigint };
+
 export interface SolanaRpc {
+  // A transfer names the token account, not its owner, so a wallet's incoming tokens are found through these.
+  tokenAccounts(owner: string, mint: string): Promise<TokenAccount[]>;
   // Newest first, as the RPC returns them.
   signatures(address: string, page: SignaturePage): Promise<SignatureInfo[]>;
   // What the token account gained in this transaction, or null if it gained nothing or the transaction is unknown.
@@ -56,6 +60,28 @@ export function createSolanaRpc(options: SolanaRpcOptions): SolanaRpc {
   }
 
   return {
+    async tokenAccounts(owner, mint) {
+      const config = { encoding: "jsonParsed", commitment: options.commitment };
+      const result = record(
+        "getTokenAccountsByOwner",
+        await call("getTokenAccountsByOwner", [owner, { mint }, config]),
+      );
+      if (!Array.isArray(result.value))
+        throw new RpcError("getTokenAccountsByOwner", "invalid_response", "expected a list");
+      return result.value.map((entry) => {
+        const held = record("getTokenAccountsByOwner", entry);
+        const data = record("getTokenAccountsByOwner", record("getTokenAccountsByOwner", held.account).data);
+        const info = record("getTokenAccountsByOwner", record("getTokenAccountsByOwner", data.parsed).info);
+        return {
+          address: text("getTokenAccountsByOwner", held.pubkey),
+          amount: units(
+            "getTokenAccountsByOwner",
+            record("getTokenAccountsByOwner", info.tokenAmount).amount,
+          ),
+        };
+      });
+    },
+
     async signatures(address, page) {
       const config = {
         commitment: options.commitment,
@@ -130,15 +156,11 @@ function balances(value: unknown, keys: readonly string[]): TokenBalance[] {
     const account = typeof index === "number" ? keys[index] : undefined;
     if (!account)
       throw new RpcError("getTransaction", "invalid_response", "token balance account index out of range");
-    const amount = record("getTransaction", balance.uiTokenAmount).amount;
-    if (typeof amount !== "string" || !/^\d+$/.test(amount)) {
-      throw new RpcError("getTransaction", "invalid_response", "token amount must be an integer string");
-    }
     return {
       account,
       mint: text("getTransaction", balance.mint),
       owner: typeof balance.owner === "string" ? balance.owner : undefined,
-      amount: BigInt(amount),
+      amount: units("getTransaction", record("getTransaction", balance.uiTokenAmount).amount),
     };
   });
 }
@@ -164,6 +186,13 @@ function text(method: string, value: unknown): string {
   if (typeof value !== "string" || value === "")
     throw new RpcError(method, "invalid_response", "expected a string");
   return value;
+}
+
+function units(method: string, value: unknown): bigint {
+  if (typeof value !== "string" || !/^\d+$/.test(value)) {
+    throw new RpcError(method, "invalid_response", "token amount must be an integer string");
+  }
+  return BigInt(value);
 }
 
 function slot(method: string, value: unknown): bigint {

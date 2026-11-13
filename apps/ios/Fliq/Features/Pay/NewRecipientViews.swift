@@ -1,15 +1,16 @@
 import SwiftUI
 
-/// A currency a recipient can be paid in. Only the ones with a live corridor carry a `country`; the rest show as soon.
+/// A currency a recipient can be paid in. The live ones carry a `country` or go to a NEAR wallet; the rest show as soon.
 struct PayoutCurrency: Identifiable, Hashable {
     let code: String
     let name: String
     let symbol: String
     let flag: String
     var country: Country?
+    var toNearWallet = false
 
     var id: String { code }
-    var isLive: Bool { country != nil }
+    var isLive: Bool { country != nil || toNearWallet }
 
     static let live = [
         PayoutCurrency(code: "NGN", name: "Naira", symbol: "₦", flag: "🇳🇬", country: .ng),
@@ -17,7 +18,7 @@ struct PayoutCurrency: Identifiable, Hashable {
     ]
 
     static let stablecoins = [
-        PayoutCurrency(code: "USDC", name: "USD Coin, to a wallet", symbol: "$", flag: ""),
+        PayoutCurrency(code: "USDC", name: "USD Coin, to a NEAR wallet", symbol: "$", flag: "", toNearWallet: true),
     ]
 
     static let soon = [
@@ -51,6 +52,7 @@ enum SendMethod: Hashable {
 /// "What currency should they receive?": the corridors that work now on top, everything else marked soon.
 struct RecipientCurrencyView: View {
     let onPick: (Country) -> Void
+    var onWallet: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
     @State private var search = ""
 
@@ -65,11 +67,11 @@ struct RecipientCurrencyView: View {
                     .padding(.top, 18)
 
                 section("Available now", live)
-                section("Stablecoin", filtered(PayoutCurrency.stablecoins))
+                section("Stablecoin", stablecoins)
                 ForEach(letters, id: \.self) { letter in
                     section(letter, filtered(PayoutCurrency.soon).filter { $0.name.hasPrefix(letter) })
                 }
-                if live.isEmpty && letters.isEmpty && filtered(PayoutCurrency.stablecoins).isEmpty {
+                if live.isEmpty && letters.isEmpty && stablecoins.isEmpty {
                     Text("No currency matches \u{201C}\(search)\u{201D}")
                         .font(.system(size: 15))
                         .foregroundStyle(Theme.textSecondary)
@@ -87,6 +89,8 @@ struct RecipientCurrencyView: View {
     }
 
     private var live: [PayoutCurrency] { filtered(PayoutCurrency.live) }
+
+    private var stablecoins: [PayoutCurrency] { onWallet == nil ? [] : filtered(PayoutCurrency.stablecoins) }
 
     private var letters: [String] {
         Array(Set(filtered(PayoutCurrency.soon).map { String($0.name.prefix(1)) })).sorted()
@@ -108,7 +112,7 @@ struct RecipientCurrencyView: View {
                 .padding(.bottom, 8)
             VStack(spacing: 0) {
                 ForEach(Array(items.enumerated()), id: \.element) { index, currency in
-                    Button { if let country = currency.country { onPick(country) } } label: {
+                    Button { pick(currency) } label: {
                         row(currency, isLast: index == items.count - 1)
                     }
                     .disabled(!currency.isLive)
@@ -117,6 +121,10 @@ struct RecipientCurrencyView: View {
             }
             .background(Theme.surfaceRaised.opacity(0.7), in: RoundedRectangle(cornerRadius: 20))
         }
+    }
+
+    private func pick(_ currency: PayoutCurrency) {
+        if let country = currency.country { onPick(country) } else if currency.toNearWallet { onWallet?() }
     }
 
     private func row(_ currency: PayoutCurrency, isLast: Bool) -> some View {

@@ -83,7 +83,7 @@ struct MoveMoneySheet: View {
         case .payTo:
             PayToView(onAccount: onAccount, onPerson: onPerson, onNew: { go(.recipientCurrency) }, onScan: startScan, onWallet: onWallet)
         case .recipientCurrency:
-            RecipientCurrencyView { go(.sendMethod($0)) }
+            RecipientCurrencyView(onPick: { go(.sendMethod($0)) }, onWallet: onWallet)
         case .sendMethod(let country):
             SendMethodView(country: country) { method in
                 if method == .fliqName { onPerson(nil) } else { go(.recipient(country, method)) }

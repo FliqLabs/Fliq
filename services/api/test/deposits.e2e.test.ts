@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { MockProvisioner } from "../apps/api/src/accounts.js";
 import { buildApp } from "../apps/api/src/app.js";
 import type { EmailSender } from "../apps/api/src/auth/email-links.js";
@@ -11,8 +11,9 @@ import { createDeposits } from "../apps/api/src/deposits.js";
 import { createHandlers } from "../apps/api/src/handlers.js";
 import { DEFAULT_VELOCITY } from "../apps/api/src/payouts.js";
 import { sandboxAdapters } from "../apps/api/src/sandbox.js";
-import { createOneClickClient, createOneClickMock } from "../packages/chains/oneclick/index.js";
+import { createOneClickClient, createOneClickMock, OneClickError, type DepositSubmission, type OneClickClient } from "../packages/chains/oneclick/index.js";
 import { MockVault } from "../packages/chains/vault/index.js";
+import type { Arrival } from "../packages/chains/watchers/index.js";
 import { DEFAULT_ROUTING_CONFIG, NO_SIGNALS } from "../packages/domain/routing.js";
 import { vaultMirror } from "../packages/ledger/post.js";
 
@@ -38,6 +39,12 @@ describe.skipIf(!enabled)("topping up the vault from another chain", () => {
   const now = () => new Date(Date.now() + clock.offsetMs);
   const vault = new MockVault({ registrar: "registrar.test.near", usdc: USDC, now: () => BigInt(now().getTime()) * 1_000_000n });
 
+  // What the stand-in Solana RPC answers for an address, and what 1Click was told.
+  const onSolana = new Map<string, Arrival | Error>();
+  const submissions: DepositSubmission[] = [];
+  const oneClick = { refusesSubmissions: false };
+  const toldOneClick = (address: string) => submissions.filter((submission) => submission.depositAddress === address);
+
   let server: Server;
   let mockUrl: string;
   let app: ReturnType<typeof buildApp>;
@@ -48,8 +55,28 @@ describe.skipIf(!enabled)("topping up the vault from another chain", () => {
     server = createServer((req, res) => void mock.handle(req, res));
     await new Promise<void>((resolve) => server.listen(0, resolve));
     mockUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const real = createOneClickClient({ baseUrl: mockUrl, apiKey: undefined });
+    const client: OneClickClient = {
+      ...real,
+      // Live 1Click names each Solana token's mint; the mock does not.
+      tokens: async () => (await real.tokens()).map((token) => (token.blockchain === "sol" ? { ...token, contractAddress: `mint-${token.symbol}` } : token)),
+      submitDeposit: async (submission) => {
+        submissions.push(submission);
+        if (oneClick.refusesSubmissions) throw new OneClickError("submitDeposit", "rejected", "unknown transaction", 400);
+        return real.submitDeposit(submission);
+      },
+    };
     deposits = createDeposits({
-      client: createOneClickClient({ baseUrl: mockUrl, apiKey: undefined }),
+      client,
+      arrivals: {
+        solana: async ({ address }) => {
+          // Long enough for two readers of one deposit to both be holding a sighting.
+          await pause(50);
+          const found = onSolana.get(address) ?? null;
+          if (found instanceof Error) throw found;
+          return found;
+        },
+      },
       vaultAccount: config.vaultAccount,
       usdcContract: USDC,
       slippageBps: 200,
@@ -187,6 +214,67 @@ describe.skipIf(!enabled)("topping up the vault from another chain", () => {
 
     await read(user.headers, deposit.deposit_id);
     expect(await vault.getBalance(user.account)).toMatchObject({ available: 199_800_199n });
+  }, 90_000);
+
+  it("shows a Solana top-up as seen as soon as it is on Solana, tells 1Click once and credits nothing until 1Click delivers", async () => {
+    const user = await holder("sighted");
+    const deposit = (await reserve(user.headers, `g-${suffix}`, { token: "usdc", chain: "solana", amount: "200.00" })).json();
+    onSolana.set(deposit.address, { amount: 200_000_000n, txHash: "5SolanaSig" });
+
+    const [first, second] = await Promise.all([read(user.headers, deposit.deposit_id), read(user.headers, deposit.deposit_id)]);
+    for (const view of [first.json(), second.json()]) {
+      if (view.state === "waiting") continue;
+      expect(view).toMatchObject({ state: "seen", received: "200.00", origin_tx: "5SolanaSig", landed: null, landed_at: null });
+      expect(view.seen_at).not.toBeNull();
+    }
+    expect((await read(user.headers, deposit.deposit_id)).json().state).toBe("seen");
+    expect(await vault.getBalance(user.account)).toMatchObject({ available: 0n });
+    expect(await unit((tx) => vaultMirror(tx, user.account, "USDC"))).toEqual({ available: 0n, reserved: 0n });
+
+    await vi.waitFor(() => expect(toldOneClick(deposit.address)).toEqual([{ txHash: "5SolanaSig", depositAddress: deposit.address }]));
+    const landed = await pollUntil(user.headers, deposit.deposit_id, "landed");
+    expect(landed).toMatchObject({ received: "200.00", landed: "199.800199", origin_tx: "5SolanaSig" });
+    expect(await vault.getBalance(user.account)).toMatchObject({ available: 199_800_199n });
+    expect(await unit((tx) => vaultMirror(tx, user.account, "USDC"))).toEqual({ available: 199_800_199n, reserved: 0n });
+    expect(toldOneClick(deposit.address)).toHaveLength(1);
+  }, 90_000);
+
+  it("changes nothing when Solana cannot be read or shows less than the minimum", async () => {
+    const user = await holder("blind");
+    const deposit = (await reserve(user.headers, `r-${suffix}`, { token: "usdc", chain: "solana", amount: "200.00" })).json();
+    const stored = () => unit((tx) => tx.vaultDeposit.findUniqueOrThrow({ where: { id: deposit.deposit_id } }));
+
+    onSolana.set(deposit.address, new Error("rpc unavailable"));
+    expect((await read(user.headers, deposit.deposit_id)).json()).toMatchObject({ state: "waiting", received: null, seen_at: null, origin_tx: null });
+    onSolana.set(deposit.address, { amount: 50_000_000n, txHash: "5ShortSig" });
+    await deposits.sweep(unit, 0);
+    expect(await stored()).toMatchObject({ state: "waiting", receivedUnits: null, seenAt: null, originTx: null });
+    expect(toldOneClick(deposit.address)).toEqual([]);
+    expect(await vault.getBalance(user.account)).toMatchObject({ available: 0n });
+
+    onSolana.set(deposit.address, new Error("rpc unavailable"));
+    await send(deposit.address, 200_000_000n);
+    expect(await pollUntil(user.headers, deposit.deposit_id, "landed")).toMatchObject({ received: "200.00", landed: "199.800199" });
+    expect(toldOneClick(deposit.address)).toEqual([]);
+  }, 90_000);
+
+  it("keeps following a top-up when 1Click refuses to be told about it", async () => {
+    const user = await holder("refused");
+    const deposit = (await reserve(user.headers, `f-${suffix}`, { token: "usdt", chain: "solana", amount: "20" })).json();
+    onSolana.set(deposit.address, { amount: 20_000_000n, txHash: "5UsdtSig" });
+    oneClick.refusesSubmissions = true;
+    try {
+      expect((await read(user.headers, deposit.deposit_id)).json()).toMatchObject({ state: "seen", received: "20.00" });
+      await vi.waitFor(() => expect(toldOneClick(deposit.address)).toHaveLength(1));
+    } finally {
+      oneClick.refusesSubmissions = false;
+    }
+    expect(await vault.getBalance(user.account)).toMatchObject({ available: 0n });
+    await send(deposit.address, 20_000_000n);
+    const landed = await pollUntil(user.headers, deposit.deposit_id, "landed");
+    expect(landed.landed).not.toBeNull();
+    expect((await vault.getBalance(user.account)).available).toBeGreaterThan(0n);
+    expect(toldOneClick(deposit.address)).toHaveLength(1);
   }, 90_000);
 
   it("shows an underpaid top-up, then its refund once the address expires", async () => {

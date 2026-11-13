@@ -53,7 +53,7 @@ export async function createRequest(tx: Db, config: Config, userId: string, inpu
   const units = parseUnits(input.amount, USDC_DECIMALS);
   if (units === null || units < 10_000n) throw invalidRequest("amount must be at least 0.01 dollars.");
   const note = input.note.trim();
-  if (!note || note.length > MAX_NOTE) throw invalidRequest(`note must be 1 to ${MAX_NOTE} characters.`);
+  if (note.length > MAX_NOTE) throw invalidRequest(`note must be at most ${MAX_NOTE} characters.`);
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const code = randomBytes(2).toString("hex");
     if (await tx.paymentRequest.findUnique({ where: { userId_code: { userId, code } }, select: { id: true } })) continue;
