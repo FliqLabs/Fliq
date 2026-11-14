@@ -187,6 +187,7 @@ final class AppEnvironment {
 
     /// Deposits land minutes after the person has left the screen they started on, and nothing pushes the news to
     /// the phone, so once a deposit starts the app checks the balance quietly until it rises or the window closes.
+    /// Activity is read again every sixth check, so a deposit that was handed back stops showing as arriving.
     func watchForArrival(every interval: Duration = .seconds(5), for window: Duration = .seconds(900)) {
         guard isLive else { return }
         arrivalWatch?.cancel()
@@ -195,9 +196,12 @@ final class AppEnvironment {
             await refreshVault()
             var floor = vault.balance.baseUnits
             let end = ContinuousClock.now + window
+            var checks = 0
             while !Task.isCancelled, ContinuousClock.now < end {
                 try? await Task.sleep(for: interval)
                 await refreshVault()
+                checks += 1
+                if checks.isMultiple(of: 6) { await refreshActivity() }
                 let now = vault.balance.baseUnits
                 if now > floor {
                     announceArrival(TokenAmount(baseUnits: now - floor))

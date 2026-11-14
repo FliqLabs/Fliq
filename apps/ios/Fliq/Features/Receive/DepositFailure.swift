@@ -7,6 +7,10 @@ enum DepositFailure {
     static let signedOut = "Sign in to fliq again first."
     static let notSetUp = "We couldn't set up your deposit. Nothing was charged. Try again."
     static let ours = "Something went wrong on our side. Nothing was charged. Try again."
+    static let notReceived = "Not received"
+    static let belowMinimum = "The amount was below the minimum."
+    /// Never says the money is back: a top-up that was too small is returned inside NEAR Intents, which the app cannot show.
+    static let contactUs = "Contact us and we'll sort it out."
 
     private static let offlineCodes: Set<URLError.Code> = [
         .notConnectedToInternet, .networkConnectionLost, .cannotFindHost, .dnsLookupFailed, .dataNotAllowed, .internationalRoamingOff,

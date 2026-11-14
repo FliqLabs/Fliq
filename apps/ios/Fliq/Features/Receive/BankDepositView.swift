@@ -36,7 +36,7 @@ struct BankDepositView: View {
         switch flow.step {
         case .amount, .signIn, .cancelled: 0
         case .pay, .receiving: flow.isPaid ? 2 : 1
-        case .done: 2
+        case .done, .notReceived: 2
         }
     }
 
@@ -48,6 +48,7 @@ struct BankDepositView: View {
         case .pay, .receiving:
             if flow.isPaid { ArrivingStep(flow: flow) } else { PayStep(flow: flow) }
         case .done: DoneStep(flow: flow, onDone: onDone)
+        case .notReceived: NotReceivedStep(onDone: onDone)
         case .cancelled: CancelledStep(flow: flow)
         }
     }
@@ -142,6 +143,9 @@ private struct AmountStep: View {
                     .contentTransition(.numericText())
                     .animation(.snappy, value: flow.usdcEstimate)
                     .padding(.top, 14)
+                if let note = flow.minimumNote {
+                    Text(note).font(.system(size: 14)).foregroundStyle(Theme.warning).padding(.top, 8)
+                }
                 if let rate = flow.rate {
                     RateLine(rate: rate).padding(.top, 18)
                     Text("Rates move through the day. Yours is fixed when you get your bank details.")
@@ -433,21 +437,44 @@ private struct ArrivingStep: View {
     }
 }
 
+private struct NotReceivedStep: View {
+    let onDone: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            DepositCard {
+                Text(DepositFailure.notReceived).font(.system(size: 24, weight: .regular)).tracking(-0.4)
+                Note(text: "\(DepositFailure.belowMinimum) \(DepositFailure.contactUs)")
+                    .padding(.top, 10)
+                Button("Done", action: onDone)
+                    .buttonStyle(PrimaryButtonStyle(filled: true))
+                    .padding(.top, 22)
+            }
+            Spacer()
+        }
+    }
+}
+
 private struct DoneStep: View {
     let flow: BankDepositFlow
     let onDone: () -> Void
     @State private var shown = false
 
+    static func caption(testWallet: Bool, stillMoving: Bool) -> String {
+        if testWallet { return "Sent to the team's test wallet" }
+        return stillMoving ? "Still on its way. It will show on Home when it lands." : "Added to your vault"
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             DepositCard {
-                Icon("checkmark", size: 22)
+                Icon(flow.isStillMoving ? "clock" : "checkmark", size: 22)
                     .foregroundStyle(.black)
                     .frame(width: 44, height: 44)
-                    .background(Theme.confirmed, in: Circle())
+                    .background(flow.isStillMoving ? Theme.textSecondary : Theme.confirmed, in: Circle())
                     .scaleEffect(shown ? 1 : 0.5)
                     .opacity(shown ? 1 : 0)
-                Text(flow.destination?.isTestWallet == true ? "Sent to the team's test wallet" : "Added to your vault")
+                Text(Self.caption(testWallet: flow.destination?.isTestWallet == true, stillMoving: flow.isStillMoving))
                     .font(.system(size: 15))
                     .foregroundStyle(Theme.textSecondary)
                     .padding(.top, 18)
