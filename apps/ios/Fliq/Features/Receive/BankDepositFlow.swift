@@ -196,10 +196,8 @@ final class BankDepositFlow {
         defer { isWorking = false }
         do {
             try await body()
-        } catch let failure as Paj.Failure {
-            errorMessage = failure.message
         } catch {
-            errorMessage = "Couldn't reach Paj. Check your connection and try again."
+            errorMessage = DepositFailure.message(for: error)
         }
     }
 
