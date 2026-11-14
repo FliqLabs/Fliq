@@ -11,6 +11,10 @@ final class PayFlow {
     var verified: VerifiedAccount? { recipient.verified }
     var currency: Currency { recipient.country.currency }
 
+    /// The currency the keypad types in. `amountText` is always in this unit.
+    enum AmountUnit { case dollars, local }
+
+    private(set) var unit: AmountUnit = .dollars
     private(set) var amountText = ""
     private(set) var rate: Rate?
 
@@ -42,7 +46,15 @@ final class PayFlow {
 
     // MARK: Amount
 
-    var amount: TokenAmount? { TokenAmount(decimalString: amountText) }
+    var amount: TokenAmount? {
+        switch unit {
+        case .dollars:
+            return TokenAmount(decimalString: amountText)
+        case .local:
+            guard let rate, let typed = Double(amountText) else { return nil }
+            return Money.cost(ofLocal: typed, at: rate.rate)
+        }
+    }
     var available: TokenAmount { vault?.balance ?? .zero }
     /// More than the vault holds. A flow without a vault (previews) never blocks.
     var isOverBalance: Bool {
@@ -52,7 +64,26 @@ final class PayFlow {
 
     var estimatedReceive: Int? {
         guard let amount, let rate else { return nil }
+        if unit == .local, let typed = Double(amountText) { return Int(typed) }
         return Money.estimate(amount, at: rate.rate)
+    }
+
+    var canSwitchUnit: Bool { rate != nil }
+
+    /// Types in the other currency from here on, carrying the amount across at the shown rate.
+    func switchUnit() {
+        guard canSwitchUnit else { return }
+        switch unit {
+        case .dollars:
+            let carried = amountText.isEmpty ? "" : estimatedReceive.map(String.init) ?? ""
+            unit = .local
+            amountText = carried
+        case .local:
+            var carried = amountText.isEmpty ? "" : amount?.decimalString ?? ""
+            if carried.hasSuffix(".00") { carried.removeLast(3) }
+            unit = .dollars
+            amountText = carried
+        }
     }
 
     func loadRate() async {
