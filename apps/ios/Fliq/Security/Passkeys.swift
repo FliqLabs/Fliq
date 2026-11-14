@@ -39,13 +39,15 @@ final class PasskeyAuthenticator: NSObject {
     }
 
     /// With `allowed`, iOS offers only those passkeys, so a testnet passkey never shows up in the mainnet app.
-    func signIn(_ options: PasskeyOptions, relyingParty: String = "fliq.cash", allowed: [Data] = []) async throws -> Data {
+    /// With `onlyIfOnThisDevice`, an iPhone with no fliq passkey shows nothing and throws `cancelled` at once.
+    func signIn(_ options: PasskeyOptions, relyingParty: String = "fliq.cash", allowed: [Data] = [], onlyIfOnThisDevice: Bool = false) async throws -> Data {
         guard let challenge = Data(base64URL: options.options.challenge) else { throw PasskeyError.badOptions }
 
         let provider = ASAuthorizationPlatformPublicKeyCredentialProvider(relyingPartyIdentifier: options.options.rp?.id ?? relyingParty)
         let request = provider.createCredentialAssertionRequest(challenge: challenge)
         request.allowedCredentials = allowed.map { ASAuthorizationPlatformPublicKeyCredentialDescriptor(credentialID: $0) }
-        guard let credential = try await perform(request).credential as? ASAuthorizationPlatformPublicKeyCredentialAssertion else {
+        let found = try await perform(request, options: onlyIfOnThisDevice ? .preferImmediatelyAvailableCredentials : [])
+        guard let credential = found.credential as? ASAuthorizationPlatformPublicKeyCredentialAssertion else {
             throw PasskeyError.failed("No passkey was used.")
         }
         lastCredentialID = credential.credentialID
@@ -61,7 +63,7 @@ final class PasskeyAuthenticator: NSObject {
     /// What the passkey sheet shows for this passkey. Testnet and mainnet share fliq.cash, so the label tells them apart.
     static var label: String { NearNetwork.current == .testnet ? "fliq testnet" : "fliq" }
 
-    private func perform(_ request: ASAuthorizationRequest) async throws -> ASAuthorization {
+    private func perform(_ request: ASAuthorizationRequest, options: ASAuthorizationController.RequestOptions = []) async throws -> ASAuthorization {
         let controller = ASAuthorizationController(authorizationRequests: [request])
         controller.delegate = self
         controller.presentationContextProvider = self
@@ -69,7 +71,7 @@ final class PasskeyAuthenticator: NSObject {
         defer { self.controller = nil }
         return try await withCheckedThrowingContinuation { continuation in
             pending = continuation
-            controller.performRequests()
+            controller.performRequests(options: options)
         }
     }
 
