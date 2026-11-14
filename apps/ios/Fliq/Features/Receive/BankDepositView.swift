@@ -46,8 +46,10 @@ struct BankDepositView: View {
         case .amount: AmountStep(flow: flow)
         case .signIn: SignInStep(flow: flow)
         case .pay, .receiving:
-            if flow.isPaid { ArrivingStep(flow: flow) } else { PayStep(flow: flow) }
-        case .done: DoneStep(flow: flow, onDone: onDone)
+            // Once the bank transfer is in, nobody is made to watch the rest: the same screen says it is on its way,
+            // lets them leave, and turns into "Added" if they are still here when it lands.
+            if flow.isPaid { DoneStep(flow: flow, landed: false, onDone: onDone) } else { PayStep(flow: flow) }
+        case .done: DoneStep(flow: flow, landed: !flow.isStillMoving, onDone: onDone)
         case .notReceived: NotReceivedStep(onDone: onDone)
         case .cancelled: CancelledStep(flow: flow)
         }
@@ -417,25 +419,7 @@ private struct CopyRow: View {
     }
 }
 
-// MARK: - Arriving, done, cancelled
-
-private struct ArrivingStep: View {
-    let flow: BankDepositFlow
-
-    var body: some View {
-        VStack(spacing: 0) {
-            DepositCard {
-                HStack(spacing: 12) {
-                    ProgressView()
-                    Text("Transfer received").font(.system(size: 24, weight: .regular)).tracking(-0.4)
-                }
-                Note(text: "Moving about \(flow.order.map { NairaFormat.dollars($0.usdc) } ?? "") into your vault.")
-                    .padding(.top, 10)
-            }
-            Spacer()
-        }
-    }
-}
+// MARK: - On its way, done, cancelled
 
 private struct NotReceivedStep: View {
     let onDone: () -> Void
@@ -455,26 +439,37 @@ private struct NotReceivedStep: View {
     }
 }
 
+/// The words of the last screen, reachable from tests.
+enum DoneStepCopy {
+    static func caption(stillMoving: Bool) -> String { DoneStep.caption(testWallet: false, stillMoving: stillMoving) }
+    static var note: String { DoneStep.onItsWayNote }
+}
+
 private struct DoneStep: View {
     let flow: BankDepositFlow
+    /// False while the money is still moving into the vault.
+    let landed: Bool
     let onDone: () -> Void
     @State private var shown = false
 
     static func caption(testWallet: Bool, stillMoving: Bool) -> String {
         if testWallet { return "Sent to the team's test wallet" }
-        return stillMoving ? "Still on its way. It will show on Home when it lands." : "Added to your vault"
+        return stillMoving ? "Transfer received. On its way to your balance" : "Added to your vault"
     }
+
+    static let onItsWayNote = "It lands in about a minute. You don't need to wait here: we'll show it on Home and notify you."
 
     var body: some View {
         VStack(spacing: 0) {
             DepositCard {
-                Icon(flow.isStillMoving ? "clock" : "checkmark", size: 22)
+                Icon(landed ? "checkmark" : "clock", size: 22)
                     .foregroundStyle(.black)
                     .frame(width: 44, height: 44)
-                    .background(flow.isStillMoving ? Theme.textSecondary : Theme.confirmed, in: Circle())
+                    .background(landed ? Theme.confirmed : Theme.textSecondary, in: Circle())
                     .scaleEffect(shown ? 1 : 0.5)
                     .opacity(shown ? 1 : 0)
-                Text(Self.caption(testWallet: flow.destination?.isTestWallet == true, stillMoving: flow.isStillMoving))
+                    .animation(.spring(duration: 0.35), value: landed)
+                Text(Self.caption(testWallet: flow.destination?.isTestWallet == true, stillMoving: !landed))
                     .font(.system(size: 15))
                     .foregroundStyle(Theme.textSecondary)
                     .padding(.top, 18)
@@ -492,6 +487,13 @@ private struct DoneStep: View {
                     .padding(.vertical, 6)
                     .background(Layout.inset, in: RoundedRectangle(cornerRadius: Layout.groupRadius, style: .continuous))
                     .padding(.top, 18)
+                }
+                if !landed, flow.destination?.isTestWallet != true {
+                    Text(Self.onItsWayNote)
+                        .font(.system(size: 13))
+                        .foregroundStyle(Theme.textTertiary)
+                        .multilineTextAlignment(.center)
+                        .padding(.top, 14)
                 }
                 Button("Done", action: onDone)
                     .buttonStyle(PrimaryButtonStyle(filled: true))

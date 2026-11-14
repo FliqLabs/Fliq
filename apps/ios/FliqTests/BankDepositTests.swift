@@ -271,3 +271,11 @@ private struct StubDeposits: DepositAPI {
         DepositStatus(stage: stage, received: nil, seenAt: nil, bridgingAt: nil, landedAt: nil)
     }
 }
+
+final class BankDepositWaitingCopyTests: XCTestCase {
+    func testTheUserIsToldTheMoneyIsOnItsWayAndThatTheyCanLeave() {
+        XCTAssertEqual(DoneStepCopy.caption(stillMoving: true), "Transfer received. On its way to your balance")
+        XCTAssertEqual(DoneStepCopy.caption(stillMoving: false), "Added to your vault")
+        XCTAssertTrue(DoneStepCopy.note.contains("You don't need to wait here"))
+    }
+}

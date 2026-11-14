@@ -214,7 +214,12 @@ struct RootView: View {
             if let bankDeposit {
                 BankDepositView(flow: bankDeposit) {
                     environment.router.reset()
-                    Task { await environment.refreshVault() }
+                    // The user may leave while the money is still moving: Home keeps checking and shows it arriving.
+                    environment.watchForArrival()
+                    Task {
+                        await environment.refreshVault()
+                        await environment.refreshActivity()
+                    }
                 }
             }
         case .agents: AgentsView(store: environment.agents)
