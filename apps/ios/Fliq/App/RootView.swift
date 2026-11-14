@@ -176,9 +176,10 @@ struct RootView: View {
         let network: NearNetwork = environment.isLive ? .current : .testnet
         let vault = environment.profile.name ?? NearNetwork.current.vault
         let testWallet = environment.pajTestRecipient
-        bankDeposit = BankDepositFlow(paj: environment.paj, signIn: environment.pajSignIn, deposits: deposits) {
+        let solana = DepositSource(tokenId: "usdc", chainId: "solana", group: .dollars)
+        let route = network.receivesFromOtherChains ? solana : nil
+        bankDeposit = BankDepositFlow(paj: environment.paj, signIn: environment.pajSignIn, deposits: deposits, route: route) {
             if network.receivesFromOtherChains {
-                let solana = DepositSource(tokenId: "usdc", chainId: "solana", group: .dollars)
                 let reserved = try await deposits.reserve(solana, vault: vault)
                 return BankDepositDestination(address: reserved.address, deposit: reserved)
             }

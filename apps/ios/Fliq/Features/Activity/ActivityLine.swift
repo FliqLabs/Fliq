@@ -85,7 +85,12 @@ extension ActivityLine {
         id = item.id
         date = item.at
         title = item.agent.map { "\($0.name) · \(item.party.name)" } ?? item.party.name
-        amount = item.kind == .payout && outcome == .refunded ? item.usd.map { "$" + $0 } ?? item.headline : item.headline
+        let notReceived = item.kind == .deposit && outcome == .failed
+        if notReceived {
+            amount = item.token ?? item.headline
+        } else {
+            amount = item.kind == .payout && outcome == .refunded ? item.usd.map { "$" + $0 } ?? item.headline : item.headline
+        }
         self.outcome = outcome
         let status = Self.status(outcome, kind: item.kind)
         statusText = status.0
@@ -96,14 +101,22 @@ extension ActivityLine {
         case .deposit:
             badge = item.depositSource.map(Badge.source) ?? .incoming
             subtitle = Self.join(date, item.seconds.map { "\($0)s" })
-            dollars = item.token
             category = "Deposit"
             let chain = item.depositSource?.chainId.capitalized ?? "another chain"
-            steps = [
-                Step(title: "Sent on \(chain)", detail: Self.time(date), done: true),
-                Step(title: "Delivered to your vault", detail: Self.time(date.addingTimeInterval(Double(item.seconds ?? 0))), done: outcome == .done),
-            ]
-            facts = [("Status", statusText), ("You sent", item.token ?? ""), ("Delivered", item.usd.map { "$" + $0 } ?? ""), ("Network", chain), ("Reference", item.refId)]
+            let sent = Step(title: "Sent on \(chain)", detail: Self.time(date), done: true)
+            if notReceived, item.status == "expired" {
+                dollars = nil
+                steps = [Step(title: DepositFailure.notReceived, detail: "Nothing arrived before this address closed. If you sent money, contact us and we'll sort it out.", done: false)]
+                facts = [("Status", statusText), ("Network", chain), ("Reference", item.refId)]
+            } else if notReceived {
+                dollars = nil
+                steps = [sent, Step(title: DepositFailure.notReceived, detail: DepositFailure.contactUs, done: false)]
+                facts = [("Status", statusText), ("You sent", item.token ?? ""), ("Network", chain), ("Reference", item.refId)]
+            } else {
+                dollars = item.token
+                steps = [sent, Step(title: "Delivered to your vault", detail: Self.time(date.addingTimeInterval(Double(item.seconds ?? 0))), done: outcome == .done)]
+                facts = [("Status", statusText), ("You sent", item.token ?? ""), ("Delivered", item.usd.map { "$" + $0 } ?? ""), ("Network", chain), ("Reference", item.refId)]
+            }
         case .transferIn, .transferOut:
             let incoming = item.kind == .transferIn
             badge = .person(name: item.party.name, photo: item.party.photoUrl.flatMap(URL.init(string:)), incoming: incoming)
@@ -154,10 +167,11 @@ extension ActivityLine {
         }
     }
 
+    /// A deposit the API calls refunded did not come back to the vault or the bank, so it reads as not received.
     private static func outcome(of item: ActivityItem) -> Outcome {
         switch item.status {
         case "paid", "received", "sent": .done
-        case "refunded": .refunded
+        case "refunded": item.kind == .deposit ? .failed : .refunded
         case "refused": .refused
         case "failed", "expired": .failed
         default: .moving
@@ -170,7 +184,7 @@ extension ActivityLine {
         case .moving: (kind == .deposit ? "Arriving" : "Sending", Theme.textSecondary)
         case .refunded: ("Refunded", Theme.textSecondary)
         case .refused: ("Refused", Theme.warning)
-        case .failed: ("Failed", Theme.danger)
+        case .failed: kind == .deposit ? (DepositFailure.notReceived, Theme.warning) : ("Failed", Theme.danger)
         }
     }
 
