@@ -2,7 +2,6 @@ import SwiftUI
 
 struct WelcomeView: View {
     let onStart: () -> Void
-    let onExistingAccount: () -> Void
     var isWorking = false
     var message: String?
 
@@ -28,29 +27,20 @@ struct WelcomeView: View {
                 .lineSpacing(5)
                 .padding(.top, 16)
 
-            VStack(spacing: 12) {
-                Button(action: onStart) {
-                    HStack(spacing: 12) {
-                        if isWorking {
-                            ProgressView().tint(.black)
-                        } else {
-                            Image("IconPasskey")
-                                .resizable()
-                                .renderingMode(.template)
-                                .frame(width: 20, height: 20)
-                        }
-                        Text("Continue with passkey")
+            Button(action: onStart) {
+                HStack(spacing: 12) {
+                    if isWorking {
+                        ProgressView().tint(.black)
+                    } else {
+                        Image("IconPasskey")
+                            .resizable()
+                            .renderingMode(.template)
+                            .frame(width: 20, height: 20)
                     }
+                    Text("Continue with passkey")
                 }
-                .buttonStyle(WelcomeButtonStyle(isPrimary: true))
-                Button(action: onExistingAccount) {
-                    HStack(spacing: 12) {
-                        Icon("arrow.counterclockwise", size: 20)
-                        Text("I already have an account")
-                    }
-                }
-                .buttonStyle(WelcomeButtonStyle(isPrimary: false))
             }
+            .buttonStyle(WelcomeButtonStyle())
             .disabled(isWorking)
             .padding(.top, 34)
 
@@ -92,31 +82,20 @@ struct WelcomeView: View {
     }
 }
 
-/// The Welcome screen's two pills: white for the main action, glass for the other.
 private struct WelcomeButtonStyle: ButtonStyle {
-    let isPrimary: Bool
-
     func makeBody(configuration: Configuration) -> some View {
-        label(configuration)
+        configuration.label
+            .font(.system(size: 17, weight: .semibold))
+            .foregroundStyle(Color(hex: 0x0B0B14))
+            .frame(maxWidth: .infinity, minHeight: 58)
+            .background(.white, in: Capsule())
+            .contentShape(Capsule())
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
             .animation(.spring(response: 0.3, dampingFraction: 0.65), value: configuration.isPressed)
             .sensoryFeedback(.impact(weight: .light), trigger: configuration.isPressed) { _, pressed in pressed }
     }
-
-    @ViewBuilder
-    private func label(_ configuration: Configuration) -> some View {
-        let label = configuration.label
-            .font(.system(size: 17, weight: .semibold))
-            .frame(maxWidth: .infinity, minHeight: 58)
-            .contentShape(Capsule())
-        if isPrimary {
-            label.foregroundStyle(Color(hex: 0x0B0B14)).background(.white, in: Capsule())
-        } else {
-            label.foregroundStyle(Theme.textPrimary).fliqGlass(Capsule(), interactive: true)
-        }
-    }
 }
 
 #Preview {
-    WelcomeView(onStart: {}, onExistingAccount: {})
+    WelcomeView(onStart: {})
 }
