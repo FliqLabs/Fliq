@@ -22,7 +22,7 @@ import { startHealthChecks, type Probe } from "./status.js";
 import { createWebhookHandler } from "./webhooks.js";
 import { startWebhookDelivery } from "./webhook-delivery.js";
 import { startVaultSync } from "./vault-sync.js";
-import { startPayoutWatch } from "./payout-watch.js";
+import { payoutRefresher, startPayoutWatch } from "./payout-watch.js";
 import { apnsFromEnv, createApnsSender, startPushDispatch } from "./push.js";
 import { usageRecorder } from "./usage.js";
 import { httpsTransport } from "../../../packages/webhooks/transport.js";
@@ -142,7 +142,9 @@ const provisioner = relayer
   ? new RelayerProvisioner(relayer, config.vaultAccount)
   : new MockProvisioner(config.vaultAccount, mockVault ? (account) => mockVault.registerStorage(account) : undefined);
 
+const payoutWatch = { unit, adapters, ...(oneClick ? { oneClick } : {}), now: () => new Date(), log: (message: string) => app.log.warn(message) };
 const handlers = createHandlers({
+  refreshPayout: payoutRefresher(payoutWatch),
   config,
   unit,
   email: createEmailSender(config),
@@ -169,10 +171,7 @@ await app.listen({ port: config.port, host: "0.0.0.0" });
 startHealthChecks(unit, probes, Number(process.env.HEALTH_CHECK_INTERVAL_MS ?? 60_000));
 startRateSampler(rateBoard, Number(process.env.RATE_SAMPLE_INTERVAL_MS ?? 60_000));
 startDepositWatch(unit, deposits, Number(process.env.DEPOSIT_WATCH_INTERVAL_MS ?? 10_000));
-startPayoutWatch(
-  { unit, adapters, ...(oneClick ? { oneClick } : {}), now: () => new Date(), log: (message) => app.log.warn(message) },
-  Number(process.env.PAYOUT_WATCH_INTERVAL_MS ?? 20_000),
-);
+startPayoutWatch(payoutWatch, Number(process.env.PAYOUT_WATCH_INTERVAL_MS ?? 20_000));
 startVaultSync(
   { unit, vault, now: () => new Date(), log: (message) => app.log.warn(message) },
   Number(process.env.VAULT_SYNC_INTERVAL_MS ?? 15_000),
