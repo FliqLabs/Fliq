@@ -25,6 +25,8 @@ final class BankDepositFlow {
     static let unquotedMargin = 1.5
 
     private(set) var step = Step.amount
+    /// True when the wait for the vault ran out before the money landed.
+    private(set) var isStillMoving = false
     private(set) var nairaText = "5000"
     private(set) var rate: Double?
     private(set) var quote: Paj.Quote?
@@ -229,8 +231,10 @@ final class BankDepositFlow {
         minimum = sources.first { $0.id == route.id }?.minimum ?? minimum
     }
 
-    /// False when the deposit address got the money and will not pass it on.
+    /// False when the deposit address got the money and will not pass it on. A wait that runs out is neither:
+    /// the money is still moving, and the last screen must not say it has landed.
     private func reachesVault() async -> Bool {
+        isStillMoving = false
         guard let deposits, let deposit = destination?.deposit else { return true }
         for _ in 0..<40 where !Task.isCancelled {
             if let stage = try? await deposits.status(of: deposit).stage {
@@ -239,6 +243,7 @@ final class BankDepositFlow {
             }
             try? await Task.sleep(for: pollInterval)
         }
+        isStillMoving = true
         return true
     }
 

@@ -207,6 +207,18 @@ final class BankDepositTests: XCTestCase {
         await flow.watch()
 
         XCTAssertEqual(flow.step, .done)
+        XCTAssertFalse(flow.isStillMoving)
+    }
+
+    func testAWaitThatRunsOutDoesNotClaimTheMoneyLanded() async {
+        let flow = gated(deposits: StubDeposits(stage: .bridging))
+        await flow.load()
+        await signIn(flow)
+
+        await flow.watch()
+
+        XCTAssertEqual(flow.step, .done)
+        XCTAssertTrue(flow.isStillMoving)
     }
 }
 
