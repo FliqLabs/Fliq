@@ -42,7 +42,7 @@ describe.skipIf(!enabled)("topping up the vault from another chain", () => {
   // What the stand-in Solana RPC answers for an address, and what 1Click was told.
   const onSolana = new Map<string, Arrival | Error>();
   const submissions: DepositSubmission[] = [];
-  const oneClick = { refusesSubmissions: false };
+  const oneClick = { quoteRefusals: 0, refusesSubmissions: false };
   const toldOneClick = (address: string) => submissions.filter((submission) => submission.depositAddress === address);
 
   let server: Server;
@@ -60,6 +60,13 @@ describe.skipIf(!enabled)("topping up the vault from another chain", () => {
       ...real,
       // Live 1Click names each Solana token's mint; the mock does not.
       tokens: async () => (await real.tokens()).map((token) => (token.blockchain === "sol" ? { ...token, contractAddress: `mint-${token.symbol}` } : token)),
+      quote: async (input, options) => {
+        if (oneClick.quoteRefusals > 0) {
+          oneClick.quoteRefusals -= 1;
+          throw new OneClickError("quote", "rejected", "try again", 400);
+        }
+        return real.quote(input, options);
+      },
       submitDeposit: async (submission) => {
         submissions.push(submission);
         if (oneClick.refusesSubmissions) throw new OneClickError("submitDeposit", "rejected", "unknown transaction", 400);
@@ -80,6 +87,7 @@ describe.skipIf(!enabled)("topping up the vault from another chain", () => {
       vaultAccount: config.vaultAccount,
       usdcContract: USDC,
       slippageBps: 200,
+      pause: async () => {},
       now,
       onLanded: ({ units, message }) => void vault.ftOnTransfer({ predecessor: USDC, senderId: "intents.near", amount: units, msg: message }),
     });
@@ -215,6 +223,19 @@ describe.skipIf(!enabled)("topping up the vault from another chain", () => {
     await read(user.headers, deposit.deposit_id);
     expect(await vault.getBalance(user.account)).toMatchObject({ available: 199_800_199n });
   }, 90_000);
+
+  it("asks 1Click again when it refuses a quote, and only gives up after the third refusal", async () => {
+    const user = await holder("retry");
+    oneClick.quoteRefusals = 2;
+    const created = await reserve(user.headers, `r-${suffix}`, { token: "usdc", chain: "solana", amount: "200.00" });
+    expect(created.statusCode, created.body).toBe(201);
+    expect(oneClick.quoteRefusals).toBe(0);
+
+    oneClick.quoteRefusals = 3;
+    const refused = await reserve(user.headers, `r2-${suffix}`, { token: "usdc", chain: "solana", amount: "200.00" });
+    expect(refused.statusCode).toBe(400);
+    oneClick.quoteRefusals = 0;
+  });
 
   it("shows a Solana top-up as seen as soon as it is on Solana, tells 1Click once and credits nothing until 1Click delivers", async () => {
     const user = await holder("sighted");

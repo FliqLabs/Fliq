@@ -1,5 +1,7 @@
 const NO_STORE = { "Cache-Control": "no-store" };
-const TIMEOUT_MS = 15_000;
+// The iPhone app waits 20 s (30 s from build 4) for an answer, so both steps together must finish well inside that.
+const SESSION_CHECK_TIMEOUT_MS = 4_000;
+const PAJ_TIMEOUT_MS = 13_000;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE = /^\+[0-9]{8,15}$/;
 const OTP = /^[0-9]{4,8}$/;
@@ -25,12 +27,15 @@ async function hasFliqSession(request: Request) {
   const authorization = request.headers.get("authorization") ?? "";
   if (!/^Bearer \S+$/.test(authorization)) return false;
   const apiBase = process.env.FLIQ_API_BASE_URL ?? "https://api-mainnet-64d65ef4.up.railway.app/v1";
-  try {
-    const result = await fetch(`${apiBase}/me`, {
+  const check = () =>
+    fetch(`${apiBase}/me`, {
       headers: { Authorization: authorization },
       cache: "no-store",
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal: AbortSignal.timeout(SESSION_CHECK_TIMEOUT_MS),
     });
+  try {
+    // One more try on a dropped call, so a network blip does not read as "signed out".
+    const result = await check().catch(check);
     return result.status === 200;
   } catch {
     return false;
@@ -83,7 +88,7 @@ async function forwardToPaj(path: string, payload: object) {
       headers: { "Content-Type": "application/json", "x-api-key": apiKey },
       body: JSON.stringify(payload),
       cache: "no-store",
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal: AbortSignal.timeout(PAJ_TIMEOUT_MS),
     });
     if (result.status >= 500) return json({ error: "paj_unavailable" }, 502);
     const body = await result.json().catch(() => null);
