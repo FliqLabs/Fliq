@@ -72,6 +72,45 @@ final class PayFlowTests: XCTestCase {
         XCTAssertEqual(flow.secondsLeft(at: .now), 90)
     }
 
+    func testTheAmountCanBeTypedInTheBankCurrency() async throws {
+        let flow = makeFlow()
+        await flow.loadRate()
+        flow.enterAmount("50")
+        XCTAssertEqual(flow.estimatedReceive, 68816)
+
+        flow.switchUnit()
+        XCTAssertEqual(flow.unit, .local)
+        XCTAssertEqual(flow.amountText, "68816", "The amount carries across at the shown rate")
+        XCTAssertEqual(flow.amount?.baseUnits, 50_000_000)
+
+        flow.enterAmount("100000")
+        XCTAssertEqual(flow.estimatedReceive, 100_000, "They receive what was typed")
+        XCTAssertEqual(flow.amount?.baseUnits, 72_660_000, "Dollars round up to the cent so the estimate is never short")
+
+        flow.switchUnit()
+        XCTAssertEqual(flow.unit, .dollars)
+        XCTAssertEqual(flow.amountText, "72.66")
+    }
+
+    func testSwitchingCurrencyWaitsForARateAndKeepsAnEmptyAmountEmpty() async {
+        let flow = makeFlow()
+        flow.switchUnit()
+        XCTAssertEqual(flow.unit, .dollars, "No rate yet, nothing to convert with")
+
+        await flow.loadRate()
+        flow.switchUnit()
+        XCTAssertEqual(flow.unit, .local)
+        XCTAssertEqual(flow.amountText, "")
+        XCTAssertNil(flow.amount)
+    }
+
+    func testTypedAmountsAreGroupedAsTheyAreTyped() {
+        XCTAssertEqual(Money.typed(""), "0")
+        XCTAssertEqual(Money.typed("7500."), "7,500.")
+        XCTAssertEqual(Money.typed("100000"), "100,000")
+        XCTAssertEqual(Money.typed("0.5"), "0.5")
+    }
+
     func testEstimateNeverPromisesMoreThanTheRate() throws {
         let fifty = try XCTUnwrap(TokenAmount(decimalString: "50"))
         XCTAssertEqual(Money.estimate(fifty, at: 1376.32), 68816)
