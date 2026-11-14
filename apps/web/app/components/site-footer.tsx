@@ -7,6 +7,7 @@ const navigation = [
   { label: "Docs", href: "/docs/quickstart" },
   { label: "Trust", href: "/#trust" },
   { label: "Sandbox", href: "/#sandbox" },
+  { label: "Privacy", href: "/privacy" },
 ];
 
 export function SiteFooter() {
