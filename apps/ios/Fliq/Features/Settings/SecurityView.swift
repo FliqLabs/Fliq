@@ -8,6 +8,9 @@ struct SecurityView: View {
     @State private var signingOut: DeviceSession?
     @State private var settingPasscode = false
     @State private var backup: RecoveryState?
+    @State private var accountKeys: [AccountKey]?
+    @State private var removing: AccountKey?
+    @State private var keyMessage: String?
 
     var body: some View {
         ScrollView {
@@ -35,6 +38,37 @@ struct SecurityView: View {
                 card {
                     LinkRow(symbol: "arrow.counterclockwise", title: "Account backup", value: backupLabel, isLast: true) {
                         environment.router.push(.settingsBackup)
+                    }
+                }
+
+                if let keys = accountKeys, !keys.isEmpty {
+                    SectionLabel(text: "Can move your money").padding(.top, 24)
+                    card {
+                        ForEach(Array(keys.enumerated()), id: \.element.id) { index, key in
+                            CardRow(isLast: index == keys.count - 1) {
+                                Icon(Self.symbol(key.holder), size: 22)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(Self.name(key.holder))
+                                    Text(Self.note(key.holder)).font(.system(size: 13)).foregroundStyle(Theme.textSecondary)
+                                }
+                                Spacer()
+                                if key.holder == .other {
+                                    Button("Remove") { removing = key }
+                                        .font(.system(size: 13, weight: .medium))
+                                        .foregroundStyle(Theme.danger)
+                                } else if key.holder == .thisIPhone {
+                                    Circle().fill(Theme.confirmed).frame(width: 6, height: 6)
+                                }
+                            }
+                        }
+                    }
+                    if let keyMessage {
+                        Text(keyMessage)
+                            .font(.system(size: 12))
+                            .foregroundStyle(Theme.warning)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 4)
+                            .padding(.top, 8)
                     }
                 }
 
@@ -95,6 +129,18 @@ struct SecurityView: View {
             .presentationBackground(Color(hex: 0x161616))
         }
         .confirmationDialog(
+            "Remove this device?",
+            isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Remove device", role: .destructive) {
+                guard let key = removing else { return }
+                Task { await remove(key) }
+            }
+        } message: {
+            Text("It will no longer be able to move your money. If it is an iPhone you still use, you can add it again with your backup.")
+        }
+        .confirmationDialog(
             "Sign out \(signingOut?.device ?? "this device")?",
             isPresented: Binding(get: { signingOut != nil }, set: { if !$0 { signingOut = nil } }),
             titleVisibility: .visible
@@ -152,6 +198,41 @@ struct SecurityView: View {
         passkeys = await keys ?? []
         devices = await sessions ?? []
         backup = await environment.recovery.state()
+        accountKeys = await environment.recovery.keys()
+    }
+
+    static func name(_ holder: AccountKey.Holder) -> String {
+        switch holder {
+        case .thisIPhone: "This iPhone"
+        case .backup: "iCloud backup"
+        case .other: "Another device"
+        }
+    }
+
+    static func note(_ holder: AccountKey.Holder) -> String {
+        switch holder {
+        case .thisIPhone: "Asks for Face ID every time"
+        case .backup: "Adds a new iPhone if you lose this one"
+        case .other: "Remove it if you no longer have it"
+        }
+    }
+
+    private static func symbol(_ holder: AccountKey.Holder) -> String {
+        holder == .backup ? "arrow.counterclockwise" : "iphone"
+    }
+
+    private func remove(_ key: AccountKey) async {
+        do {
+            try await environment.recovery.remove(key)
+            keyMessage = nil
+            accountKeys?.removeAll { $0 == key }
+        } catch let error as KeychainError where error.status == errSecUserCanceled {
+            return
+        } catch TransferError.stillPending {
+            keyMessage = "Still going through. Check back in a minute."
+        } catch {
+            keyMessage = "That device wasn't removed. Nothing changed. Try again."
+        }
     }
 
     private var backupLabel: String? {

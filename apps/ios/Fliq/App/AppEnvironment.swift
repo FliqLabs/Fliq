@@ -244,7 +244,10 @@ final class AppEnvironment {
         if arguments.contains("--sample-recipients") { seedRecipients(accounts) }
         return AppEnvironment(
             api: FixtureClient(bundle: bundle), profile: profile, vault: VaultStore(balance: TokenAmount(baseUnits: arguments.contains("--funded") ? 100_000_000 : 0)),
-            recovery: FixtureAccountRecovery(arguments.contains("--new-iphone") ? .canRestore : .notBackedUp), accounts: accounts,
+            recovery: FixtureAccountRecovery(
+                arguments.contains("--new-iphone") ? .canRestore : .notBackedUp, otherDevices: arguments.contains("--lost-iphone") ? 1 : 0
+            ),
+            accounts: accounts,
             preferences: Preferences(defaults: defaults), biometrics: AlwaysApprove(), lock: uiTestingLock(arguments, defaults: defaults)
         )
     }
