@@ -137,7 +137,7 @@ final class ReceiveFlow {
             notice = "\(source.title) isn't available right now."
             return false
         } catch {
-            errorMessage = "Couldn't get an address. Check your connection and try again."
+            errorMessage = DepositFailure.message(for: error)
             return false
         }
     }
