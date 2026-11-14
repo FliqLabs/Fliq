@@ -6,6 +6,7 @@ import { newId } from "../../../packages/db/src/ids.js";
 import type { Db, Unit } from "./db.js";
 import { ApiError, invalidRequest, notFound } from "./errors.js";
 import type { Reply } from "./idempotency.js";
+import { holdSpend, releaseSpend, spendRef } from "./limits.js";
 import { recordObservedTransfer, recordOutsideSend } from "./people.js";
 
 type DelegateCall = { receiverId: string; method: string; args: Record<string, unknown> };
@@ -144,9 +145,19 @@ function relayerFailure(error: unknown): Reply {
   return { status: error.status, body: { error: { code: error.code, message: error.message } } };
 }
 
+// What a relayed call takes out of the user's account, for their daily limit: a transfer to another vault, or a send
+// from their NEAR account to an outside wallet. Moving money into the vault, or from the vault to the user's own NEAR
+// account, leaves nothing. A cash-out is counted when its payout is created, not when it is signed.
+function spendOf(call: DelegateCall | null, contracts: RelayContracts): bigint | null {
+  if (!call) return null;
+  const leaves = (call.receiverId === contracts.vault && call.method === "transfer") || isOutsideSend(call, contracts);
+  const amount = String(call.args.amount ?? "");
+  return leaves && UNITS.test(amount) ? BigInt(amount) : null;
+}
+
 // The sender is the user's own account or one of the user's agents, so nobody can relay for someone else.
 // An agent calling for itself passes onlySender, so it can relay its own delegates and no one else's.
-export async function relayDelegate(unit: Unit, relayer: RelayerClient | undefined, userId: string, signedDelegate: string, contracts: RelayContracts, onlySender?: string): Promise<Reply> {
+export async function relayDelegate(unit: Unit, relayer: RelayerClient | undefined, userId: string, signedDelegate: string, contracts: RelayContracts, onlySender?: string, now: () => Date = () => new Date()): Promise<Reply> {
   const account = await accountOf(unit, userId);
   const delegate = decodeDelegate(signedDelegate);
   if (!delegate) throw invalidRequest("signed_delegate is not a base64 Borsh SignedDelegate.");
@@ -154,12 +165,19 @@ export async function relayDelegate(unit: Unit, relayer: RelayerClient | undefin
   const ownAgent = delegate.sender === account ? null : await unit((tx) => tx.agent.findFirst({ where: { id: delegate.sender, userId, state: { not: "revoked" } }, select: { id: true } }));
   if (delegate.sender !== account && !ownAgent) throw new ApiError(403, "forbidden", "The delegate must be signed by your own NEAR account or one of your agents.");
   if (!relayer) throw unavailable();
+  const spend = spendOf(delegate.call, contracts);
+  const ref = spendRef(signedDelegate);
+  if (spend !== null) await unit((tx) => holdSpend(tx, userId, ref, spend, now()));
   let result: RelayResponse;
   try {
     result = await relayer.relay(signedDelegate);
   } catch (error) {
+    // A relayer that refused the delegate sent nothing. One that could not be reached may still have: keep the hold.
+    const refused = error instanceof RelayerClientError && error.status >= 400 && error.status < 500;
+    if (spend !== null && refused) await unit((tx) => releaseSpend(tx, ref));
     return relayerFailure(error);
   }
+  if (spend !== null && result.status === "failed") await unit((tx) => releaseSpend(tx, ref));
   await unit((tx) => recordOutcome(tx, userId, delegate, result, contracts));
   return answer(result);
 }

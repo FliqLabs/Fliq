@@ -336,6 +336,11 @@ model User {
   homeCurrency  String   @default("NGN") @map("home_currency") @db.Text
   // Null until the user changes a notification setting; the API then answers with its defaults.
   notificationSettings Json? @map("notification_settings")
+  // The most the user lets leave their account in any 24 hours, in USDC base units. Null means no limit.
+  dailyLimitUnits        BigInt?   @map("daily_limit_units")
+  // A raise the user asked for. It takes effect at pendingDailyLimitAt; a null amount with a time set removes the limit.
+  pendingDailyLimitUnits BigInt?   @map("pending_daily_limit_units")
+  pendingDailyLimitAt    DateTime? @map("pending_daily_limit_at") @db.Timestamptz(6)
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   passkeys      PasskeyCredential[]
   sessions      Session[]
@@ -877,4 +882,35 @@ model InboundEvent {
   @@index([receivedAt])
   @@map("inbound_events")
   @@schema("integration")
+}
+
+// A send the user relayed (to a fliq user or an outside wallet) that counts toward their daily limit. Held before the
+// relay so two sends cannot both slip under the limit, and released if nothing moved. Cash-outs are counted from payouts.
+model SpendHold {
+  id        String   @id @db.Text
+  userId    String   @map("user_id") @db.Text
+  // The hash of the signed delegate, so relaying the same one twice holds once.
+  ref       String   @unique @db.Text
+  units     BigInt
+  released  Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([userId, createdAt])
+  @@map("spend_holds")
+  @@schema("core")
+}
+
+// Each time a user asks to raise or remove their daily limit. The push warning is sent from these rows.
+model LimitChange {
+  id          String    @id @db.Text
+  userId      String    @map("user_id") @db.Text
+  // Null means the limit is being removed.
+  toUnits     BigInt?   @map("to_units")
+  effectiveAt DateTime  @map("effective_at") @db.Timestamptz(6)
+  cancelledAt DateTime? @map("cancelled_at") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([createdAt])
+  @@map("limit_changes")
+  @@schema("auth")
 }

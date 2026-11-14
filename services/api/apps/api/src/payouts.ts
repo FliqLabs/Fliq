@@ -11,6 +11,7 @@ import type { AccountCheck, Asset, Chain, CreatedOrder, FiatCurrency, ProviderAd
 import type { Config } from "./config.js";
 import { formatTokenAmount } from "./dashboard.js";
 import type { Db, Unit } from "./db.js";
+import { assertWithinDailyLimit, lockSpending } from "./limits.js";
 import { ApiError, conflict, invalidRequest, notFound } from "./errors.js";
 import { hashOf, type Reply } from "./idempotency.js";
 import { institutionType } from "./institutions.js";
@@ -199,6 +200,9 @@ export async function createPayout(unit: Unit, deps: PayoutDeps, userId: string,
     if (today._count >= deps.velocity.maxPerDay || (today._sum.amountIn ?? 0n) + route.amountIn > deps.velocity.maxTokenUnitsPerDay) {
       throw new ApiError(422, "velocity_limit", "Daily payout limit reached for this account.");
     }
+    // The user's own daily limit. The payout row created below is what counts toward it from here on.
+    await lockSpending(tx, userId);
+    await assertWithinDailyLimit(tx, userId, route.amountIn, deps.now());
 
     if (input.retry_of) {
       const original = await tx.payout.findFirst({ where: { id: input.retry_of, developerId }, select: { state: true } });
