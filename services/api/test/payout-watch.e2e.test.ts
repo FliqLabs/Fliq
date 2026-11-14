@@ -115,14 +115,15 @@ describe.skipIf(!enabled)("polling providers as the backstop to webhooks", () =>
     };
   }
 
-  const watch = (options: { now?: Date; oneClick?: Parameters<typeof watchPayouts>[0]["oneClick"] } = {}) =>
+  const logged: string[] = [];
+  const watch = (options: { now?: Date; batch?: number; oneClick?: Parameters<typeof watchPayouts>[0]["oneClick"] } = {}) =>
     watchPayouts({
       unit,
       adapters: [nameless],
       now: () => options.now ?? NOW,
-      log: () => {},
+      log: (message) => void logged.push(message),
       windowMs: 365 * 24 * 60 * 60_000,
-      batch: 500,
+      batch: options.batch ?? 500,
       ...(options.oneClick ? { oneClick: options.oneClick } : {}),
     });
   const stateOf = async (payoutId: string) =>
@@ -224,6 +225,46 @@ describe.skipIf(!enabled)("polling providers as the backstop to webhooks", () =>
     await watch({ oneClick });
     expect(confirmed).toContain(`${order}:0xdelivered`);
     expect(await stateOf(payout.payout_id)).toBe("paying_out");
+  }, 60_000);
+
+  it("still reaches a newer payout when older stuck ones fill a page", async () => {
+    const stuck = await newPayout();
+    answers.set(stuck.provider_order as string, { providerOrderId: stuck.provider_order as string, status: "awaiting_deposit" });
+    const newer = await newPayout();
+    answers.set(newer.provider_order as string, {
+      providerOrderId: newer.provider_order as string,
+      status: "paid",
+      fiatReference: "000013251029140213",
+    });
+    const results = await watch({ batch: 1 });
+    expect(results.map((result) => result.payoutId)).toEqual(expect.arrayContaining([stuck.payout_id, newer.payout_id]));
+    expect(await stateOf(newer.payout_id)).toBe("settled");
+  }, 60_000);
+
+  it("keeps following the swap of a payout that expired, and says so when it delivers late", async () => {
+    const payout = await newPayout();
+    await database.payout.update({
+      where: { id: payout.payout_id },
+      data: { state: "expired", routeKind: "intents", depositAddress: "1click-late", depositChain: "near" },
+    });
+    const oneClick = {
+      status: async () => ({
+        status: "SUCCESS" as const,
+        updatedAt: NOW,
+        depositedAmount: undefined,
+        amountIn: undefined,
+        amountOut: undefined,
+        refundedAmount: undefined,
+        refundReason: undefined,
+        originTxHashes: [],
+        destinationTxHashes: ["0xlate"],
+        nearTxHashes: [],
+      }),
+    };
+    const results = await watch({ oneClick });
+    expect(results).toContainEqual({ payoutId: payout.payout_id, outcome: "lapsed_hop:SUCCESS" });
+    expect(logged.some((line) => line.includes(payout.payout_id) && line.includes("after the payout expired"))).toBe(true);
+    expect(await stateOf(payout.payout_id)).toBe("expired");
   }, 60_000);
 
   it("fails a payout whose order the provider never received, but only after waiting", async () => {
