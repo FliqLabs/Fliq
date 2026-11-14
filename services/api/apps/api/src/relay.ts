@@ -9,12 +9,17 @@ import type { Reply } from "./idempotency.js";
 import { recordObservedTransfer, recordOutsideSend } from "./people.js";
 
 type DelegateCall = { receiverId: string; method: string; args: Record<string, unknown> };
-type Decoded = { sender: string; call: DelegateCall | null };
+// keyChange is true when the delegate adds or removes an access key instead of calling a contract.
+type Decoded = { sender: string; call: DelegateCall | null; keyChange: boolean };
 
 function decodeDelegate(signedDelegateBase64: string): Decoded | null {
   try {
     const decoded = deserialize(SCHEMA.SignedDelegate, Buffer.from(signedDelegateBase64, "base64")) as {
-      delegateAction?: { senderId?: unknown; receiverId?: unknown; actions?: { functionCall?: { methodName?: unknown; args?: Uint8Array } }[] };
+      delegateAction?: {
+        senderId?: unknown;
+        receiverId?: unknown;
+        actions?: { functionCall?: { methodName?: unknown; args?: Uint8Array }; addKey?: unknown; deleteKey?: unknown }[];
+      };
     };
     const action = decoded.delegateAction;
     if (typeof action?.senderId !== "string" || action.senderId.length === 0) return null;
@@ -28,6 +33,7 @@ function decodeDelegate(signedDelegateBase64: string): Decoded | null {
     return {
       sender: action.senderId,
       call: call && typeof call.methodName === "string" ? { receiverId: String(action.receiverId), method: call.methodName, args } : null,
+      keyChange: Boolean(action.actions?.[0]?.addKey ?? action.actions?.[0]?.deleteKey),
     };
   } catch {
     return null;
@@ -153,6 +159,8 @@ export async function relayDelegate(unit: Unit, relayer: RelayerClient | undefin
   if (onlySender !== undefined && delegate.sender !== onlySender) throw new ApiError(403, "forbidden", "An agent can only relay what it signed itself.");
   const ownAgent = delegate.sender === account ? null : await unit((tx) => tx.agent.findFirst({ where: { id: delegate.sender, userId, state: { not: "revoked" } }, select: { id: true } }));
   if (delegate.sender !== account && !ownAgent) throw new ApiError(403, "forbidden", "The delegate must be signed by your own NEAR account or one of your agents.");
+  // Only the user's own account gets a second device or a recovery key. An agent's account keeps the one key it was made with.
+  if (delegate.keyChange && delegate.sender !== account) throw new ApiError(403, "forbidden", "Only your own account's keys can be changed.");
   if (!relayer) throw unavailable();
   let result: RelayResponse;
   try {

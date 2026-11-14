@@ -13,7 +13,7 @@ import { delegateSender } from "../apps/api/src/relay.js";
 import { sandboxAdapters } from "../apps/api/src/sandbox.js";
 import { buildRelayerApp } from "../apps/relayer/src/app.js";
 import { createRelayerClient, MemoryRelayStore, publicKeyOf, RelayerClientError, type RelayerClient } from "../packages/chains/near/index.js";
-import { FakeNearRpc, newUser, RELAYER, relayerKeys, ROOT, signDelegate, USDC, VAULT } from "../packages/chains/near/near.fixtures.js";
+import { FakeNearRpc, newUser, RELAYER, relayerKeys, ROOT, signDelegate, signKeyChange, USDC, VAULT } from "../packages/chains/near/near.fixtures.js";
 import { MockVault } from "../packages/chains/vault/index.js";
 import { Secret } from "../packages/config/index.js";
 import { DEFAULT_ROUTING_CONFIG, NO_SIGNALS } from "../packages/domain/routing.js";
@@ -235,6 +235,21 @@ describe.skipIf(!enabled)("creating NEAR accounts and relaying calls through the
     expect(refused.statusCode).toBe(403);
     expect((await app.inject({ method: "POST", url: "/v1/relays", payload: { signed_delegate: "bm90IGEgZGVsZWdhdGU=" }, headers })).statusCode).toBe(400);
   });
+
+  it("relays a second key the user adds to their own account, and not to anyone else's", async () => {
+    const headers = await signIn("keys");
+    const user = newUser(`keys${suffix}.${ROOT}`);
+    await claim(headers, `keys-${suffix}`, { name: `keys${suffix}`, public_key: user.publicKey });
+
+    const second = newUser("a second iphone").publicKey;
+    const added = await app.inject({ method: "POST", url: "/v1/relays", payload: { signed_delegate: (await signKeyChange(user, { add: second })).base64 }, headers });
+    expect(added.statusCode).toBe(200);
+    expect(added.json()).toMatchObject({ status: "succeeded", sender_id: user.accountId, receiver_id: user.accountId });
+
+    const elsewhere = await signKeyChange(user, { add: second, receiverId: `other${suffix}.${ROOT}`, nonce: 102n });
+    const refused = await app.inject({ method: "POST", url: "/v1/relays", payload: { signed_delegate: elsewhere.base64 }, headers });
+    expect(refused.statusCode).toBeGreaterThanOrEqual(400);
+  }, 60_000);
 
   it("shows USDC the user adds from their own NEAR account in Activity, once however often it is relayed", async () => {
     const headers = await signIn("topup");
