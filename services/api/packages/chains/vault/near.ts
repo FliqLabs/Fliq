@@ -182,6 +182,11 @@ export class NearVault implements VaultClient {
     return parseReceipt(await this.#view("get_receipt", { order_id: orderId }));
   }
 
+  // Everything the vault owes its users, in USDC base units.
+  async getLiabilities(): Promise<bigint> {
+    return u128(await this.#view("get_liabilities", {}), "liabilities");
+  }
+
   async getBalance(accountId: AccountId): Promise<VaultBalance> {
     const balance = (await this.#view("get_balance", { account_id: accountId })) as Record<string, unknown>;
     return {

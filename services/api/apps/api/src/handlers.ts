@@ -41,6 +41,7 @@ import {
   workspaceView,
 } from "./dashboard.js";
 import { requireHttpsUrl, settle } from "./errors.js";
+import { NO_OPS, type Ops } from "./ops.js";
 import { createDeposits, type DepositChain, type DepositInput, type Deposits, type DepositToken } from "./deposits.js";
 import { withIdempotency } from "./idempotency.js";
 import { exportPayoutsCsv, parsePayoutFilter, type PayoutQuery } from "./payout-history.js";
@@ -87,6 +88,8 @@ export interface HandlerDeps {
   // Asks the provider about a payout the caller is watching, so its state is fresh when read.
   refreshPayout?: (payoutId: string) => Promise<void>;
   vault: VaultClient;
+  // Operator pauses and the vault cap. Absent means nothing is paused or capped.
+  ops?: Ops;
   status?: { probes: readonly Probe[]; config?: StatusConfig };
   deposits?: Deposits;
   rateBoard?: RateBoard;
@@ -107,6 +110,7 @@ export function createHandlers({
   payouts,
   refreshPayout,
   vault,
+  ops = NO_OPS,
   status = { probes: [] },
   deposits = createDeposits({ client: undefined, vaultAccount: config.vaultAccount, usdcContract: "", slippageBps: 0 }),
   rateBoard = createRateBoard(quotes, unit),
@@ -314,8 +318,10 @@ export function createHandlers({
       body: await quoteAndSave(unit, quotes, auth(request).userId, body<QuoteInput>(request)),
     }),
 
-    createPayout: async (request) =>
-      createPayout(unit, { ...payouts, quotes }, auth(request).userId, request.headers["idempotency-key"] as string | undefined, body<PayoutInput>(request)),
+    createPayout: async (request) => {
+      ops.assertRunning("payouts");
+      return createPayout(unit, { ...payouts, quotes }, auth(request).userId, request.headers["idempotency-key"] as string | undefined, body<PayoutInput>(request));
+    },
     getPayout: async (request) => ({
       status: 200,
       body: await getPayout(unit, config, auth(request).userId, (request.params as { payoutId: string }).payoutId, refreshPayout),
@@ -384,8 +390,10 @@ export function createHandlers({
       status: 200,
       body: await quoteForAgent(unit, quotes, agentOf(request).ownerId, body<{ currency: QuoteInput["currency"]; amount: string; mode?: "send" | "receive" }>(request)),
     }),
-    createAgentPayout: (request) =>
-      createAgentPayout(unit, agentPayoutDeps, agentOf(request).agentId, request.headers["idempotency-key"] as string | undefined, body<AgentPayoutInput>(request)),
+    createAgentPayout: async (request) => {
+      ops.assertRunning("payouts");
+      return createAgentPayout(unit, agentPayoutDeps, agentOf(request).agentId, request.headers["idempotency-key"] as string | undefined, body<AgentPayoutInput>(request));
+    },
     getAgentPayout: async (request) => ({
       status: 200,
       body: await getAgentPayout(unit, config, agentOf(request).agentId, (request.params as { payoutId: string }).payoutId),
@@ -440,11 +448,14 @@ export function createHandlers({
       const input = { token: token as DepositToken, chain: chain as DepositChain, amount: amount ?? "" };
       return { status: 200, body: await deposits.estimate(unit, auth(request).userId, input) };
     },
-    createDeposit: (request) =>
-      withIdempotency(unit, auth(request).userId, request, async (tx) => ({
+    createDeposit: async (request) => {
+      ops.assertRunning("deposits");
+      await ops.assertRoomInVault();
+      return withIdempotency(unit, auth(request).userId, request, async (tx) => ({
         status: 201,
         body: await deposits.create(tx, auth(request).userId, body<DepositInput>(request)),
-      })),
+      }));
+    },
     getDeposit: async (request) => ({
       status: 200,
       body: await deposits.get(unit, auth(request).userId, (request.params as { depositId: string }).depositId),
