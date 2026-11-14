@@ -62,6 +62,41 @@ final class SettingsUITests: XCTestCase {
     }
 
     @MainActor
+    func testDailyLimitIsSetAtOnceAndARaiseWaits() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--onboarded", "--funded"]
+        app.launch()
+
+        XCTAssertTrue(app.buttons["Profile"].waitForExistence(timeout: 5))
+        app.buttons["Profile"].tap()
+        let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Your daily limit")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 3))
+        row.tap()
+        XCTAssertTrue(app.staticTexts["No daily limit"].waitForExistence(timeout: 3))
+        snap("l1-no-limit")
+
+        app.buttons["Set a limit"].tap()
+        XCTAssertTrue(app.buttons["Delete"].waitForExistence(timeout: 3))
+        for key in ["5", "0", "0"] { app.buttons[key].tap() }
+        snap("l2-typing")
+        app.buttons["Save with Face ID"].tap()
+        XCTAssertTrue(app.staticTexts["Most that can leave in a day"].waitForExistence(timeout: 3), "A first limit applies at once")
+        snap("l3-limit-set")
+
+        app.buttons["Change limit"].tap()
+        XCTAssertTrue(app.buttons["Delete"].waitForExistence(timeout: 3))
+        for key in ["2", "0", "0", "0"] { app.buttons[key].tap() }
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Takes effect in 24 hours")).firstMatch.waitForExistence(timeout: 3))
+        snap("l4-raise")
+        app.buttons["Save with Face ID"].tap()
+        XCTAssertTrue(app.staticTexts["Going up to $2,000"].waitForExistence(timeout: 3), "A raise waits")
+        snap("l5-raise-waiting")
+
+        app.buttons["Cancel this change"].tap()
+        XCTAssertTrue(app.staticTexts["Going up to $2,000"].waitForNonExistence(timeout: 3))
+    }
+
+    @MainActor
     private func snap(_ name: String) {
         let png = XCUIScreen.main.screenshot().pngRepresentation
         add(XCTAttachment(data: png, uniformTypeIdentifier: "public.png"))

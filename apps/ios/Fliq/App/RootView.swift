@@ -222,6 +222,7 @@ struct RootView: View {
         case .settingsAccounts: AccountsView(onAdd: { startPayment() })
         case .settingsSecurity: SecurityView()
         case .settingsNotifications: NotificationsView()
+        case .settingsDailyLimit: DailyLimitView(environment: environment)
         case .agentConnect: AgentConnectView(store: environment.agents)
         }
     }
@@ -248,7 +249,7 @@ struct RootView: View {
             if let payout = flow.payout {
                 RefundedView(payout: payout, quote: flow.quote, onTryAgain: { startPayment(to: flow.verified) })
             }
-        case .payPerson, .withdraw, .withdrawTo, .withdrawReview, .bankDeposit, .receipt, .agents, .agentConnect, .settings, .settingsAccounts, .settingsSecurity, .settingsNotifications: EmptyView()
+        case .payPerson, .withdraw, .withdrawTo, .withdrawReview, .bankDeposit, .receipt, .agents, .agentConnect, .settings, .settingsAccounts, .settingsSecurity, .settingsNotifications, .settingsDailyLimit: EmptyView()
         }
     }
 

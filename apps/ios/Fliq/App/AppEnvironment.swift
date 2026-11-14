@@ -19,6 +19,7 @@ final class AppEnvironment {
     private(set) var arrival: TokenAmount?
     @ObservationIgnored private var arrivalWatch: Task<Void, Never>?
     let deposits: any DepositAPI
+    let limits: any LimitsAPI
     let agents: AgentStore
     let accounts: AccountBook
     let transfers: any VaultTransfers
@@ -43,6 +44,7 @@ final class AppEnvironment {
         activity: ActivityStore = ActivityStore(),
         vault: VaultStore = VaultStore(),
         deposits: any DepositAPI = FixtureDepositAPI(),
+        limits: any LimitsAPI = FixtureLimitsAPI(),
         agentAPI: any AgentAPI = FixtureAgentAPI(),
         accounts: AccountBook = AccountBook(),
         transfers: any VaultTransfers = FixtureVaultTransfers(),
@@ -64,6 +66,7 @@ final class AppEnvironment {
         self.activity = activity
         self.vault = vault
         self.deposits = deposits
+        self.limits = limits
         self.accounts = accounts
         self.transfers = transfers
         self.withdrawals = withdrawals
@@ -115,7 +118,7 @@ final class AppEnvironment {
             vault: { try? await api.me().vault }
         )
         let environment = AppEnvironment(
-            api: api, isLive: true, profile: profile, deposits: HTTPDepositAPI(client: api), agentAPI: agents,
+            api: api, isLive: true, profile: profile, deposits: HTTPDepositAPI(client: api), limits: HTTPLimitsAPI(client: api), agentAPI: agents,
             transfers: transfers, withdrawals: withdrawals, photos: cloudinary(info: info),
             paj: HTTPPaj(), pajSignIn: pajSignIn(info: info, api: api),
             pajTestRecipient: (info["FliqPajTestRecipient"] as? String).flatMap { $0.isEmpty ? nil : $0 },
