@@ -35,6 +35,18 @@ const GIVE_UP_MS = 10 * 60_000;
 const DEFAULT_WINDOW_MS = 2 * 24 * 60 * 60_000;
 const DEFAULT_BATCH = 50;
 
+const WATCHED = {
+  id: true,
+  state: true,
+  provider: true,
+  providerOrderId: true,
+  routeKind: true,
+  depositAddress: true,
+  depositMemo: true,
+  depositValidUntil: true,
+  createdAt: true,
+} as const;
+
 type Watched = {
   id: string;
   state: string;
@@ -54,17 +66,7 @@ export async function watchPayouts(deps: WatchDeps): Promise<WatchResult[]> {
   const payouts = await deps.unit((tx) =>
     tx.payout.findMany({
       where: { state: { in: [...ACTIVE, ...UNKNOWN] }, updatedAt: { gte: since } },
-      select: {
-        id: true,
-        state: true,
-        provider: true,
-        providerOrderId: true,
-        routeKind: true,
-        depositAddress: true,
-        depositMemo: true,
-        depositValidUntil: true,
-        createdAt: true,
-      },
+      select: WATCHED,
       orderBy: { updatedAt: "asc" },
       take: deps.batch ?? DEFAULT_BATCH,
     }),
@@ -162,6 +164,27 @@ async function resolveUnknown(deps: WatchDeps, adapter: ProviderAdapter, payout:
     await transitionPayout(tx, { payoutId: payout.id, target: "failed", cause: "poll_not_found" });
     return "failed";
   });
+}
+
+// The app asks about its own payout every couple of seconds while the user watches the screen. Asking the provider
+// then, at most every REFRESH_MS per payout, shows "paid" within seconds even when a webhook is late or never comes.
+const REFRESH_MS = 3_000;
+
+export function payoutRefresher(deps: WatchDeps): (payoutId: string) => Promise<void> {
+  const asked = new Map<string, number>();
+  return async (payoutId) => {
+    const at = deps.now().getTime();
+    if (at - (asked.get(payoutId) ?? 0) < REFRESH_MS) return;
+    asked.set(payoutId, at);
+    try {
+      const payout = (await deps.unit((tx) => tx.payout.findUnique({ where: { id: payoutId }, select: WATCHED }))) as Watched | null;
+      const adapter = payout && deps.adapters.find((candidate) => candidate.id === payout.provider);
+      if (!payout || !adapter || !ACTIVE.includes(payout.state as PayoutState)) return void asked.delete(payoutId);
+      await poll(deps, adapter, payout);
+    } catch (error) {
+      deps.log(`[payout-watch] refresh ${payoutId}: ${(error as Error).name}`);
+    }
+  };
 }
 
 export function startPayoutWatch(input: WatchDeps, intervalMs = 20_000): () => void {

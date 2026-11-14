@@ -84,6 +84,8 @@ export interface HandlerDeps {
   relayer?: RelayerClient;
   quotes: QuoteDeps;
   payouts: Omit<PayoutDeps, "quotes">;
+  // Asks the provider about a payout the caller is watching, so its state is fresh when read.
+  refreshPayout?: (payoutId: string) => Promise<void>;
   vault: VaultClient;
   status?: { probes: readonly Probe[]; config?: StatusConfig };
   deposits?: Deposits;
@@ -103,6 +105,7 @@ export function createHandlers({
   provisioner,
   quotes,
   payouts,
+  refreshPayout,
   vault,
   status = { probes: [] },
   deposits = createDeposits({ client: undefined, vaultAccount: config.vaultAccount, usdcContract: "", slippageBps: 0 }),
@@ -315,7 +318,7 @@ export function createHandlers({
       createPayout(unit, { ...payouts, quotes }, auth(request).userId, request.headers["idempotency-key"] as string | undefined, body<PayoutInput>(request)),
     getPayout: async (request) => ({
       status: 200,
-      body: await getPayout(unit, config, auth(request).userId, (request.params as { payoutId: string }).payoutId),
+      body: await getPayout(unit, config, auth(request).userId, (request.params as { payoutId: string }).payoutId, refreshPayout),
     }),
 
     quoteRetry: async (request) => ({

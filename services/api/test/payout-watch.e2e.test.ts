@@ -7,7 +7,7 @@ import type { EmailSender } from "../apps/api/src/auth/email-links.js";
 import { loadConfig } from "../apps/api/src/config.js";
 import { createDatabase, unitOf } from "../apps/api/src/db.js";
 import { createHandlers } from "../apps/api/src/handlers.js";
-import { watchPayouts } from "../apps/api/src/payout-watch.js";
+import { payoutRefresher, watchPayouts } from "../apps/api/src/payout-watch.js";
 import { DEFAULT_VELOCITY } from "../apps/api/src/payouts.js";
 import { sandboxAdapters } from "../apps/api/src/sandbox.js";
 import { DEFAULT_ROUTING_CONFIG, NO_SIGNALS } from "../packages/domain/routing.js";
@@ -61,10 +61,16 @@ describe.skipIf(!enabled)("polling providers as the backstop to webhooks", () =>
   // A second provider that can read the name the first cannot.
   const reader: ProviderAdapter = { ...sandbox, id: "paycrest" };
 
+  // The refresher's own clock, so a test can step past its three second throttle.
+  let refreshAt = NOW.getTime();
+  let asked = 0;
+  const counted: ProviderAdapter = { ...nameless, getOrder: async (lookup) => (asked++, nameless.getOrder(lookup)) };
+
   const app = buildApp({
     config,
     unit,
     handlers: createHandlers({
+      refreshPayout: payoutRefresher({ unit, adapters: [counted], now: () => new Date(refreshAt), log: () => {} }),
       config,
       unit,
       email: sender,
@@ -170,6 +176,27 @@ describe.skipIf(!enabled)("polling providers as the backstop to webhooks", () =>
     expect(await stateOf(payout.payout_id)).toBe("settled");
     const again = await watch();
     expect(again.find((result) => result.payoutId === payout.payout_id)).toBeUndefined();
+  }, 60_000);
+
+  it("shows a payout as paid when its owner reads it, without waiting for a webhook or the sweep", async () => {
+    const payout = await newPayout();
+    const read = () => app.inject({ method: "GET", url: `/v1/payouts/${payout.payout_id}`, headers: { authorization: `Bearer ${access}` } });
+    refreshAt += 10_000;
+    asked = 0;
+    await read();
+    await read();
+    expect(asked).toBe(1);
+
+    answers.set(payout.provider_order as string, { providerOrderId: payout.provider_order as string, status: "paid", fiatReference: "000013251029140213" });
+    refreshAt += 3_000;
+    expect((await read()).json().state).toBe("settled");
+    expect(await stateOf(payout.payout_id)).toBe("settled");
+
+    // A finished payout is never asked about again.
+    refreshAt += 3_000;
+    asked = 0;
+    await read();
+    expect(asked).toBe(0);
   }, 60_000);
 
   it("tells the provider which transfer paid it once the 1Click leg has delivered", async () => {

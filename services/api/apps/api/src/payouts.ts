@@ -136,12 +136,11 @@ export async function payoutView(tx: Db, config: Config, payoutId: string) {
   };
 }
 
-export async function getPayout(unit: Unit, config: Config, userId: string, payoutId: string) {
-  return unit(async (tx) => {
-    const found = await tx.payout.findFirst({ where: { id: payoutId, developerId: await developerIdFor(tx, userId) }, select: { id: true } });
-    if (!found) throw notFound("No such payout.");
-    return payoutView(tx, config, payoutId);
-  });
+export async function getPayout(unit: Unit, config: Config, userId: string, payoutId: string, refresh?: (payoutId: string) => Promise<void>) {
+  const found = await unit(async (tx) => tx.payout.findFirst({ where: { id: payoutId, developerId: await developerIdFor(tx, userId) }, select: { id: true } }));
+  if (!found) throw notFound("No such payout.");
+  await refresh?.(payoutId);
+  return unit((tx) => payoutView(tx, config, payoutId));
 }
 
 export async function createPayout(unit: Unit, deps: PayoutDeps, userId: string, key: string | undefined, input: PayoutInput, options: { agentId?: string } = {}): Promise<Reply> {
