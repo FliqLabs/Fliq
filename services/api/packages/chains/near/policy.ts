@@ -166,7 +166,17 @@ function rules(policy: RelayPolicy): Map<string, Map<string, Rule>> {
   ]);
 }
 
+// A key change touches only the account that signed it. The signing key may not add or remove itself: adding itself
+// is meaningless and removing itself is how an account gets locked out by one mistaken tap.
+function checkKeyChange(delegate: VerifiedDelegate, change: NonNullable<VerifiedDelegate["keyChange"]>): void {
+  if (delegate.receiverId !== delegate.senderId) {
+    throw new PolicyError("a key can only be added to or removed from the sender's own account");
+  }
+  if (change.publicKey === delegate.publicKey) throw new PolicyError("the signing key cannot add or remove itself");
+}
+
 export function checkPolicy(policy: RelayPolicy, delegate: VerifiedDelegate): void {
+  if (delegate.keyChange) return checkKeyChange(delegate, delegate.keyChange);
   const allowed = rules(policy).get(delegate.receiverId);
   if (!allowed) throw new PolicyError(`receiver ${delegate.receiverId} is not allowed`);
   if (delegate.calls.length !== 1) throw new PolicyError("a relayed delegate must contain exactly one call");
