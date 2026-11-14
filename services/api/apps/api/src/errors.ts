@@ -21,6 +21,7 @@ export type ErrorCode =
   | "rate_limited"
   | "chain_unavailable"
   | "agent_limit"
+  | "paused"
   | "internal";
 
 export class ApiError extends Error {

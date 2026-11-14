@@ -22,6 +22,8 @@ import { startHealthChecks, type Probe } from "./status.js";
 import { createWebhookHandler } from "./webhooks.js";
 import { startWebhookDelivery } from "./webhook-delivery.js";
 import { startVaultSync } from "./vault-sync.js";
+import { alertConfigFromEnv, createAlerts } from "./alerts.js";
+import { createOps, opsConfigFromEnv } from "./ops.js";
 import { payoutRefresher, startPayoutWatch } from "./payout-watch.js";
 import { apnsFromEnv, createApnsSender, startPushDispatch } from "./push.js";
 import { usageRecorder } from "./usage.js";
@@ -142,7 +144,14 @@ const provisioner = relayer
   ? new RelayerProvisioner(relayer, config.vaultAccount)
   : new MockProvisioner(config.vaultAccount, mockVault ? (account) => mockVault.registerStorage(account) : undefined);
 
-const payoutWatch = { unit, adapters, ...(oneClick ? { oneClick } : {}), now: () => new Date(), log: (message: string) => app.log.warn(message) };
+// Lines from the watchers are the ones a person must act on, so they go to the alert channel as well as the log.
+const alert = createAlerts({ config: alertConfigFromEnv(process.env), log: (message) => app.log.warn(message) });
+const ops = createOps({
+  ...opsConfigFromEnv(process.env),
+  ...(vault instanceof NearVault ? { liabilities: () => vault.getLiabilities() } : {}),
+  log: alert,
+});
+const payoutWatch = { unit, adapters, ...(oneClick ? { oneClick } : {}), now: () => new Date(), log: alert };
 const handlers = createHandlers({
   refreshPayout: payoutRefresher(payoutWatch),
   config,
@@ -151,6 +160,7 @@ const handlers = createHandlers({
   provisioner,
   ...(relayer ? { relayer } : {}),
   vault,
+  ops,
   status: { probes },
   deposits,
   rateBoard,
@@ -173,7 +183,7 @@ startRateSampler(rateBoard, Number(process.env.RATE_SAMPLE_INTERVAL_MS ?? 60_000
 startDepositWatch(unit, deposits, Number(process.env.DEPOSIT_WATCH_INTERVAL_MS ?? 10_000));
 startPayoutWatch(payoutWatch, Number(process.env.PAYOUT_WATCH_INTERVAL_MS ?? 20_000));
 startVaultSync(
-  { unit, vault, now: () => new Date(), log: (message) => app.log.warn(message) },
+  { unit, vault, now: () => new Date(), log: alert },
   Number(process.env.VAULT_SYNC_INTERVAL_MS ?? 15_000),
 );
 const apns = apnsFromEnv(process.env);
