@@ -5,7 +5,7 @@ import type { Db, Unit } from "./db.js";
 import { OUTSIDE_FLIQ } from "./people.js";
 import { DEFAULT_NOTIFICATIONS, type NotificationSettings } from "./settings.js";
 
-export type PushKind = "transfer_in" | "transfer_out" | "payout" | "deposit" | "refused" | "limit";
+export type PushKind = "transfer_in" | "transfer_out" | "payout" | "deposit" | "refused" | "limit" | "key";
 
 export interface PushMessage {
   userId: string;
@@ -239,6 +239,22 @@ export function limitChangeMessage(userId: string, changeId: string, toUnits: bi
   };
 }
 
+// Sent whatever the user's notification settings say. The words cover the user's own backup or new iPhone as well as
+// a stranger's key, because the API cannot tell which it was.
+export function keyChangeMessage(userId: string, changeId: string, kind: string): PushMessage {
+  const added = kind !== "delete";
+  return {
+    userId,
+    kind: "key",
+    refId: changeId,
+    title: added ? "A new key was added to your account" : "A key was removed from your account",
+    body: added
+      ? "If you just turned on backup or added an iPhone, all is well. If not, open fliq and check Security now."
+      : "If you just removed a device, all is well. If not, open fliq and check Security now.",
+    setting: null,
+  };
+}
+
 export interface PushDeps {
   unit: Unit;
   send: PushSender | null;
@@ -288,7 +304,17 @@ async function pending(tx: Db, since: Date, dataKey: Buffer): Promise<Pending[]>
     take: BATCH,
   });
 
+  const keyChanges = await tx.keyChange.findMany({
+    where: { createdAt: { gt: since } },
+    orderBy: { createdAt: "asc" },
+    take: BATCH,
+  });
+
   const all: Pending[] = [
+    ...keyChanges.map((row) => ({
+      messageId: row.id,
+      build: async () => keyChangeMessage(row.userId, row.id, row.kind),
+    })),
     ...limitChanges.map((row) => ({
       messageId: row.id,
       build: async () => limitChangeMessage(row.userId, row.id, row.toUnits),

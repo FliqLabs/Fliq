@@ -1,6 +1,6 @@
 import { deserialize } from "borsh";
 import { SCHEMA } from "near-api-js";
-import { RelayerClientError, type RelayerClient, type RelayResponse } from "../../../packages/chains/near/index.js";
+import { RelayerClientError, verifySignedDelegate, type KeyChange, type RelayerClient, type RelayResponse } from "../../../packages/chains/near/index.js";
 import { VaultError } from "../../../packages/chains/vault/index.js";
 import { newId } from "../../../packages/db/src/ids.js";
 import type { Db, Unit } from "./db.js";
@@ -161,6 +161,24 @@ function spendOf(call: DelegateCall | null, contracts: RelayContracts): bigint |
   return leaves && UNITS.test(amount) ? BigInt(amount) : null;
 }
 
+// Which key a key-change delegate adds or removes. The relayer has already verified it, so a failure to read it here
+// only costs the record, never the relay.
+function keyChangeOf(signedDelegate: string): KeyChange | null {
+  try {
+    return verifySignedDelegate(signedDelegate).keyChange ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// Kept so the user can be told: a new key on the account is the one change they must never miss.
+async function recordKeyChange(tx: Db, userId: string, account: string, change: KeyChange, txHash: string): Promise<void> {
+  if (await tx.keyChange.findUnique({ where: { txHash }, select: { id: true } })) return;
+  await tx.keyChange.create({
+    data: { id: newId("kc"), userId, account, kind: change.kind === "delete" ? "delete" : "add", publicKey: change.publicKey, txHash },
+  });
+}
+
 // The sender is the user's own account or one of the user's agents, so nobody can relay for someone else.
 // An agent calling for itself passes onlySender, so it can relay its own delegates and no one else's.
 export async function relayDelegate(unit: Unit, relayer: RelayerClient | undefined, userId: string, signedDelegate: string, contracts: RelayContracts, onlySender?: string, now: () => Date = () => new Date()): Promise<Reply> {
@@ -187,6 +205,11 @@ export async function relayDelegate(unit: Unit, relayer: RelayerClient | undefin
   }
   if (spend !== null && result.status === "failed") await unit((tx) => releaseSpend(tx, ref));
   await unit((tx) => recordOutcome(tx, userId, delegate, result, contracts));
+  const change = delegate.keyChange && result.status === "succeeded" && result.tx_hash ? keyChangeOf(signedDelegate) : null;
+  if (change && result.tx_hash) {
+    const txHash = result.tx_hash;
+    await unit((tx) => recordKeyChange(tx, userId, account, change, txHash));
+  }
   return answer(result);
 }
 

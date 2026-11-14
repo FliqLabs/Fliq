@@ -914,3 +914,21 @@ model LimitChange {
   @@map("limit_changes")
   @@schema("auth")
 }
+
+// A full-access key added to or removed from a user's NEAR account through the relayer: a backup key, a new iPhone,
+// or a lost one being removed. The user is told by push each time, from these rows.
+model KeyChange {
+  id        String   @id @db.Text
+  userId    String   @map("user_id") @db.Text
+  account   String   @db.Text
+  // "add" or "delete".
+  kind      String   @db.Text
+  publicKey String   @map("public_key") @db.Text
+  txHash    String   @unique @map("tx_hash") @db.Text
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([createdAt])
+  @@index([userId, createdAt])
+  @@map("key_changes")
+  @@schema("auth")
+}
