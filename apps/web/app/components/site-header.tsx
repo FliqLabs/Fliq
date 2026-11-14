@@ -76,7 +76,7 @@ export function SiteHeader({ activeHref, brandClassName }: { activeHref?: string
               </nav>
             </details>
             <Link
-              href="/create-workspace"
+              href="/dashboard"
               className="inline-flex h-10 items-center rounded-full bg-white px-5 text-[15px] font-semibold text-black transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand"
             >
               Get started
