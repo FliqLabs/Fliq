@@ -16,6 +16,8 @@ export type WatchDeps = {
   reportHop?: ReturnType<typeof hopReporter>;
   windowMs?: number;
   batch?: number;
+  // Expired payouts whose swap 1Click has finished, so they are not asked about again.
+  finishedHops?: Set<string>;
 };
 
 export type WatchResult = { payoutId: string; outcome: string };
@@ -61,18 +63,13 @@ type Watched = {
 
 // ARCH §9.2 and §15: webhooks are the fast path, this poll is the backstop. It also tells providers that match a
 // deposit by its transaction hash (Fonbnk) which transfer paid them, once the 1Click leg has delivered.
+// Every open payout is visited each sweep, a page at a time: taking only the oldest page would leave newer payouts
+// unwatched for as long as a page of stuck ones stays open.
 export async function watchPayouts(deps: WatchDeps): Promise<WatchResult[]> {
   const since = new Date(deps.now().getTime() - (deps.windowMs ?? DEFAULT_WINDOW_MS));
-  const payouts = await deps.unit((tx) =>
-    tx.payout.findMany({
-      where: { state: { in: [...ACTIVE, ...UNKNOWN] }, updatedAt: { gte: since } },
-      select: WATCHED,
-      orderBy: { updatedAt: "asc" },
-      take: deps.batch ?? DEFAULT_BATCH,
-    }),
-  );
   const results: WatchResult[] = [];
-  for (const payout of payouts as Watched[]) {
+  const open = { state: { in: [...ACTIVE, ...UNKNOWN] }, updatedAt: { gte: since } };
+  for await (const payout of pages(deps, open)) {
     const adapter = deps.adapters.find((candidate) => candidate.id === payout.provider);
     if (!adapter) continue;
     try {
@@ -84,6 +81,49 @@ export async function watchPayouts(deps: WatchDeps): Promise<WatchResult[]> {
       deps.log(`[payout-watch] ${payout.id} ${payout.provider} ${payout.state}: ${(error as Error).name}`);
       results.push({ payoutId: payout.id, outcome: "error" });
     }
+  }
+  results.push(...(await watchLapsedHops(deps, since)));
+  return results;
+}
+
+async function* pages(deps: WatchDeps, where: Record<string, unknown>): AsyncGenerator<Watched> {
+  const size = deps.batch ?? DEFAULT_BATCH;
+  let after: string | undefined;
+  for (;;) {
+    const page = (await deps.unit((tx) =>
+      tx.payout.findMany({
+        where: after ? { ...where, id: { gt: after } } : where,
+        select: WATCHED,
+        orderBy: { id: "asc" },
+        take: size,
+      }),
+    )) as Watched[];
+    yield* page;
+    if (page.length < size) return;
+    after = page[page.length - 1]!.id;
+  }
+}
+
+// 1Click cannot be cancelled and keeps its own deadline, so a swap can still be moving after the payout expired.
+// The provider is no longer polled then, but the swap is followed until 1Click finishes it, so a late delivery or a
+// refund is reported instead of going unseen.
+async function watchLapsedHops(deps: WatchDeps, since: Date): Promise<WatchResult[]> {
+  if (!deps.oneClick) return [];
+  const finished = (deps.finishedHops ??= new Set());
+  const results: WatchResult[] = [];
+  const lapsed = { state: "expired", routeKind: "intents", depositAddress: { not: null }, updatedAt: { gte: since } };
+  for await (const payout of pages(deps, lapsed)) {
+    if (finished.has(payout.id)) continue;
+    const leg = await hopOf(deps, payout);
+    if (!leg) continue;
+    if (leg.status === "PENDING_DEPOSIT" || leg.status === "REFUNDED" || leg.status === "FAILED") finished.add(payout.id);
+    if (leg.status === "SUCCESS") {
+      finished.add(payout.id);
+      deps.log(
+        `[hop-watch] ${payout.id}: 1Click delivered after the payout expired; the USDC is with ${payout.provider} or its refund address and must be traced by hand`,
+      );
+    }
+    results.push({ payoutId: payout.id, outcome: `lapsed_hop:${leg.status}` });
   }
   return results;
 }

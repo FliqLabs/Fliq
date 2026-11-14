@@ -62,6 +62,7 @@ export type VaultSyncDeps = {
   log: (message: string) => void;
   windowMs?: number;
   batch?: number;
+  done?: Set<string>;
 };
 
 export type SyncResult = { payoutId: string; action: VaultAction["kind"]; error?: string };
@@ -70,22 +71,41 @@ const DEFAULT_WINDOW_MS = 2 * 24 * 60 * 60_000;
 const DEFAULT_BATCH = 50;
 
 // The chain is never written inside a database transaction: read the payouts, then compare each with its receipt.
+// Every payout in the window is visited each sweep, a page at a time, so a page of old ones cannot hide newer ones.
+// A payout that ended with its receipt released is remembered and not read from the chain again.
 export async function syncVaultReceipts(deps: VaultSyncDeps): Promise<SyncResult[]> {
   const since = new Date(deps.now().getTime() - (deps.windowMs ?? DEFAULT_WINDOW_MS));
-  const payouts = await deps.unit((tx) =>
-    tx.payout.findMany({
-      where: { routeKind: "intents", depositChain: "near", depositAddress: { not: null }, updatedAt: { gte: since } },
-      select: { id: true, state: true, provider: true, providerOrderId: true },
-      orderBy: { updatedAt: "asc" },
-      take: deps.batch ?? DEFAULT_BATCH,
-    }),
-  );
+  const size = deps.batch ?? DEFAULT_BATCH;
+  const done = (deps.done ??= new Set());
   const results: SyncResult[] = [];
-  for (const payout of payouts) results.push(await syncOne(deps, payout as SyncedPayout));
-  return results;
+  let after: string | undefined;
+  for (;;) {
+    const payouts = (await deps.unit((tx) =>
+      tx.payout.findMany({
+        where: {
+          routeKind: "intents",
+          depositChain: "near",
+          depositAddress: { not: null },
+          updatedAt: { gte: since },
+          ...(after ? { id: { gt: after } } : {}),
+        },
+        select: { id: true, state: true, provider: true, providerOrderId: true },
+        orderBy: { id: "asc" },
+        take: size,
+      }),
+    )) as SyncedPayout[];
+    for (const payout of payouts) {
+      if (done.has(payout.id)) continue;
+      const result = await syncOne(deps, payout);
+      if (result.settled) done.add(payout.id);
+      results.push({ payoutId: result.payoutId, action: result.action, ...(result.error ? { error: result.error } : {}) });
+    }
+    if (payouts.length < size) return results;
+    after = payouts[payouts.length - 1]!.id;
+  }
 }
 
-async function syncOne(deps: VaultSyncDeps, payout: SyncedPayout): Promise<SyncResult> {
+async function syncOne(deps: VaultSyncDeps, payout: SyncedPayout): Promise<SyncResult & { settled?: boolean }> {
   try {
     const receipt = await deps.vault.getReceipt(payout.id);
     const action = planVaultSync(payout, receipt);
@@ -95,7 +115,9 @@ async function syncOne(deps: VaultSyncDeps, payout: SyncedPayout): Promise<SyncR
     if (receipt && (receipt.state === "released" || action.kind === "release")) {
       await deps.unit((tx) => releaseReservation(tx, payout.id, receipt.payer, "USDC", receipt.amount));
     }
-    return { payoutId: payout.id, action: action.kind };
+    // Released is final on chain, and an ended payout never leaves its state, so there is nothing left to mirror.
+    const settled = action.kind === "none" && action.reason === "released" && ENDED_UNPAID.has(payout.state);
+    return { payoutId: payout.id, action: action.kind, settled };
   } catch (error) {
     const code = error instanceof VaultError ? error.code : (error as Error).name;
     deps.log(`[vault-sync] ${payout.id} ${payout.state}: ${code}`);
