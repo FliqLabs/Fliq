@@ -29,7 +29,6 @@ struct OnboardingView: View {
         NavigationStack(path: $path) {
             WelcomeView(
                 onStart: start,
-                onExistingAccount: existingAccount,
                 isWorking: passkeyWorking,
                 message: passkeyMessage
             )
@@ -50,19 +49,13 @@ struct OnboardingView: View {
         }
     }
 
-    /// Spelled out as closures: Xcode 26.3 crashes type-checking `isLive ? nil : finish` inline.
-    private var existingAccount: () -> Void {
-        if isLive { return { usePasskey(.login) } }
-        return { finish() }
-    }
-
     private func start() {
         if isLive { return continueWithPasskey() }
         path.append(.claimName)
     }
 
-    /// One button for everyone: signs in with the passkey this app recorded for its account, and creates the account
-    /// when there is no record yet, or when the recorded passkey is no longer known to the server.
+    /// One button for everyone. It signs in with the passkey this app recorded, or with any fliq passkey already on
+    /// this iPhone, and creates the account when there is none or the server no longer knows the one offered.
     private func continueWithPasskey() {
         guard !passkeyWorking else { return }
         passkeyWorking = true
@@ -71,9 +64,13 @@ struct OnboardingView: View {
             defer { passkeyWorking = false }
             do {
                 let known = memory.ids
-                guard !known.isEmpty else { return try await createWithPasskey() }
                 let options = try await api.passkeyOptions(.login)
-                let response = try await passkeys.signIn(options, allowed: known)
+                let response: Data
+                do {
+                    response = try await passkeys.signIn(options, allowed: known, onlyIfOnThisDevice: known.isEmpty)
+                } catch PasskeyError.cancelled where known.isEmpty {
+                    return try await createWithPasskey()
+                }
                 do {
                     let user = try await api.finishPasskey(.login, challengeId: options.challengeId, credential: response)
                     memory.remember(passkeys.lastCredentialID)
@@ -107,28 +104,6 @@ struct OnboardingView: View {
     private func couldNotCreate(_ error: any Error) {
         if case PasskeyError.cancelled = error { return }
         passkeyMessage = "We couldn't create your passkey. Try again."
-    }
-
-    private func usePasskey(_ purpose: PasskeyPurpose) {
-        guard !passkeyWorking else { return }
-        passkeyWorking = true
-        passkeyMessage = nil
-        Task {
-            defer { passkeyWorking = false }
-            do {
-                let options = try await api.passkeyOptions(purpose)
-                let response = purpose == .register ? try await passkeys.register(options) : try await passkeys.signIn(options)
-                let user = try await api.finishPasskey(purpose, challengeId: options.challengeId, credential: response)
-                memory.remember(passkeys.lastCredentialID)
-                signedIn(user)
-            } catch PasskeyError.cancelled {
-                return
-            } catch {
-                passkeyMessage = purpose == .register
-                    ? "We couldn't create your passkey. Try again."
-                    : "That passkey isn't for a fliq account here. Try another."
-            }
-        }
     }
 
     /// A returning user already has a name and goes straight to Home.
