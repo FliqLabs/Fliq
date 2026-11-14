@@ -14,11 +14,15 @@ struct BankDepositDestination: Equatable, Sendable {
 @Observable
 final class BankDepositFlow {
     enum Step: Equatable {
-        case amount, signIn, pay, receiving, done, cancelled
+        case amount, signIn, pay, receiving, done, notReceived, cancelled
     }
 
     static let presets = [5_000, 10_000, 20_000, 50_000]
     static let quoteDelay: Duration = .milliseconds(400)
+    /// Used until the API's own minimum has loaded. It mirrors SOURCES in services/api/apps/api/src/deposits.ts.
+    static let fallbackMinimum = TokenAmount(baseUnits: TokenAmount.base)
+    /// Paj takes its fee out of the rate estimate, so without Paj's quote the estimate must clear the minimum by half.
+    static let unquotedMargin = 1.5
 
     private(set) var step = Step.amount
     private(set) var nairaText = "5000"
@@ -30,6 +34,8 @@ final class BankDepositFlow {
     private(set) var codeSent = false
     private(set) var errorMessage: String?
     private(set) var notice: String?
+    /// The least the deposit address passes on to the vault. Nil when the money goes to a test wallet, which takes anything.
+    private(set) var minimum: TokenAmount?
     var contact = ""
     var code = ""
 
@@ -38,6 +44,7 @@ final class BankDepositFlow {
     private let sessions: PajSessionStore?
     private let destinationFor: @Sendable () async throws -> BankDepositDestination
     private let deposits: (any DepositAPI)?
+    private let route: DepositSource?
     private var session: Paj.Session?
     var pollInterval: Duration = .seconds(4)
 
@@ -46,12 +53,15 @@ final class BankDepositFlow {
         signIn: any PajSignIn,
         sessions: PajSessionStore? = PajSessionStore(),
         deposits: (any DepositAPI)? = nil,
+        route: DepositSource? = nil,
         destination: @escaping @Sendable () async throws -> BankDepositDestination
     ) {
         self.paj = paj
         self.signIn = signIn
         self.sessions = sessions
         self.deposits = deposits
+        self.route = route
+        minimum = route.map { $0.minimum ?? Self.fallbackMinimum }
         destinationFor = destination
         session = sessions?.load()
         contact = sessions?.lastContact() ?? ""
@@ -67,12 +77,38 @@ final class BankDepositFlow {
         return Double(naira) / rate
     }
 
-    var canContinue: Bool { naira >= 100 && !isWorking }
+    var canContinue: Bool { naira >= 100 && clearsMinimum && !isWorking }
+
+    /// Less than the minimum never arrives: the deposit address hands it back instead of passing it to the vault.
+    var clearsMinimum: Bool {
+        guard let floor = minimumUSDC else { return true }
+        if let quote, quote.naira == naira { return quote.usdc >= floor }
+        guard let rate, rate > 0 else { return false }
+        return Double(naira) / rate >= floor * Self.unquotedMargin
+    }
+
+    /// The smallest amount sure to clear the minimum at today's rate, rounded up to the next ₦100.
+    var smallestNaira: Int? {
+        guard let floor = minimumUSDC, let rate, rate > 0 else { return nil }
+        return Int((floor * Self.unquotedMargin * rate / 100).rounded(.up)) * 100
+    }
+
+    var minimumNote: String? {
+        guard naira > 0, !clearsMinimum, let smallestNaira else { return nil }
+        return naira < smallestNaira
+            ? "The smallest amount is about \(NairaFormat.short(smallestNaira))."
+            : "This amount is too small to arrive after fees. Try a larger one."
+    }
+
+    private var minimumUSDC: Double? {
+        minimum.map { Double($0.baseUnits) / Double(TokenAmount.base) }
+    }
     var canSendCode: Bool { Self.isContact(contact) && !isWorking }
     var canVerify: Bool { code.count >= 4 && code.allSatisfy(\.isNumber) && !isWorking }
 
     func load() async {
         rate = try? await paj.publicRate()
+        await loadMinimum()
         await refreshQuote()
     }
 
@@ -156,8 +192,7 @@ final class BankDepositFlow {
                 order = fresh
                 switch fresh.status {
                 case .completed:
-                    await waitForVault()
-                    step = .done
+                    step = await reachesVault() ? .done : .notReceived
                     return
                 case .failed, .cancelled:
                     errorMessage = "Paj couldn't finish this deposit. If money left your bank, Paj refunds it."
@@ -176,18 +211,35 @@ final class BankDepositFlow {
         await working {
             let target = try await destinationFor()
             destination = target
-            order = try await paj.createOrder(naira: naira, recipient: target.address, session: session)
+            let placed = try await paj.createOrder(naira: naira, recipient: target.address, session: session)
+            // Paj fixes the amount only now. Bank details for an order that cannot arrive are never shown.
+            guard placed.usdc >= minimumUSDC ?? 0 else {
+                quote = Paj.Quote(naira: placed.naira, usdc: placed.usdc, rate: placed.rate)
+                step = .amount
+                return
+            }
+            order = placed
             step = .pay
             notice = nil
         }
     }
 
-    private func waitForVault() async {
-        guard let deposits, let deposit = destination?.deposit else { return }
+    private func loadMinimum() async {
+        guard let route, let deposits, let sources = try? await deposits.sources() else { return }
+        minimum = sources.first { $0.id == route.id }?.minimum ?? minimum
+    }
+
+    /// False when the deposit address got the money and will not pass it on.
+    private func reachesVault() async -> Bool {
+        guard let deposits, let deposit = destination?.deposit else { return true }
         for _ in 0..<40 where !Task.isCancelled {
-            if let status = try? await deposits.status(of: deposit), status.stage.isFinal { return }
+            if let stage = try? await deposits.status(of: deposit).stage {
+                if stage.isNotComing { return false }
+                if stage.isFinal { return true }
+            }
             try? await Task.sleep(for: pollInterval)
         }
+        return true
     }
 
     private func working(_ body: () async throws -> Void) async {

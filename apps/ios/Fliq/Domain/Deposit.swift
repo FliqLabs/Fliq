@@ -68,6 +68,8 @@ struct DepositStatus: Equatable, Sendable {
         static func < (lhs: Stage, rhs: Stage) -> Bool { lhs.rawValue < rhs.rawValue }
 
         var isFinal: Bool { self == .landed || rawValue >= Stage.refunded.rawValue }
+        /// The money will not reach the vault as it stands: too little was sent, or it was handed back, timed out or failed.
+        var isNotComing: Bool { self == .underpaid || rawValue >= Stage.refunded.rawValue }
     }
 
     let stage: Stage
