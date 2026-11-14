@@ -5,7 +5,7 @@ import type { Db, Unit } from "./db.js";
 import { OUTSIDE_FLIQ } from "./people.js";
 import { DEFAULT_NOTIFICATIONS, type NotificationSettings } from "./settings.js";
 
-export type PushKind = "transfer_in" | "transfer_out" | "payout" | "deposit" | "refused";
+export type PushKind = "transfer_in" | "transfer_out" | "payout" | "deposit" | "refused" | "limit";
 
 export interface PushMessage {
   userId: string;
@@ -226,6 +226,19 @@ export function payoutMessage(
   return null;
 }
 
+// Sent whatever the user's notification settings say: it is the warning that makes the 24 hour wait worth having.
+export function limitChangeMessage(userId: string, changeId: string, toUnits: bigint | null): PushMessage {
+  const change = toUnits === null ? "your account will have no daily limit" : `your daily limit becomes ${dollars(toUnits)}`;
+  return {
+    userId,
+    kind: "limit",
+    refId: changeId,
+    title: toUnits === null ? "Your daily limit will be removed" : "Your daily limit will go up",
+    body: `In 24 hours ${change}. If this wasn't you, open fliq and cancel it in Settings.`,
+    setting: null,
+  };
+}
+
 export interface PushDeps {
   unit: Unit;
   send: PushSender | null;
@@ -269,7 +282,17 @@ async function pending(tx: Db, since: Date, dataKey: Buffer): Promise<Pending[]>
     take: BATCH,
   });
 
+  const limitChanges = await tx.limitChange.findMany({
+    where: { createdAt: { gt: since }, cancelledAt: null },
+    orderBy: { createdAt: "asc" },
+    take: BATCH,
+  });
+
   const all: Pending[] = [
+    ...limitChanges.map((row) => ({
+      messageId: row.id,
+      build: async () => limitChangeMessage(row.userId, row.id, row.toUnits),
+    })),
     ...transfers.flatMap((row) => {
       const outsideFliq = row.toUserId === OUTSIDE_FLIQ;
       const out = {

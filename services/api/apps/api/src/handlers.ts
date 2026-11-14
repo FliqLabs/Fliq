@@ -2,6 +2,7 @@ import type { FastifyRequest } from "fastify";
 import { checkName, claimName, type ClaimInput, type NearProvisioner } from "./accounts.js";
 import type { RelayerClient } from "../../../packages/chains/near/index.js";
 import { getRelay, relayDelegate } from "./relay.js";
+import { cancelPendingLimit, limitsOf, setDailyLimit } from "./limits.js";
 import { listActivity, listNotifications, parseFilter } from "./activity.js";
 import { connectAgent, listAgents, revokeAgent, updateAgentLimits, type AgentInput, type AgentLimits } from "./agents.js";
 import { publicReceipt } from "./receipts.js";
@@ -428,6 +429,12 @@ export function createHandlers({
       return { status: 204, body: undefined };
     },
     listPasskeys: async (request) => ({ status: 200, body: await unit((tx) => listPasskeys(tx, auth(request).userId)) }),
+    getLimits: async (request) => ({ status: 200, body: await unit((tx) => limitsOf(tx, auth(request).userId, now())) }),
+    updateLimits: async (request) => ({
+      status: 200,
+      body: await unit((tx) => setDailyLimit(tx, auth(request).userId, body<{ daily_limit?: unknown }>(request).daily_limit, now())),
+    }),
+    cancelPendingLimit: async (request) => ({ status: 200, body: await unit((tx) => cancelPendingLimit(tx, auth(request).userId, now())) }),
     getNotificationSettings: async (request) => ({ status: 200, body: await unit((tx) => notificationSettings(tx, auth(request).userId)) }),
     updateNotificationSettings: async (request) => ({
       status: 200,

@@ -756,6 +756,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/limits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The daily limit the user set on what may leave their account, and how much of it is used */
+        get: operations["getLimits"];
+        /**
+         * Set, lower, raise or remove the daily limit
+         * @description A first limit and a lower limit apply at once. A higher limit, or removing the limit (null), takes effect 24 hours later and the user is told by push, so that someone holding an unlocked phone cannot lift the limit and empty the account in one sitting. Sending the current limit cancels a raise that is waiting.
+         */
+        put: operations["updateLimits"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/limits/pending": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Cancel a raise of the daily limit that has not taken effect yet */
+        delete: operations["cancelPendingLimit"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me/setup": {
         parameters: {
             query?: never;
@@ -2049,6 +2087,21 @@ export interface components {
                 above: number | null;
             };
             weekly_summary: boolean;
+        };
+        Limits: {
+            /** @description The most that may leave the account in any 24 hours, in dollars: cash-outs, payments to fliq users and sends to outside wallets. Null means the user has set no limit. */
+            daily_limit: string | null;
+            /** @description What has left the account in the last 24 hours, in dollars */
+            spent_today: string;
+            /** @description What may still leave before the limit is reached; null when there is no limit */
+            remaining: string | null;
+            /** @description A raise the user asked for that has not taken effect yet */
+            pending: {
+                /** @description The limit that will apply; null means the limit is being removed */
+                daily_limit: string | null;
+                /** Format: date-time */
+                effective_at: string;
+            } | null;
         };
         SetupStep: {
             /** @enum {string} */
@@ -3805,6 +3858,74 @@ export interface operations {
                 };
             };
             400: components["responses"]["Error"];
+        };
+    };
+    getLimits: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The limit, what has been spent in the last 24 hours, and any raise that is waiting */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Limits"];
+                };
+            };
+        };
+    };
+    updateLimits: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Dollars, with up to two decimals, or null for no limit */
+                    daily_limit: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description The limits as they now stand */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Limits"];
+                };
+            };
+            400: components["responses"]["Error"];
+        };
+    };
+    cancelPendingLimit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The limits as they now stand, with nothing waiting */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Limits"];
+                };
+            };
         };
     };
     getSetup: {

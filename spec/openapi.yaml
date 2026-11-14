@@ -1011,6 +1011,60 @@ paths:
                 $ref: "#/components/schemas/NotificationSettings"
         "400":
           $ref: "#/components/responses/Error"
+  /me/limits:
+    get:
+      operationId: getLimits
+      summary: The daily limit the user set on what may leave their account, and how much of it is used
+      tags: [accounts]
+      responses:
+        "200":
+          description: The limit, what has been spent in the last 24 hours, and any raise that is waiting
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Limits"
+    put:
+      operationId: updateLimits
+      summary: Set, lower, raise or remove the daily limit
+      description: >-
+        A first limit and a lower limit apply at once. A higher limit, or removing the limit (null), takes effect
+        24 hours later and the user is told by push, so that someone holding an unlocked phone cannot lift the limit
+        and empty the account in one sitting. Sending the current limit cancels a raise that is waiting.
+      tags: [accounts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [daily_limit]
+              properties:
+                daily_limit:
+                  type: [string, "null"]
+                  description: Dollars, with up to two decimals, or null for no limit
+                  examples: ["500.00"]
+      responses:
+        "200":
+          description: The limits as they now stand
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Limits"
+        "400":
+          $ref: "#/components/responses/Error"
+  /me/limits/pending:
+    delete:
+      operationId: cancelPendingLimit
+      summary: Cancel a raise of the daily limit that has not taken effect yet
+      tags: [accounts]
+      responses:
+        "200":
+          description: The limits as they now stand, with nothing waiting
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Limits"
   /me/setup:
     get:
       operationId: getSetup
@@ -3258,6 +3312,34 @@ components:
               description: Alert when $1 pays more than this
         weekly_summary:
           type: boolean
+    Limits:
+      type: object
+      additionalProperties: false
+      required: [daily_limit, spent_today, remaining, pending]
+      properties:
+        daily_limit:
+          type: [string, "null"]
+          description: >-
+            The most that may leave the account in any 24 hours, in dollars: cash-outs, payments to fliq users and
+            sends to outside wallets. Null means the user has set no limit.
+        spent_today:
+          type: string
+          description: What has left the account in the last 24 hours, in dollars
+        remaining:
+          type: [string, "null"]
+          description: What may still leave before the limit is reached; null when there is no limit
+        pending:
+          type: [object, "null"]
+          description: A raise the user asked for that has not taken effect yet
+          additionalProperties: false
+          required: [daily_limit, effective_at]
+          properties:
+            daily_limit:
+              type: [string, "null"]
+              description: The limit that will apply; null means the limit is being removed
+            effective_at:
+              type: string
+              format: date-time
     SetupStep:
       type: object
       required: [step, done]

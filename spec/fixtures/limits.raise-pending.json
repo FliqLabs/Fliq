@@ -1,0 +1,9 @@
+{
+  "daily_limit": "500.00",
+  "spent_today": "120.00",
+  "remaining": "380.00",
+  "pending": {
+    "daily_limit": "2000.00",
+    "effective_at": "2026-11-15T10:00:00.000Z"
+  }
+}

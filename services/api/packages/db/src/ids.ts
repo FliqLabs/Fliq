@@ -4,6 +4,8 @@ const CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 
 export type IdPrefix =
   | "usr"
+  | "lim"
+  | "hold"
   | "pk"
   | "chl"
   | "ses"
