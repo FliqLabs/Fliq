@@ -1,7 +1,7 @@
 import { actions } from "near-api-js";
 import { describe, expect, it } from "vitest";
 import { checkPolicy, DelegateError, PolicyError, verifySignedDelegate, type RelayPolicy } from "./index";
-import { newUser, PAYOUT_ARGS, signDelegate, TGAS, USDC, VAULT } from "./near.fixtures";
+import { newUser, PAYOUT_ARGS, signDelegate, signKeyChange, TGAS, USDC, VAULT } from "./near.fixtures";
 
 const policy: RelayPolicy = { vaultContractId: VAULT, usdcContractId: USDC };
 const ada = newUser("ada.fliq.testnet");
@@ -68,6 +68,48 @@ describe("verifySignedDelegate", () => {
     expect(() => verifySignedDelegate(base64)).toThrow(
       expect.objectContaining({ code: "unsupported_action" }),
     );
+  });
+});
+
+describe("a key change", () => {
+  const other = newUser("other.fliq.testnet").publicKey;
+
+  it("is read as adding a full-access key, with no calls", async () => {
+    const delegate = verifySignedDelegate((await signKeyChange(ada, { add: other })).base64);
+    expect(delegate.keyChange).toEqual({ kind: "add_full_access", publicKey: other });
+    expect(delegate.calls).toEqual([]);
+    expect(delegate.receiverId).toBe(ada.accountId);
+  });
+
+  it("is read as removing a key", async () => {
+    const delegate = verifySignedDelegate((await signKeyChange(ada, { remove: other })).base64);
+    expect(delegate.keyChange).toEqual({ kind: "delete", publicKey: other });
+  });
+
+  it("is allowed on the signer's own account", async () => {
+    for (const change of [{ add: other }, { remove: other }]) {
+      const delegate = verifySignedDelegate((await signKeyChange(ada, change)).base64);
+      expect(() => checkPolicy(policy, delegate)).not.toThrow();
+    }
+  });
+
+  it("is refused on any other account, the vault included", async () => {
+    for (const receiverId of ["tobi.fliq.testnet", VAULT, USDC]) {
+      const delegate = verifySignedDelegate((await signKeyChange(ada, { add: other, receiverId })).base64);
+      expect(() => checkPolicy(policy, delegate)).toThrow(PolicyError);
+    }
+  });
+
+  it("cannot add or remove the key that signed it", async () => {
+    for (const change of [{ add: ada.publicKey }, { remove: ada.publicKey }]) {
+      const delegate = verifySignedDelegate((await signKeyChange(ada, change)).base64);
+      expect(() => checkPolicy(policy, delegate)).toThrow(PolicyError);
+    }
+  });
+
+  it("cannot add a function-call key", async () => {
+    const { base64 } = await signKeyChange(ada, { add: other, functionCallOnly: true });
+    expect(() => verifySignedDelegate(base64)).toThrow(expect.objectContaining({ code: "unsupported_action" }));
   });
 });
 
