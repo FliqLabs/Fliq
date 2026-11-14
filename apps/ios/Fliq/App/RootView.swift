@@ -21,6 +21,8 @@ struct RootView: View {
     @State private var tab = RootTab.home
     @State private var sheet: HomeSheet?
     @State private var activityPath: [AppRoute] = []
+    /// Set when this iPhone is signed in but its key is not on the account yet.
+    @State private var restoring: RecoveryState?
 
     var body: some View {
         @Bindable var router = environment.router
@@ -62,6 +64,17 @@ struct RootView: View {
         }
         .animation(.spring(response: 0.45, dampingFraction: 0.8), value: environment.arrival)
         .sensoryFeedback(.success, trigger: environment.arrival) { _, now in now != nil }
+        .sheet(item: $restoring) { state in
+            RestoreSheet(state: state) { restoring = nil }
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
+                .presentationCornerRadius(32)
+                .presentationBackground(Color(hex: 0x161616))
+        }
+        .task {
+            let state = await environment.recovery.state()
+            if state == .canRestore || state == .cannotSign { restoring = state }
+        }
         .sheet(item: $sheet) { sheet in
             content(of: sheet)
                 .presentationDragIndicator(.visible)
@@ -222,6 +235,7 @@ struct RootView: View {
         case .settingsAccounts: AccountsView(onAdd: { startPayment() })
         case .settingsSecurity: SecurityView()
         case .settingsNotifications: NotificationsView()
+        case .settingsBackup: BackupView()
         case .settingsDailyLimit: DailyLimitView(environment: environment)
         case .agentConnect: AgentConnectView(store: environment.agents)
         }
@@ -249,7 +263,7 @@ struct RootView: View {
             if let payout = flow.payout {
                 RefundedView(payout: payout, quote: flow.quote, onTryAgain: { startPayment(to: flow.verified) })
             }
-        case .payPerson, .withdraw, .withdrawTo, .withdrawReview, .bankDeposit, .receipt, .agents, .agentConnect, .settings, .settingsAccounts, .settingsSecurity, .settingsNotifications, .settingsDailyLimit: EmptyView()
+        case .payPerson, .withdraw, .withdrawTo, .withdrawReview, .bankDeposit, .receipt, .agents, .agentConnect, .settings, .settingsAccounts, .settingsSecurity, .settingsNotifications, .settingsDailyLimit, .settingsBackup: EmptyView()
         }
     }
 

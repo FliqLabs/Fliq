@@ -2,7 +2,7 @@ import CryptoKit
 import Foundation
 
 /// A NEP-366 delegate action: one call the user signs on the phone, which the relayer submits and pays gas for.
-struct DelegateAction: Equatable, Sendable {
+struct DelegateAction: SignableDelegate, Equatable {
     struct FunctionCall: Equatable, Sendable {
         let methodName: String
         let args: Data
@@ -18,10 +18,8 @@ struct DelegateAction: Equatable, Sendable {
     /// The raw 32 byte ed25519 public key.
     let publicKey: Data
 
-    /// NEP-461 puts this before the action, so a signed delegate can never be replayed as a transaction.
-    private static let signingPrefix = UInt32(1 << 30) + 366
     private static let functionCallAction: UInt8 = 2
-    private static let ed25519: UInt8 = 0
+    private static let ed25519 = NEARDelegateFormat.ed25519
 
     var borsh: Data {
         var writer = BorshWriter()
@@ -40,10 +38,19 @@ struct DelegateAction: Equatable, Sendable {
         return writer.data
     }
 
-    /// What the device key signs: sha256 of the prefix and the action.
+}
+
+/// Anything the phone signs as a NEP-366 delegate and hands to `POST /relays`.
+protocol SignableDelegate: Sendable {
+    /// The Borsh `DelegateAction`.
+    var borsh: Data { get }
+}
+
+extension SignableDelegate {
+    /// What the key signs: sha256 of the NEP-461 prefix and the action.
     var signingHash: Data {
         var writer = BorshWriter()
-        writer.u32(Self.signingPrefix)
+        writer.u32(NEARDelegateFormat.signingPrefix)
         writer.raw(borsh)
         return Data(SHA256.hash(data: writer.data))
     }
@@ -52,9 +59,59 @@ struct DelegateAction: Equatable, Sendable {
     func signed(with signature: Data) -> String {
         var writer = BorshWriter()
         writer.raw(borsh)
-        writer.u8(Self.ed25519)
+        writer.u8(NEARDelegateFormat.ed25519)
         writer.raw(signature)
         return writer.data.base64EncodedString()
+    }
+}
+
+enum NEARDelegateFormat {
+    /// NEP-461 puts this before the action, so a signed delegate can never be replayed as a transaction.
+    static let signingPrefix = UInt32(1 << 30) + 366
+    static let ed25519: UInt8 = 0
+}
+
+/// Adds a full-access key to the signer's own account, or removes one. It is how a recovery key or a second iPhone
+/// gets onto the account: the relayer accepts it only when the account being changed is the one that signed.
+struct KeyDelegate: SignableDelegate, Equatable {
+    enum Change: Equatable, Sendable {
+        case add(Data)
+        case remove(Data)
+    }
+
+    let account: String
+    let change: Change
+    let nonce: UInt64
+    let maxBlockHeight: UInt64
+    /// The raw 32 byte ed25519 public key that signs.
+    let publicKey: Data
+
+    private static let addKeyAction: UInt8 = 5
+    private static let deleteKeyAction: UInt8 = 6
+    private static let fullAccess: UInt8 = 1
+
+    var borsh: Data {
+        var writer = BorshWriter()
+        writer.string(account)
+        writer.string(account)
+        writer.u32(1)
+        switch change {
+        case .add(let key):
+            writer.u8(Self.addKeyAction)
+            writer.u8(NEARDelegateFormat.ed25519)
+            writer.raw(key)
+            writer.u64(0)
+            writer.u8(Self.fullAccess)
+        case .remove(let key):
+            writer.u8(Self.deleteKeyAction)
+            writer.u8(NEARDelegateFormat.ed25519)
+            writer.raw(key)
+        }
+        writer.u64(nonce)
+        writer.u64(maxBlockHeight)
+        writer.u8(NEARDelegateFormat.ed25519)
+        writer.raw(publicKey)
+        return writer.data
     }
 }
 

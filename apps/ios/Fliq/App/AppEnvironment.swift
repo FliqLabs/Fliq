@@ -19,6 +19,7 @@ final class AppEnvironment {
     private(set) var arrival: TokenAmount?
     @ObservationIgnored private var arrivalWatch: Task<Void, Never>?
     let deposits: any DepositAPI
+    let recovery: any AccountRecovering
     let limits: any LimitsAPI
     let agents: AgentStore
     let accounts: AccountBook
@@ -44,6 +45,7 @@ final class AppEnvironment {
         activity: ActivityStore = ActivityStore(),
         vault: VaultStore = VaultStore(),
         deposits: any DepositAPI = FixtureDepositAPI(),
+        recovery: any AccountRecovering = FixtureAccountRecovery(),
         limits: any LimitsAPI = FixtureLimitsAPI(),
         agentAPI: any AgentAPI = FixtureAgentAPI(),
         accounts: AccountBook = AccountBook(),
@@ -66,6 +68,7 @@ final class AppEnvironment {
         self.activity = activity
         self.vault = vault
         self.deposits = deposits
+        self.recovery = recovery
         self.limits = limits
         self.accounts = accounts
         self.transfers = transfers
@@ -118,7 +121,11 @@ final class AppEnvironment {
             vault: { try? await api.me().vault }
         )
         let environment = AppEnvironment(
-            api: api, isLive: true, profile: profile, deposits: HTTPDepositAPI(client: api), limits: HTTPLimitsAPI(client: api), agentAPI: agents,
+            api: api, isLive: true, profile: profile, deposits: HTTPDepositAPI(client: api),
+            recovery: AccountRecovery(
+                api: api, rpc: NEARRPC(url: rpc), device: keys, recovery: KeychainRecoveryKeys(), biometrics: DeviceBiometrics(),
+                account: { await profile.name }
+            ), limits: HTTPLimitsAPI(client: api), agentAPI: agents,
             transfers: transfers, withdrawals: withdrawals, photos: cloudinary(info: info),
             paj: HTTPPaj(), pajSignIn: pajSignIn(info: info, api: api),
             pajTestRecipient: (info["FliqPajTestRecipient"] as? String).flatMap { $0.isEmpty ? nil : $0 },
@@ -236,7 +243,8 @@ final class AppEnvironment {
         let accounts = AccountBook(keychain: nil)
         if arguments.contains("--sample-recipients") { seedRecipients(accounts) }
         return AppEnvironment(
-            api: FixtureClient(bundle: bundle), profile: profile, vault: VaultStore(balance: TokenAmount(baseUnits: arguments.contains("--funded") ? 100_000_000 : 0)), accounts: accounts,
+            api: FixtureClient(bundle: bundle), profile: profile, vault: VaultStore(balance: TokenAmount(baseUnits: arguments.contains("--funded") ? 100_000_000 : 0)),
+            recovery: FixtureAccountRecovery(arguments.contains("--new-iphone") ? .canRestore : .notBackedUp), accounts: accounts,
             preferences: Preferences(defaults: defaults), biometrics: AlwaysApprove(), lock: uiTestingLock(arguments, defaults: defaults)
         )
     }

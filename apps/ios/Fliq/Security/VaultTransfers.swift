@@ -70,6 +70,16 @@ struct DelegateRelay: Sendable {
         onSigned: @Sendable () async -> Void = {},
         _ build: @Sendable (_ nonce: UInt64, _ blockHeight: UInt64, _ publicKey: Data) -> DelegateAction
     ) async throws -> RelayResult {
+        try await submitDelegate(from: sender, reason: reason, onSigned: onSigned, build)
+    }
+
+    /// The same for any delegate, such as a key change, signed by whichever key `keys` holds.
+    func submitDelegate<Action: SignableDelegate>(
+        from sender: String,
+        reason: String,
+        onSigned: @Sendable () async -> Void = {},
+        _ build: @Sendable (_ nonce: UInt64, _ blockHeight: UInt64, _ publicKey: Data) -> Action
+    ) async throws -> RelayResult {
         let publicKey = try keys.publicKey()
         guard let rawKey = NEARKey.decode(publicKey) else { throw TransferError.notSetUp }
         async let nonce = rpc.accessKeyNonce(account: sender, publicKey: publicKey)
