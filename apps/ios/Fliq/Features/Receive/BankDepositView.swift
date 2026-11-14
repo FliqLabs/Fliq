@@ -460,16 +460,21 @@ private struct DoneStep: View {
     let onDone: () -> Void
     @State private var shown = false
 
+    static func caption(testWallet: Bool, stillMoving: Bool) -> String {
+        if testWallet { return "Sent to the team's test wallet" }
+        return stillMoving ? "Still on its way. It will show on Home when it lands." : "Added to your vault"
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             DepositCard {
-                Icon("checkmark", size: 22)
+                Icon(flow.isStillMoving ? "clock" : "checkmark", size: 22)
                     .foregroundStyle(.black)
                     .frame(width: 44, height: 44)
-                    .background(Theme.confirmed, in: Circle())
+                    .background(flow.isStillMoving ? Theme.textSecondary : Theme.confirmed, in: Circle())
                     .scaleEffect(shown ? 1 : 0.5)
                     .opacity(shown ? 1 : 0)
-                Text(flow.destination?.isTestWallet == true ? "Sent to the team's test wallet" : "Added to your vault")
+                Text(Self.caption(testWallet: flow.destination?.isTestWallet == true, stillMoving: flow.isStillMoving))
                     .font(.system(size: 15))
                     .foregroundStyle(Theme.textSecondary)
                     .padding(.top, 18)
