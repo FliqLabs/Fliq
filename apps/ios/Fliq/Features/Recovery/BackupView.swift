@@ -7,6 +7,7 @@ struct BackupView: View {
     @State private var loaded = false
     @State private var working = false
     @State private var message: String?
+    @State private var confirmingOff = false
 
     var body: some View {
         ScrollView {
@@ -57,6 +58,33 @@ struct BackupView: View {
         }
         .fliqScreen("Account backup")
         .task { await load() }
+        .toolbar {
+            if isOn {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Turn off") { confirmingOff = true }.foregroundStyle(Theme.textSecondary)
+                }
+            }
+        }
+        .confirmationDialog("Turn off account backup?", isPresented: $confirmingOff, titleVisibility: .visible) {
+            Button("Turn off backup", role: .destructive) { Task { await turnOff() } }
+        } message: {
+            Text("Only this iPhone will be able to move your money. If you lose it, nobody can reach your balance.")
+        }
+    }
+
+    private func turnOff() async {
+        guard let backupKey = await environment.recovery.keys()?.first(where: { $0.holder == .backup }) else { return }
+        working = true
+        defer { working = false }
+        do {
+            try await environment.recovery.remove(backupKey)
+            message = nil
+            state = .notBackedUp
+        } catch let error as KeychainError where error.status == errSecUserCanceled {
+            return
+        } catch {
+            message = "Backup is still on. Nothing changed. Try again."
+        }
     }
 
     private var isOn: Bool { state == .backedUp }

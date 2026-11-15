@@ -121,6 +121,30 @@ final class SettingsUITests: XCTestCase {
     }
 
     @MainActor
+    func testALostDeviceIsRemovedFromSecurity() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--onboarded", "--funded", "--lost-iphone"]
+        app.launch()
+
+        XCTAssertTrue(app.buttons["Profile"].waitForExistence(timeout: 5))
+        app.buttons["Profile"].tap()
+        let passkeys = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Passkeys")).firstMatch
+        XCTAssertTrue(passkeys.waitForExistence(timeout: 3))
+        passkeys.tap()
+        XCTAssertTrue(app.staticTexts["Another device"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["This iPhone"].exists)
+        snap("b5-devices")
+
+        app.buttons["Remove"].tap()
+        let confirm = app.buttons["Remove device"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 3))
+        snap("b6-remove-confirm")
+        confirm.tap()
+        XCTAssertTrue(app.staticTexts["Another device"].waitForNonExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["This iPhone"].exists)
+    }
+
+    @MainActor
     func testANewIPhoneIsAskedToJoinTheAccountAndCanSendAfter() {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--onboarded", "--funded", "--new-iphone"]

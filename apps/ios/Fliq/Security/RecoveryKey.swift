@@ -9,6 +9,8 @@ protocol RecoveryKeys: Sendable {
     func existing(for account: String) -> (any DeviceKeys)?
     /// The key for `account`, made and stored on first use.
     func key(for account: String) throws -> any DeviceKeys
+    /// Forgets the key for `account`, on this iPhone and in iCloud Keychain.
+    func delete(for account: String)
 }
 
 struct KeychainRecoveryKeys: RecoveryKeys {
@@ -29,6 +31,10 @@ struct KeychainRecoveryKeys: RecoveryKeys {
         let status = SecItemAdd(item as CFDictionary, nil)
         guard status == errSecSuccess else { throw KeychainError(status: status) }
         return RecoveryKey(key: key)
+    }
+
+    func delete(for account: String) {
+        SecItemDelete(query(account) as CFDictionary)
     }
 
     private func load(_ account: String) -> Curve25519.Signing.PrivateKey? {
@@ -66,6 +72,10 @@ final class MemoryRecoveryKeys: RecoveryKeys, @unchecked Sendable {
 
     func existing(for account: String) -> (any DeviceKeys)? {
         lock.withLock { keys[account] }.map(RecoveryKey.init)
+    }
+
+    func delete(for account: String) {
+        lock.withLock { keys[account] = nil }
     }
 
     func key(for account: String) throws -> any DeviceKeys {

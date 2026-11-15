@@ -61,6 +61,45 @@ struct NEARRPC: Sendable {
         }
     }
 
+    /// The public keys with full access to `account`: the ones that can move its money.
+    func fullAccessKeys(account: String) async throws -> [String] {
+        struct List: Decodable {
+            struct Entry: Decodable {
+                struct Access: Decodable {
+                    let isFull: Bool
+
+                    init(from decoder: Decoder) throws {
+                        let permission = try decoder.container(keyedBy: Keys.self).decode(Permission.self, forKey: .permission)
+                        isFull = permission.isFull
+                    }
+
+                    enum Keys: String, CodingKey { case permission }
+                }
+
+                /// "FullAccess" as text, or an object describing a function-call key.
+                struct Permission: Decodable {
+                    let isFull: Bool
+
+                    init(from decoder: Decoder) throws {
+                        isFull = (try? decoder.singleValueContainer().decode(String.self)) == "FullAccess"
+                    }
+                }
+
+                let publicKey: String
+                let accessKey: Access
+
+                enum CodingKeys: String, CodingKey {
+                    case publicKey = "public_key"
+                    case accessKey = "access_key"
+                }
+            }
+
+            let keys: [Entry]
+        }
+        let list: List = try await call("query", ["request_type": "view_access_key_list", "finality": "final", "account_id": account])
+        return list.keys.filter(\.accessKey.isFull).map(\.publicKey)
+    }
+
     func finalBlockHeight() async throws -> UInt64 {
         try await finalBlock().height
     }

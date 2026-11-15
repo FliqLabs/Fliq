@@ -116,6 +116,64 @@ final class AccountRecoveryTests: XCTestCase {
         XCTAssertTrue(RecoveryStub.requests.allSatisfy { $0.url?.path != "/v1/relays" })
     }
 
+    /// Answers the key list with `listed` full-access keys and one function-call key, and accepts every relay.
+    private func chain(listing listed: [String]) {
+        RecoveryStub.respond { request in
+            if request.url?.path == "/v1/relays" {
+                return (200, Data(#"{"status":"succeeded","tx_hash":"tx1","delegate_hash":"h1","sender_id":"a","receiver_id":"a","failures":[]}"#.utf8))
+            }
+            let body = (try? JSONSerialization.jsonObject(with: Data(reading: request.httpBodyStream!))) as? [String: Any]
+            if body?["method"] as? String == "block" { return (200, Data(#"{"result":{"header":{"height":1000}}}"#.utf8)) }
+            if (body?["params"] as? [String: String])?["request_type"] == "view_access_key_list" {
+                let full = listed.map { #"{"public_key":"\#($0)","access_key":{"nonce":1,"permission":"FullAccess"}}"# }
+                let agent = #"{"public_key":"ed25519:agent","access_key":{"nonce":1,"permission":{"FunctionCall":{"receiver_id":"v","method_names":["payout"],"allowance":null}}}}"#
+                return (200, Data(#"{"result":{"keys":[\#((full + [agent]).joined(separator: ","))]}}"#.utf8))
+            }
+            return (200, Data(#"{"result":{"nonce":41,"permission":"FullAccess"}}"#.utf8))
+        }
+    }
+
+    func testKeysListsWhatCanMoveMoneyWithThisIPhoneFirstAndLeavesAgentKeysOut() async throws {
+        let backups = MemoryRecoveryKeys()
+        let backup = try backups.key(for: account).publicKey()
+        let stranger = NEARKey.encode(Curve25519.Signing.PrivateKey().publicKey.rawRepresentation)
+        chain(listing: [stranger, backup, try device.publicKey()])
+
+        let keys = await makeRecovery(backups).keys()
+        XCTAssertEqual(keys?.map(\.holder), [.thisIPhone, .backup, .other])
+        XCTAssertEqual(keys?.last?.publicKey, stranger)
+    }
+
+    func testRemovingAnotherDeviceIsSignedByThisIPhone() async throws {
+        let stranger = Curve25519.Signing.PrivateKey().publicKey.rawRepresentation
+        chain(listing: [try device.publicKey(), NEARKey.encode(stranger)])
+        try await makeRecovery(MemoryRecoveryKeys()).remove(AccountKey(publicKey: NEARKey.encode(stranger), holder: .other))
+
+        let expected = KeyDelegate(
+            account: account, change: .remove(stranger), nonce: 42, maxBlockHeight: 1000 + DelegateAction.lifetimeBlocks,
+            publicKey: device.key.publicKey.rawRepresentation
+        )
+        let sent = try relayed()
+        XCTAssertEqual(sent.dropLast(65), expected.borsh)
+        XCTAssertTrue(device.key.publicKey.isValidSignature(sent.suffix(64), for: expected.signingHash))
+    }
+
+    func testTurningOffBackupForgetsTheKeyAndThisIPhoneCanNeverBeRemoved() async throws {
+        let backups = MemoryRecoveryKeys()
+        let backup = try backups.key(for: account).publicKey()
+        chain(listing: [try device.publicKey(), backup])
+        let recovery = makeRecovery(backups)
+
+        try await recovery.remove(AccountKey(publicKey: backup, holder: .backup))
+        XCTAssertNil(backups.existing(for: account))
+
+        RecoveryStub.reset()
+        await XCTAssertThrowsRecovery(.cannotRemoveThisIPhone) {
+            try await recovery.remove(AccountKey(publicKey: try self.device.publicKey(), holder: .thisIPhone))
+        }
+        XCTAssertTrue(RecoveryStub.requests.isEmpty)
+    }
+
     func testANewIPhoneWithNoBackupCannotSignAndAnUnreadableChainIsNeverGuessed() async throws {
         chain([])
         let stuck = await makeRecovery(MemoryRecoveryKeys()).state()
