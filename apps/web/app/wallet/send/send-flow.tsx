@@ -15,16 +15,25 @@ import { vaultPayout, vaultTransfer } from "../../lib/near-delegate";
 import { explorerTxUrl } from "../../lib/near-explorer";
 import {
   CURRENCIES,
-  cleanAmount,
+  compareDecimal,
   formatMoney,
   formatRate,
   formatUsd,
   fromMinorUnits,
+  isValidExchangeRate,
+  isValidPositiveDecimal,
+  parseAmountInput,
+  quoteAmountForInput,
+  subtractDecimal,
+  symbolOf,
   toTokenUnits,
+  usdToLocal,
+  usdToLocalFloor,
   type LocalCurrency,
+  type CurrencyCode,
 } from "../../lib/money";
 import { forgetNumber, rememberNumber, savedNumber } from "../../lib/saved-accounts";
-import { walletApi, type Person, type RankedQuote, type Recipient, type RelayResult } from "../../lib/wallet-api";
+import { walletApi, type Person, type RankedQuote, type RateBoard, type Recipient, type RelayResult } from "../../lib/wallet-api";
 import { keys, useInstitutions, useMe, usePasskeys, useRateBoard, useRecentPeople, useRecipients, useVault } from "../../lib/wallet-queries";
 import { bestRoute } from "../home";
 import { AddRecipientDrawer } from "../recipient-drawer";
@@ -34,6 +43,7 @@ type Target =
   | { kind: "fliq"; person: Person };
 
 type Step = "who" | "amount" | "review" | "done";
+type AmountAnchor = { currency: CurrencyCode; amount: string };
 
 const FLIQ_NAME = /^[a-z0-9][a-z0-9-]{1,30}(\.fliq\.near|\.near|\.testnet)?$/;
 
@@ -191,11 +201,12 @@ function WhoStep({ onPick }: { onPick: (target: Target) => void }) {
   );
 }
 
-function amountError(amount: string, available: number | null) {
-  const value = Number(amount);
-  if (!amount || !(value > 0)) return "Enter an amount.";
-  if (value < 1) return "The minimum is $1.00.";
-  if (available != null && value > available + 1e-9) return `You have ${formatUsd(available)}. Add money or send less.`;
+function amountError(amount: string | null, available: string | null, inputValid: boolean, rateUnavailable = false) {
+  if (!inputValid) return "Enter a valid amount.";
+  if (!amount || !isValidPositiveDecimal(amount)) return "Enter an amount.";
+  if (rateUnavailable) return "The exchange rate is unavailable. Try again in a moment.";
+  if (compareDecimal(amount, "1") < 0) return "The minimum is $1.00.";
+  if (available != null && (!isValidPositiveDecimal(available) || compareDecimal(amount, available) > 0)) return `You have ${formatUsd(available)}. Add money or send less.`;
   return null;
 }
 
@@ -204,14 +215,15 @@ function Summary({
   amount,
   quote,
   holdLeft,
+  board,
 }: {
   target: Target;
   amount: string;
+  board: RateBoard | undefined;
   quote: RankedQuote | null;
   holdLeft: number | null;
 }) {
-  const board = useRateBoard(target.kind === "bank" ? target.currency : "ngn", target.kind === "bank");
-  const usd = Number(amount) || 0;
+  const usd = amount;
   if (target.kind === "fliq") {
     return (
       <section className="card sum">
@@ -239,11 +251,12 @@ function Summary({
       </section>
     );
   }
-  const best = bestRoute(board.data);
+  const best = bestRoute(board);
   const currency = target.currency;
   const rate = quote?.rate ?? best?.rate ?? null;
-  const receive = quote ? quote.receive : rate ? Math.floor(usd * rate) : null;
-  const fee = quote ? fromMinorUnits(quote.fees.total) : best?.rate_before_fees && best.rate ? usd * (best.rate_before_fees - best.rate) : null;
+  const receive = quote ? quote.receive : rate ? usdToLocalFloor(usd, rate, currency) : null;
+  const feeRate = best?.rate_before_fees != null && best.rate != null ? subtractDecimal(best.rate_before_fees, best.rate) : null;
+  const fee = quote ? fromMinorUnits(quote.fees.total) : feeRate ? usdToLocalFloor(usd, feeRate, currency) : null;
   const provider = quote?.provider ?? best?.provider ?? null;
   const info = provider ? PROVIDERS[provider] : null;
   const onTime = quote?.routes.find((route) => route.routed)?.on_time_percent ?? best?.on_time_percent;
@@ -273,7 +286,7 @@ function Summary({
         <div>
           <dt>Route</dt>
           <dd>
-            <span style={{ color: "var(--accent)" }}>Best of {quote?.best_of ?? board.data?.providers.length ?? 4}</span>
+            <span style={{ color: "var(--accent)" }}>Best of {quote?.best_of ?? board?.providers.length ?? 4}</span>
             {quote?.saving_vs_next ? (
               <span style={{ color: "var(--good)", fontSize: 12 }}> +{formatMoney(quote.saving_vs_next, currency)}</span>
             ) : null}
@@ -351,6 +364,9 @@ export function SendFlow() {
   const [target, setTarget] = useState<Target | null>(null);
   const [step, setStep] = useState<Step>("who");
   const [amount, setAmount] = useState("50");
+  const [amountValid, setAmountValid] = useState(true);
+  const [inputCurrency, setInputCurrency] = useState<CurrencyCode>("USD");
+  const [amountAnchor, setAmountAnchor] = useState<AmountAnchor>({ currency: "USD", amount: "50" });
   const [number, setNumber] = useState("");
   const [quotedAt, setQuotedAt] = useState(0);
   const [now, setNow] = useState(() => Date.now());
@@ -361,23 +377,11 @@ export function SendFlow() {
 
   const toId = params.get("to");
   const personId = params.get("person");
-  useEffect(() => {
-    if (prefilled.current) return;
-    if (toId && recipients.data) {
-      const recipient = recipients.data.items.find((item) => item.recipient_id === toId);
-      if (recipient) {
-        prefilled.current = true;
-        pick({ kind: "bank", recipient, ...currencyOf(recipient) });
-      }
-    }
-    if (personId && people.data) {
-      const person = people.data.items.find((item) => item.near_account === personId);
-      if (person) {
-        prefilled.current = true;
-        pick({ kind: "fliq", person });
-      }
-    }
-  });
+  const rateBoard = useRateBoard(target?.kind === "bank" ? target.currency : "ngn", target?.kind === "bank");
+  const best = bestRoute(rateBoard.data);
+  const rate = best && isValidExchangeRate(best.rate) ? best.rate : null;
+  const usdAmount = quoteAmountForInput(amount, inputCurrency, rate);
+  const amountRateUnavailable = target?.kind === "bank" && inputCurrency !== "USD" && !rate;
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
@@ -387,26 +391,75 @@ export function SendFlow() {
   const quote = useMutation({
     mutationFn: () => {
       if (target?.kind !== "bank") throw new Error("Only bank payouts are quoted.");
-      return walletApi.quote({ currency: target.currency, amount, payout_type: target.payoutType });
+      if (!usdAmount) throw new Error("The exchange rate is unavailable. Try again in a moment.");
+      return walletApi.quote({ currency: target.currency, amount: usdAmount, payout_type: target.payoutType });
     },
     onSuccess: () => {
-      setQuotedAt(Date.now());
+      setQuotedAt(now);
       idempotency.current = crypto.randomUUID();
     },
   });
 
-  const available = vault.data ? Number(vault.data.available) : null;
-  const error = amountError(amount, available);
+  const available = vault.data?.available ?? null;
+  const error = amountError(usdAmount ?? (amountValid && inputCurrency !== "USD" ? amount : null), available, amountValid, Boolean(amountRateUnavailable));
   const accountNumber = target?.kind === "bank" ? (savedNumber(target.recipient.recipient_id) ?? number) : "";
   const numberOk = target?.kind !== "bank" || (accountNumber.length >= 6 && accountNumber.endsWith(target.recipient.account_last4));
   const holdLeft = quote.data ? Math.max(0, quote.data.expires_in - Math.floor((now - quotedAt) / 1000)) : null;
   const expired = holdLeft === 0;
 
   function pick(next: Target) {
+    const preservedUsd = inputCurrency === "USD" ? amount : amountAnchor.currency === "USD" ? amountAnchor.amount : usdAmount;
     setTarget(next);
+    setInputCurrency("USD");
+    setAmount(preservedUsd ?? "50");
+    setAmountValid(true);
+    setAmountAnchor({ currency: "USD", amount: preservedUsd ?? "50" });
     setNumber("");
     quote.reset();
     setStep("amount");
+  }
+
+  useEffect(() => {
+    if (prefilled.current) return;
+    let active = true;
+    if (toId && recipients.data) {
+      const recipient = recipients.data.items.find((item) => item.recipient_id === toId);
+      if (recipient) {
+        prefilled.current = true;
+        const next = { kind: "bank" as const, recipient, ...currencyOf(recipient) };
+        queueMicrotask(() => active && pick(next));
+        return () => {
+          active = false;
+        };
+      }
+    }
+    if (personId && people.data) {
+      const person = people.data.items.find((item) => item.near_account === personId);
+      if (person) {
+        prefilled.current = true;
+        const next = { kind: "fliq" as const, person };
+        queueMicrotask(() => active && pick(next));
+      }
+    }
+    return () => {
+      active = false;
+    };
+  });
+
+  function switchCurrency() {
+    if (target?.kind !== "bank" || !rate || !amountValid) return;
+    const nextCurrency = inputCurrency === "USD" ? target.currency : "USD";
+    const nextAmount =
+      nextCurrency === amountAnchor.currency
+        ? amountAnchor.amount
+        : inputCurrency === "USD"
+          ? usdToLocal(amount, rate, target.currency)
+          : usdAmount;
+    if (nextAmount == null) return;
+    setInputCurrency(nextCurrency);
+    setAmount(nextAmount);
+    setAmountValid(true);
+    quote.reset();
   }
 
   const pay = useMutation({
@@ -480,32 +533,56 @@ export function SendFlow() {
             </button>
           </div>
           <label className="amtbox" htmlFor="amt">
-            <span className="cs">$</span>
+            <span className="cs">{symbolOf(inputCurrency)}</span>
             <input
               id="amt"
               inputMode="decimal"
               autoComplete="off"
-              aria-label="Amount in US dollars"
+              aria-label={`Amount in ${inputCurrency}`}
               value={amount}
-              onChange={(event) => setAmount(cleanAmount(event.target.value))}
+              onChange={(event) => {
+                const parsed = parseAmountInput(event.target.value);
+                setAmount(parsed.value);
+                setAmountValid(parsed.valid);
+                if (parsed.valid) setAmountAnchor({ currency: inputCurrency, amount: parsed.value });
+                quote.reset();
+              }}
               autoFocus
             />
           </label>
+          {target.kind === "bank" && (
+            <div style={{ padding: "0 24px 14px" }}>
+              <button
+                type="button"
+                className="hint"
+                style={{ textDecoration: "underline", textUnderlineOffset: 3 }}
+                onClick={switchCurrency}
+                disabled={!rate || !amountValid}
+                aria-label="Switch amount currency"
+              >
+                {rate && amountValid
+                  ? inputCurrency === "USD"
+                    ? `≈ ${formatMoney(usdToLocal(amount, rate, target.currency) ?? "—", target.currency)}`
+                    : `≈ ${formatUsd(usdAmount ?? "—")}`
+                  : "Equivalent unavailable until a live rate is available"}
+              </button>
+            </div>
+          )}
           <div style={{ padding: "0 24px 14px" }}>
             {error ? <span className="err">{error}</span> : <span className="hint">From your vault · {available == null ? "···" : formatUsd(available)} available</span>}
           </div>
-          <div className="quick">
+          {inputCurrency === "USD" && <div className="quick">
             {[20, 50, 100].map((value) => (
-              <button type="button" key={value} onClick={() => setAmount(String(value))}>
+              <button type="button" key={value} onClick={() => { setAmount(String(value)); setAmountValid(true); setAmountAnchor({ currency: "USD", amount: String(value) }); quote.reset(); }}>
                 ${value}
               </button>
             ))}
-            {available != null && available > 0 && (
-              <button type="button" onClick={() => setAmount(available.toFixed(2))}>
+            {available != null && isValidPositiveDecimal(available) && (
+              <button type="button" onClick={() => { setAmount(available); setAmountValid(true); setAmountAnchor({ currency: "USD", amount: available }); quote.reset(); }}>
                 All · {formatUsd(available)}
               </button>
             )}
-          </div>
+          </div>}
           {target.kind === "bank" && !savedNumber(target.recipient.recipient_id) && (
             <AccountNumberCheck recipient={target.recipient} value={number} onChange={setNumber} />
           )}
@@ -552,7 +629,7 @@ export function SendFlow() {
           <div>
             <b>Comparing every provider</b>
             <div className="muted" style={{ fontSize: 13 }}>
-              After every fee, for {formatUsd(amount)}
+              After every fee, for {formatUsd(usdAmount ?? "0")}
             </div>
           </div>
         </section>
@@ -568,7 +645,7 @@ export function SendFlow() {
         <>
           <section className="card">
             <div className="card-h" style={{ paddingBottom: 4 }}>
-              <h2>Routes for {formatUsd(amount)}</h2>
+              <h2>Routes for {formatUsd(usdAmount ?? "0")}</h2>
               <span className="muted" style={{ fontSize: 12.5 }}>
                 Sorted by what lands after every fee
               </span>
@@ -649,7 +726,7 @@ export function SendFlow() {
             <Icon name="check" size={32} />
           </div>
           <div className="big">
-            <BigMoney value={amount} currency="USD" />
+            <BigMoney value={usdAmount ?? "0"} currency="USD" />
           </div>
           <div>
             <b>landed in {targetName(target)}&apos;s fliq vault</b>
@@ -683,7 +760,7 @@ export function SendFlow() {
         <div className="cols">
           <div className="stack">{body}</div>
           <aside>
-            <Summary target={target} amount={amount} quote={target.kind === "bank" && step === "review" ? (quote.data ?? null) : null} holdLeft={holdLeft} />
+            <Summary target={target} amount={usdAmount ?? "0"} board={rateBoard.data} quote={target.kind === "bank" && step === "review" ? (quote.data ?? null) : null} holdLeft={holdLeft} />
           </aside>
         </div>
       ) : (
@@ -697,7 +774,7 @@ export function SendFlow() {
             </div>
             <h2>{pay.isPending ? "Approving" : passkeys.data?.items.length ? "Approve with your passkey" : "Approve this payment"}</h2>
             <p>
-              Send <b style={{ color: "var(--fg)" }}>{formatUsd(amount)}</b> so <b style={{ color: "var(--fg)" }}>{targetName(target)}</b> gets{" "}
+              Send <b style={{ color: "var(--fg)" }}>{formatUsd(usdAmount ?? "0")}</b> so <b style={{ color: "var(--fg)" }}>{targetName(target)}</b> gets{" "}
               <b style={{ color: "var(--fg)" }}>
                 {target.kind === "bank" && quote.data ? formatMoney(quote.data.receive, target.currency) : formatUsd(amount)}
               </b>
