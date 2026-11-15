@@ -77,6 +77,23 @@ enum Money {
         Int((Double(amount.baseUnits) * rate / Double(TokenAmount.base)).rounded(.down))
     }
 
+    /// The dollars it takes for `local` to land at `rate`, rounded up to the cent so the estimate is never short.
+    static func cost(ofLocal local: Double, at rate: Double) -> TokenAmount? {
+        guard rate > 0, local >= 0 else { return nil }
+        let cents = (local / rate * 100 - 1e-6).rounded(.up)
+        guard cents < 1e15 else { return nil }
+        return TokenAmount(baseUnits: Int64(max(cents, 0)) * (TokenAmount.base / 100))
+    }
+
+    /// A typed amount with thousands separators, keeping whatever decimals are typed so far: "7500." -> "7,500.".
+    static func typed(_ text: String) -> String {
+        guard !text.isEmpty else { return "0" }
+        let parts = text.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
+        guard let whole = Int(parts[0]) else { return text }
+        let grouped = whole.formatted(.number.locale(locale))
+        return parts.count == 2 ? grouped + "." + parts[1] : grouped
+    }
+
     /// How much more the routed provider pays than the next live one, in whole local units.
     static func routeAdvantage(_ quote: Quote) -> Int? {
         let live = quote.routes.filter { $0.status == .live }.compactMap(\.rate).sorted(by: >)

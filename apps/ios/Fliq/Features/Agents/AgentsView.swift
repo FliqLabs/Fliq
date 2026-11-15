@@ -212,6 +212,7 @@ struct CompactButtonStyle: ButtonStyle {
             .font(.system(size: 15, weight: .medium))
             .frame(maxWidth: .infinity, minHeight: 46)
             .foregroundStyle(prominent ? Theme.textPrimary : Color(hex: 0xE5E5E5))
+            .contentShape(RoundedRectangle(cornerRadius: 14))
             .fliqGlass(RoundedRectangle(cornerRadius: 14), interactive: true)
             .overlay(
                 RoundedRectangle(cornerRadius: 14)

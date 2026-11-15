@@ -193,6 +193,8 @@ describe("dispatch", () => {
         ],
       },
       vaultDeposit: { findMany: async () => [] },
+      limitChange: { findMany: async () => [] },
+      keyChange: { findMany: async () => [] },
       payoutEvent: { findMany: async () => [{ id: "pev_1", payoutId: "po_1", toState: "settled" }] },
       payout: {
         findUnique: async () => ({

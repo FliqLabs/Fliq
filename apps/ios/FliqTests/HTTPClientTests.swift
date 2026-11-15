@@ -468,6 +468,106 @@ final class HTTPClientTests: XCTestCase {
         XCTAssertEqual(limits.currencies, ["KES"])
     }
 
+    func testAReadIsAskedAgainWhenTheServerIsBusy() async throws {
+        let client = makeClient()
+        StubProtocol.respond { _ in
+            StubProtocol.requests.count < 3 ? (503, Data()) : (200, try fixtures.data("vault.balance"))
+        }
+
+        let balance = try await client.vaultBalance()
+
+        XCTAssertEqual(balance.available.decimalString, "128.18")
+        XCTAssertEqual(StubProtocol.requests.map(\.url?.path), ["/v1/vault", "/v1/vault", "/v1/vault"])
+    }
+
+    func testAReadIsAskedAgainWhenTheConnectionDrops() async throws {
+        let client = makeClient()
+        StubProtocol.respond { _ in
+            if StubProtocol.requests.count < 2 { throw URLError(.networkConnectionLost) }
+            return (200, try fixtures.data("vault.balance"))
+        }
+
+        _ = try await client.vaultBalance()
+
+        XCTAssertEqual(StubProtocol.requests.count, 2)
+    }
+
+    func testAReadGivesUpAfterThreeTries() async {
+        let client = makeClient()
+        StubProtocol.respond { _ in (502, Data()) }
+
+        do {
+            _ = try await client.vaultBalance()
+            XCTFail("A busy server should come through as an error")
+        } catch {
+            XCTAssertEqual(error as? APIError, .unexpected(status: 502))
+        }
+        XCTAssertEqual(StubProtocol.requests.count, 3)
+    }
+
+    func testAReadTheServerRefusesIsNotAskedAgain() async {
+        let client = makeClient()
+        StubProtocol.respond { _ in (404, Data()) }
+
+        _ = try? await client.vaultBalance()
+
+        XCTAssertEqual(StubProtocol.requests.count, 1)
+    }
+
+    func testAWriteIsNeverAskedAgain() async throws {
+        let client = makeClient()
+        StubProtocol.respond { request in
+            if request.url?.path == "/v1/payouts" { throw URLError(.timedOut) }
+            return (503, Data())
+        }
+        let payout = PayoutRequest(quoteId: "qt_test", account: Account(bank: "058", number: "0123456789"))
+
+        _ = try? await client.createPayout(payout, idempotencyKey: "key-1")
+        _ = try? await client.relay(signedDelegate: "c2lnbmVk")
+
+        XCTAssertEqual(StubProtocol.requests.map(\.url?.path), ["/v1/payouts", "/v1/relays"])
+    }
+
+    func testAnAddressNEARIntentsTurnsDownIsReservedAgainWithTheSameKey() async throws {
+        let api = HTTPDepositAPI(client: makeClient())
+        StubProtocol.respond { _ in
+            if StubProtocol.requests.count < 2 {
+                return (400, Data(#"{"error":{"code":"invalid_request","message":"NEAR Intents will not take this amount from solana."}}"#.utf8))
+            }
+            return (201, try fixtures.data("deposit.waiting"))
+        }
+
+        let address = try await api.reserve(DepositSource(tokenId: "usdc", chainId: "solana", group: .dollars), vault: "ada.fliq.near")
+
+        XCTAssertNotNil(address.depositId)
+        XCTAssertEqual(StubProtocol.requests.map(\.url?.path), ["/v1/deposits", "/v1/deposits"])
+        XCTAssertEqual(Set(StubProtocol.requests.map { $0.value(forHTTPHeaderField: "Idempotency-Key") }).count, 1)
+    }
+
+    func testAnAddressTheAPIRefusesOutrightIsNotReservedAgain() async {
+        let api = HTTPDepositAPI(client: makeClient())
+        StubProtocol.respond { _ in
+            (400, Data(#"{"error":{"code":"invalid_request","message":"The minimum from solana is 1 USDC."}}"#.utf8))
+        }
+
+        do {
+            _ = try await api.reserve(DepositSource(tokenId: "usdc", chainId: "solana", group: .dollars), vault: "ada.fliq.near")
+            XCTFail("The refusal should come through")
+        } catch {
+            XCTAssertEqual(error as? DepositUnavailable, DepositUnavailable(message: "The minimum from solana is 1 USDC."))
+        }
+        XCTAssertEqual(StubProtocol.requests.count, 1)
+    }
+
+    func testReservingGivesUpAfterThreeTries() async {
+        let api = HTTPDepositAPI(client: makeClient())
+        StubProtocol.respond { _ in throw URLError(.timedOut) }
+
+        _ = try? await api.reserve(DepositSource(tokenId: "usdc", chainId: "solana", group: .dollars), vault: "ada.fliq.near")
+
+        XCTAssertEqual(StubProtocol.requests.count, 3)
+    }
+
     private func makeAgentAPI(_ client: HTTPClient) -> HTTPAgentAPI {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [StubProtocol.self]
@@ -486,7 +586,8 @@ final class HTTPClientTests: XCTestCase {
             baseURL: URL(string: "https://api.test/v1")!,
             apiKey: "rt_test",
             sessions: sessions,
-            session: URLSession(configuration: configuration)
+            session: URLSession(configuration: configuration),
+            retryDelays: [.zero, .zero]
         )
     }
 }

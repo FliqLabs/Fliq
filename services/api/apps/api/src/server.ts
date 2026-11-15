@@ -22,7 +22,10 @@ import { startHealthChecks, type Probe } from "./status.js";
 import { createWebhookHandler } from "./webhooks.js";
 import { startWebhookDelivery } from "./webhook-delivery.js";
 import { startVaultSync } from "./vault-sync.js";
-import { startPayoutWatch } from "./payout-watch.js";
+import { alertConfigFromEnv, createAlerts } from "./alerts.js";
+import { createOps, opsConfigFromEnv } from "./ops.js";
+import { createSends, startSendWatch } from "./sends.js";
+import { payoutRefresher, startPayoutWatch } from "./payout-watch.js";
 import { apnsFromEnv, createApnsSender, startPushDispatch } from "./push.js";
 import { usageRecorder } from "./usage.js";
 import { httpsTransport } from "../../../packages/webhooks/transport.js";
@@ -122,6 +125,14 @@ const deposits = createDeposits({
     : {}),
 });
 
+const sends = createSends({
+  client: oneClick,
+  usdcContract,
+  slippageBps: Number(process.env.ONECLICK_SEND_SLIPPAGE_BPS ?? 100),
+  tokenStorage,
+  log: (message) => console.warn(message),
+});
+
 const quoteDeps = { adapters, ...(hops ? { hop: hops } : {}), routing: DEFAULT_ROUTING_CONFIG, signals: NO_SIGNALS, now: () => new Date() };
 const rateBoard = createRateBoard(quoteDeps, unit);
 
@@ -142,15 +153,26 @@ const provisioner = relayer
   ? new RelayerProvisioner(relayer, config.vaultAccount)
   : new MockProvisioner(config.vaultAccount, mockVault ? (account) => mockVault.registerStorage(account) : undefined);
 
+// Lines from the watchers are the ones a person must act on, so they go to the alert channel as well as the log.
+const alert = createAlerts({ config: alertConfigFromEnv(process.env), log: (message) => app.log.warn(message) });
+const ops = createOps({
+  ...opsConfigFromEnv(process.env),
+  ...(vault instanceof NearVault ? { liabilities: () => vault.getLiabilities() } : {}),
+  log: alert,
+});
+const payoutWatch = { unit, adapters, ...(oneClick ? { oneClick } : {}), now: () => new Date(), log: alert };
 const handlers = createHandlers({
+  refreshPayout: payoutRefresher(payoutWatch),
   config,
   unit,
   email: createEmailSender(config),
   provisioner,
   ...(relayer ? { relayer } : {}),
   vault,
+  ops,
   status: { probes },
   deposits,
+  sends,
   rateBoard,
   quotes: quoteDeps,
   payouts: {
@@ -169,12 +191,10 @@ await app.listen({ port: config.port, host: "0.0.0.0" });
 startHealthChecks(unit, probes, Number(process.env.HEALTH_CHECK_INTERVAL_MS ?? 60_000));
 startRateSampler(rateBoard, Number(process.env.RATE_SAMPLE_INTERVAL_MS ?? 60_000));
 startDepositWatch(unit, deposits, Number(process.env.DEPOSIT_WATCH_INTERVAL_MS ?? 10_000));
-startPayoutWatch(
-  { unit, adapters, ...(oneClick ? { oneClick } : {}), now: () => new Date(), log: (message) => app.log.warn(message) },
-  Number(process.env.PAYOUT_WATCH_INTERVAL_MS ?? 20_000),
-);
+startSendWatch(unit, sends, Number(process.env.SEND_WATCH_INTERVAL_MS ?? 10_000), alert);
+startPayoutWatch(payoutWatch, Number(process.env.PAYOUT_WATCH_INTERVAL_MS ?? 20_000));
 startVaultSync(
-  { unit, vault, now: () => new Date(), log: (message) => app.log.warn(message) },
+  { unit, vault, now: () => new Date(), log: alert },
   Number(process.env.VAULT_SYNC_INTERVAL_MS ?? 15_000),
 );
 const apns = apnsFromEnv(process.env);

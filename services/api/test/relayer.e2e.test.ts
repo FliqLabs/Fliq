@@ -13,8 +13,9 @@ import { delegateSender } from "../apps/api/src/relay.js";
 import { sandboxAdapters } from "../apps/api/src/sandbox.js";
 import { buildRelayerApp } from "../apps/relayer/src/app.js";
 import { createRelayerClient, MemoryRelayStore, publicKeyOf, RelayerClientError, type RelayerClient } from "../packages/chains/near/index.js";
-import { FakeNearRpc, newUser, RELAYER, relayerKeys, ROOT, signDelegate, USDC, VAULT } from "../packages/chains/near/near.fixtures.js";
+import { FakeNearRpc, newUser, RELAYER, relayerKeys, ROOT, signDelegate, signKeyChange, USDC, VAULT } from "../packages/chains/near/near.fixtures.js";
 import { MockVault } from "../packages/chains/vault/index.js";
+import { keyChangeMessage } from "../apps/api/src/push.js";
 import { Secret } from "../packages/config/index.js";
 import { DEFAULT_ROUTING_CONFIG, NO_SIGNALS } from "../packages/domain/routing.js";
 
@@ -102,6 +103,7 @@ describe.skipIf(!enabled)("creating NEAR accounts and relaying calls through the
       const users = await tx.user.findMany({ where: { email: { in: emails } }, select: { id: true } });
       const ids = users.map((user) => user.id);
       await tx.$executeRaw`DELETE FROM core.agents WHERE user_id = ANY(${ids}::text[])`;
+      await tx.$executeRaw`DELETE FROM auth.key_changes WHERE user_id = ANY(${ids}::text[])`;
       await tx.$executeRaw`DELETE FROM core.vault_deposits WHERE user_id = ANY(${ids}::text[])`;
       await tx.$executeRaw`DELETE FROM developer.idempotency_records WHERE scope = ANY(${ids}::text[])`;
       await tx.$executeRaw`DELETE FROM auth.sessions WHERE user_id = ANY(${ids}::text[])`;
@@ -235,6 +237,28 @@ describe.skipIf(!enabled)("creating NEAR accounts and relaying calls through the
     expect(refused.statusCode).toBe(403);
     expect((await app.inject({ method: "POST", url: "/v1/relays", payload: { signed_delegate: "bm90IGEgZGVsZWdhdGU=" }, headers })).statusCode).toBe(400);
   });
+
+  it("relays a second key the user adds to their own account, and not to anyone else's", async () => {
+    const headers = await signIn("keys");
+    const user = newUser(`keys${suffix}.${ROOT}`);
+    await claim(headers, `keys-${suffix}`, { name: `keys${suffix}`, public_key: user.publicKey });
+
+    const second = newUser("a second iphone").publicKey;
+    const added = await app.inject({ method: "POST", url: "/v1/relays", payload: { signed_delegate: (await signKeyChange(user, { add: second })).base64 }, headers });
+    expect(added.statusCode).toBe(200);
+    expect(added.json()).toMatchObject({ status: "succeeded", sender_id: user.accountId, receiver_id: user.accountId });
+    // Recorded once, so the user is told once, however often the same delegate is relayed.
+    await app.inject({ method: "POST", url: "/v1/relays", payload: { signed_delegate: (await signKeyChange(user, { add: second })).base64 }, headers });
+    const recorded = await database.keyChange.findMany({ where: { account: user.accountId } });
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0]).toMatchObject({ kind: "add", publicKey: second, txHash: added.json().tx_hash });
+    expect(keyChangeMessage(recorded[0]!.userId, recorded[0]!.id, "add").title).toBe("A new key was added to your account");
+    expect(keyChangeMessage("u", "k", "delete").title).toBe("A key was removed from your account");
+
+    const elsewhere = await signKeyChange(user, { add: second, receiverId: `other${suffix}.${ROOT}`, nonce: 102n });
+    const refused = await app.inject({ method: "POST", url: "/v1/relays", payload: { signed_delegate: elsewhere.base64 }, headers });
+    expect(refused.statusCode).toBeGreaterThanOrEqual(400);
+  }, 60_000);
 
   it("shows USDC the user adds from their own NEAR account in Activity, once however often it is relayed", async () => {
     const headers = await signIn("topup");

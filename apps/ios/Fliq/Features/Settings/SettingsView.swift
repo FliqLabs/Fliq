@@ -10,6 +10,7 @@ struct SettingsView: View {
     @State private var editingAvatar = false
     @State private var passkeys: [Passkey] = []
     @State private var devices: [DeviceSession] = []
+    @State private var limits: Limits?
 
     private var profile: ProfileStore { environment.profile }
 
@@ -40,7 +41,9 @@ struct SettingsView: View {
                     LinkRow(symbol: "asterisk", symbolColor: Color(hex: 0xE07A4F), title: "Agents", value: agentsLabel) {
                         environment.router.push(.agents)
                     }
-                    InfoRow(symbol: "chart.pie", title: "Your daily limit", value: user?.dailyLimit?.formatted ?? "…", isLast: true)
+                    LinkRow(symbol: "chart.pie", title: "Your daily limit", value: dailyLimitLabel, isLast: true) {
+                        environment.router.push(.settingsDailyLimit)
+                    }
                 }
 
                 SectionLabel(text: "Security").padding(.top, 24)
@@ -95,6 +98,8 @@ struct SettingsView: View {
         async let keys = try? environment.api.passkeys().items
         async let sessions = try? environment.api.deviceSessions().items
         async let agents: Void = environment.agents.load()
+        async let daily = try? environment.limits.limits()
+        limits = await daily ?? limits
         user = await me
         passkeys = await keys ?? []
         devices = await sessions ?? []
@@ -154,6 +159,12 @@ struct SettingsView: View {
         environment.accounts.own.map { "\($0.institution) ···\($0.number.suffix(4))" } ?? "Not added"
     }
 
+    private var dailyLimitLabel: String? {
+        guard let limits else { return nil }
+        guard let limit = limits.limitAmount else { return "Not set" }
+        return "$" + Money.dollars(limit)
+    }
+
     private var agentsLabel: String {
         let active = environment.agents.agents.filter { $0.status == .active }.count
         return "\(active) active"
@@ -176,7 +187,7 @@ private struct CustodySheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("How your money is held").font(.system(size: 20, weight: .semibold))
-            Text("Your dollars sit in the fliq vault, a smart contract on NEAR, under your own account. Only a key on this iPhone can move them, and it asks for Face ID every time.")
+            Text("Your dollars sit in the fliq vault, a smart contract on NEAR, under your own account. Only a key on this iPhone can move them, and it asks for Face ID every time. If you turn on Account backup, a second key in your iCloud Keychain can add a new iPhone.")
             Text("fliq never holds your key. If fliq went away, your balance would still be on chain under your name.")
             if let vault {
                 Text(vault)

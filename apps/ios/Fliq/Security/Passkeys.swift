@@ -39,13 +39,15 @@ final class PasskeyAuthenticator: NSObject {
     }
 
     /// With `allowed`, iOS offers only those passkeys, so a testnet passkey never shows up in the mainnet app.
-    func signIn(_ options: PasskeyOptions, relyingParty: String = "fliq.cash", allowed: [Data] = []) async throws -> Data {
+    /// With `onlyIfOnThisDevice`, an iPhone with no fliq passkey shows nothing and throws `cancelled` at once.
+    func signIn(_ options: PasskeyOptions, relyingParty: String = "fliq.cash", allowed: [Data] = [], onlyIfOnThisDevice: Bool = false) async throws -> Data {
         guard let challenge = Data(base64URL: options.options.challenge) else { throw PasskeyError.badOptions }
 
         let provider = ASAuthorizationPlatformPublicKeyCredentialProvider(relyingPartyIdentifier: options.options.rp?.id ?? relyingParty)
         let request = provider.createCredentialAssertionRequest(challenge: challenge)
         request.allowedCredentials = allowed.map { ASAuthorizationPlatformPublicKeyCredentialDescriptor(credentialID: $0) }
-        guard let credential = try await perform(request).credential as? ASAuthorizationPlatformPublicKeyCredentialAssertion else {
+        let found = try await perform(request, options: onlyIfOnThisDevice ? .preferImmediatelyAvailableCredentials : [])
+        guard let credential = found.credential as? ASAuthorizationPlatformPublicKeyCredentialAssertion else {
             throw PasskeyError.failed("No passkey was used.")
         }
         lastCredentialID = credential.credentialID
@@ -61,7 +63,31 @@ final class PasskeyAuthenticator: NSObject {
     /// What the passkey sheet shows for this passkey. Testnet and mainnet share fliq.cash, so the label tells them apart.
     static var label: String { NearNetwork.current == .testnet ? "fliq testnet" : "fliq" }
 
-    private func perform(_ request: ASAuthorizationRequest) async throws -> ASAuthorization {
+    /// Right after an install or an update, iOS has not finished checking that this app may use fliq.cash passkeys.
+    /// It then refuses at once with code 1004 and asks to try again in a few seconds. So the request is made again,
+    /// quietly, for up to ten seconds: the person only sees the button working a little longer.
+    static let notReadyCode = 1004
+    static let notReadyRetries = 5
+    var notReadyDelay: Duration = .seconds(2)
+
+    static func isNotReady(_ error: any Error) -> Bool {
+        if case PasskeyError.failed(let reason) = error { return reason.hasPrefix("\(notReadyCode):") }
+        return false
+    }
+
+    private func perform(_ request: ASAuthorizationRequest, options: ASAuthorizationController.RequestOptions = []) async throws -> ASAuthorization {
+        var tries = 0
+        while true {
+            do {
+                return try await performOnce(request, options: options)
+            } catch where Self.isNotReady(error) && tries < Self.notReadyRetries {
+                tries += 1
+                try await Task.sleep(for: notReadyDelay)
+            }
+        }
+    }
+
+    private func performOnce(_ request: ASAuthorizationRequest, options: ASAuthorizationController.RequestOptions) async throws -> ASAuthorization {
         let controller = ASAuthorizationController(authorizationRequests: [request])
         controller.delegate = self
         controller.presentationContextProvider = self
@@ -69,7 +95,7 @@ final class PasskeyAuthenticator: NSObject {
         defer { self.controller = nil }
         return try await withCheckedThrowingContinuation { continuation in
             pending = continuation
-            controller.performRequests()
+            controller.performRequests(options: options)
         }
     }
 
@@ -79,7 +105,10 @@ final class PasskeyAuthenticator: NSObject {
     }
 
     private func failure(_ error: any Error) -> any Error {
-        (error as? ASAuthorizationError)?.code == .canceled ? PasskeyError.cancelled : PasskeyError.failed(error.localizedDescription)
+        // The code leads the reason, so a failure can be told apart without showing the system's own sentence.
+        (error as? ASAuthorizationError)?.code == .canceled
+            ? PasskeyError.cancelled
+            : PasskeyError.failed("\((error as NSError).code): \(error.localizedDescription)")
     }
 
     private static func json(id: Data, response: [String: Any]) throws -> Data {

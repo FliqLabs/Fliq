@@ -15,6 +15,8 @@ struct HTTPClient: FliqAPI {
     /// minute to wake.
     var claimRetryDelay: Duration = .seconds(2)
     static let claimAttempts = 12
+    /// The waits between tries of a call that is safe to repeat.
+    var retryDelays = Retry.backoff
 
     func health() async throws -> Health {
         try await send("GET", "health")
@@ -210,8 +212,29 @@ struct HTTPClient: FliqAPI {
         return try decoder.decode(Response.self, from: data)
     }
 
-    /// One request, renewing the access token first when it is about to run out, and once more after a 401.
+    /// A read is safe to ask again, so a dropped connection or a busy server is tried again before anyone sees it.
     private func exchange(
+        _ method: String,
+        _ path: String,
+        query: [String: String] = [:],
+        body: (any Encodable)?,
+        headers: [String: String]
+    ) async throws -> (Data, Int) {
+        guard method == "GET" else { return try await exchangeOnce(method, path, query: query, body: body, headers: headers) }
+        return try await Retry.run(delays: retryDelays, shouldRetry: Self.isWorthAskingAgain) {
+            try await exchangeOnce(method, path, query: query, body: body, headers: headers)
+        }
+    }
+
+    private static func isWorthAskingAgain(_ result: Result<(Data, Int), any Error>) -> Bool {
+        switch result {
+        case .success((_, let status)): Retry.busyStatuses.contains(status)
+        case .failure(let error): Retry.isNetworkFailure(error)
+        }
+    }
+
+    /// One request, renewing the access token first when it is about to run out, and once more after a 401.
+    private func exchangeOnce(
         _ method: String,
         _ path: String,
         query: [String: String] = [:],

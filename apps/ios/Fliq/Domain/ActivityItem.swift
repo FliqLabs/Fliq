@@ -51,3 +51,29 @@ struct ActivityItem: Decodable, Identifiable, Equatable, Sendable {
 
     var id: String { activityId }
 }
+
+extension ActivityItem {
+    static let bankPartyName = "From your bank"
+
+    var isBankDeposit: Bool { kind == .deposit && party.name == Self.bankPartyName }
+
+    static func bankDeposit(
+        _ deposit: ActivityStore.BankDeposit, status: String, landed: String? = nil, seconds: Int? = nil, at: Date? = nil, activityId: String? = nil
+    ) -> ActivityItem {
+        ActivityItem(
+            activityId: activityId ?? "bank-" + deposit.depositId,
+            kind: .deposit,
+            status: status,
+            at: at ?? deposit.startedAt,
+            party: Party(name: bankPartyName, nearAccount: nil, institution: nil, accountLast4: nil, photoUrl: nil),
+            provider: "paj",
+            agent: nil,
+            local: Local(amount: String(deposit.naira), currency: "NGN"),
+            usd: landed ?? deposit.usd,
+            token: Money.local(deposit.naira, .ngn),
+            seconds: seconds,
+            reason: nil,
+            refId: deposit.depositId
+        )
+    }
+}

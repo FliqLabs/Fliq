@@ -27,6 +27,7 @@ struct WithdrawAmountView: View {
                 .foregroundStyle(Theme.textPrimary)
                 .padding(.horizontal, 16)
                 .frame(height: 40)
+                .contentShape(Capsule())
                 .overlay(Capsule().strokeBorder(flow.isOverBalance ? Theme.warning : Theme.hairline))
             }
             .accessibilityHint("Sends everything in your vault")
@@ -50,9 +51,10 @@ struct WithdrawToView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            toCard.padding(.top, 16)
+            if flow.networks.count > 1 { networkPicker.padding(.top, 16) }
+            toCard.padding(.top, flow.networks.count > 1 ? 12 : 16)
             status.padding(.top, 12)
-            if !flow.recentAddresses.isEmpty {
+            if flow.network.isNEAR, !flow.recentAddresses.isEmpty {
                 Text("Recent")
                     .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(Theme.textSecondary)
@@ -67,8 +69,40 @@ struct WithdrawToView: View {
                 .padding(.bottom, 12)
         }
         .fliqScreen("Send to")
-        .task(id: flow.addressText) { await flow.checkAddress() }
+        .task { await flow.loadNetworks() }
+        .task(id: "\(flow.network.chain)|\(flow.addressText)") { await flow.checkAddress() }
         .onAppear { if flow.addressText.isEmpty { addressFocused = true } }
+    }
+
+    /// One even row when every name fits, otherwise a row that scrolls sideways.
+    private var networkPicker: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) { networkPills(even: true) }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) { networkPills(even: false) }
+            }
+            .scrollClipDisabled()
+        }
+        .animation(.snappy(duration: 0.2), value: flow.network)
+    }
+
+    private func networkPills(even: Bool) -> some View {
+        ForEach(flow.networks) { network in
+            let picked = network == flow.network
+            Button { flow.network = network } label: {
+                Text(network.name)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(picked ? .black : Theme.textPrimary)
+                    .fixedSize()
+                    .padding(.horizontal, 16)
+                    .frame(maxWidth: even ? .infinity : nil, minHeight: 40)
+                    .background(picked ? Color.white : Theme.surface, in: Capsule())
+                    .contentShape(Capsule())
+            }
+            .buttonStyle(.pressable)
+            .accessibilityAddTraits(picked ? .isSelected : [])
+            .accessibilityIdentifier("send.network.\(network.chain)")
+        }
     }
 
     private var toCard: some View {
@@ -77,7 +111,7 @@ struct WithdrawToView: View {
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(Theme.textSecondary)
             HStack(spacing: 10) {
-                TextField("name.near or address", text: $flow.addressText)
+                TextField(flow.network.isNEAR ? "name.near or address" : "\(flow.network.name) address", text: $flow.addressText)
                     .focused($addressFocused)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
@@ -115,7 +149,7 @@ struct WithdrawToView: View {
                 switch flow.check {
                 case .ready(let needsSetup):
                     Icon("checkmark.circle", size: 18).foregroundStyle(Theme.confirmed)
-                    Text(needsSetup ? "NEAR wallet found. It hasn't held USDC before, so fliq sets that up in the same step." : "NEAR wallet found")
+                    Text(Self.found(flow.network, needsSetup: needsSetup))
                         .foregroundStyle(Theme.confirmed)
                 case .invalid(let problem) where !problem.isEmpty:
                     Icon("exclamationmark.circle", size: 18).foregroundStyle(Theme.warning)
@@ -125,7 +159,7 @@ struct WithdrawToView: View {
                     Text("Couldn't check the address. Try again in a moment.").foregroundStyle(Theme.warning)
                 default:
                     Icon("info.circle.fill", size: 18).foregroundStyle(Theme.warning)
-                    Text("Only send to a NEAR address. Money sent to another network can't come back.")
+                    Text("Only send to a \(flow.network.name) address. Money sent to the wrong network can't come back.")
                         .fontWeight(.medium)
                         .foregroundStyle(Theme.warning)
                 }
@@ -169,6 +203,11 @@ struct WithdrawToView: View {
     }
 
     private var isWarning: Bool { flow.check == nil && !flow.isChecking }
+
+    static func found(_ network: SendNetwork, needsSetup: Bool) -> String {
+        guard network.isNEAR else { return "This looks like a \(network.name) address. Check it is the right one: a send can't be undone." }
+        return needsSetup ? "NEAR wallet found. It hasn't held USDC before, so fliq sets that up in the same step." : "NEAR wallet found"
+    }
 }
 
 /// Step 3: check everything, then sign once with Face ID.
@@ -199,13 +238,25 @@ struct WithdrawReviewView: View {
             .padding(.top, 36)
             DetailCard {
                 DetailRow("To", WithdrawAddress.short(flow.address))
-                DetailRow("Network", "USDC on NEAR")
-                DetailRow("Fee", "Free")
-                DetailRow("Arrives", "In a few seconds", isLast: true)
+                DetailRow("Network", "\(flow.network.tokenName) on \(flow.network.name)")
+                if flow.network.isNEAR {
+                    DetailRow("Fee", "Free")
+                    DetailRow("Arrives", "In a few seconds", isLast: true)
+                } else {
+                    DetailRow("Network fee", flow.quote.map { "$" + Money.dollars($0.feeAmount) } ?? "…")
+                    DetailRow("They receive", flow.quote.map { "$" + Money.dollars($0.receivesAmount) } ?? "…")
+                    DetailRow("Arrives", flow.quote.map { Self.arrives($0.etaSeconds) } ?? "…", isLast: true)
+                }
             }
             .padding(.top, 32)
             Spacer(minLength: 12)
-            if let message = flow.errorMessage {
+            if flow.isBelowMinimum {
+                Text("The smallest amount you can send to \(flow.network.name) is $\(Money.dollars(flow.network.minimumAmount)).")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.warning)
+                    .multilineTextAlignment(.center)
+                    .padding(.bottom, 8)
+            } else if let message = flow.errorMessage {
                 Text(message)
                     .font(.system(size: 13))
                     .foregroundStyle(Theme.warning)
@@ -223,7 +274,11 @@ struct WithdrawReviewView: View {
             .disabled(!flow.canSend)
             .padding(.bottom, 12)
         }
-        .task(id: "\(flow.amountText)|\(flow.address)") { await flow.prepare() }
+        .task(id: "\(flow.amountText)|\(flow.network.chain)|\(flow.address)") { await flow.prepare() }
+    }
+
+    static func arrives(_ seconds: Int) -> String {
+        seconds < 90 ? "In about a minute" : "In about \(Int((Double(seconds) / 60).rounded())) minutes"
     }
 
     /// Opens the moment Face ID passes. The ring turns until NEAR confirms the USDC reached the wallet.
@@ -232,8 +287,8 @@ struct WithdrawReviewView: View {
             VStack(spacing: 0) {
                 ZStack(alignment: .bottomTrailing) {
                     WalletAvatar(address: sent.address, size: 76)
-                        .padding(sent.delivered ? 0 : 6)
-                        .overlay { if !sent.delivered { SpinningRing() } }
+                        .padding(sent.delivered || sent.returned ? 0 : 6)
+                        .overlay { if !sent.delivered, !sent.returned { SpinningRing() } }
                     if sent.delivered {
                         Icon("checkmark", size: 14)
                             .foregroundStyle(.black)
@@ -246,7 +301,7 @@ struct WithdrawReviewView: View {
                 .animation(.spring(duration: 0.4), value: sent.delivered)
                 .padding(.top, 40)
 
-                Text(sent.delivered ? "Sent to \(WithdrawAddress.short(sent.address))" : "Sending to \(WithdrawAddress.short(sent.address))")
+                Text(Self.headline(sent))
                     .font(.system(size: 18, weight: .medium))
                     .multilineTextAlignment(.center)
                     .padding(.top, 18)
@@ -261,21 +316,22 @@ struct WithdrawReviewView: View {
 
                 DetailCard {
                     DetailRow("To", WithdrawAddress.short(sent.address))
-                    DetailRow("Network", "USDC on NEAR")
-                    DetailRow("Fee", "Free", isLast: true)
+                    DetailRow("Network", "\(sent.network.tokenName) on \(sent.network.name)")
+                    if let receives = sent.receives { DetailRow("They receive", "$" + Money.dollars(receives)) }
+                    DetailRow(sent.network.isNEAR ? "Fee" : "Network fee", sent.fee.map { "$" + Money.dollars($0) } ?? "Free", isLast: true)
                 }
                 .padding(.top, 16)
 
                 if sent.delivered {
                     HStack(spacing: 12) {
-                        ShareLink(item: "fliq receipt\n$\(Money.dollars(sent.amount)) sent to \(sent.address)\nUSDC on NEAR · fee free\n\(ActivityLine.time(sent.at))" + (sent.explorer.map { "\n\($0.absoluteString)" } ?? "")) {
+                        ShareLink(item: "fliq receipt\n$\(Money.dollars(sent.amount)) sent to \(sent.address)\n\(sent.network.tokenName) on \(sent.network.name)\n\(ActivityLine.time(sent.at))" + (sent.explorer.map { "\n\($0.absoluteString)" } ?? "")) {
                             IconLabel("Share", icon: "square.and.arrow.up")
                                 .frame(maxWidth: .infinity, minHeight: 50)
                                 .background(Theme.surfaceRaised, in: Capsule())
                         }
                         if let explorer = sent.explorer {
                             Link(destination: explorer) {
-                                IconLabel("View on NEAR", icon: "arrow.up.right.square")
+                                IconLabel("View on \(sent.network.name)", icon: "arrow.up.right.square")
                                     .frame(maxWidth: .infinity, minHeight: 50)
                                     .background(Theme.surfaceRaised, in: Capsule())
                             }
@@ -298,15 +354,29 @@ struct WithdrawReviewView: View {
         }
     }
 
+    static func headline(_ sent: WithdrawFlow.Sent) -> String {
+        let to = WithdrawAddress.short(sent.address)
+        if sent.returned { return "Not delivered. Your money is back" }
+        if sent.delivered { return "Sent to \(to)" }
+        return sent.crossing ? "On its way to \(to)" : "Sending to \(to)"
+    }
+
     private func timeline(_ sent: WithdrawFlow.Sent) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             step("Approved with Face ID", detail: ActivityLine.time(sent.at), done: true, last: false)
-            step(
-                sent.delivered ? "Delivered to \(WithdrawAddress.short(sent.address))" : "Landing on NEAR",
-                detail: sent.delivered ? "In their wallet now" : "Usually a few seconds",
-                done: sent.delivered,
-                last: true
-            )
+            if !sent.network.isNEAR {
+                step("Left your account", detail: sent.crossing ? "On its way to \(sent.network.name)" : "A few seconds", done: sent.crossing, last: false)
+            }
+            if sent.returned {
+                step("Back in your fliq wallet", detail: "\(sent.network.name) couldn't take it. Add it to your vault from Home.", done: true, last: true)
+            } else {
+                step(
+                    sent.delivered ? "Delivered to \(WithdrawAddress.short(sent.address))" : "Landing on \(sent.network.name)",
+                    detail: sent.delivered ? "In their wallet now" : sent.network.isNEAR ? "Usually a few seconds" : "About a minute. You don't need to wait here.",
+                    done: sent.delivered,
+                    last: true
+                )
+            }
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)

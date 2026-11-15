@@ -21,6 +21,8 @@ struct RootView: View {
     @State private var tab = RootTab.home
     @State private var sheet: HomeSheet?
     @State private var activityPath: [AppRoute] = []
+    /// Set when this iPhone is signed in but its key is not on the account yet.
+    @State private var restoring: RecoveryState?
 
     var body: some View {
         @Bindable var router = environment.router
@@ -62,6 +64,17 @@ struct RootView: View {
         }
         .animation(.spring(response: 0.45, dampingFraction: 0.8), value: environment.arrival)
         .sensoryFeedback(.success, trigger: environment.arrival) { _, now in now != nil }
+        .sheet(item: $restoring) { state in
+            RestoreSheet(state: state) { restoring = nil }
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
+                .presentationCornerRadius(32)
+                .presentationBackground(Color(hex: 0x161616))
+        }
+        .task {
+            let state = await environment.recovery.state()
+            if state == .canRestore || state == .cannotSign { restoring = state }
+        }
         .sheet(item: $sheet) { sheet in
             content(of: sheet)
                 .presentationDragIndicator(.visible)
@@ -160,6 +173,7 @@ struct RootView: View {
     private func startWithdraw(to address: String? = nil) {
         withdrawFlow = WithdrawFlow(
             withdrawals: environment.withdrawals,
+            sends: environment.sends,
             vault: environment.vault,
             network: environment.isLive ? .current : .testnet,
             onLeftVault: {
@@ -176,14 +190,19 @@ struct RootView: View {
         let network: NearNetwork = environment.isLive ? .current : .testnet
         let vault = environment.profile.name ?? NearNetwork.current.vault
         let testWallet = environment.pajTestRecipient
-        bankDeposit = BankDepositFlow(paj: environment.paj, signIn: environment.pajSignIn, deposits: deposits) {
+        let solana = DepositSource(tokenId: "usdc", chainId: "solana", group: .dollars)
+        let route = network.receivesFromOtherChains ? solana : nil
+        bankDeposit = BankDepositFlow(paj: environment.paj, signIn: environment.pajSignIn, deposits: deposits, route: route) {
             if network.receivesFromOtherChains {
-                let solana = DepositSource(tokenId: "usdc", chainId: "solana", group: .dollars)
                 let reserved = try await deposits.reserve(solana, vault: vault)
                 return BankDepositDestination(address: reserved.address, deposit: reserved)
             }
             guard let testWallet else { throw Paj.Failure(message: "Bank deposits land in your vault on mainnet. This test build has no wallet set for them.") }
             return BankDepositDestination(address: testWallet, isTestWallet: true)
+        }
+        bankDeposit?.onPaid = { deposit in
+            environment.activity.recordBankDeposit(deposit)
+            environment.watchForArrival()
         }
         environment.watchForArrival()
         environment.router.push(.bankDeposit)
@@ -213,7 +232,12 @@ struct RootView: View {
             if let bankDeposit {
                 BankDepositView(flow: bankDeposit) {
                     environment.router.reset()
-                    Task { await environment.refreshVault() }
+                    // The user may leave while the money is still moving: Home keeps checking and shows it arriving.
+                    environment.watchForArrival()
+                    Task {
+                        await environment.refreshVault()
+                        await environment.refreshActivity()
+                    }
                 }
             }
         case .agents: AgentsView(store: environment.agents)
@@ -221,6 +245,8 @@ struct RootView: View {
         case .settingsAccounts: AccountsView(onAdd: { startPayment() })
         case .settingsSecurity: SecurityView()
         case .settingsNotifications: NotificationsView()
+        case .settingsBackup: BackupView()
+        case .settingsDailyLimit: DailyLimitView(environment: environment)
         case .agentConnect: AgentConnectView(store: environment.agents)
         }
     }
@@ -247,7 +273,7 @@ struct RootView: View {
             if let payout = flow.payout {
                 RefundedView(payout: payout, quote: flow.quote, onTryAgain: { startPayment(to: flow.verified) })
             }
-        case .payPerson, .withdraw, .withdrawTo, .withdrawReview, .bankDeposit, .receipt, .agents, .agentConnect, .settings, .settingsAccounts, .settingsSecurity, .settingsNotifications: EmptyView()
+        case .payPerson, .withdraw, .withdrawTo, .withdrawReview, .bankDeposit, .receipt, .agents, .agentConnect, .settings, .settingsAccounts, .settingsSecurity, .settingsNotifications, .settingsDailyLimit, .settingsBackup: EmptyView()
         }
     }
 

@@ -16,6 +16,12 @@ struct ArrivingView: View {
 
     private var stage: DepositStatus.Stage { flow.status?.stage ?? .waiting }
 
+    /// How far the timeline got. A deposit that is not coming stops where it was seen, with nothing spinning.
+    private var reachedStage: DepositStatus.Stage {
+        guard stage.isNotComing else { return stage }
+        return flow.status?.seenAt == nil ? .waiting : .seen
+    }
+
     private func content(_ deposit: DepositAddress) -> some View {
         VStack(spacing: 0) {
             TimelineView(.periodic(from: .now, by: 1)) { context in
@@ -42,7 +48,7 @@ struct ArrivingView: View {
                 .buttonStyle(PrimaryButtonStyle())
                 .padding(.bottom, 6)
         }
-        .fliqScreen("Arriving")
+        .fliqScreen(stage.isNotComing ? DepositFailure.notReceived : "Arriving")
         .animation(.snappy, value: stage)
         .sensoryFeedback(.success, trigger: stage) { _, new in new == .landed }
         .navigationBarBackButtonHidden()
@@ -56,7 +62,7 @@ struct ArrivingView: View {
     }
 
     private func header(_ deposit: DepositAddress, now: Date) -> some View {
-        let progress = progress(deposit, now: now)
+        let progress = stage.isNotComing ? 0 : progress(deposit, now: now)
         return VStack(spacing: 8) {
             ZStack {
                 Circle().stroke(Color(hex: 0x262626), lineWidth: 2)
@@ -70,7 +76,12 @@ struct ArrivingView: View {
             .frame(width: 66, height: 66)
             .padding(3)
             .padding(.bottom, 8)
-            if let landing = flow.landing {
+            if stage.isNotComing {
+                Text(DepositFailure.notReceived)
+                    .font(.system(size: 30, weight: .light))
+                    .tracking(-0.6)
+                    .frame(height: 64)
+            } else if let landing = flow.landing {
                 HeroAmount(symbol: "+$", value: landing.decimalString)
             } else {
                 Text("Waiting for your \(deposit.source.token)")
@@ -81,6 +92,7 @@ struct ArrivingView: View {
             Text(caption(deposit, now: now))
                 .font(.system(size: 15))
                 .foregroundStyle(stage == .landed ? Theme.confirmed : Theme.textSecondary)
+                .multilineTextAlignment(.center)
                 .contentTransition(.numericText())
         }
     }
@@ -98,6 +110,8 @@ struct ArrivingView: View {
 
     private func caption(_ deposit: DepositAddress, now: Date) -> String {
         if stage == .landed { return "in your vault" }
+        if stage == .underpaid { return "\(DepositFailure.belowMinimum) \(DepositFailure.contactUs)" }
+        if stage.isNotComing { return DepositFailure.contactUs }
         if stage == .waiting { return "We'll show it here the moment it arrives" }
         if stage == .seen || stage == .bridging { return "Received. Arriving in your vault" }
         let left = secondsLeft(deposit, now: now)
@@ -112,6 +126,7 @@ struct ArrivingView: View {
     private var vaultDetail: String {
         let now = environment.vault.balance
         if stage == .landed { return "balance is $\(Money.dollars(now))" }
+        if stage.isNotComing { return "not received" }
         guard let landing = flow.landing else { return "your balance updates when it lands" }
         return "balance becomes $\(Money.dollars(TokenAmount(baseUnits: now.baseUnits + landing.baseUnits)))"
     }
@@ -127,8 +142,8 @@ struct ArrivingView: View {
     }
 
     private func step(_ title: String, detail: String, logo: String, reached: DepositStatus.Stage, isLast: Bool) -> some View {
-        let done = stage >= reached
-        let active = !done && stage.rawValue + 1 == reached.rawValue
+        let done = reachedStage >= reached
+        let active = !done && !stage.isNotComing && stage.rawValue + 1 == reached.rawValue
         let lit = done || active
         return HStack(alignment: .top, spacing: 14) {
             VStack(spacing: 6) {
@@ -160,7 +175,6 @@ private struct StepIcon: View {
 
     let logo: String
     let state: Phase
-    @State private var spin = false
 
     var body: some View {
         Image(logo)
@@ -194,13 +208,14 @@ private struct StepIcon: View {
         case .active:
             ZStack {
                 Circle().stroke(Color(hex: 0x2C2C2C), lineWidth: 2)
-                Circle()
-                    .trim(from: 0, to: 0.32)
-                    .stroke(.white, style: StrokeStyle(lineWidth: 2, lineCap: .round))
-                    .rotationEffect(.degrees(spin ? 360 : 0))
-                    .onAppear {
-                        withAnimation(.linear(duration: 1.1).repeatForever(autoreverses: false)) { spin = true }
-                    }
+                // Turned by the clock, like SpinningRing: an animation started on appear froze when the screen redrew.
+                TimelineView(.animation) { context in
+                    let turn = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.1) / 1.1
+                    Circle()
+                        .trim(from: 0, to: 0.32)
+                        .stroke(.white, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                        .rotationEffect(.degrees(turn * 360))
+                }
             }
             .frame(width: 34, height: 34)
         case .pending:

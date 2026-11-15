@@ -18,7 +18,7 @@ export function hopReporter(log: (message: string) => void) {
     if (leg.status === "SUCCESS") return void said.delete(hop.payoutId);
     if (leg.status === "REFUNDED" || leg.status === "FAILED") {
       const reason = leg.refundReason ? ` (${leg.refundReason.slice(0, 80)})` : "";
-      return once(hop.payoutId, leg.status, `1Click ${leg.status} the swap${reason}; the USDC is back in the vault and the provider's order will lapse`);
+      return once(hop.payoutId, leg.status, `1Click ${leg.status} the swap${reason}; the USDC is back in the payer's own NEAR account, where the app offers to add it to the vault, and the provider's order will lapse`);
     }
     // Nothing has reached 1Click: the user has not signed yet, or walked away. No money is waiting.
     if (leg.status === "PENDING_DEPOSIT") return;

@@ -235,6 +235,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/sends/networks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The networks a user can send USDC to from their fliq account
+         * @description In display order. A network NEAR Intents cannot reach right now is still listed, with available false. Sending to a NEAR wallet needs none of this: it is a transfer the user signs directly. Networks that deliver USDT (Tron, BNB Chain) are listed only when the client asks for them with tokens=usdc,usdt, so an older app that only knows USDC addresses never sees them.
+         */
+        get: operations["listSendNetworks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sends": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a send of USDC to a wallet on another network
+         * @description Returns what will arrive and a NEAR deposit address. Nothing has moved yet. The user then sends the amount to deposit.address themselves, with the same two signed steps as a send to a NEAR wallet (withdraw from the vault, then ft_transfer), and NEAR Intents delivers it on the other network. If the swap cannot complete, the USDC comes back to the user's own NEAR account. A send not started by deposit.expires_at expires.
+         */
+        post: operations["createSend"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sends/{sendId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Where a send to another network is
+         * @description Poll every few seconds while the app shows it.
+         */
+        get: operations["getSend"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/deposits/sources": {
         parameters: {
             query?: never;
@@ -751,6 +811,44 @@ export interface paths {
         put: operations["updateNotificationSettings"];
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/limits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The daily limit the user set on what may leave their account, and how much of it is used */
+        get: operations["getLimits"];
+        /**
+         * Set, lower, raise or remove the daily limit
+         * @description A first limit and a lower limit apply at once. A higher limit, or removing the limit (null), takes effect 24 hours later and the user is told by push, so that someone holding an unlocked phone cannot lift the limit and empty the account in one sitting. Sending the current limit cancels a raise that is waiting.
+         */
+        put: operations["updateLimits"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/limits/pending": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Cancel a raise of the daily limit that has not taken effect yet */
+        delete: operations["cancelPendingLimit"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2050,6 +2148,80 @@ export interface components {
             };
             weekly_summary: boolean;
         };
+        SendNetworkList: {
+            networks: components["schemas"]["SendNetwork"][];
+        };
+        SendNetwork: {
+            chain: string;
+            /** @description The name to show */
+            name: string;
+            /**
+             * @description What arrives on that network. The user always pays in USDC from their fliq account.
+             * @enum {string}
+             */
+            token: "usdc" | "usdt";
+            /** @description The smallest amount that can be sent, in dollars */
+            minimum: string;
+            eta_seconds: number;
+            available: boolean;
+        };
+        SendRequest: {
+            /** @description A chain from GET /sends/networks */
+            chain: string;
+            /** @description The wallet on that network. Its shape is checked for the network. */
+            address: string;
+            /** @description Dollars of USDC to send, as a decimal string */
+            amount: string;
+        };
+        WalletSend: {
+            send_id: string;
+            /**
+             * @description awaiting until the user's transfer reaches deposit.address, then moving. refunded and failed mean the USDC went back to the user's own NEAR account. expired means it was never started.
+             * @enum {string}
+             */
+            state: "awaiting" | "moving" | "delivered" | "refunded" | "failed" | "expired";
+            /**
+             * @description What the wallet receives
+             * @enum {string}
+             */
+            token: "usdc" | "usdt";
+            chain: string;
+            to: string;
+            /** @description What leaves the user's account */
+            amount: string;
+            /** @description What the wallet receives; the quoted amount until delivered, then the delivered amount */
+            receives: string;
+            /** @description The network and swap cost, amount minus the quoted receives. fliq adds nothing. */
+            fee: string;
+            eta_seconds: number;
+            deposit: {
+                /** @description The NEAR account to send the USDC to */
+                address: string;
+                memo: string | null;
+                /** Format: date-time */
+                expires_at: string;
+            };
+            origin_tx: string | null;
+            /** @description The transaction on the destination network, once delivered */
+            destination_tx: string | null;
+            /** Format: date-time */
+            created_at: string;
+        };
+        Limits: {
+            /** @description The most that may leave the account in any 24 hours, in dollars: cash-outs, payments to fliq users and sends to outside wallets. Null means the user has set no limit. */
+            daily_limit: string | null;
+            /** @description What has left the account in the last 24 hours, in dollars */
+            spent_today: string;
+            /** @description What may still leave before the limit is reached; null when there is no limit */
+            remaining: string | null;
+            /** @description A raise the user asked for that has not taken effect yet */
+            pending: {
+                /** @description The limit that will apply; null means the limit is being removed */
+                daily_limit: string | null;
+                /** Format: date-time */
+                effective_at: string;
+            } | null;
+        };
         SetupStep: {
             /** @enum {string} */
             step: "add_account" | "top_up";
@@ -3024,6 +3196,81 @@ export interface operations {
             404: components["responses"]["Error"];
         };
     };
+    listSendNetworks: {
+        parameters: {
+            query?: {
+                /** @description Comma separated tokens the client can show. Defaults to usdc. */
+                tokens?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Networks in display order */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SendNetworkList"];
+                };
+            };
+        };
+    };
+    createSend: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SendRequest"];
+            };
+        };
+        responses: {
+            /** @description Quoted, waiting for the user to send */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WalletSend"];
+                };
+            };
+            400: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    getSend: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sendId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The send */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WalletSend"];
+                };
+            };
+            404: components["responses"]["Error"];
+        };
+    };
     listDepositSources: {
         parameters: {
             query?: never;
@@ -3805,6 +4052,74 @@ export interface operations {
                 };
             };
             400: components["responses"]["Error"];
+        };
+    };
+    getLimits: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The limit, what has been spent in the last 24 hours, and any raise that is waiting */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Limits"];
+                };
+            };
+        };
+    };
+    updateLimits: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Dollars, with up to two decimals, or null for no limit */
+                    daily_limit: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description The limits as they now stand */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Limits"];
+                };
+            };
+            400: components["responses"]["Error"];
+        };
+    };
+    cancelPendingLimit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The limits as they now stand, with nothing waiting */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Limits"];
+                };
+            };
         };
     };
     getSetup: {

@@ -33,12 +33,20 @@ final class PayFlowUITests: XCTestCase {
         snap("2-new-account")
 
         app.buttons["Continue"].tap()
-        XCTAssertTrue(app.staticTexts["They receive"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["You send"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.buttons["Delete"].waitForExistence(timeout: 3), "The amount screen has its own keypad")
         XCTAssertFalse(app.keyboards.firstMatch.exists, "No system keyboard for amounts")
         app.buttons["5"].tap()
         app.buttons["0"].tap()
         snap("3-amount")
+
+        let switchCurrency = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "They receive")).firstMatch
+        XCTAssertTrue(switchCurrency.waitForExistence(timeout: 3))
+        switchCurrency.tap()
+        XCTAssertTrue(app.staticTexts["They receive"].waitForExistence(timeout: 3), "The amount can be typed in the bank's currency")
+        snap("3b-amount-local")
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "You send")).firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["You send"].waitForExistence(timeout: 3))
 
         app.buttons["Get quote"].tap()
         XCTAssertTrue(app.staticTexts["Rate held for"].waitForExistence(timeout: 3))

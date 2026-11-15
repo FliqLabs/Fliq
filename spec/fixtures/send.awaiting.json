@@ -1,0 +1,19 @@
+{
+  "send_id": "snd_01jcsend0000000000000000a1",
+  "state": "awaiting",
+  "token": "usdc",
+  "chain": "solana",
+  "to": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+  "amount": "10.00",
+  "receives": "9.97",
+  "fee": "0.03",
+  "eta_seconds": 40,
+  "deposit": {
+    "address": "3ccf686b516ede32e2936c25798378623c99a5fce5bf56f5433005c8c12ba49d",
+    "memo": null,
+    "expires_at": "2026-11-15T10:10:00.000Z"
+  },
+  "origin_tx": null,
+  "destination_tx": null,
+  "created_at": "2026-11-15T10:00:00.000Z"
+}

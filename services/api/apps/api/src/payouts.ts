@@ -11,6 +11,7 @@ import type { AccountCheck, Asset, Chain, CreatedOrder, FiatCurrency, ProviderAd
 import type { Config } from "./config.js";
 import { formatTokenAmount } from "./dashboard.js";
 import type { Db, Unit } from "./db.js";
+import { assertWithinDailyLimit, lockSpending } from "./limits.js";
 import { ApiError, conflict, invalidRequest, notFound } from "./errors.js";
 import { hashOf, type Reply } from "./idempotency.js";
 import { institutionType } from "./institutions.js";
@@ -136,12 +137,11 @@ export async function payoutView(tx: Db, config: Config, payoutId: string) {
   };
 }
 
-export async function getPayout(unit: Unit, config: Config, userId: string, payoutId: string) {
-  return unit(async (tx) => {
-    const found = await tx.payout.findFirst({ where: { id: payoutId, developerId: await developerIdFor(tx, userId) }, select: { id: true } });
-    if (!found) throw notFound("No such payout.");
-    return payoutView(tx, config, payoutId);
-  });
+export async function getPayout(unit: Unit, config: Config, userId: string, payoutId: string, refresh?: (payoutId: string) => Promise<void>) {
+  const found = await unit(async (tx) => tx.payout.findFirst({ where: { id: payoutId, developerId: await developerIdFor(tx, userId) }, select: { id: true } }));
+  if (!found) throw notFound("No such payout.");
+  await refresh?.(payoutId);
+  return unit((tx) => payoutView(tx, config, payoutId));
 }
 
 export async function createPayout(unit: Unit, deps: PayoutDeps, userId: string, key: string | undefined, input: PayoutInput, options: { agentId?: string } = {}): Promise<Reply> {
@@ -200,6 +200,9 @@ export async function createPayout(unit: Unit, deps: PayoutDeps, userId: string,
     if (today._count >= deps.velocity.maxPerDay || (today._sum.amountIn ?? 0n) + route.amountIn > deps.velocity.maxTokenUnitsPerDay) {
       throw new ApiError(422, "velocity_limit", "Daily payout limit reached for this account.");
     }
+    // The user's own daily limit. The payout row created below is what counts toward it from here on.
+    await lockSpending(tx, userId);
+    await assertWithinDailyLimit(tx, userId, route.amountIn, deps.now());
 
     if (input.retry_of) {
       const original = await tx.payout.findFirst({ where: { id: input.retry_of, developerId }, select: { state: true } });
@@ -425,8 +428,9 @@ async function openHop(
       to: hop.chain,
       amountOut: funding.units,
       recipient: funding.address,
-      // A swap that cannot complete is refunded on NEAR, into the vault, which holds it until recredit returns it.
-      refundTo: deps.config.vaultAccount,
+      // A swap that cannot complete is refunded on NEAR to the payer's own account, where it is theirs at once and the
+      // app offers to move it back into the vault. Refunding to the vault would leave it there with no owner.
+      refundTo: payer,
       deadline,
     });
   } catch {
@@ -442,6 +446,8 @@ async function openHop(
   const deposit: Deposit = { chain: "near", address: swap.depositAddress, units: swap.amountIn, validUntil: deadline, memo: swap.depositMemo ?? null };
   try {
     await intents.tokenStorage.ensure(deposit.address);
+    // The token refuses a transfer to an account it has not registered, so the payer must be able to take a refund.
+    await intents.tokenStorage.ensure(payer);
   } catch {
     return { kind: "route_unavailable" };
   }

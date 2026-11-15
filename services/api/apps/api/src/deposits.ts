@@ -6,6 +6,7 @@ import { postEntry } from "../../../packages/ledger/post.js";
 import { vaultCredited } from "../../../packages/ledger/postings.js";
 import type { Db, Unit } from "./db.js";
 import { ApiError, invalidRequest, notFound } from "./errors.js";
+import { retrying } from "./retry.js";
 import { markRequestPaid } from "./requests.js";
 
 export type DepositToken = "usdc" | "usdt" | "btc";
@@ -54,6 +55,7 @@ const ONECLICK_BLOCKCHAIN: Record<DepositChain, string> = {
 
 const TOKENS_TTL_MS = 60_000;
 const POLL_EVERY_MS = 3_000;
+const QUOTE_RETRY_DELAYS_MS = [300, 800];
 // A deposit that arrives after its address expired is still refunded by 1Click, so it is followed this long.
 const LATE_WINDOW_MS = 24 * 60 * 60_000;
 const USD_DECIMALS = 6;
@@ -66,6 +68,8 @@ export interface DepositDeps {
   usdcContract: string;
   slippageBps: number;
   now?: () => Date;
+  // The wait between quote attempts. Tests replace it so they do not sleep.
+  pause?: (ms: number) => Promise<void>;
   // Reads the sending chain directly, so the user hears their money came before 1Click notices it.
   arrivals?: Partial<Record<DepositChain, (deposit: { address: string; mint: string; since: Date }) => Promise<Arrival | null>>>;
   // On chain, 1Click's ft_transfer_call has already credited the vault. A stand-in vault has to be told.
@@ -226,9 +230,11 @@ export function createDeposits(deps: DepositDeps) {
     return units;
   }
 
+  // A quote reserves nothing and moves nothing, so a refusal or a dropped call is asked again before the user hears
+  // of it: 1Click has refused a request and accepted the same one seconds later. A refused key is not retried.
   async function flexQuote(dry: boolean, account: string, picked: Awaited<ReturnType<typeof route>>, units: bigint, deadline: Date) {
-    return picked.client
-      .quote({
+    const ask = () =>
+      picked.client.quote({
         dry,
         swapType: "FLEX_INPUT",
         slippageBps: deps.slippageBps,
@@ -242,10 +248,15 @@ export function createDeposits(deps: DepositDeps) {
         customRecipientMsg: topUpMessage(account),
         deadline,
         appFees: [],
-      })
-      .catch((error) => {
-        throw intentsError(error, picked.source.chain);
       });
+    return retrying(ask, {
+      delaysMs: QUOTE_RETRY_DELAYS_MS,
+      retryable: (error) => error instanceof OneClickError && error.kind !== "unauthorized",
+      ...(deps.pause ? { pause: deps.pause } : {}),
+    }).catch((error) => {
+      if (error instanceof OneClickError) console.error(`[deposits] quote from ${picked.source.chain} failed after retries: ${error.message}`);
+      throw intentsError(error, picked.source.chain);
+    });
   }
 
   async function sources(unit: Unit, userId: string) {

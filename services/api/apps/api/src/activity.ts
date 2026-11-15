@@ -31,12 +31,16 @@ const CHAIN_NAMES: Record<string, string> = {
   base: "Base",
   solana: "Solana",
   tron: "Tron",
+  bnb: "BNB Chain",
   arbitrum: "Arbitrum",
   ethereum: "Ethereum",
   polygon: "Polygon",
   bitcoin: "Bitcoin",
   near: "NEAR",
 };
+
+const SEND_STATUS: Record<string, ActivityItem["status"]> = { delivered: "sent", refunded: "refunded", failed: "failed", expired: "expired" };
+const shortAddress = (address: string) => (address.length > 12 ? `${address.slice(0, 6)}...${address.slice(-4)}` : address);
 
 const REFUSAL_REASONS: Record<string, string> = {
   POLICY_DAILY_CAP: "over_daily_cap",
@@ -66,7 +70,13 @@ const newerFirst = (a: ActivityItem, b: ActivityItem) => b.at.localeCompare(a.at
 async function payouts(tx: Db, config: Config, userId: string, filter: ActivityFilter, before: Date | null, take: number): Promise<ActivityItem[]> {
   const byWhom = filter === "mine" ? { agentId: null } : filter === "agents" ? { agentId: { not: null } } : {};
   const rows = await tx.payout.findMany({
-    where: { developerId: await developerIdFor(tx, userId), ...byWhom, ...(before ? { createdAt: { lte: before } } : {}) },
+    where: {
+      developerId: await developerIdFor(tx, userId),
+      ...byWhom,
+      ...(before ? { createdAt: { lte: before } } : {}),
+      // The app already told the payer it did not start. Nothing left the vault.
+      OR: [{ failureReason: null }, { failureReason: { not: "not_signed" } }],
+    },
     orderBy: { createdAt: "desc" },
     take,
     include: { recipient: true, events: { where: { toState: { in: ["deposit_seen", "settled"] } } } },
@@ -132,16 +142,25 @@ async function transfers(tx: Db, userId: string, before: Date | null, take: numb
     where: { id: { in: rows.map((row) => (row.fromUserId === userId ? row.toUserId : row.fromUserId)) } },
     select: { id: true, displayName: true, photoUrl: true },
   });
+  // A transfer to a NEAR Intents deposit address is a send to a wallet on another network: it is shown by where it
+  // is really going and how far it has got, not by the deposit address it passed through.
+  const sends = await tx.walletSend.findMany({
+    where: { userId, depositAddress: { in: rows.filter((row) => row.fromUserId === userId).map((row) => row.toAccount) } },
+    select: { depositAddress: true, chain: true, toAddress: true, state: true },
+  });
   return rows.map((row) => {
     const outgoing = row.fromUserId === userId;
     const other = others.find((user) => user.id === (outgoing ? row.toUserId : row.fromUserId));
     const account = outgoing ? row.toAccount : row.fromAccount;
+    const send = outgoing ? sends.find((item) => item.depositAddress === row.toAccount) : undefined;
     return {
       activity_id: `act_${row.id}`,
       kind: outgoing ? "transfer_out" : "transfer_in",
-      status: outgoing ? "sent" : "received",
+      status: send ? (SEND_STATUS[send.state] ?? "pending") : outgoing ? "sent" : "received",
       at: row.createdAt.toISOString(),
-      party: party(other?.displayName ?? account, { near_account: account, photo_url: other?.photoUrl ?? null }),
+      party: send
+        ? party(`${CHAIN_NAMES[send.chain] ?? send.chain} wallet ${shortAddress(send.toAddress)}`)
+        : party(other?.displayName ?? account, { near_account: account, photo_url: other?.photoUrl ?? null }),
       provider: null,
       agent: null,
       local: null,

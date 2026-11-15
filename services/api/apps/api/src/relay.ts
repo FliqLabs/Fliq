@@ -1,20 +1,27 @@
 import { deserialize } from "borsh";
 import { SCHEMA } from "near-api-js";
-import { RelayerClientError, type RelayerClient, type RelayResponse } from "../../../packages/chains/near/index.js";
+import { RelayerClientError, verifySignedDelegate, type KeyChange, type RelayerClient, type RelayResponse } from "../../../packages/chains/near/index.js";
 import { VaultError } from "../../../packages/chains/vault/index.js";
 import { newId } from "../../../packages/db/src/ids.js";
 import type { Db, Unit } from "./db.js";
 import { ApiError, invalidRequest, notFound } from "./errors.js";
 import type { Reply } from "./idempotency.js";
+import { holdSpend, releaseSpend, spendRef } from "./limits.js";
 import { recordObservedTransfer, recordOutsideSend } from "./people.js";
+import { markSendStarted } from "./sends.js";
 
 type DelegateCall = { receiverId: string; method: string; args: Record<string, unknown> };
-type Decoded = { sender: string; call: DelegateCall | null };
+// keyChange is true when the delegate adds or removes an access key instead of calling a contract.
+type Decoded = { sender: string; call: DelegateCall | null; keyChange: boolean };
 
 function decodeDelegate(signedDelegateBase64: string): Decoded | null {
   try {
     const decoded = deserialize(SCHEMA.SignedDelegate, Buffer.from(signedDelegateBase64, "base64")) as {
-      delegateAction?: { senderId?: unknown; receiverId?: unknown; actions?: { functionCall?: { methodName?: unknown; args?: Uint8Array } }[] };
+      delegateAction?: {
+        senderId?: unknown;
+        receiverId?: unknown;
+        actions?: { functionCall?: { methodName?: unknown; args?: Uint8Array }; addKey?: unknown; deleteKey?: unknown }[];
+      };
     };
     const action = decoded.delegateAction;
     if (typeof action?.senderId !== "string" || action.senderId.length === 0) return null;
@@ -28,6 +35,7 @@ function decodeDelegate(signedDelegateBase64: string): Decoded | null {
     return {
       sender: action.senderId,
       call: call && typeof call.methodName === "string" ? { receiverId: String(action.receiverId), method: call.methodName, args } : null,
+      keyChange: Boolean(action.actions?.[0]?.addKey ?? action.actions?.[0]?.deleteKey),
     };
   } catch {
     return null;
@@ -96,8 +104,13 @@ async function recordOutcome(tx: Db, userId: string, delegate: Decoded, result: 
   }
   if (call && isOutsideSend(call, contracts)) {
     const amount = String(call.args.amount ?? "");
-    if (result.status === "succeeded" && result.tx_hash && UNITS.test(amount))
-      await recordOutsideSend(tx, userId, { txHash: result.tx_hash, from: delegate.sender, to: String(call.args.receiver_id), amount: BigInt(amount) });
+    if (result.status === "succeeded" && result.tx_hash && UNITS.test(amount)) {
+      const to = String(call.args.receiver_id);
+      // A transfer to a send's deposit address is the start of a send to another network, which Activity shows by
+      // its real destination. Recording it as well keeps it in the user's history from the moment it leaves.
+      await markSendStarted(tx, userId, to, result.tx_hash);
+      await recordOutsideSend(tx, userId, { txHash: result.tx_hash, from: delegate.sender, to, amount: BigInt(amount) });
+    }
     return;
   }
   if (!call || call.receiverId !== contracts.vault) return;
@@ -144,23 +157,65 @@ function relayerFailure(error: unknown): Reply {
   return { status: error.status, body: { error: { code: error.code, message: error.message } } };
 }
 
+// What a relayed call takes out of the user's account, for their daily limit: a transfer to another vault, or a send
+// from their NEAR account to an outside wallet. Moving money into the vault, or from the vault to the user's own NEAR
+// account, leaves nothing. A cash-out is counted when its payout is created, not when it is signed.
+function spendOf(call: DelegateCall | null, contracts: RelayContracts): bigint | null {
+  if (!call) return null;
+  const leaves = (call.receiverId === contracts.vault && call.method === "transfer") || isOutsideSend(call, contracts);
+  const amount = String(call.args.amount ?? "");
+  return leaves && UNITS.test(amount) ? BigInt(amount) : null;
+}
+
+// Which key a key-change delegate adds or removes. The relayer has already verified it, so a failure to read it here
+// only costs the record, never the relay.
+function keyChangeOf(signedDelegate: string): KeyChange | null {
+  try {
+    return verifySignedDelegate(signedDelegate).keyChange ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// Kept so the user can be told: a new key on the account is the one change they must never miss.
+async function recordKeyChange(tx: Db, userId: string, account: string, change: KeyChange, txHash: string): Promise<void> {
+  if (await tx.keyChange.findUnique({ where: { txHash }, select: { id: true } })) return;
+  await tx.keyChange.create({
+    data: { id: newId("kc"), userId, account, kind: change.kind === "delete" ? "delete" : "add", publicKey: change.publicKey, txHash },
+  });
+}
+
 // The sender is the user's own account or one of the user's agents, so nobody can relay for someone else.
 // An agent calling for itself passes onlySender, so it can relay its own delegates and no one else's.
-export async function relayDelegate(unit: Unit, relayer: RelayerClient | undefined, userId: string, signedDelegate: string, contracts: RelayContracts, onlySender?: string): Promise<Reply> {
+export async function relayDelegate(unit: Unit, relayer: RelayerClient | undefined, userId: string, signedDelegate: string, contracts: RelayContracts, onlySender?: string, now: () => Date = () => new Date()): Promise<Reply> {
   const account = await accountOf(unit, userId);
   const delegate = decodeDelegate(signedDelegate);
   if (!delegate) throw invalidRequest("signed_delegate is not a base64 Borsh SignedDelegate.");
   if (onlySender !== undefined && delegate.sender !== onlySender) throw new ApiError(403, "forbidden", "An agent can only relay what it signed itself.");
   const ownAgent = delegate.sender === account ? null : await unit((tx) => tx.agent.findFirst({ where: { id: delegate.sender, userId, state: { not: "revoked" } }, select: { id: true } }));
   if (delegate.sender !== account && !ownAgent) throw new ApiError(403, "forbidden", "The delegate must be signed by your own NEAR account or one of your agents.");
+  // Only the user's own account gets a second device or a recovery key. An agent's account keeps the one key it was made with.
+  if (delegate.keyChange && delegate.sender !== account) throw new ApiError(403, "forbidden", "Only your own account's keys can be changed.");
   if (!relayer) throw unavailable();
+  const spend = spendOf(delegate.call, contracts);
+  const ref = spendRef(signedDelegate);
+  if (spend !== null) await unit((tx) => holdSpend(tx, userId, ref, spend, now()));
   let result: RelayResponse;
   try {
     result = await relayer.relay(signedDelegate);
   } catch (error) {
+    // A relayer that refused the delegate sent nothing. One that could not be reached may still have: keep the hold.
+    const refused = error instanceof RelayerClientError && error.status >= 400 && error.status < 500;
+    if (spend !== null && refused) await unit((tx) => releaseSpend(tx, ref));
     return relayerFailure(error);
   }
+  if (spend !== null && result.status === "failed") await unit((tx) => releaseSpend(tx, ref));
   await unit((tx) => recordOutcome(tx, userId, delegate, result, contracts));
+  const change = delegate.keyChange && result.status === "succeeded" && result.tx_hash ? keyChangeOf(signedDelegate) : null;
+  if (change && result.tx_hash) {
+    const txHash = result.tx_hash;
+    await unit((tx) => recordKeyChange(tx, userId, account, change, txHash));
+  }
   return answer(result);
 }
 

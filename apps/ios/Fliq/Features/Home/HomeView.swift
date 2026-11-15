@@ -9,6 +9,10 @@ struct HomeView: View {
     var onSeeAll: () -> Void = {}
     var onOpenPayout: (String) -> Void = { _ in }
     @State private var selected: ActivityLine?
+    /// Remembered on this iPhone, so the balance stays hidden after the app is closed.
+    @AppStorage("home.hidesBalance") private var hidesBalance = false
+
+    private var isMoving: Bool { activity?.lines.contains { $0.outcome == .moving } ?? false }
 
     var body: some View {
         GeometryReader { proxy in
@@ -19,8 +23,15 @@ struct HomeView: View {
                     balance
                     Spacer()
                     VStack(spacing: 12) {
-                        if let lines = activity?.lines.prefix(2), !lines.isEmpty {
-                            HomeRecentCard(lines: Array(lines), onSeeAll: onSeeAll) { selected = $0 }
+                        // Money on its way gets its own live card, so Recent shows what has finished.
+                        let lines = activity?.lines ?? []
+                        let finished = lines.filter { $0.outcome != .moving }.prefix(2)
+                        if !finished.isEmpty {
+                            HomeRecentCard(lines: Array(finished), onSeeAll: onSeeAll) { selected = $0 }
+                        }
+                        ForEach(lines.filter { $0.outcome == .moving }.prefix(2)) { line in
+                            HomeInProgressCard(line: line) { selected = $0 }
+                                .transition(.move(edge: .bottom).combined(with: .opacity))
                         }
                         WalletArrivedCard(inbox: model.inbox)
                     }
@@ -38,6 +49,13 @@ struct HomeView: View {
         }
         .background(Theme.ground.ignoresSafeArea())
         .task { await model.load() }
+        // While something is on its way, Home checks every few seconds, so the card turns into a Recent row when it lands.
+        .task(id: isMoving) {
+            while isMoving, !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(4))
+                await onRefresh()
+            }
+        }
         .sheet(item: $selected) { line in
             ActivityDetailSheet(line: line, onReceipt: onOpenPayout)
                 .presentationDragIndicator(.visible)
@@ -74,22 +92,36 @@ struct HomeView: View {
         .padding(.top, 16)
     }
 
+    static let hiddenAmount = "••••"
+
     private var balance: some View {
         VStack(spacing: 14) {
-            IconLabel("Vault balance", icon: "eye")
-                .labelStyle(TrailingIconLabelStyle())
-                .font(.system(size: 14))
-                .foregroundStyle(Theme.textSecondary)
+            Button { hidesBalance.toggle() } label: {
+                IconLabel("Vault balance", icon: hidesBalance ? "eye.slash" : "eye")
+                    .labelStyle(TrailingIconLabelStyle())
+                    .font(.system(size: 14))
+                    .foregroundStyle(Theme.textSecondary)
+                    .padding(.horizontal, 12)
+                    .frame(minHeight: 36)
+                    .contentShape(Capsule())
+            }
+            .buttonStyle(.pressable)
+            .accessibilityLabel(hidesBalance ? "Show balance" : "Hide balance")
+            .accessibilityIdentifier("home.hideBalance")
 
             HStack(alignment: .firstTextBaseline, spacing: 2) {
                 Text("$")
                     .font(.system(size: 30, weight: .light))
                     .foregroundStyle(Theme.textSecondary)
-                Text(Money.dollars(model.balance))
+                Text(hidesBalance ? Self.hiddenAmount : Money.dollars(model.balance))
                     .font(Theme.hero())
                     .tracking(-1.9)
                     .foregroundStyle(Theme.textPrimary)
+                    .contentTransition(.numericText())
             }
+            .animation(.snappy(duration: 0.25), value: hidesBalance)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(hidesBalance ? "Balance hidden" : "$\(Money.dollars(model.balance))")
 
             ratePill
         }

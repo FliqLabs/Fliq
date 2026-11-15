@@ -85,7 +85,12 @@ extension ActivityLine {
         id = item.id
         date = item.at
         title = item.agent.map { "\($0.name) · \(item.party.name)" } ?? item.party.name
-        amount = item.kind == .payout && outcome == .refunded ? item.usd.map { "$" + $0 } ?? item.headline : item.headline
+        let notReceived = item.kind == .deposit && outcome == .failed
+        if notReceived {
+            amount = item.token ?? item.headline
+        } else {
+            amount = item.kind == .payout && outcome == .refunded ? item.usd.map { "$" + $0 } ?? item.headline : item.headline
+        }
         self.outcome = outcome
         let status = Self.status(outcome, kind: item.kind)
         statusText = status.0
@@ -96,17 +101,32 @@ extension ActivityLine {
         case .deposit:
             badge = item.depositSource.map(Badge.source) ?? .incoming
             subtitle = Self.join(date, item.seconds.map { "\($0)s" })
-            dollars = item.token
             category = "Deposit"
-            let chain = item.depositSource?.chainId.capitalized ?? "another chain"
-            steps = [
-                Step(title: "Sent on \(chain)", detail: Self.time(date), done: true),
-                Step(title: "Delivered to your vault", detail: Self.time(date.addingTimeInterval(Double(item.seconds ?? 0))), done: outcome == .done),
-            ]
-            facts = [("Status", statusText), ("You sent", item.token ?? ""), ("Delivered", item.usd.map { "$" + $0 } ?? ""), ("Network", chain), ("Reference", item.refId)]
+            let chain = item.isBankDeposit ? "your bank" : item.depositSource?.chainId.capitalized ?? "another chain"
+            let sent = item.isBankDeposit
+                ? Step(title: "Paid from your bank", detail: Self.time(date), done: true)
+                : Step(title: "Sent on \(chain)", detail: Self.time(date), done: true)
+            if notReceived, item.status == "expired" {
+                dollars = nil
+                steps = [Step(title: DepositFailure.notReceived, detail: "Nothing arrived before this address closed. If you sent money, contact us and we'll sort it out.", done: false)]
+                facts = [("Status", statusText), ("Network", chain), ("Reference", item.refId)]
+            } else if notReceived {
+                dollars = nil
+                steps = [sent, Step(title: DepositFailure.notReceived, detail: DepositFailure.contactUs, done: false)]
+                facts = [("Status", statusText), ("You sent", item.token ?? ""), ("Network", chain), ("Reference", item.refId)]
+            } else {
+                dollars = item.token
+                steps = [sent, Step(title: "Delivered to your vault", detail: Self.time(date.addingTimeInterval(Double(item.seconds ?? 0))), done: outcome == .done)]
+                facts = [("Status", statusText), ("You sent", item.token ?? ""), ("Delivered", item.usd.map { "$" + $0 } ?? ""), ("Network", chain), ("Reference", item.refId)]
+            }
         case .transferIn, .transferOut:
             let incoming = item.kind == .transferIn
-            badge = .person(name: item.party.name, photo: item.party.photoUrl.flatMap(URL.init(string:)), incoming: incoming)
+            let network = item.party.name.split(separator: " ").first.map(String.init)?.lowercased()
+            if !incoming, item.party.nearAccount == nil, let network, ["solana", "base", "tron", "bnb"].contains(network), item.party.name.contains(" wallet ") {
+                badge = .source(DepositSource(tokenId: ["tron", "bnb"].contains(network) ? "usdt" : "usdc", chainId: network, group: .dollars))
+            } else {
+                badge = .person(name: item.party.name, photo: item.party.photoUrl.flatMap(URL.init(string:)), incoming: incoming)
+            }
             subtitle = Self.join(date, item.party.nearAccount)
             dollars = nil
             category = incoming ? "Received" : "Sent"
@@ -126,7 +146,7 @@ extension ActivityLine {
         case .payout, .unknown:
             badge = item.agent.map { .agent(AgentApp.named($0.name)) } ?? .bank(name: item.party.name, logoKey: bank?.logoKey)
             subtitle = outcome == .refunded
-                ? Self.join(date, provider.map { "\($0) failed" })
+                ? Self.join(date, "Not paid, refunded to you")
                 : Self.join(date, provider, bank?.name, item.seconds.map { "\($0)s" })
             dollars = outcome == .refunded ? nil : item.usd.map { "$" + $0 }
             category = "Cash out"
@@ -154,10 +174,11 @@ extension ActivityLine {
         }
     }
 
+    /// A deposit the API calls refunded did not come back to the vault or the bank, so it reads as not received.
     private static func outcome(of item: ActivityItem) -> Outcome {
         switch item.status {
         case "paid", "received", "sent": .done
-        case "refunded": .refunded
+        case "refunded": item.kind == .deposit ? .failed : .refunded
         case "refused": .refused
         case "failed", "expired": .failed
         default: .moving
@@ -170,7 +191,7 @@ extension ActivityLine {
         case .moving: (kind == .deposit ? "Arriving" : "Sending", Theme.textSecondary)
         case .refunded: ("Refunded", Theme.textSecondary)
         case .refused: ("Refused", Theme.warning)
-        case .failed: ("Failed", Theme.danger)
+        case .failed: kind == .deposit ? (DepositFailure.notReceived, Theme.warning) : ("Failed", Theme.danger)
         }
     }
 
@@ -179,7 +200,7 @@ extension ActivityLine {
         let landed = time(date.addingTimeInterval(Double(seconds ?? 0)))
         switch outcome {
         case .done: return [left, Step(title: "Paid into \(bank ?? "the account") by \(provider)", detail: landed, done: true)]
-        case .refunded: return [left, Step(title: "\(provider) couldn't pay", detail: landed, done: false), Step(title: "Back in your vault", detail: "Refunded in full", done: true)]
+        case .refunded: return [left, Step(title: "The bank payment didn't go through", detail: "\(provider) couldn't pay. Nothing reached the account.", done: false), Step(title: "Back in your vault", detail: "Refunded in full", done: true)]
         case .failed: return [left, Step(title: "\(provider) couldn't pay", detail: landed, done: false)]
         case .refused: return [Step(title: "Refused", detail: "Nothing left your vault", done: false)]
         case .moving: return [left, Step(title: "Paying out with \(provider)", detail: "Usually under a minute", done: false)]
@@ -301,14 +322,16 @@ struct ActivityCell: View {
 
 /// A white arc turning around a mark: the money is on its way.
 struct SpinningRing: View {
-    @State private var turning = false
-
+    // The angle comes from the clock, not from an animation started on appear: a repeating animation started that way
+    // froze whenever the list around it animated or redrew, which left a still ring on Home.
     var body: some View {
-        Circle()
-            .trim(from: 0, to: 0.7)
-            .stroke(Color.white, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
-            .rotationEffect(.degrees(turning ? 360 : 0))
-            .onAppear { withAnimation(.linear(duration: 1).repeatForever(autoreverses: false)) { turning = true } }
-            .accessibilityLabel("On its way")
+        TimelineView(.animation) { context in
+            let turn = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1)
+            Circle()
+                .trim(from: 0, to: 0.7)
+                .stroke(Color.white, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                .rotationEffect(.degrees(turn * 360))
+        }
+        .accessibilityLabel("On its way")
     }
 }

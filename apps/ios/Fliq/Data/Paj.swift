@@ -179,7 +179,8 @@ struct WebPajSignIn: PajSignIn {
         guard let token = await bearer() else { throw Paj.Failure(message: "Sign in to fliq again first.") }
         var request = URLRequest(url: base.appendingPathComponent(path))
         request.httpMethod = "POST"
-        request.timeoutInterval = 20
+        // Longer than the web route waits for Paj, so the app never gives up while the route is still working.
+        request.timeoutInterval = 30
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)

@@ -58,6 +58,13 @@
   "sessions.list.json": "DeviceSessionList",
   "passkeys.list.json": "PasskeyList",
   "notification-settings.json": "NotificationSettings",
+  "send.networks.json": "SendNetworkList",
+  "send.networks.all.json": "SendNetworkList",
+  "send.awaiting.json": "WalletSend",
+  "send.delivered.json": "WalletSend",
+  "limits.set.json": "Limits",
+  "limits.raise-pending.json": "Limits",
+  "limits.none.json": "Limits",
   "setup.halfway.json": "Setup",
   "agent.payout.json": "AgentPayout",
   "agent.self.json": "AgentSelf"

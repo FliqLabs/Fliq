@@ -2,6 +2,7 @@ import type { FastifyRequest } from "fastify";
 import { checkName, claimName, type ClaimInput, type NearProvisioner } from "./accounts.js";
 import type { RelayerClient } from "../../../packages/chains/near/index.js";
 import { getRelay, relayDelegate } from "./relay.js";
+import { cancelPendingLimit, limitsOf, setDailyLimit } from "./limits.js";
 import { listActivity, listNotifications, parseFilter } from "./activity.js";
 import { connectAgent, listAgents, revokeAgent, updateAgentLimits, type AgentInput, type AgentLimits } from "./agents.js";
 import { publicReceipt } from "./receipts.js";
@@ -41,6 +42,8 @@ import {
   workspaceView,
 } from "./dashboard.js";
 import { requireHttpsUrl, settle } from "./errors.js";
+import { NO_OPS, type Ops } from "./ops.js";
+import { createSends, parseSendTokens, type SendInput, type Sends } from "./sends.js";
 import { createDeposits, type DepositChain, type DepositInput, type Deposits, type DepositToken } from "./deposits.js";
 import { withIdempotency } from "./idempotency.js";
 import { exportPayoutsCsv, parsePayoutFilter, type PayoutQuery } from "./payout-history.js";
@@ -84,9 +87,14 @@ export interface HandlerDeps {
   relayer?: RelayerClient;
   quotes: QuoteDeps;
   payouts: Omit<PayoutDeps, "quotes">;
+  // Asks the provider about a payout the caller is watching, so its state is fresh when read.
+  refreshPayout?: (payoutId: string) => Promise<void>;
   vault: VaultClient;
+  // Operator pauses and the vault cap. Absent means nothing is paused or capped.
+  ops?: Ops;
   status?: { probes: readonly Probe[]; config?: StatusConfig };
   deposits?: Deposits;
+  sends?: Sends;
   rateBoard?: RateBoard;
   now?: () => Date;
   // Resolves webhook hostnames when an endpoint is saved. Tests replace it; production uses the system resolver.
@@ -103,9 +111,12 @@ export function createHandlers({
   provisioner,
   quotes,
   payouts,
+  refreshPayout,
   vault,
+  ops = NO_OPS,
   status = { probes: [] },
   deposits = createDeposits({ client: undefined, vaultAccount: config.vaultAccount, usdcContract: "", slippageBps: 0 }),
+  sends = createSends({ client: undefined, usdcContract: "", slippageBps: 0 }),
   rateBoard = createRateBoard(quotes, unit),
   relayer,
   now = () => new Date(),
@@ -311,11 +322,13 @@ export function createHandlers({
       body: await quoteAndSave(unit, quotes, auth(request).userId, body<QuoteInput>(request)),
     }),
 
-    createPayout: async (request) =>
-      createPayout(unit, { ...payouts, quotes }, auth(request).userId, request.headers["idempotency-key"] as string | undefined, body<PayoutInput>(request)),
+    createPayout: async (request) => {
+      ops.assertRunning("payouts");
+      return createPayout(unit, { ...payouts, quotes }, auth(request).userId, request.headers["idempotency-key"] as string | undefined, body<PayoutInput>(request));
+    },
     getPayout: async (request) => ({
       status: 200,
-      body: await getPayout(unit, config, auth(request).userId, (request.params as { payoutId: string }).payoutId),
+      body: await getPayout(unit, config, auth(request).userId, (request.params as { payoutId: string }).payoutId, refreshPayout),
     }),
 
     quoteRetry: async (request) => ({
@@ -381,8 +394,10 @@ export function createHandlers({
       status: 200,
       body: await quoteForAgent(unit, quotes, agentOf(request).ownerId, body<{ currency: QuoteInput["currency"]; amount: string; mode?: "send" | "receive" }>(request)),
     }),
-    createAgentPayout: (request) =>
-      createAgentPayout(unit, agentPayoutDeps, agentOf(request).agentId, request.headers["idempotency-key"] as string | undefined, body<AgentPayoutInput>(request)),
+    createAgentPayout: async (request) => {
+      ops.assertRunning("payouts");
+      return createAgentPayout(unit, agentPayoutDeps, agentOf(request).agentId, request.headers["idempotency-key"] as string | undefined, body<AgentPayoutInput>(request));
+    },
     getAgentPayout: async (request) => ({
       status: 200,
       body: await getAgentPayout(unit, config, agentOf(request).agentId, (request.params as { payoutId: string }).payoutId),
@@ -425,6 +440,19 @@ export function createHandlers({
       return { status: 204, body: undefined };
     },
     listPasskeys: async (request) => ({ status: 200, body: await unit((tx) => listPasskeys(tx, auth(request).userId)) }),
+    listSendNetworks: async (request) => ({ status: 200, body: await sends.networks(parseSendTokens((request.query as { tokens?: string }).tokens)) }),
+    // The quote calls NEAR Intents, so it runs before the transaction that stores the send, never inside it.
+    createSend: async (request) => {
+      const quoted = await sends.quote(unit, auth(request).userId, body<SendInput>(request));
+      return withIdempotency(unit, auth(request).userId, request, async (tx) => ({ status: 201, body: await sends.save(tx, auth(request).userId, quoted) }));
+    },
+    getSend: async (request) => ({ status: 200, body: await sends.get(unit, auth(request).userId, (request.params as { sendId: string }).sendId) }),
+    getLimits: async (request) => ({ status: 200, body: await unit((tx) => limitsOf(tx, auth(request).userId, now())) }),
+    updateLimits: async (request) => ({
+      status: 200,
+      body: await unit((tx) => setDailyLimit(tx, auth(request).userId, body<{ daily_limit?: unknown }>(request).daily_limit, now())),
+    }),
+    cancelPendingLimit: async (request) => ({ status: 200, body: await unit((tx) => cancelPendingLimit(tx, auth(request).userId, now())) }),
     getNotificationSettings: async (request) => ({ status: 200, body: await unit((tx) => notificationSettings(tx, auth(request).userId)) }),
     updateNotificationSettings: async (request) => ({
       status: 200,
@@ -437,11 +465,14 @@ export function createHandlers({
       const input = { token: token as DepositToken, chain: chain as DepositChain, amount: amount ?? "" };
       return { status: 200, body: await deposits.estimate(unit, auth(request).userId, input) };
     },
-    createDeposit: (request) =>
-      withIdempotency(unit, auth(request).userId, request, async (tx) => ({
+    createDeposit: async (request) => {
+      ops.assertRunning("deposits");
+      await ops.assertRoomInVault();
+      return withIdempotency(unit, auth(request).userId, request, async (tx) => ({
         status: 201,
         body: await deposits.create(tx, auth(request).userId, body<DepositInput>(request)),
-      })),
+      }));
+    },
     getDeposit: async (request) => ({
       status: 200,
       body: await deposits.get(unit, auth(request).userId, (request.params as { depositId: string }).depositId),

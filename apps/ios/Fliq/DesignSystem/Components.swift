@@ -11,6 +11,9 @@ struct PrimaryButtonStyle: ButtonStyle {
             .font(.system(size: 16, weight: .medium))
             .frame(maxWidth: .infinity, minHeight: 54)
             .foregroundStyle(foreground)
+            // Without this only the words are tappable: the outlined button has a clear background, and the glass
+            // behind it takes touches for its own shimmer. The whole button must answer the first tap.
+            .contentShape(shape)
             .background {
                 if filled && isEnabled {
                     shape.fill(Color.white)

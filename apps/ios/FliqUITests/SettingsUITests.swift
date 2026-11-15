@@ -62,6 +62,102 @@ final class SettingsUITests: XCTestCase {
     }
 
     @MainActor
+    func testDailyLimitIsSetAtOnceAndARaiseWaits() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--onboarded", "--funded"]
+        app.launch()
+
+        XCTAssertTrue(app.buttons["Profile"].waitForExistence(timeout: 5))
+        app.buttons["Profile"].tap()
+        let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Your daily limit")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 3))
+        row.tap()
+        XCTAssertTrue(app.staticTexts["No daily limit"].waitForExistence(timeout: 3))
+        snap("l1-no-limit")
+
+        app.buttons["Set a limit"].tap()
+        XCTAssertTrue(app.buttons["Delete"].waitForExistence(timeout: 3))
+        for key in ["5", "0", "0"] { app.buttons[key].tap() }
+        snap("l2-typing")
+        app.buttons["Save with Face ID"].tap()
+        XCTAssertTrue(app.staticTexts["Most that can leave in a day"].waitForExistence(timeout: 3), "A first limit applies at once")
+        snap("l3-limit-set")
+
+        app.buttons["Change limit"].tap()
+        XCTAssertTrue(app.buttons["Delete"].waitForExistence(timeout: 3))
+        for key in ["2", "0", "0", "0"] { app.buttons[key].tap() }
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Takes effect in 24 hours")).firstMatch.waitForExistence(timeout: 3))
+        snap("l4-raise")
+        app.buttons["Save with Face ID"].tap()
+        XCTAssertTrue(app.staticTexts["Going up to $2,000"].waitForExistence(timeout: 3), "A raise waits")
+        snap("l5-raise-waiting")
+
+        app.buttons["Cancel this change"].tap()
+        XCTAssertTrue(app.staticTexts["Going up to $2,000"].waitForNonExistence(timeout: 3))
+    }
+
+    @MainActor
+    func testAccountBackupIsTurnedOnFromSecurity() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--onboarded", "--funded"]
+        app.launch()
+
+        XCTAssertTrue(app.buttons["Profile"].waitForExistence(timeout: 5))
+        app.buttons["Profile"].tap()
+        let passkeys = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Passkeys")).firstMatch
+        XCTAssertTrue(passkeys.waitForExistence(timeout: 3))
+        passkeys.tap()
+        let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Account backup")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 3))
+        snap("b1-security")
+        row.tap()
+        XCTAssertTrue(app.staticTexts["Not backed up yet"].waitForExistence(timeout: 3))
+        snap("b2-not-backed-up")
+
+        app.buttons["Back up with Face ID"].tap()
+        XCTAssertTrue(app.staticTexts["Your account is backed up"].waitForExistence(timeout: 3))
+        XCTAssertFalse(app.buttons["Back up with Face ID"].exists)
+        snap("b3-backed-up")
+    }
+
+    @MainActor
+    func testALostDeviceIsRemovedFromSecurity() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--onboarded", "--funded", "--lost-iphone"]
+        app.launch()
+
+        XCTAssertTrue(app.buttons["Profile"].waitForExistence(timeout: 5))
+        app.buttons["Profile"].tap()
+        let passkeys = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Passkeys")).firstMatch
+        XCTAssertTrue(passkeys.waitForExistence(timeout: 3))
+        passkeys.tap()
+        XCTAssertTrue(app.staticTexts["Another device"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["This iPhone"].exists)
+        snap("b5-devices")
+
+        app.buttons["Remove"].tap()
+        let confirm = app.buttons["Remove device"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 3))
+        snap("b6-remove-confirm")
+        confirm.tap()
+        XCTAssertTrue(app.staticTexts["Another device"].waitForNonExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["This iPhone"].exists)
+    }
+
+    @MainActor
+    func testANewIPhoneIsAskedToJoinTheAccountAndCanSendAfter() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--onboarded", "--funded", "--new-iphone"]
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["Add this iPhone to your account"].waitForExistence(timeout: 5))
+        snap("b4-new-iphone")
+        app.buttons["Add this iPhone with Face ID"].tap()
+        XCTAssertTrue(app.staticTexts["Add this iPhone to your account"].waitForNonExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Vault balance"].exists)
+    }
+
+    @MainActor
     private func snap(_ name: String) {
         let png = XCUIScreen.main.screenshot().pngRepresentation
         add(XCTAttachment(data: png, uniformTypeIdentifier: "public.png"))

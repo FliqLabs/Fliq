@@ -5,6 +5,8 @@ import type { RelayRecord, RelayStore } from "./store";
 import { publicKeyOf, relayActions, signTransaction } from "./transactions";
 
 export const RELAYS_PER_SENDER_PER_HOUR = 30;
+// Adding or removing a key is rare for a real user and the first thing a thief would try, so it has its own small limit.
+export const KEY_CHANGES_PER_SENDER_PER_HOUR = 5;
 const HOUR_MS = 60 * 60_000;
 // About 20 minutes of blocks: a delegate valid for longer is a replay risk if it leaks.
 export const MAX_VALIDITY_BLOCKS = 1_200n;
@@ -62,6 +64,15 @@ export async function relay(deps: RelayDeps, signedDelegateBase64: string): Prom
 
   let submitted = false;
   try {
+    if (
+      delegate.keyChange &&
+      !(await deps.store.takeRateSlot(`${delegate.senderId}#keys`, KEY_CHANGES_PER_SENDER_PER_HOUR, HOUR_MS, deps.now()))
+    ) {
+      throw new RelayError(
+        "rate_limited",
+        `${delegate.senderId} has changed its keys ${KEY_CHANGES_PER_SENDER_PER_HOUR} times this hour`,
+      );
+    }
     if (
       !(await deps.store.takeRateSlot(delegate.senderId, RELAYS_PER_SENDER_PER_HOUR, HOUR_MS, deps.now()))
     ) {
