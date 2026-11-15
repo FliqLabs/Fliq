@@ -1,0 +1,20 @@
+{
+  "networks": [
+    {
+      "chain": "solana",
+      "name": "Solana",
+      "token": "usdc",
+      "minimum": "1.00",
+      "eta_seconds": 40,
+      "available": true
+    },
+    {
+      "chain": "base",
+      "name": "Base",
+      "token": "usdc",
+      "minimum": "1.00",
+      "eta_seconds": 40,
+      "available": true
+    }
+  ]
+}

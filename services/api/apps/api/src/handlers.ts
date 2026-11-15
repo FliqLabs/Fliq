@@ -43,6 +43,7 @@ import {
 } from "./dashboard.js";
 import { requireHttpsUrl, settle } from "./errors.js";
 import { NO_OPS, type Ops } from "./ops.js";
+import { createSends, type SendInput, type Sends } from "./sends.js";
 import { createDeposits, type DepositChain, type DepositInput, type Deposits, type DepositToken } from "./deposits.js";
 import { withIdempotency } from "./idempotency.js";
 import { exportPayoutsCsv, parsePayoutFilter, type PayoutQuery } from "./payout-history.js";
@@ -93,6 +94,7 @@ export interface HandlerDeps {
   ops?: Ops;
   status?: { probes: readonly Probe[]; config?: StatusConfig };
   deposits?: Deposits;
+  sends?: Sends;
   rateBoard?: RateBoard;
   now?: () => Date;
   // Resolves webhook hostnames when an endpoint is saved. Tests replace it; production uses the system resolver.
@@ -114,6 +116,7 @@ export function createHandlers({
   ops = NO_OPS,
   status = { probes: [] },
   deposits = createDeposits({ client: undefined, vaultAccount: config.vaultAccount, usdcContract: "", slippageBps: 0 }),
+  sends = createSends({ client: undefined, usdcContract: "", slippageBps: 0 }),
   rateBoard = createRateBoard(quotes, unit),
   relayer,
   now = () => new Date(),
@@ -437,6 +440,13 @@ export function createHandlers({
       return { status: 204, body: undefined };
     },
     listPasskeys: async (request) => ({ status: 200, body: await unit((tx) => listPasskeys(tx, auth(request).userId)) }),
+    listSendNetworks: async () => ({ status: 200, body: await sends.networks() }),
+    // The quote calls NEAR Intents, so it runs before the transaction that stores the send, never inside it.
+    createSend: async (request) => {
+      const quoted = await sends.quote(unit, auth(request).userId, body<SendInput>(request));
+      return withIdempotency(unit, auth(request).userId, request, async (tx) => ({ status: 201, body: await sends.save(tx, auth(request).userId, quoted) }));
+    },
+    getSend: async (request) => ({ status: 200, body: await sends.get(unit, auth(request).userId, (request.params as { sendId: string }).sendId) }),
     getLimits: async (request) => ({ status: 200, body: await unit((tx) => limitsOf(tx, auth(request).userId, now())) }),
     updateLimits: async (request) => ({
       status: 200,

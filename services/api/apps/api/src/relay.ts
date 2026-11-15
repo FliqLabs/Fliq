@@ -8,6 +8,7 @@ import { ApiError, invalidRequest, notFound } from "./errors.js";
 import type { Reply } from "./idempotency.js";
 import { holdSpend, releaseSpend, spendRef } from "./limits.js";
 import { recordObservedTransfer, recordOutsideSend } from "./people.js";
+import { markSendStarted } from "./sends.js";
 
 type DelegateCall = { receiverId: string; method: string; args: Record<string, unknown> };
 // keyChange is true when the delegate adds or removes an access key instead of calling a contract.
@@ -103,8 +104,13 @@ async function recordOutcome(tx: Db, userId: string, delegate: Decoded, result: 
   }
   if (call && isOutsideSend(call, contracts)) {
     const amount = String(call.args.amount ?? "");
-    if (result.status === "succeeded" && result.tx_hash && UNITS.test(amount))
-      await recordOutsideSend(tx, userId, { txHash: result.tx_hash, from: delegate.sender, to: String(call.args.receiver_id), amount: BigInt(amount) });
+    if (result.status === "succeeded" && result.tx_hash && UNITS.test(amount)) {
+      const to = String(call.args.receiver_id);
+      // A transfer to a send's deposit address is the start of a send to another network, which Activity shows by
+      // its real destination. Recording it as well keeps it in the user's history from the moment it leaves.
+      await markSendStarted(tx, userId, to, result.tx_hash);
+      await recordOutsideSend(tx, userId, { txHash: result.tx_hash, from: delegate.sender, to, amount: BigInt(amount) });
+    }
     return;
   }
   if (!call || call.receiverId !== contracts.vault) return;

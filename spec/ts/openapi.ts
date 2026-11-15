@@ -235,6 +235,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/sends/networks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The networks a user can send USDC to from their fliq account
+         * @description In display order. A network NEAR Intents cannot reach right now is still listed, with available false. Sending to a NEAR wallet needs none of this: it is a transfer the user signs directly.
+         */
+        get: operations["listSendNetworks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sends": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a send of USDC to a wallet on another network
+         * @description Returns what will arrive and a NEAR deposit address. Nothing has moved yet. The user then sends the amount to deposit.address themselves, with the same two signed steps as a send to a NEAR wallet (withdraw from the vault, then ft_transfer), and NEAR Intents delivers it on the other network. If the swap cannot complete, the USDC comes back to the user's own NEAR account. A send not started by deposit.expires_at expires.
+         */
+        post: operations["createSend"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sends/{sendId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Where a send to another network is
+         * @description Poll every few seconds while the app shows it.
+         */
+        get: operations["getSend"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/deposits/sources": {
         parameters: {
             query?: never;
@@ -2088,6 +2148,59 @@ export interface components {
             };
             weekly_summary: boolean;
         };
+        SendNetworkList: {
+            networks: components["schemas"]["SendNetwork"][];
+        };
+        SendNetwork: {
+            chain: string;
+            /** @description The name to show */
+            name: string;
+            /** @enum {string} */
+            token: "usdc";
+            /** @description The smallest amount that can be sent, in dollars */
+            minimum: string;
+            eta_seconds: number;
+            available: boolean;
+        };
+        SendRequest: {
+            /** @description A chain from GET /sends/networks */
+            chain: string;
+            /** @description The wallet on that network. Its shape is checked for the network. */
+            address: string;
+            /** @description Dollars of USDC to send, as a decimal string */
+            amount: string;
+        };
+        WalletSend: {
+            send_id: string;
+            /**
+             * @description awaiting until the user's transfer reaches deposit.address, then moving. refunded and failed mean the USDC went back to the user's own NEAR account. expired means it was never started.
+             * @enum {string}
+             */
+            state: "awaiting" | "moving" | "delivered" | "refunded" | "failed" | "expired";
+            /** @enum {string} */
+            token: "usdc";
+            chain: string;
+            to: string;
+            /** @description What leaves the user's account */
+            amount: string;
+            /** @description What the wallet receives; the quoted amount until delivered, then the delivered amount */
+            receives: string;
+            /** @description The network and swap cost, amount minus the quoted receives. fliq adds nothing. */
+            fee: string;
+            eta_seconds: number;
+            deposit: {
+                /** @description The NEAR account to send the USDC to */
+                address: string;
+                memo: string | null;
+                /** Format: date-time */
+                expires_at: string;
+            };
+            origin_tx: string | null;
+            /** @description The transaction on the destination network, once delivered */
+            destination_tx: string | null;
+            /** Format: date-time */
+            created_at: string;
+        };
         Limits: {
             /** @description The most that may leave the account in any 24 hours, in dollars: cash-outs, payments to fliq users and sends to outside wallets. Null means the user has set no limit. */
             daily_limit: string | null;
@@ -3072,6 +3185,78 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VaultBalance"];
+                };
+            };
+            404: components["responses"]["Error"];
+        };
+    };
+    listSendNetworks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Networks in display order */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SendNetworkList"];
+                };
+            };
+        };
+    };
+    createSend: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SendRequest"];
+            };
+        };
+        responses: {
+            /** @description Quoted, waiting for the user to send */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WalletSend"];
+                };
+            };
+            400: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    getSend: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sendId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The send */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WalletSend"];
                 };
             };
             404: components["responses"]["Error"];

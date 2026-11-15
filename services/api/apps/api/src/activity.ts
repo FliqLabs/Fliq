@@ -38,6 +38,9 @@ const CHAIN_NAMES: Record<string, string> = {
   near: "NEAR",
 };
 
+const SEND_STATUS: Record<string, ActivityItem["status"]> = { delivered: "sent", refunded: "refunded", failed: "failed", expired: "expired" };
+const shortAddress = (address: string) => (address.length > 12 ? `${address.slice(0, 6)}...${address.slice(-4)}` : address);
+
 const REFUSAL_REASONS: Record<string, string> = {
   POLICY_DAILY_CAP: "over_daily_cap",
   POLICY_PER_PAYOUT_CAP: "over_per_payout_cap",
@@ -132,16 +135,25 @@ async function transfers(tx: Db, userId: string, before: Date | null, take: numb
     where: { id: { in: rows.map((row) => (row.fromUserId === userId ? row.toUserId : row.fromUserId)) } },
     select: { id: true, displayName: true, photoUrl: true },
   });
+  // A transfer to a NEAR Intents deposit address is a send to a wallet on another network: it is shown by where it
+  // is really going and how far it has got, not by the deposit address it passed through.
+  const sends = await tx.walletSend.findMany({
+    where: { userId, depositAddress: { in: rows.filter((row) => row.fromUserId === userId).map((row) => row.toAccount) } },
+    select: { depositAddress: true, chain: true, toAddress: true, state: true },
+  });
   return rows.map((row) => {
     const outgoing = row.fromUserId === userId;
     const other = others.find((user) => user.id === (outgoing ? row.toUserId : row.fromUserId));
     const account = outgoing ? row.toAccount : row.fromAccount;
+    const send = outgoing ? sends.find((item) => item.depositAddress === row.toAccount) : undefined;
     return {
       activity_id: `act_${row.id}`,
       kind: outgoing ? "transfer_out" : "transfer_in",
-      status: outgoing ? "sent" : "received",
+      status: send ? (SEND_STATUS[send.state] ?? "pending") : outgoing ? "sent" : "received",
       at: row.createdAt.toISOString(),
-      party: party(other?.displayName ?? account, { near_account: account, photo_url: other?.photoUrl ?? null }),
+      party: send
+        ? party(`${CHAIN_NAMES[send.chain] ?? send.chain} wallet ${shortAddress(send.toAddress)}`)
+        : party(other?.displayName ?? account, { near_account: account, photo_url: other?.photoUrl ?? null }),
       provider: null,
       agent: null,
       local: null,
