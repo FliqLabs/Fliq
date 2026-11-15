@@ -337,11 +337,11 @@ export function StatusPageClient({ brandClassName }: { brandClassName?: string }
           : "System health information is unavailable";
 
   return (
-    <main className="min-h-screen bg-[#171717] text-white">
-      <div className="mx-auto w-full max-w-[1100px] px-5 sm:px-7">
+    <main className="min-h-screen bg-[#161616] text-white">
+      <div className="mx-auto w-full max-w-[1100px] px-5 pt-[120px] pb-8 sm:px-7 sm:pt-[125px]">
         <SiteHeader activeHref="/status" brandClassName={brandClassName} />
 
-        <section className="mb-[22px] mt-[47px] flex flex-wrap items-center justify-between gap-5">
+        <section className="mb-[22px] flex flex-wrap items-center justify-between gap-5">
           <div>
             <h1 className="text-[34px] font-semibold leading-[1.2] tracking-[-1.1px] text-[#f5f5f5] sm:text-[34px]">
               {isPending ? "Checking system status" :
