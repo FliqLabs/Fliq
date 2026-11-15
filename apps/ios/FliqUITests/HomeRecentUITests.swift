@@ -51,6 +51,22 @@ final class HomeRecentUITests: XCTestCase {
     }
 
     @MainActor
+    func testTheEyeHidesAndShowsTheBalance() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--onboarded", "--funded"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Vault balance"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["100"].exists)
+
+        app.buttons["home.hideBalance"].tap()
+        XCTAssertTrue(app.staticTexts["••••"].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.staticTexts["100"].exists)
+
+        app.buttons["home.hideBalance"].tap()
+        XCTAssertTrue(app.staticTexts["100"].waitForExistence(timeout: 2))
+    }
+
+    @MainActor
     private func snap(_ name: String) {
         let png = XCUIScreen.main.screenshot().pngRepresentation
         add(XCTAttachment(data: png, uniformTypeIdentifier: "public.png"))

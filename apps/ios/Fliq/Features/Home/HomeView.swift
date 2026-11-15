@@ -9,6 +9,8 @@ struct HomeView: View {
     var onSeeAll: () -> Void = {}
     var onOpenPayout: (String) -> Void = { _ in }
     @State private var selected: ActivityLine?
+    /// Remembered on this iPhone, so the balance stays hidden after the app is closed.
+    @AppStorage("home.hidesBalance") private var hidesBalance = false
 
     var body: some View {
         GeometryReader { proxy in
@@ -74,22 +76,36 @@ struct HomeView: View {
         .padding(.top, 16)
     }
 
+    static let hiddenAmount = "••••"
+
     private var balance: some View {
         VStack(spacing: 14) {
-            IconLabel("Vault balance", icon: "eye")
-                .labelStyle(TrailingIconLabelStyle())
-                .font(.system(size: 14))
-                .foregroundStyle(Theme.textSecondary)
+            Button { hidesBalance.toggle() } label: {
+                IconLabel("Vault balance", icon: hidesBalance ? "eye.slash" : "eye")
+                    .labelStyle(TrailingIconLabelStyle())
+                    .font(.system(size: 14))
+                    .foregroundStyle(Theme.textSecondary)
+                    .padding(.horizontal, 12)
+                    .frame(minHeight: 36)
+                    .contentShape(Capsule())
+            }
+            .buttonStyle(.pressable)
+            .accessibilityLabel(hidesBalance ? "Show balance" : "Hide balance")
+            .accessibilityIdentifier("home.hideBalance")
 
             HStack(alignment: .firstTextBaseline, spacing: 2) {
                 Text("$")
                     .font(.system(size: 30, weight: .light))
                     .foregroundStyle(Theme.textSecondary)
-                Text(Money.dollars(model.balance))
+                Text(hidesBalance ? Self.hiddenAmount : Money.dollars(model.balance))
                     .font(Theme.hero())
                     .tracking(-1.9)
                     .foregroundStyle(Theme.textPrimary)
+                    .contentTransition(.numericText())
             }
+            .animation(.snappy(duration: 0.25), value: hidesBalance)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(hidesBalance ? "Balance hidden" : "$\(Money.dollars(model.balance))")
 
             ratePill
         }
