@@ -21,6 +21,7 @@ final class AppEnvironment {
     let deposits: any DepositAPI
     let recovery: any AccountRecovering
     let limits: any LimitsAPI
+    let sends: any SendsAPI
     let agents: AgentStore
     let accounts: AccountBook
     let transfers: any VaultTransfers
@@ -47,6 +48,7 @@ final class AppEnvironment {
         deposits: any DepositAPI = FixtureDepositAPI(),
         recovery: any AccountRecovering = FixtureAccountRecovery(),
         limits: any LimitsAPI = FixtureLimitsAPI(),
+        sends: any SendsAPI = FixtureSendsAPI(),
         agentAPI: any AgentAPI = FixtureAgentAPI(),
         accounts: AccountBook = AccountBook(),
         transfers: any VaultTransfers = FixtureVaultTransfers(),
@@ -70,6 +72,7 @@ final class AppEnvironment {
         self.deposits = deposits
         self.recovery = recovery
         self.limits = limits
+        self.sends = sends
         self.accounts = accounts
         self.transfers = transfers
         self.withdrawals = withdrawals
@@ -125,7 +128,7 @@ final class AppEnvironment {
             recovery: AccountRecovery(
                 api: api, rpc: NEARRPC(url: rpc), device: keys, recovery: KeychainRecoveryKeys(), biometrics: DeviceBiometrics(),
                 account: { await profile.name }
-            ), limits: HTTPLimitsAPI(client: api), agentAPI: agents,
+            ), limits: HTTPLimitsAPI(client: api), sends: HTTPSendsAPI(client: api), agentAPI: agents,
             transfers: transfers, withdrawals: withdrawals, photos: cloudinary(info: info),
             paj: HTTPPaj(), pajSignIn: pajSignIn(info: info, api: api),
             pajTestRecipient: (info["FliqPajTestRecipient"] as? String).flatMap { $0.isEmpty ? nil : $0 },

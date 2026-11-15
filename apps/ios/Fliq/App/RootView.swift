@@ -173,6 +173,7 @@ struct RootView: View {
     private func startWithdraw(to address: String? = nil) {
         withdrawFlow = WithdrawFlow(
             withdrawals: environment.withdrawals,
+            sends: environment.sends,
             vault: environment.vault,
             network: environment.isLive ? .current : .testnet,
             onLeftVault: {

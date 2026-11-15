@@ -81,7 +81,7 @@ enum WithdrawAddress {
 
     static func problem(_ address: String, own: String?, contracts: [String]) -> String? {
         if address.isEmpty { return "" }
-        if matches(address, evm) { return "That's an Ethereum or Base address. fliq sends on NEAR for now." }
+        if matches(address, evm) { return "That's a Base or Ethereum address. Choose Base above to send it there." }
         if !matches(address, account) { return "That isn't a NEAR address." }
         if address == own { return "That's your own fliq account." }
         if contracts.contains(address) { return "That's a fliq contract, not a wallet." }
