@@ -6,13 +6,23 @@ import XCTest
 final class CashOutReleaseTests: XCTestCase {
     private actor Recording: VaultTransfers {
         var released: [Payout] = []
+        var asked: [String] = []
         var refusal: String?
+        var cancels: Int
 
-        init(refusal: String? = nil) { self.refusal = refusal }
+        init(refusal: String? = nil, cancels: Int = 0) {
+            self.refusal = refusal
+            self.cancels = cancels
+        }
 
         nonisolated func send(_ amount: TokenAmount, to recipient: String) async throws -> RelayResult? { nil }
 
         func release(_ payout: Payout) async throws -> RelayResult? {
+            asked.append(payout.payoutId)
+            if cancels > 0 {
+                cancels -= 1
+                throw KeychainError(status: errSecUserCanceled)
+            }
             if let refusal { throw TransferError.refused(refusal) }
             released.append(payout)
             return nil
@@ -37,6 +47,24 @@ final class CashOutReleaseTests: XCTestCase {
         XCTAssertTrue(started)
         let released = await transfers.released
         XCTAssertEqual(released.map(\.payoutId), [flow.payout?.payoutId].compactMap { $0 })
+    }
+
+    // Mainnet, 15 Nov: the cash-out was registered but its signature never came, and the next tap asked for a second one.
+    func testCancellingFaceIDThenSendingAgainSignsTheSameCashOut() async throws {
+        let transfers = Recording(cancels: 1)
+        let flow = try await readyFlow(transfers)
+
+        let first = await flow.send()
+        XCTAssertFalse(first)
+        XCTAssertNil(flow.errorMessage, "Cancelling Face ID is not an error")
+        XCTAssertNil(flow.payout, "Nothing is shown as sending until it is signed")
+
+        let second = await flow.send()
+        XCTAssertTrue(second)
+        let asked = await transfers.asked
+        XCTAssertEqual(asked.count, 2)
+        XCTAssertEqual(Set(asked).count, 1, "One cash-out, signed on the second tap")
+        XCTAssertEqual(flow.payout?.payoutId, asked.first)
     }
 
     func testAVaultRefusalSaysNothingMovedAndKeepsTheBalance() async throws {
