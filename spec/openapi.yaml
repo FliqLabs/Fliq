@@ -28,6 +28,8 @@ tags:
     description: The user's vault balance
   - name: deposits
     description: Topping up the vault from other chains through NEAR Intents
+  - name: sends
+    description: USDC sent from a fliq account to a wallet on another network
   - name: activity
     description: Everything that moved money, and the notifications about it
   - name: agents
@@ -336,6 +338,73 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/VaultBalance"
+        "404":
+          $ref: "#/components/responses/Error"
+  /sends/networks:
+    get:
+      operationId: listSendNetworks
+      summary: The networks a user can send USDC to from their fliq account
+      description: >-
+        In display order. A network NEAR Intents cannot reach right now is still listed, with available false.
+        Sending to a NEAR wallet needs none of this: it is a transfer the user signs directly.
+      tags: [sends]
+      responses:
+        "200":
+          description: Networks in display order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SendNetworkList"
+  /sends:
+    post:
+      operationId: createSend
+      summary: Start a send of USDC to a wallet on another network
+      description: >-
+        Returns what will arrive and a NEAR deposit address. Nothing has moved yet. The user then sends the amount
+        to deposit.address themselves, with the same two signed steps as a send to a NEAR wallet (withdraw from the
+        vault, then ft_transfer), and NEAR Intents delivers it on the other network. If the swap cannot complete,
+        the USDC comes back to the user's own NEAR account. A send not started by deposit.expires_at expires.
+      tags: [sends]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendRequest"
+      responses:
+        "201":
+          description: Quoted, waiting for the user to send
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WalletSend"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "503":
+          $ref: "#/components/responses/Error"
+  /sends/{sendId}:
+    get:
+      operationId: getSend
+      summary: Where a send to another network is
+      description: Poll every few seconds while the app shows it.
+      tags: [sends]
+      parameters:
+        - name: sendId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The send
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WalletSend"
         "404":
           $ref: "#/components/responses/Error"
   /deposits/sources:
@@ -3312,6 +3381,103 @@ components:
               description: Alert when $1 pays more than this
         weekly_summary:
           type: boolean
+    SendNetworkList:
+      type: object
+      additionalProperties: false
+      required: [networks]
+      properties:
+        networks:
+          type: array
+          items:
+            $ref: "#/components/schemas/SendNetwork"
+    SendNetwork:
+      type: object
+      additionalProperties: false
+      required: [chain, name, token, minimum, eta_seconds, available]
+      properties:
+        chain:
+          type: string
+          examples: [solana]
+        name:
+          type: string
+          description: The name to show
+          examples: [Solana]
+        token:
+          type: string
+          enum: [usdc]
+        minimum:
+          type: string
+          description: The smallest amount that can be sent, in dollars
+        eta_seconds:
+          type: integer
+        available:
+          type: boolean
+    SendRequest:
+      type: object
+      additionalProperties: false
+      required: [chain, address, amount]
+      properties:
+        chain:
+          type: string
+          description: A chain from GET /sends/networks
+        address:
+          type: string
+          description: The wallet on that network. Its shape is checked for the network.
+        amount:
+          type: string
+          description: Dollars of USDC to send, as a decimal string
+    WalletSend:
+      type: object
+      additionalProperties: false
+      required: [send_id, state, token, chain, to, amount, receives, fee, eta_seconds, deposit, origin_tx, destination_tx, created_at]
+      properties:
+        send_id:
+          type: string
+        state:
+          type: string
+          enum: [awaiting, moving, delivered, refunded, failed, expired]
+          description: >-
+            awaiting until the user's transfer reaches deposit.address, then moving. refunded and failed mean the
+            USDC went back to the user's own NEAR account. expired means it was never started.
+        token:
+          type: string
+          enum: [usdc]
+        chain:
+          type: string
+        to:
+          type: string
+        amount:
+          type: string
+          description: What leaves the user's account
+        receives:
+          type: string
+          description: What the wallet receives; the quoted amount until delivered, then the delivered amount
+        fee:
+          type: string
+          description: The network and swap cost, amount minus the quoted receives. fliq adds nothing.
+        eta_seconds:
+          type: integer
+        deposit:
+          type: object
+          additionalProperties: false
+          required: [address, memo, expires_at]
+          properties:
+            address:
+              type: string
+              description: The NEAR account to send the USDC to
+            memo:
+              type: [string, "null"]
+            expires_at:
+              type: string
+              format: date-time
+        origin_tx:
+          type: [string, "null"]
+        destination_tx:
+          type: [string, "null"]
+          description: The transaction on the destination network, once delivered
+        created_at:
+          type: string
+          format: date-time
     Limits:
       type: object
       additionalProperties: false

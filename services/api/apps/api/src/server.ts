@@ -24,6 +24,7 @@ import { startWebhookDelivery } from "./webhook-delivery.js";
 import { startVaultSync } from "./vault-sync.js";
 import { alertConfigFromEnv, createAlerts } from "./alerts.js";
 import { createOps, opsConfigFromEnv } from "./ops.js";
+import { createSends, startSendWatch } from "./sends.js";
 import { payoutRefresher, startPayoutWatch } from "./payout-watch.js";
 import { apnsFromEnv, createApnsSender, startPushDispatch } from "./push.js";
 import { usageRecorder } from "./usage.js";
@@ -124,6 +125,14 @@ const deposits = createDeposits({
     : {}),
 });
 
+const sends = createSends({
+  client: oneClick,
+  usdcContract,
+  slippageBps: Number(process.env.ONECLICK_SEND_SLIPPAGE_BPS ?? 100),
+  tokenStorage,
+  log: (message) => console.warn(message),
+});
+
 const quoteDeps = { adapters, ...(hops ? { hop: hops } : {}), routing: DEFAULT_ROUTING_CONFIG, signals: NO_SIGNALS, now: () => new Date() };
 const rateBoard = createRateBoard(quoteDeps, unit);
 
@@ -163,6 +172,7 @@ const handlers = createHandlers({
   ops,
   status: { probes },
   deposits,
+  sends,
   rateBoard,
   quotes: quoteDeps,
   payouts: {
@@ -181,6 +191,7 @@ await app.listen({ port: config.port, host: "0.0.0.0" });
 startHealthChecks(unit, probes, Number(process.env.HEALTH_CHECK_INTERVAL_MS ?? 60_000));
 startRateSampler(rateBoard, Number(process.env.RATE_SAMPLE_INTERVAL_MS ?? 60_000));
 startDepositWatch(unit, deposits, Number(process.env.DEPOSIT_WATCH_INTERVAL_MS ?? 10_000));
+startSendWatch(unit, sends, Number(process.env.SEND_WATCH_INTERVAL_MS ?? 10_000), alert);
 startPayoutWatch(payoutWatch, Number(process.env.PAYOUT_WATCH_INTERVAL_MS ?? 20_000));
 startVaultSync(
   { unit, vault, now: () => new Date(), log: alert },

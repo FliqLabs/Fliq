@@ -932,3 +932,34 @@ model KeyChange {
   @@map("key_changes")
   @@schema("auth")
 }
+
+// USDC a user sends from their fliq account to a wallet on another network. The user moves it to depositAddress on
+// NEAR themselves and NEAR Intents delivers it on the other chain; this row only follows it.
+model WalletSend {
+  id               String   @id @db.Text
+  userId           String   @map("user_id") @db.Text
+  account          String   @db.Text
+  chain            String   @db.Text
+  toAddress        String   @map("to_address") @db.Text
+  amountUnits      BigInt   @map("amount_units")
+  receivesUnits    BigInt   @map("receives_units")
+  minReceivesUnits BigInt   @map("min_receives_units")
+  deliveredUnits   BigInt?  @map("delivered_units")
+  depositAddress   String   @unique @map("deposit_address") @db.Text
+  depositMemo      String?  @map("deposit_memo") @db.Text
+  etaSeconds       Int      @map("eta_seconds")
+  // The user has until then to sign; after it an untouched send is expired.
+  expiresAt        DateTime @map("expires_at") @db.Timestamptz(6)
+  // awaiting, moving, delivered, refunded, failed or expired.
+  state            String   @default("awaiting") @db.Text
+  originTx         String?  @map("origin_tx") @db.Text
+  destinationTx    String?  @map("destination_tx") @db.Text
+  quote            Json
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([userId, createdAt])
+  @@index([state, createdAt])
+  @@map("wallet_sends")
+  @@schema("core")
+}
