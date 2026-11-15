@@ -36,7 +36,13 @@ function greeting() {
 
 export function bestRoute(board: RateBoard | undefined) {
   if (!board) return null;
-  return board.providers.find((provider) => provider.provider === board.best && provider.rate) ?? null;
+  const fetchedAt = Date.parse(board.fetched_at);
+  if (!Number.isFinite(fetchedAt) || Date.now() - fetchedAt > 60_000) return null;
+  return (
+    board.providers.find(
+      (provider) => provider.provider === board.best && provider.status === "live" && provider.rate != null && Number.isFinite(provider.rate) && provider.rate > 0,
+    ) ?? null
+  );
 }
 
 function useSecondsSince(at: string | undefined) {

@@ -4,7 +4,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { avatarHue } from "../../lib/assets";
-import { decimalsOf, symbolOf, type CurrencyCode } from "../../lib/money";
+import { formatMoney, symbolOf, type CurrencyCode } from "../../lib/money";
 import { Icon, type IconName } from "./icons";
 
 export function Avatar({
@@ -50,11 +50,12 @@ export function IconBubble({ name, size }: { name: IconName; size?: "sm" | "xs" 
 }
 
 export function BigMoney({ value, currency }: { value: number | string; currency: CurrencyCode }) {
-  const decimals = decimalsOf(currency);
+  const formatted = formatMoney(value, currency);
+  const symbol = symbolOf(currency);
   return (
     <>
-      <span className="cs">{symbolOf(currency).trim()}</span>
-      {Number(value).toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}
+      <span className="cs">{symbol.trim()}</span>
+      {formatted.slice(symbol.length)}
     </>
   );
 }
