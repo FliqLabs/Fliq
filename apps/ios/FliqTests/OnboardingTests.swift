@@ -94,7 +94,11 @@ private struct CancellableDirectory: NameDirectory {
 @MainActor
 final class PasskeySignInFailureTests: XCTestCase {
     func testAFailedSignInSaysSoAndKeepsTheSystemCode() {
-        XCTAssertEqual(OnboardingView.signInFailure("1004: The operation couldn't be completed."), "We couldn't sign you in with your passkey. Try again. (code 1004)")
+        XCTAssertEqual(OnboardingView.signInFailure("1002: The operation couldn't be completed."), "We couldn't sign you in with your passkey. Try again. (code 1002)")
+        XCTAssertEqual(OnboardingView.signInFailure("1004: Unable to verify webcredentials association."), OnboardingView.notReadyMessage)
+        XCTAssertTrue(PasskeyAuthenticator.isNotReady(PasskeyError.failed("1004: Unable to verify webcredentials association.")))
+        XCTAssertFalse(PasskeyAuthenticator.isNotReady(PasskeyError.cancelled))
+        XCTAssertFalse(PasskeyAuthenticator.isNotReady(PasskeyError.failed("1002: other")))
         XCTAssertEqual(OnboardingView.signInFailure("something else"), "We couldn't sign you in with your passkey. Try again.")
     }
 }

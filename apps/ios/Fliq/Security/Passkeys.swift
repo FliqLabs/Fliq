@@ -63,7 +63,31 @@ final class PasskeyAuthenticator: NSObject {
     /// What the passkey sheet shows for this passkey. Testnet and mainnet share fliq.cash, so the label tells them apart.
     static var label: String { NearNetwork.current == .testnet ? "fliq testnet" : "fliq" }
 
+    /// Right after an install or an update, iOS has not finished checking that this app may use fliq.cash passkeys.
+    /// It then refuses at once with code 1004 and asks to try again in a few seconds. So the request is made again,
+    /// quietly, for up to ten seconds: the person only sees the button working a little longer.
+    static let notReadyCode = 1004
+    static let notReadyRetries = 5
+    var notReadyDelay: Duration = .seconds(2)
+
+    static func isNotReady(_ error: any Error) -> Bool {
+        if case PasskeyError.failed(let reason) = error { return reason.hasPrefix("\(notReadyCode):") }
+        return false
+    }
+
     private func perform(_ request: ASAuthorizationRequest, options: ASAuthorizationController.RequestOptions = []) async throws -> ASAuthorization {
+        var tries = 0
+        while true {
+            do {
+                return try await performOnce(request, options: options)
+            } catch where Self.isNotReady(error) && tries < Self.notReadyRetries {
+                tries += 1
+                try await Task.sleep(for: notReadyDelay)
+            }
+        }
+    }
+
+    private func performOnce(_ request: ASAuthorizationRequest, options: ASAuthorizationController.RequestOptions) async throws -> ASAuthorization {
         let controller = ASAuthorizationController(authorizationRequests: [request])
         controller.delegate = self
         controller.presentationContextProvider = self
