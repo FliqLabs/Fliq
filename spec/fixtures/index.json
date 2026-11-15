@@ -59,6 +59,7 @@
   "passkeys.list.json": "PasskeyList",
   "notification-settings.json": "NotificationSettings",
   "send.networks.json": "SendNetworkList",
+  "send.networks.all.json": "SendNetworkList",
   "send.awaiting.json": "WalletSend",
   "send.delivered.json": "WalletSend",
   "limits.set.json": "Limits",
