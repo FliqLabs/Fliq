@@ -116,7 +116,9 @@ struct OnboardingView: View {
         passkeyMessage = "We couldn't create your passkey. Try again."
     }
 
-    static let notReadyMessage = "This iPhone is still getting passkeys ready for fliq. Wait a few seconds and try again."
+    // iOS checks with Apple that fliq may use fliq.cash passkeys. After 30 seconds of trying it is stuck, not slow, and a
+    // restart is what clears it (seen on a real iPhone on 15 Nov 2026: the check failed for minutes, network fine).
+    static let notReadyMessage = "Your iPhone couldn't confirm fliq is allowed to use your passkey. Restart your iPhone and try again. Your account and money are safe."
 
     /// Says it was the sign-in that failed, with the system's own code so support can tell why.
     private func couldNotSignIn(_ reason: String) {
