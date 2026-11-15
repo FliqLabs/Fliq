@@ -50,5 +50,7 @@ final class ActivityLineTests: XCTestCase {
         let line = try line(kind: "payout", status: "refunded")
         XCTAssertEqual(line.statusText, "Refunded")
         XCTAssertEqual(line.outcome, .refunded)
+        XCTAssertTrue(line.subtitle.hasSuffix("Not paid, refunded to you"), "Says what happened to the money, not which provider failed")
+        XCTAssertEqual(line.steps.last?.title, "Back in your vault")
     }
 }
