@@ -9,6 +9,8 @@ import { chain, tokenLogo } from "../../lib/assets";
 import { cleanAmount, formatUsd } from "../../lib/money";
 import { walletApi, type DepositSource, type PaymentRequest, type VaultDeposit } from "../../lib/wallet-api";
 import { keys, useDepositSources, useMe, useRequests } from "../../lib/wallet-queries";
+import { isBankSource } from "../../lib/paj";
+import { BankDepositDrawer } from "./bank-deposit-drawer";
 
 const DEPOSIT_POLL_MS = 3_000;
 const FINAL_DEPOSIT = new Set(["landed", "refunded", "expired", "failed"]);
@@ -325,6 +327,7 @@ function Requests() {
 export function AddMoney() {
   const sources = useDepositSources();
   const [open, setOpen] = useState<DepositSource | null>(null);
+  const [bankOpen, setBankOpen] = useState(false);
   const all = sources.data?.sources ?? [];
   const dollars = all.filter((source) => source.group === "dollars");
   const other = all.filter((source) => source.group !== "dollars");
@@ -338,6 +341,15 @@ export function AddMoney() {
       </div>
       {sources.isPending && <Notice icon="spin">Loading the ways to add money</Notice>}
       {sources.isError && <Notice tone="bad">{sources.error.message}</Notice>}
+      {all.some(isBankSource) && (
+        <section style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <h2 className="sec-title">Bank transfer</h2>
+          <button type="button" className="tile" onClick={() => setBankOpen(true)}>
+            <div className="top"><Icon name="bank" size={24} /><Icon name="chevR" size={18} /></div>
+            <div><b>Naira from your bank</b><span>Pay in NGN · arrives as USDC</span></div>
+          </button>
+        </section>
+      )}
       {dollars.length > 0 && (
         <section style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <h2 className="sec-title">Digital dollars</h2>
@@ -360,6 +372,7 @@ export function AddMoney() {
       )}
       <Requests />
       {open && <DepositDrawer source={open} onClose={() => setOpen(null)} />}
+      {bankOpen && <BankDepositDrawer source={all.find(isBankSource)!} onClose={() => setBankOpen(false)} />}
     </div>
   );
 }
