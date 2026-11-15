@@ -143,6 +143,22 @@ export function vaultTransfer(signer: Signer, vault: string, recipient: string, 
   };
 }
 
+/** The vault's payout for a cash-out the API registered: it sends the reserved USDC to the swap's deposit address.
+ *  Nothing leaves the vault until this is signed. */
+export function vaultPayout(signer: Signer, vault: string, orderId: string, units: bigint, depositAddress: string): DelegateAction {
+  return {
+    senderId: signer.sender,
+    receiverId: vault,
+    methodName: "payout",
+    args: new TextEncoder().encode(JSON.stringify({ order_id: orderId, amount: units.toString(), deposit_address: depositAddress })),
+    gas: 100_000_000_000_000n,
+    deposit: 0n,
+    nonce: signer.nonce,
+    maxBlockHeight: signer.blockHeight + LIFETIME_BLOCKS,
+    publicKey: signer.publicKey,
+  };
+}
+
 /** A call the API asked the browser to sign, such as the vault's set_agent or remove_agent. */
 export function stepAction(signer: Signer, step: SignStep): DelegateAction {
   if (step.kind !== "function_call" || !step.method_name) throw new Error("Only function calls are signed here.");

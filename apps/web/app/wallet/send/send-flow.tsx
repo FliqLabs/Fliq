@@ -11,7 +11,7 @@ import { Icon } from "../../components/app/icons";
 import { Avatar, BigMoney, Modal, Notice, PageState, Spinner } from "../../components/app/ui";
 import { bankLogo, PROVIDERS } from "../../lib/assets";
 import { NoDeviceKeyError, signAndRelay } from "../../lib/device-signer";
-import { vaultTransfer } from "../../lib/near-delegate";
+import { vaultPayout, vaultTransfer } from "../../lib/near-delegate";
 import { explorerTxUrl } from "../../lib/near-explorer";
 import {
   CURRENCIES,
@@ -422,10 +422,18 @@ export function SendFlow() {
         );
         return { kind: "transfer" as const, result };
       }
+      // Same key for the same quote, so trying again after a failed signature signs the cash-out already registered.
       const payout = await walletApi.createPayout(
         { quote_id: quote.data!.quote_id, account: { bank: target.recipient.bank.code, number: accountNumber } },
         idempotency.current,
       );
+      // The API only registers the order. The money leaves the vault when this browser signs the vault's payout.
+      if (payout.deposit.chain === "near") {
+        if (!me.data.vault) throw new Error("Your vault is not set up yet.");
+        await signAndRelay(me.data, (signer) =>
+          vaultPayout(signer, me.data.vault!, payout.payout_id, toTokenUnits(payout.deposit.amount), payout.deposit.address),
+        );
+      }
       rememberNumber(target.recipient.recipient_id, accountNumber);
       return { kind: "payout" as const, payout };
     },
