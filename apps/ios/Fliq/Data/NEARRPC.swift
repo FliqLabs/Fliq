@@ -42,6 +42,25 @@ struct NEARRPC: Sendable {
         return key.nonce
     }
 
+    /// Whether `publicKey` is an access key of `account` right now. Some RPC providers answer a missing key with an
+    /// error, others with a result that carries an `error` text, so both are read. Anything else is thrown, never guessed.
+    func hasAccessKey(account: String, publicKey: String) async throws -> Bool {
+        struct Lookup: Decodable {
+            let nonce: UInt64?
+            let error: String?
+        }
+        do {
+            let found: Lookup = try await call("query", [
+                "request_type": "view_access_key", "finality": "final", "account_id": account, "public_key": publicKey,
+            ])
+            if found.nonce != nil { return true }
+            if let error = found.error, error.contains("does not exist") { return false }
+            throw NEARRPCError(message: found.error ?? "unreadable access key")
+        } catch let error as NEARRPCError where error.isUnknownAccessKey {
+            return false
+        }
+    }
+
     func finalBlockHeight() async throws -> UInt64 {
         try await finalBlock().height
     }
@@ -148,4 +167,5 @@ struct NEARRPCError: Error, Equatable {
     var cause: String?
 
     var isUnknownAccount: Bool { cause == "UNKNOWN_ACCOUNT" }
+    var isUnknownAccessKey: Bool { cause == "UNKNOWN_ACCESS_KEY" }
 }

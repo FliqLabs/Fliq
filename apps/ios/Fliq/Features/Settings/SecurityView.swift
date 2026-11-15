@@ -7,6 +7,7 @@ struct SecurityView: View {
     @State private var devices: [DeviceSession]?
     @State private var signingOut: DeviceSession?
     @State private var settingPasscode = false
+    @State private var backup: RecoveryState?
 
     var body: some View {
         ScrollView {
@@ -27,6 +28,13 @@ struct SecurityView: View {
                         }
                     } else {
                         placeholder(passkeys == nil ? "Loading" : "No passkey yet. You signed in with email.")
+                    }
+                }
+
+                SectionLabel(text: "Backup").padding(.top, 24)
+                card {
+                    LinkRow(symbol: "arrow.counterclockwise", title: "Account backup", value: backupLabel, isLast: true) {
+                        environment.router.push(.settingsBackup)
                     }
                 }
 
@@ -143,6 +151,15 @@ struct SecurityView: View {
         async let sessions = try? environment.api.deviceSessions().items
         passkeys = await keys ?? []
         devices = await sessions ?? []
+        backup = await environment.recovery.state()
+    }
+
+    private var backupLabel: String? {
+        switch backup {
+        case .backedUp: "On"
+        case .notBackedUp: "Off"
+        case .canRestore, .cannotSign, nil: nil
+        }
     }
 
     private func passkeyDetail(_ passkey: Passkey) -> String {

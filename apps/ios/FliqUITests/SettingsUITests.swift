@@ -97,6 +97,43 @@ final class SettingsUITests: XCTestCase {
     }
 
     @MainActor
+    func testAccountBackupIsTurnedOnFromSecurity() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--onboarded", "--funded"]
+        app.launch()
+
+        XCTAssertTrue(app.buttons["Profile"].waitForExistence(timeout: 5))
+        app.buttons["Profile"].tap()
+        let passkeys = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Passkeys")).firstMatch
+        XCTAssertTrue(passkeys.waitForExistence(timeout: 3))
+        passkeys.tap()
+        let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Account backup")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 3))
+        snap("b1-security")
+        row.tap()
+        XCTAssertTrue(app.staticTexts["Not backed up yet"].waitForExistence(timeout: 3))
+        snap("b2-not-backed-up")
+
+        app.buttons["Back up with Face ID"].tap()
+        XCTAssertTrue(app.staticTexts["Your account is backed up"].waitForExistence(timeout: 3))
+        XCTAssertFalse(app.buttons["Back up with Face ID"].exists)
+        snap("b3-backed-up")
+    }
+
+    @MainActor
+    func testANewIPhoneIsAskedToJoinTheAccountAndCanSendAfter() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--onboarded", "--funded", "--new-iphone"]
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["Add this iPhone to your account"].waitForExistence(timeout: 5))
+        snap("b4-new-iphone")
+        app.buttons["Add this iPhone with Face ID"].tap()
+        XCTAssertTrue(app.staticTexts["Add this iPhone to your account"].waitForNonExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Vault balance"].exists)
+    }
+
+    @MainActor
     private func snap(_ name: String) {
         let png = XCUIScreen.main.screenshot().pngRepresentation
         add(XCTAttachment(data: png, uniformTypeIdentifier: "public.png"))

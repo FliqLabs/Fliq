@@ -187,7 +187,7 @@ private struct CustodySheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("How your money is held").font(.system(size: 20, weight: .semibold))
-            Text("Your dollars sit in the fliq vault, a smart contract on NEAR, under your own account. Only a key on this iPhone can move them, and it asks for Face ID every time.")
+            Text("Your dollars sit in the fliq vault, a smart contract on NEAR, under your own account. Only a key on this iPhone can move them, and it asks for Face ID every time. If you turn on Account backup, a second key in your iCloud Keychain can add a new iPhone.")
             Text("fliq never holds your key. If fliq went away, your balance would still be on chain under your name.")
             if let vault {
                 Text(vault)
