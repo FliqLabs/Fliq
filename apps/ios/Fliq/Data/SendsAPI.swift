@@ -12,7 +12,7 @@ struct HTTPSendsAPI: SendsAPI {
     }
 
     func networks() async throws -> [SendNetwork] {
-        let list: NetworkList = try await client.send("GET", "sends/networks")
+        let list: NetworkList = try await client.send("GET", "sends/networks", query: ["tokens": "usdc,usdt"])
         return list.networks
     }
 
@@ -37,6 +37,8 @@ actor FixtureSendsAPI: SendsAPI {
         [
             SendNetwork(chain: "solana", name: "Solana", minimum: "1.00", etaSeconds: 40, available: true),
             SendNetwork(chain: "base", name: "Base", minimum: "1.00", etaSeconds: 40, available: true),
+            SendNetwork(chain: "tron", name: "Tron", minimum: "10.00", etaSeconds: 75, available: true, token: "usdt"),
+            SendNetwork(chain: "bnb", name: "BNB Chain", minimum: "1.00", etaSeconds: 25, available: true, token: "usdt"),
         ]
     }
 

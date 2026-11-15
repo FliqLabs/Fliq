@@ -122,8 +122,8 @@ extension ActivityLine {
         case .transferIn, .transferOut:
             let incoming = item.kind == .transferIn
             let network = item.party.name.split(separator: " ").first.map(String.init)?.lowercased()
-            if !incoming, item.party.nearAccount == nil, let network, ["solana", "base"].contains(network), item.party.name.contains(" wallet ") {
-                badge = .source(DepositSource(tokenId: "usdc", chainId: network, group: .dollars))
+            if !incoming, item.party.nearAccount == nil, let network, ["solana", "base", "tron", "bnb"].contains(network), item.party.name.contains(" wallet ") {
+                badge = .source(DepositSource(tokenId: ["tron", "bnb"].contains(network) ? "usdt" : "usdc", chainId: network, group: .dollars))
             } else {
                 badge = .person(name: item.party.name, photo: item.party.photoUrl.flatMap(URL.init(string:)), incoming: incoming)
             }

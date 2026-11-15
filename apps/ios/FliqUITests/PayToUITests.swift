@@ -120,6 +120,43 @@ final class PayToUITests: XCTestCase {
         snap("n5-delivered")
     }
 
+    /// USDT on Tron: the fifth network is reachable, the address is checked, and Review says USDT arrives.
+    @MainActor
+    func testSendUSDTToATronWallet() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--onboarded", "--funded", "--sample-recipients"]
+        app.launch()
+
+        app.buttons["Transfer"].tap()
+        XCTAssertTrue(app.buttons["Send"].waitForExistence(timeout: 3))
+        app.buttons["Send"].tap()
+        XCTAssertTrue(app.buttons["New recipient"].waitForExistence(timeout: 3))
+        app.buttons["New recipient"].tap()
+        XCTAssertTrue(app.buttons["USDC"].waitForExistence(timeout: 3))
+        app.buttons["USDC"].tap()
+        XCTAssertTrue(app.buttons["Next"].waitForExistence(timeout: 3))
+        app.buttons["2"].tap()
+        app.buttons["0"].tap()
+        app.buttons["Next"].tap()
+
+        let tron = app.buttons["send.network.tron"]
+        XCTAssertTrue(tron.waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["send.network.bnb"].exists)
+        snap("u1-networks")
+        tron.tap()
+        let field = app.textFields["Tron address"]
+        XCTAssertTrue(field.waitForExistence(timeout: 3))
+        field.tap()
+        field.typeText("TA4Wt1DUCqz6YegbnsmqsWC5uUfbdBqPxm")
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "This looks like a Tron address")).firstMatch.waitForExistence(timeout: 3))
+        snap("u2-address")
+        app.buttons["Next"].tap()
+
+        XCTAssertTrue(app.staticTexts["USDT on Tron"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["$19.97"].waitForExistence(timeout: 3))
+        snap("u3-review")
+    }
+
     @MainActor
     private func snap(_ name: String) {
         let png = XCUIScreen.main.screenshot().pngRepresentation

@@ -196,7 +196,8 @@ final class SendToNetworkTests: XCTestCase {
 
     func testNEARComesFirstThenTheNetworksTheAPIOffers() async {
         let flow = await makeFlow()
-        XCTAssertEqual(flow.networks.map(\.chain), ["near", "solana", "base"])
+        XCTAssertEqual(flow.networks.map(\.chain), ["near", "solana", "base", "tron", "bnb"])
+        XCTAssertEqual(flow.networks.map(\.tokenName), ["USDC", "USDC", "USDC", "USDT", "USDT"])
         XCTAssertTrue(flow.network.isNEAR)
     }
 
@@ -217,6 +218,21 @@ final class SendToNetworkTests: XCTestCase {
         await flow.checkAddress()
         XCTAssertTrue(flow.hasAddress)
         XCTAssertEqual(SendAddress.problem("0x123", on: flow.network), "That isn't a Base address. It starts with 0x and has 42 characters.")
+    }
+
+    func testTronAddressesAreCheckedToTheLastCharacterAndBNBChainTakesA0xAddress() async throws {
+        let tronWallet = "TA4Wt1DUCqz6YegbnsmqsWC5uUfbdBqPxm"
+        let flow = await makeFlow()
+        let tron = try network("tron", in: flow)
+        XCTAssertNil(SendAddress.problem(tronWallet, on: tron))
+        XCTAssertEqual(SendAddress.problem("TA4Wt1DUCqz6YegbnsmqsWC5uUfbdBqPxa", on: tron), "That Tron address has a typo. Copy it again.")
+        XCTAssertEqual(SendAddress.problem(baseWallet, on: tron), "That's a Base or BNB Chain address. Choose one of those above to send it there.")
+        XCTAssertEqual(SendAddress.problem(tronWallet, on: try network("solana", in: flow)), "That's a Tron address. Choose Tron above to send it there.")
+
+        let bnb = try network("bnb", in: flow)
+        XCTAssertNil(SendAddress.problem(baseWallet, on: bnb))
+        XCTAssertEqual(SendAddress.problem(tronWallet, on: bnb), "That's a Tron address. Choose Tron above to send it there.")
+        XCTAssertEqual(bnb.explorer(transaction: "0xabc")?.absoluteString, "https://bscscan.com/tx/0xabc")
     }
 
     func testReviewShowsTheFeeAndWhatArrivesBeforeAnythingCanBeSent() async throws {
