@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
+import { SiteHeader } from "../components/site-header";
 import { fliqApi } from "../lib/fliq-api";
 
 type DayStatus = "operational" | "degraded" | "outage" | "no_data";
@@ -282,46 +283,6 @@ function IncidentRow({ incident }: { incident: StatusIncident }) {
   );
 }
 
-function StatusHeader() {
-  return (
-    <header className="flex h-[64px] items-center justify-between">
-      <Link href="/" className="flex items-center gap-[9px]">
-        <Image src="/logo.png" width={26} height={26} alt="" />
-        <span className="text-[19px] font-bold tracking-[-0.7px] text-white">
-          fliq
-        </span>
-      </Link>
-
-      <nav className="flex items-center gap-[22px] text-[13px] text-[#999] max-sm:gap-3">
-        <Link className="hidden transition hover:text-white sm:block" href="/#rates">
-          Rates
-        </Link>
-        <Link className="hidden transition hover:text-white sm:block" href="/#developers">
-          Docs
-        </Link>
-        <Link className="hidden transition hover:text-white sm:block" href="/#agents">
-          Agents
-        </Link>
-        <Link className="hidden transition hover:text-white sm:block" href="/pricing">
-          Pricing
-        </Link>
-        <Link className="text-white" href="/status">
-          Status
-        </Link>
-        <Link className="hidden transition hover:text-white sm:block" href="/sign-in">
-          Sign in
-        </Link>
-        <Link
-          href="/sign-in"
-          className="rounded-[10px] bg-white px-[14px] py-[9px] text-[12px] font-semibold text-black transition hover:bg-zinc-200"
-        >
-          Get a key
-        </Link>
-      </nav>
-    </header>
-  );
-}
-
 function StatusFooter() {
   return (
     <footer className="mt-[64px] flex flex-wrap items-center justify-between gap-5 border-t border-[#303030] py-[25px] text-[12px] text-[#777]">
@@ -342,7 +303,7 @@ function StatusFooter() {
   );
 }
 
-export function StatusPageClient() {
+export function StatusPageClient({ brandClassName }: { brandClassName?: string }) {
   const { data, isPending, isError, error, refetch } = useQuery({
     queryKey: ["public-status"],
     queryFn: () => fliqApi<StatusReport>("status"),
@@ -378,7 +339,7 @@ export function StatusPageClient() {
   return (
     <main className="min-h-screen bg-[#171717] text-white">
       <div className="mx-auto w-full max-w-[1100px] px-5 sm:px-7">
-        <StatusHeader />
+        <SiteHeader activeHref="/status" brandClassName={brandClassName} />
 
         <section className="mb-[22px] mt-[47px] flex flex-wrap items-center justify-between gap-5">
           <div>
