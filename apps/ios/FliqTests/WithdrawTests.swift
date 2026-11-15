@@ -174,3 +174,104 @@ private extension Data {
         self.init(bytes)
     }
 }
+
+/// Sending to a wallet on another network: the same signed transfer, to the address NEAR Intents gives for the send.
+@MainActor
+final class SendToNetworkTests: XCTestCase {
+    private let solanaWallet = "4Nd1mYQzvgV8Vr3Z3nYb7pD6T1K9wLx2aRkQeJcUuHsM"
+    private let baseWallet = "0x00000000000000000000000000000000000000A1"
+
+    private func recents() -> SentAddresses { SentAddresses(defaults: UserDefaults(suiteName: "send-network-tests-\(UUID().uuidString)")!) }
+
+    private func makeFlow(balance: Int64 = 50_000_000) async -> WithdrawFlow {
+        let flow = WithdrawFlow(withdrawals: FixtureWithdrawals(), sends: FixtureSendsAPI(), vault: VaultStore(balance: TokenAmount(baseUnits: balance)), recents: recents())
+        flow.pollInterval = .zero
+        await flow.loadNetworks()
+        return flow
+    }
+
+    private func network(_ chain: String, in flow: WithdrawFlow) throws -> SendNetwork {
+        try XCTUnwrap(flow.networks.first { $0.chain == chain })
+    }
+
+    func testNEARComesFirstThenTheNetworksTheAPIOffers() async {
+        let flow = await makeFlow()
+        XCTAssertEqual(flow.networks.map(\.chain), ["near", "solana", "base"])
+        XCTAssertTrue(flow.network.isNEAR)
+    }
+
+    func testAnAddressIsCheckedForTheNetworkPickedAndKeptExactlyAsTyped() async throws {
+        let flow = await makeFlow()
+        flow.network = try network("solana", in: flow)
+        flow.addressText = "  \(solanaWallet) "
+        await flow.checkAddress()
+        XCTAssertTrue(flow.hasAddress)
+        XCTAssertEqual(flow.address, solanaWallet, "Case matters on Solana, so nothing is lowered")
+
+        flow.addressText = baseWallet
+        await flow.checkAddress()
+        XCTAssertFalse(flow.hasAddress)
+        XCTAssertEqual(flow.check, .invalid("That's a Base or Ethereum address. Choose Base above to send it there."))
+
+        flow.network = try network("base", in: flow)
+        await flow.checkAddress()
+        XCTAssertTrue(flow.hasAddress)
+        XCTAssertEqual(SendAddress.problem("0x123", on: flow.network), "That isn't a Base address. It starts with 0x and has 42 characters.")
+    }
+
+    func testReviewShowsTheFeeAndWhatArrivesBeforeAnythingCanBeSent() async throws {
+        let flow = await makeFlow()
+        flow.network = try network("solana", in: flow)
+        flow.addressText = solanaWallet
+        await flow.checkAddress()
+        flow.enterAmount("10")
+        XCTAssertFalse(flow.canSend, "No quote yet")
+
+        await flow.prepare()
+        XCTAssertEqual(flow.quote?.feeAmount, TokenAmount(baseUnits: 30_000))
+        XCTAssertEqual(flow.quote?.receivesAmount, TokenAmount(baseUnits: 9_970_000))
+        XCTAssertTrue(flow.canSend)
+
+        flow.enterAmount("0.5")
+        XCTAssertTrue(flow.isBelowMinimum)
+        XCTAssertFalse(flow.canSend)
+    }
+
+    func testASendLeavesTheVaultLetsTheUserGoAndTurnsDeliveredWhenItLands() async throws {
+        let vault = VaultStore(balance: TokenAmount(baseUnits: 50_000_000))
+        let flow = WithdrawFlow(withdrawals: FixtureWithdrawals(), sends: FixtureSendsAPI(), vault: vault, recents: recents())
+        flow.pollInterval = .zero
+        await flow.loadNetworks()
+        flow.network = try network("solana", in: flow)
+        flow.addressText = solanaWallet
+        await flow.checkAddress()
+        flow.enterAmount("10")
+        await flow.prepare()
+        let quote = try XCTUnwrap(flow.quote)
+
+        let sent = await flow.send()
+        XCTAssertTrue(sent)
+        XCTAssertEqual(vault.balance, TokenAmount(baseUnits: 40_000_000))
+        XCTAssertEqual(flow.sent?.address, solanaWallet, "The receipt names the wallet, not the address it passed through")
+        XCTAssertEqual(flow.sent?.crossing, true)
+        XCTAssertEqual(flow.sent?.delivered, false, "Nobody is made to wait for the other network")
+        XCTAssertEqual(WithdrawReviewView.headline(try XCTUnwrap(flow.sent)), "On its way to 4Nd1mYQzvg…eJcUuHsM")
+
+        await flow.follow(quote)
+        XCTAssertEqual(flow.sent?.delivered, true)
+        XCTAssertEqual(flow.sent?.explorer?.absoluteString, "https://solscan.io/tx/demo")
+    }
+
+    func testASendToNEARIsStillFreeAndDirect() async {
+        let flow = await makeFlow()
+        flow.addressText = "rejois.near"
+        await flow.checkAddress()
+        flow.enterAmount("5")
+        XCTAssertTrue(flow.canSend, "NEAR needs no quote")
+        let sent = await flow.send()
+        XCTAssertTrue(sent)
+        XCTAssertEqual(flow.sent?.delivered, true)
+        XCTAssertNil(flow.sent?.fee)
+        XCTAssertNil(flow.quote)
+    }
+}

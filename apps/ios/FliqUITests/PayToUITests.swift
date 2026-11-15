@@ -79,6 +79,47 @@ final class PayToUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["To"].waitForExistence(timeout: 3), "One tap near the left edge moves on")
     }
 
+    /// Send to a wallet on Solana: pick the network, paste, review the fee, send, and leave while it crosses.
+    @MainActor
+    func testSendToASolanaWalletShowsTheFeeAndDoesNotMakeTheUserWait() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--onboarded", "--funded", "--sample-recipients"]
+        app.launch()
+
+        app.buttons["Transfer"].tap()
+        XCTAssertTrue(app.buttons["Send"].waitForExistence(timeout: 3))
+        app.buttons["Send"].tap()
+        XCTAssertTrue(app.buttons["New recipient"].waitForExistence(timeout: 3))
+        app.buttons["New recipient"].tap()
+        XCTAssertTrue(app.buttons["USDC"].waitForExistence(timeout: 3))
+        app.buttons["USDC"].tap()
+        XCTAssertTrue(app.buttons["Next"].waitForExistence(timeout: 3))
+        app.buttons["1"].tap()
+        app.buttons["0"].tap()
+        app.buttons["Next"].tap()
+
+        XCTAssertTrue(app.buttons["Solana"].waitForExistence(timeout: 3))
+        snap("n1-networks")
+        app.buttons["Solana"].tap()
+        let field = app.textFields["Solana address"]
+        XCTAssertTrue(field.waitForExistence(timeout: 3))
+        field.tap()
+        field.typeText("4Nd1mYQzvgV8Vr3Z3nYb7pD6T1K9wLx2aRkQeJcUuHsM")
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "This looks like a Solana address")).firstMatch.waitForExistence(timeout: 3))
+        snap("n2-address")
+        app.buttons["Next"].tap()
+
+        XCTAssertTrue(app.staticTexts["Network fee"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["$9.97"].waitForExistence(timeout: 3), "What arrives is shown before sending")
+        snap("n3-review")
+        app.buttons["Send with Face ID"].tap()
+
+        XCTAssertTrue(app.buttons["Done"].waitForExistence(timeout: 5), "The user can leave at once")
+        snap("n4-on-its-way")
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Sent to")).firstMatch.waitForExistence(timeout: 15), "Someone who stays sees it land")
+        snap("n5-delivered")
+    }
+
     @MainActor
     private func snap(_ name: String) {
         let png = XCUIScreen.main.screenshot().pngRepresentation
