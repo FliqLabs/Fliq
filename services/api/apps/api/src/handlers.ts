@@ -43,7 +43,7 @@ import {
 } from "./dashboard.js";
 import { requireHttpsUrl, settle } from "./errors.js";
 import { NO_OPS, type Ops } from "./ops.js";
-import { createSends, type SendInput, type Sends } from "./sends.js";
+import { createSends, parseSendTokens, type SendInput, type Sends } from "./sends.js";
 import { createDeposits, type DepositChain, type DepositInput, type Deposits, type DepositToken } from "./deposits.js";
 import { withIdempotency } from "./idempotency.js";
 import { exportPayoutsCsv, parsePayoutFilter, type PayoutQuery } from "./payout-history.js";
@@ -440,7 +440,7 @@ export function createHandlers({
       return { status: 204, body: undefined };
     },
     listPasskeys: async (request) => ({ status: 200, body: await unit((tx) => listPasskeys(tx, auth(request).userId)) }),
-    listSendNetworks: async () => ({ status: 200, body: await sends.networks() }),
+    listSendNetworks: async (request) => ({ status: 200, body: await sends.networks(parseSendTokens((request.query as { tokens?: string }).tokens)) }),
     // The quote calls NEAR Intents, so it runs before the transaction that stores the send, never inside it.
     createSend: async (request) => {
       const quoted = await sends.quote(unit, auth(request).userId, body<SendInput>(request));

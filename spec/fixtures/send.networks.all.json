@@ -1,0 +1,36 @@
+{
+  "networks": [
+    {
+      "chain": "solana",
+      "name": "Solana",
+      "token": "usdc",
+      "minimum": "1.00",
+      "eta_seconds": 40,
+      "available": true
+    },
+    {
+      "chain": "base",
+      "name": "Base",
+      "token": "usdc",
+      "minimum": "1.00",
+      "eta_seconds": 40,
+      "available": true
+    },
+    {
+      "chain": "tron",
+      "name": "Tron",
+      "token": "usdt",
+      "minimum": "10.00",
+      "eta_seconds": 75,
+      "available": true
+    },
+    {
+      "chain": "bnb",
+      "name": "BNB Chain",
+      "token": "usdt",
+      "minimum": "1.00",
+      "eta_seconds": 25,
+      "available": true
+    }
+  ]
+}

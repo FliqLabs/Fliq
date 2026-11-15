@@ -31,6 +31,7 @@ const CHAIN_NAMES: Record<string, string> = {
   base: "Base",
   solana: "Solana",
   tron: "Tron",
+  bnb: "BNB Chain",
   arbitrum: "Arbitrum",
   ethereum: "Ethereum",
   polygon: "Polygon",
