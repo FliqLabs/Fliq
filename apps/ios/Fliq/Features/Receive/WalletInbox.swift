@@ -95,7 +95,6 @@ struct WalletArrivedCard: View {
 /// The NEAR mark in a ring that turns dashed and spins while the money moves.
 private struct MarkRing: View {
     let spinning: Bool
-    @State private var angle = 0.0
 
     var body: some View {
         NEARMark(size: 18)
@@ -103,14 +102,12 @@ private struct MarkRing: View {
             .background(Color.black, in: Circle())
             .padding(5)
             .overlay {
-                Circle()
-                    .strokeBorder(spinning ? Color.white : Theme.surfaceRaised, style: StrokeStyle(lineWidth: 2.5, dash: spinning ? [10, 8] : []))
-                    .rotationEffect(.degrees(angle))
-            }
-            .onChange(of: spinning, initial: true) { _, on in
-                angle = 0
-                guard on else { return }
-                withAnimation(.linear(duration: 2).repeatForever(autoreverses: false)) { angle = 360 }
+                TimelineView(.animation(paused: !spinning)) { context in
+                    let turn = spinning ? context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 2) / 2 : 0
+                    Circle()
+                        .strokeBorder(spinning ? Color.white : Theme.surfaceRaised, style: StrokeStyle(lineWidth: 2.5, dash: spinning ? [10, 8] : []))
+                        .rotationEffect(.degrees(turn * 360))
+                }
             }
     }
 }

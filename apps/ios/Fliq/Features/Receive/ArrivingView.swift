@@ -175,7 +175,6 @@ private struct StepIcon: View {
 
     let logo: String
     let state: Phase
-    @State private var spin = false
 
     var body: some View {
         Image(logo)
@@ -209,13 +208,14 @@ private struct StepIcon: View {
         case .active:
             ZStack {
                 Circle().stroke(Color(hex: 0x2C2C2C), lineWidth: 2)
-                Circle()
-                    .trim(from: 0, to: 0.32)
-                    .stroke(.white, style: StrokeStyle(lineWidth: 2, lineCap: .round))
-                    .rotationEffect(.degrees(spin ? 360 : 0))
-                    .onAppear {
-                        withAnimation(.linear(duration: 1.1).repeatForever(autoreverses: false)) { spin = true }
-                    }
+                // Turned by the clock, like SpinningRing: an animation started on appear froze when the screen redrew.
+                TimelineView(.animation) { context in
+                    let turn = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.1) / 1.1
+                    Circle()
+                        .trim(from: 0, to: 0.32)
+                        .stroke(.white, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                        .rotationEffect(.degrees(turn * 360))
+                }
             }
             .frame(width: 34, height: 34)
         case .pending:
