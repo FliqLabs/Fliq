@@ -428,8 +428,9 @@ async function openHop(
       to: hop.chain,
       amountOut: funding.units,
       recipient: funding.address,
-      // A swap that cannot complete is refunded on NEAR, into the vault, which holds it until recredit returns it.
-      refundTo: deps.config.vaultAccount,
+      // A swap that cannot complete is refunded on NEAR to the payer's own account, where it is theirs at once and the
+      // app offers to move it back into the vault. Refunding to the vault would leave it there with no owner.
+      refundTo: payer,
       deadline,
     });
   } catch {
@@ -445,6 +446,8 @@ async function openHop(
   const deposit: Deposit = { chain: "near", address: swap.depositAddress, units: swap.amountIn, validUntil: deadline, memo: swap.depositMemo ?? null };
   try {
     await intents.tokenStorage.ensure(deposit.address);
+    // The token refuses a transfer to an account it has not registered, so the payer must be able to take a refund.
+    await intents.tokenStorage.ensure(payer);
   } catch {
     return { kind: "route_unavailable" };
   }

@@ -45,10 +45,11 @@ final class BankDepositUITests: XCTestCase {
 
         XCTAssertTrue(app.staticTexts["Checking with the bank"].waitForExistence(timeout: 3))
         snap("d5-checking")
-        if app.staticTexts["Transfer received"].waitForExistence(timeout: 8) { snap("d5b-received") }
-
-        XCTAssertTrue(app.buttons["Done"].waitForExistence(timeout: 25))
+        // The user can leave as soon as the bank transfer is in: Done is there before the money has landed.
+        XCTAssertTrue(app.buttons["Done"].waitForExistence(timeout: 12))
+        XCTAssertFalse(app.staticTexts["Transfer received"].exists, "No spinner to sit and watch")
         XCTAssertTrue(app.staticTexts["You paid"].waitForExistence(timeout: 3))
+        snap("d5b-on-its-way")
         Thread.sleep(forTimeInterval: 1)
         snap("d6-done")
         app.buttons["Done"].tap()
