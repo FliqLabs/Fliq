@@ -5,7 +5,7 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { Icon } from "../../components/app/icons";
 import { walletApi, type ActivityFilter, type ActivityItem } from "../../lib/wallet-api";
 import { asBankActivity, bankActivityItem, useBankDeposits } from "../../lib/paj";
-import { LIVE_MS } from "../../lib/wallet-queries";
+import { LIVE_MS, useMe } from "../../lib/wallet-queries";
 import { ActivityAvatar, AmountCell, ReceiptDrawer, StatusChip, activitySub, when } from "../activity-ui";
 
 type Tab = "all" | "sent" | "received" | "agents";
@@ -23,7 +23,8 @@ export function ActivityPage() {
   const [tab, setTab] = useState<Tab>("all");
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState<ActivityItem | null>(null);
-  const bankDeposits = useBankDeposits();
+  const me = useMe();
+  const bankDeposits = useBankDeposits(me.data?.user_id ?? me.data?.near_account);
   const api = TABS.find((item) => item.id === tab)!.api;
   const activity = useInfiniteQuery({
     queryKey: ["activity", api, "pages"],

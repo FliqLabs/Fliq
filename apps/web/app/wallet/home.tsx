@@ -199,7 +199,8 @@ function SendAgain() {
 
 function RecentActivity() {
   const activity = useActivity();
-  const bankDeposits = useBankDeposits();
+  const me = useMe();
+  const bankDeposits = useBankDeposits(me.data?.user_id ?? me.data?.near_account);
   const [open, setOpen] = useState<ActivityItem | null>(null);
   return (
     <section className="card">

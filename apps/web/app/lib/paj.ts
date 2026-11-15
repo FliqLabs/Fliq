@@ -15,6 +15,23 @@ export type PajOrder = {
   signature?: string | null;
 };
 
+export class PajOrderUncertainError extends Error {
+  constructor() {
+    super("Paj could not confirm the bank order. Do not retry this order; contact support if you need help.");
+    this.name = "PajOrderUncertainError";
+  }
+}
+
+class PajHttpError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+    this.name = "PajHttpError";
+  }
+}
+
 const PAJ_BASE = "https://api.paj.cash";
 const PAJ_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const decimal = /^(?:0|[1-9]\d*)(?:\.\d+)?$/;
@@ -64,6 +81,15 @@ export function decimalText(value: number, decimals = 6) {
   return `${parts.whole}.${parts.fraction.padEnd(decimals, "0")}`.replace(/\.0+$/, "");
 }
 
+export function usdcAmountAtLeastMinimum(value: number, minimum: string) {
+  const amount = decimalText(value);
+  return amount && compareDecimals(amount, minimum) !== -1 ? amount : null;
+}
+
+export function isCompleteBankDetails(order: Pick<PajOrder, "bank" | "accountName" | "accountNumber">) {
+  return Boolean(order.bank?.trim() && order.accountName?.trim() && /^\d{10}$/.test(order.accountNumber?.trim() ?? ""));
+}
+
 function pajError(body: unknown) {
   const message = (body as { message?: unknown } | null)?.message;
   if (Array.isArray(message)) return message.join("; ");
@@ -78,18 +104,25 @@ async function pajRequest<T>(path: string, session: PajSession, init?: RequestIn
     headers: { ...(init?.body ? { "Content-Type": "application/json" } : {}), Authorization: `Bearer ${session.token}`, ...init?.headers },
   });
   const body = await response.json().catch(() => null);
-  if (!response.ok) throw new Error(pajError(body));
+  if (!response.ok) throw new PajHttpError(pajError(body), response.status);
   return body as T;
 }
 
 export const pajApi = {
   quote: (naira: string, session: PajSession) =>
     pajRequest<PajQuote>(`/pub/rates/onramp-value?currency=NGN&fiatAmount=${encodeURIComponent(naira)}&mint=${PAJ_MINT}`, session),
-  order: (naira: string, recipient: string, session: PajSession) =>
-    pajRequest<PajOrder>("/pub/onramp", session, {
-      method: "POST",
-      body: JSON.stringify({ fiatAmount: Number(naira), currency: "NGN", recipient, mint: PAJ_MINT, chain: "SOLANA" }),
-    }),
+  order: async (naira: string, recipient: string, session: PajSession) => {
+    try {
+      return await pajRequest<PajOrder>("/pub/onramp", session, {
+        method: "POST",
+        body: JSON.stringify({ fiatAmount: Number(naira), currency: "NGN", recipient, mint: PAJ_MINT, chain: "SOLANA" }),
+      });
+    } catch (error) {
+      // A timeout or 5xx may mean Paj created the order before the response was lost. Never retry it blindly.
+      if (error instanceof PajHttpError && error.status >= 400 && error.status < 500) throw error;
+      throw new PajOrderUncertainError();
+    }
+  },
   status: (id: string, session: PajSession) => pajRequest<{ order: PajOrder }>(`/pub/transactions/${encodeURIComponent(id)}`, session),
 };
 
@@ -104,29 +137,39 @@ export type BankDepositRecord = {
 const BANK_KEY = "fliq.bank-deposits";
 const bankEvent = "fliq-bank-deposits-changed";
 
-export function readBankDeposits(): BankDepositRecord[] {
+export function bankStorageKey(owner: string | null | undefined) {
+  return owner ? `${BANK_KEY}:${encodeURIComponent(owner)}` : null;
+}
+
+export function readBankDeposits(owner: string | null | undefined): BankDepositRecord[] {
   if (typeof window === "undefined") return [];
+  const key = bankStorageKey(owner);
+  if (!key) return [];
   try {
-    const value = JSON.parse(window.localStorage.getItem(BANK_KEY) ?? "[]");
+    const value = JSON.parse(window.localStorage.getItem(key) ?? "[]");
     return Array.isArray(value) ? value.filter((item) => item && typeof item.depositId === "string") : [];
   } catch {
     return [];
   }
 }
 
-export function recordBankDeposit(record: BankDepositRecord) {
+export function recordBankDeposit(record: BankDepositRecord, owner: string | null | undefined) {
   if (typeof window === "undefined") return;
-  const records = [record, ...readBankDeposits().filter((item) => item.depositId !== record.depositId)].slice(0, 30);
-  window.localStorage.setItem(BANK_KEY, JSON.stringify(records));
+  const key = bankStorageKey(owner);
+  if (!key) return;
+  const records = [record, ...readBankDeposits(owner).filter((item) => item.depositId !== record.depositId)].slice(0, 30);
+  window.localStorage.setItem(key, JSON.stringify(records));
   window.dispatchEvent(new Event(bankEvent));
 }
 
-export function useBankDeposits() {
+export function useBankDeposits(owner: string | null | undefined) {
+  const [loadedOwner, setLoadedOwner] = useState<string | null>(null);
   const [records, setRecords] = useState<BankDepositRecord[]>([]);
   useEffect(() => {
-    const refresh = () => setRecords(readBankDeposits());
+    const refresh = () => { setLoadedOwner(owner ?? null); setRecords(readBankDeposits(owner)); };
+    if (!owner) { refresh(); return; }
     const refreshStatuses = async () => {
-      const current = readBankDeposits();
+      const current = readBankDeposits(owner);
       const updates = await Promise.all(current.map(async (record) => {
         try {
           const response = await fetch(`/api/fliq/deposits/${encodeURIComponent(record.depositId)}`, { credentials: "same-origin" });
@@ -139,7 +182,8 @@ export function useBankDeposits() {
         }
       }));
       if (updates.some((item, index) => item.status !== current[index]?.status)) {
-        window.localStorage.setItem(BANK_KEY, JSON.stringify(updates));
+        const key = bankStorageKey(owner);
+        if (key) window.localStorage.setItem(key, JSON.stringify(updates));
         refresh();
       }
     };
@@ -148,8 +192,8 @@ export function useBankDeposits() {
     const timer = window.setInterval(() => void refreshStatuses(), 8_000);
     window.addEventListener(bankEvent, refresh);
     return () => { window.clearInterval(timer); window.removeEventListener(bankEvent, refresh); };
-  }, []);
-  return records;
+  }, [owner]);
+  return loadedOwner === (owner ?? null) ? records : [];
 }
 
 export function bankActivityItem(record: BankDepositRecord, status: ActivityItem["status"] = record.status ?? "pending"): ActivityItem {

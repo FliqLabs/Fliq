@@ -3,9 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Drawer, Notice, Spinner } from "../../components/app/ui";
-import { compareDecimals, decimalText, depositIsFinal, formatNaira, isPositiveDecimal, pajApi, parseNaira, recordBankDeposit, type PajOrder, type PajSession } from "../../lib/paj";
+import { decimalText, depositIsFinal, formatNaira, isCompleteBankDetails, isPositiveDecimal, pajApi, parseNaira, recordBankDeposit, usdcAmountAtLeastMinimum, type PajOrder, type PajSession } from "../../lib/paj";
 import { walletApi, type DepositSource } from "../../lib/wallet-api";
-import { keys } from "../../lib/wallet-queries";
+import { keys, useMe } from "../../lib/wallet-queries";
 
 type Step = "amount" | "email" | "code" | "pay" | "receiving";
 
@@ -25,6 +25,9 @@ export function BankDepositDrawer({ source, onClose }: { source: DepositSource; 
   const [error, setError] = useState<string | null>(null);
   const [details, setDetails] = useState({ accountNumber: "", accountName: "", bank: "" });
   const depositKey = useRef<string | null>(null);
+  const [orderAttempted, setOrderAttempted] = useState(false);
+  const me = useMe();
+  const owner = me.data?.user_id ?? me.data?.near_account ?? null;
 
   const parsed = parseNaira(amount);
   const quote = useQuery({
@@ -62,12 +65,16 @@ export function BankDepositDrawer({ source, onClose }: { source: DepositSource; 
     mutationFn: async () => {
       if (!session || !isPositiveDecimal(parsed)) throw new Error("Enter a valid amount.");
       const freshQuote = await pajApi.quote(parsed, session);
-      if (!Number.isFinite(freshQuote.amount) || freshQuote.amount <= 0 || !Number.isFinite(freshQuote.rate) || freshQuote.rate <= 0) throw new Error("Paj returned an invalid rate. Try again.");
+      if (!Number.isFinite(freshQuote.rate) || freshQuote.rate <= 0) throw new Error("Paj returned an invalid rate. Try again.");
+      const quotedUsdc = usdcAmountAtLeastMinimum(freshQuote.amount, source.minimum);
+      if (!quotedUsdc) throw new Error(`This amount is below the ${source.minimum} USDC minimum at the current Paj quote. Enter a larger amount.`);
       depositKey.current ??= typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `web-${Date.now()}-${Math.random().toString(36).slice(2)}`;
       const reserved = await walletApi.createDeposit(source, source.minimum, depositKey.current);
+      setOrderAttempted(true);
       const placed = await pajApi.order(parsed, reserved.address, session);
-      const usdc = decimalText(placed.amount);
-      if (!usdc || compareDecimals(usdc, source.minimum) === -1) throw new Error(`This amount is below the ${source.minimum} USDC minimum after Paj's fees.`);
+      const usdc = usdcAmountAtLeastMinimum(placed.amount, source.minimum);
+      if (!usdc) throw new Error(`This amount is below the ${source.minimum} USDC minimum after Paj's fees.`);
+      if (!isCompleteBankDetails(placed)) throw new Error("Paj returned incomplete bank details. No safe transfer instructions are available.");
       return { reserved, placed, usdc };
     },
     onSuccess: ({ reserved, placed }) => { setDepositId(reserved.deposit_id); setOrder(placed); setDetails(orderDetails(placed)); },
@@ -75,7 +82,7 @@ export function BankDepositDrawer({ source, onClose }: { source: DepositSource; 
   });
   const sent = useMutation({
     mutationFn: async () => { if (!order || !depositId || deposit.data?.state === "expired") throw new Error("These bank details have expired. Start a new deposit."); return order; },
-    onSuccess: (placed) => { const usdc = decimalText(placed.amount); if (!usdc) { setError("Paj returned an invalid deposit amount."); return; } recordBankDeposit({ depositId: depositId!, naira: parsed, usdc, startedAt: new Date().toISOString() }); setStep("receiving"); queryClient.invalidateQueries({ queryKey: keys.activity("all") }); },
+    onSuccess: (placed) => { const usdc = decimalText(placed.amount); if (!usdc || !owner) { setError("Your wallet session is unavailable. Sign in again before recording this deposit."); return; } recordBankDeposit({ depositId: depositId!, naira: parsed, usdc, startedAt: new Date().toISOString() }, owner); setStep("receiving"); queryClient.invalidateQueries({ queryKey: keys.activity("all") }); },
   });
 
   useEffect(() => {
@@ -86,8 +93,9 @@ export function BankDepositDrawer({ source, onClose }: { source: DepositSource; 
   }, [deposit.data?.state, queryClient]);
 
   const amountOk = isPositiveDecimal(parsed);
+  const instructionsReady = Boolean(order && isCompleteBankDetails(order) && deposit.data?.state !== "expired");
   return (
-    <Drawer title="Bank transfer · Nigeria" onClose={onClose} footer={step === "pay" && order ? <button type="button" className="btn ink lg" disabled={sent.isPending} onClick={() => sent.mutate()}>{sent.isPending ? "Saving" : "I've sent the money"}</button> : step === "receiving" ? <button type="button" className="btn ink lg" onClick={onClose}>Close</button> : undefined}>
+    <Drawer title="Bank transfer · Nigeria" onClose={onClose} footer={step === "pay" && instructionsReady ? <button type="button" className="btn ink lg" disabled={sent.isPending} onClick={() => sent.mutate()}>{sent.isPending ? "Saving" : "I've sent the money"}</button> : step === "receiving" ? <button type="button" className="btn ink lg" onClick={onClose}>Close</button> : undefined}>
       {step === "amount" && <>
         <p className="muted">Pay in naira from any Nigerian bank. Paj converts it to USDC for your vault.</p>
         <div className="field"><label htmlFor="paj-naira">How much will you send?</label><input id="paj-naira" className="inp num" inputMode="numeric" placeholder="₦2,500" value={amount} onChange={(event) => { setAmount(event.target.value); setError(null); }} />{amount && !amountOk && <span className="err">Enter a whole, positive naira amount.</span>}</div>
@@ -107,8 +115,10 @@ export function BankDepositDrawer({ source, onClose }: { source: DepositSource; 
       </>}
       {step === "pay" && <>
         {reserveAndOrder.isPending && <Notice icon="spin">Preparing your bank details</Notice>}
-        {!order && !reserveAndOrder.isPending && <button type="button" className="btn ink" disabled={quote.isPending} onClick={() => reserveAndOrder.mutate()}>{quote.isPending ? "Getting quote" : "Get bank details"}</button>}
-        {order && <><div className="card" style={{ display: "grid", gap: 8 }}><b>{details.bank || "Bank account"}</b><span>Account name: {details.accountName || "—"}</span><span className="mono">Account number: {details.accountNumber || "—"}</span><span>Pay exactly {formatNaira(parsed)} from your bank app.</span></div>{deposit.data?.state === "expired" ? <Notice tone="bad">These bank details expired. Start a new deposit before paying.</Notice> : <Notice>After payment, tap “I&apos;ve sent the money”. Your deposit will stay visible while it moves into your vault.</Notice>}</>}
+        {!order && !reserveAndOrder.isPending && !orderAttempted && <button type="button" className="btn ink" disabled={quote.isPending} onClick={() => { setError(null); reserveAndOrder.mutate(); }}>{quote.isPending ? "Getting quote" : "Get bank details"}</button>}
+        {orderAttempted && !order && reserveAndOrder.isError && <Notice tone="bad">{reserveAndOrder.error.message}</Notice>}
+        {order && instructionsReady && <><div className="card" style={{ display: "grid", gap: 8 }}><b>{details.bank}</b><span>Account name: {details.accountName}</span><span className="mono">Account number: {details.accountNumber}</span><span>Pay exactly {formatNaira(parsed)} from your bank app.</span></div>{deposit.data?.state === "expired" ? <Notice tone="bad">These bank details expired. Start a new deposit before paying.</Notice> : <Notice>After payment, tap “I&apos;ve sent the money”. Your deposit will stay visible while it moves into your vault.</Notice>}</>}
+        {order && !instructionsReady && <Notice tone="bad">Paj did not return complete bank details. No transfer instructions are available.</Notice>}
         {error && <Notice tone="bad">{error}</Notice>}
       </>}
       {step === "receiving" && <><Notice icon="spin">Your bank transfer is on its way. You can close this and follow it from Activity.</Notice>{deposit.data && <span className="muted">Deposit status: {deposit.data.state}.</span>}</>}

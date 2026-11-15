@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { asBankActivity, bankActivityItem, compareDecimals, formatNaira, isBankSource, isPositiveDecimal, parseNaira } from "../app/lib/paj.ts";
+import { asBankActivity, bankActivityItem, bankStorageKey, compareDecimals, formatNaira, isBankSource, isPositiveDecimal, isCompleteBankDetails, PajOrderUncertainError, pajApi, parseNaira, usdcAmountAtLeastMinimum } from "../app/lib/paj.ts";
 
 test("decimal comparisons do not use binary floating point", () => {
   assert.equal(compareDecimals("0.1", "0.10"), 0);
@@ -43,4 +43,32 @@ test("only an available USDC Solana source is eligible for Paj", () => {
   assert.equal(isBankSource({ ...source, available: false }), false);
   assert.equal(isBankSource({ ...source, chain: "base" }), false);
   assert.equal(isBankSource({ ...source, token: "usdt" }), false);
+});
+
+test("Paj quote minimum and bank details are fail-closed", () => {
+  assert.equal(usdcAmountAtLeastMinimum(0.99, "1"), null);
+  assert.equal(usdcAmountAtLeastMinimum(1, "1"), "1");
+  assert.equal(usdcAmountAtLeastMinimum(72.66, "72.660001"), null);
+  assert.equal(isCompleteBankDetails({ bank: "", accountName: "Ada", accountNumber: "1234567890" }), false);
+  assert.equal(isCompleteBankDetails({ bank: "Made-up Bank", accountName: "Ada", accountNumber: "123" }), false);
+  assert.equal(isCompleteBankDetails({ bank: "Made-up Bank", accountName: "Ada", accountNumber: "1234567890" }), true);
+});
+
+test("pending bank storage is scoped to the authenticated wallet", () => {
+  assert.notEqual(bankStorageKey("user-a"), bankStorageKey("user-b"));
+  assert.equal(bankStorageKey(null), null);
+  assert.equal(bankStorageKey("ada@example.com"), "fliq.bank-deposits:ada%40example.com");
+});
+
+test("ambiguous Paj order failures are terminal and not safe to retry", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => { throw new TypeError("network lost"); };
+  try {
+    await assert.rejects(
+      pajApi.order("100000", "solana-address", { token: "paj-session", expiresAt: "2099-01-01T00:00:00.000Z" }),
+      PajOrderUncertainError,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
