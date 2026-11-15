@@ -200,6 +200,10 @@ struct RootView: View {
             guard let testWallet else { throw Paj.Failure(message: "Bank deposits land in your vault on mainnet. This test build has no wallet set for them.") }
             return BankDepositDestination(address: testWallet, isTestWallet: true)
         }
+        bankDeposit?.onPaid = { deposit in
+            environment.activity.recordBankDeposit(deposit)
+            environment.watchForArrival()
+        }
         environment.watchForArrival()
         environment.router.push(.bankDeposit)
     }

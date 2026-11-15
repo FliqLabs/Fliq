@@ -49,6 +49,8 @@ final class BankDepositFlow {
     private let route: DepositSource?
     private var session: Paj.Session?
     var pollInterval: Duration = .seconds(4)
+    /// Called once the user says they have paid, so the deposit shows in Activity and on Home straight away.
+    var onPaid: (ActivityStore.BankDeposit) -> Void = { _ in }
 
     init(
         paj: any PajAPI,
@@ -189,6 +191,9 @@ final class BankDepositFlow {
     func watch() async {
         guard let session, let current = order else { return }
         step = .receiving
+        if let depositId = destination?.deposit?.depositId {
+            onPaid(ActivityStore.BankDeposit(depositId: depositId, naira: current.naira, usd: String(format: "%.2f", current.usdc), startedAt: .now))
+        }
         while !Task.isCancelled {
             if let fresh = try? await paj.order(current.id, session: session) {
                 order = fresh

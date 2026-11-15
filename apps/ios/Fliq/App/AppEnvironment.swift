@@ -246,7 +246,7 @@ final class AppEnvironment {
         let accounts = AccountBook(keychain: nil)
         if arguments.contains("--sample-recipients") { seedRecipients(accounts) }
         return AppEnvironment(
-            api: FixtureClient(bundle: bundle), profile: profile, vault: VaultStore(balance: TokenAmount(baseUnits: arguments.contains("--funded") ? 100_000_000 : 0)),
+            api: FixtureClient(bundle: bundle), profile: profile, activity: ActivityStore(defaults: defaults), vault: VaultStore(balance: TokenAmount(baseUnits: arguments.contains("--funded") ? 100_000_000 : 0)),
             recovery: FixtureAccountRecovery(
                 arguments.contains("--new-iphone") ? .canRestore : .notBackedUp, otherDevices: arguments.contains("--lost-iphone") ? 1 : 0
             ),

@@ -28,6 +28,9 @@ final class BankDepositUITests: XCTestCase {
         if app.staticTexts["Confirm it's you"].waitForExistence(timeout: 3) {
             let contact = app.textFields.firstMatch
             contact.tap()
+            // The app fills in the last email used on this device, so it is cleared before typing.
+            let typed = (contact.value as? String) ?? ""
+            contact.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: typed.count))
             contact.typeText("gift@entrypointlabs.xyz")
             snap("d2-check")
             app.buttons["Send code"].tap()
