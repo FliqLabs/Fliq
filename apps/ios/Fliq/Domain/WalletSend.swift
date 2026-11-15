@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// A network USDC can be sent to from a fliq account.
@@ -7,8 +8,11 @@ struct SendNetwork: Decodable, Equatable, Identifiable, Sendable {
     let minimum: String
     let etaSeconds: Int
     let available: Bool
+    /// What arrives there: USDC, or USDT on Tron and BNB Chain. The user always pays in USDC.
+    var token = "usdc"
 
     var id: String { chain }
+    var tokenName: String { token.uppercased() }
     var isNEAR: Bool { chain == "near" }
     var minimumAmount: TokenAmount { TokenAmount(decimalString: minimum) ?? .zero }
 
@@ -20,6 +24,8 @@ struct SendNetwork: Decodable, Equatable, Identifiable, Sendable {
         switch chain {
         case "solana": URL(string: "https://solscan.io/tx/\(hash)")
         case "base": URL(string: "https://basescan.org/tx/\(hash)")
+        case "tron": URL(string: "https://tronscan.org/#/transaction/\(hash)")
+        case "bnb": URL(string: "https://bscscan.com/tx/\(hash)")
         default: nil
         }
     }
@@ -71,14 +77,33 @@ enum SendAddress {
         case "solana":
             let shaped = (32...44).contains(address.count) && address.allSatisfy(base58.contains)
             if address.hasPrefix("0x") { return "That's a Base or Ethereum address. Choose Base above to send it there." }
+            if isTron(address) { return "That's a Tron address. Choose Tron above to send it there." }
             return shaped && NEARKey.base58Decode(address)?.count == 32 ? nil : "That isn't a Solana address."
-        case "base":
-            let hex = address.dropFirst(2)
-            let shaped = address.hasPrefix("0x") && hex.count == 40 && hex.allSatisfy(\.isHexDigit)
-            return shaped ? nil : "That isn't a Base address. It starts with 0x and has 42 characters."
+        case "base", "bnb":
+            if isTron(address) { return "That's a Tron address. Choose Tron above to send it there." }
+            return isEVM(address) ? nil : "That isn't a \(network.name) address. It starts with 0x and has 42 characters."
+        case "tron":
+            if address.hasPrefix("0x") { return "That's a Base or BNB Chain address. Choose one of those above to send it there." }
+            if address.hasPrefix("T"), address.count == 34, address.allSatisfy(base58.contains), !isTron(address) {
+                return "That Tron address has a typo. Copy it again."
+            }
+            return isTron(address) ? nil : "That isn't a Tron address. It starts with T and has 34 characters."
         default:
             return "fliq can't send to \(network.name) yet."
         }
+    }
+
+    private static func isEVM(_ address: String) -> Bool {
+        let hex = address.dropFirst(2)
+        return address.hasPrefix("0x") && hex.count == 40 && hex.allSatisfy(\.isHexDigit)
+    }
+
+    /// Base58Check: 0x41, 20 bytes, then the first 4 bytes of a double SHA-256 of those 21. Catches a mistyped character.
+    static func isTron(_ address: String) -> Bool {
+        guard address.hasPrefix("T"), address.count == 34, let bytes = NEARKey.base58Decode(address), bytes.count == 25, bytes[0] == 0x41 else { return false }
+        let body = Data(bytes.prefix(21))
+        let check = Data(SHA256.hash(data: Data(SHA256.hash(data: body)))).prefix(4)
+        return check == Data(bytes.suffix(4))
     }
 
     static func short(_ address: String) -> String {

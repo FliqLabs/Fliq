@@ -74,23 +74,35 @@ struct WithdrawToView: View {
         .onAppear { if flow.addressText.isEmpty { addressFocused = true } }
     }
 
+    /// One even row when every name fits, otherwise a row that scrolls sideways.
     private var networkPicker: some View {
-        HStack(spacing: 8) {
-            ForEach(flow.networks) { network in
-                let picked = network == flow.network
-                Button { flow.network = network } label: {
-                    Text(network.name)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(picked ? .black : Theme.textPrimary)
-                        .frame(maxWidth: .infinity, minHeight: 40)
-                        .background(picked ? Color.white : Theme.surface, in: Capsule())
-                        .contentShape(Capsule())
-                }
-                .buttonStyle(.pressable)
-                .accessibilityAddTraits(picked ? .isSelected : [])
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) { networkPills(even: true) }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) { networkPills(even: false) }
             }
+            .scrollClipDisabled()
         }
         .animation(.snappy(duration: 0.2), value: flow.network)
+    }
+
+    private func networkPills(even: Bool) -> some View {
+        ForEach(flow.networks) { network in
+            let picked = network == flow.network
+            Button { flow.network = network } label: {
+                Text(network.name)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(picked ? .black : Theme.textPrimary)
+                    .fixedSize()
+                    .padding(.horizontal, 16)
+                    .frame(maxWidth: even ? .infinity : nil, minHeight: 40)
+                    .background(picked ? Color.white : Theme.surface, in: Capsule())
+                    .contentShape(Capsule())
+            }
+            .buttonStyle(.pressable)
+            .accessibilityAddTraits(picked ? .isSelected : [])
+            .accessibilityIdentifier("send.network.\(network.chain)")
+        }
     }
 
     private var toCard: some View {
@@ -226,7 +238,7 @@ struct WithdrawReviewView: View {
             .padding(.top, 36)
             DetailCard {
                 DetailRow("To", WithdrawAddress.short(flow.address))
-                DetailRow("Network", "USDC on \(flow.network.name)")
+                DetailRow("Network", "\(flow.network.tokenName) on \(flow.network.name)")
                 if flow.network.isNEAR {
                     DetailRow("Fee", "Free")
                     DetailRow("Arrives", "In a few seconds", isLast: true)
@@ -304,7 +316,7 @@ struct WithdrawReviewView: View {
 
                 DetailCard {
                     DetailRow("To", WithdrawAddress.short(sent.address))
-                    DetailRow("Network", "USDC on \(sent.network.name)")
+                    DetailRow("Network", "\(sent.network.tokenName) on \(sent.network.name)")
                     if let receives = sent.receives { DetailRow("They receive", "$" + Money.dollars(receives)) }
                     DetailRow(sent.network.isNEAR ? "Fee" : "Network fee", sent.fee.map { "$" + Money.dollars($0) } ?? "Free", isLast: true)
                 }
@@ -312,7 +324,7 @@ struct WithdrawReviewView: View {
 
                 if sent.delivered {
                     HStack(spacing: 12) {
-                        ShareLink(item: "fliq receipt\n$\(Money.dollars(sent.amount)) sent to \(sent.address)\nUSDC on \(sent.network.name)\n\(ActivityLine.time(sent.at))" + (sent.explorer.map { "\n\($0.absoluteString)" } ?? "")) {
+                        ShareLink(item: "fliq receipt\n$\(Money.dollars(sent.amount)) sent to \(sent.address)\n\(sent.network.tokenName) on \(sent.network.name)\n\(ActivityLine.time(sent.at))" + (sent.explorer.map { "\n\($0.absoluteString)" } ?? "")) {
                             IconLabel("Share", icon: "square.and.arrow.up")
                                 .frame(maxWidth: .infinity, minHeight: 50)
                                 .background(Theme.surfaceRaised, in: Capsule())
