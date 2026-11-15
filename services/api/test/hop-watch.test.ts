@@ -61,7 +61,7 @@ describe("watching the 1Click swap behind a cash-out", () => {
     report(hop, leg("REFUNDED", "deadline exceeded"), after(3));
     report(hop, leg("REFUNDED", "deadline exceeded"), after(4));
     expect(lines).toEqual([
-      "[hop-watch] po_1: 1Click REFUNDED the swap (deadline exceeded); the USDC is back in the vault and the provider's order will lapse",
+      "[hop-watch] po_1: 1Click REFUNDED the swap (deadline exceeded); the USDC is back in the payer's own NEAR account, where the app offers to add it to the vault, and the provider's order will lapse",
     ]);
   });
 });

@@ -60,6 +60,8 @@ describe.skipIf(!enabled)("paying a bank account from the vault through NEAR Int
   const orders: string[] = [];
   const providerRefunds: string[] = [];
   const swapRefunds: string[] = [];
+  // Accounts the API made sure can hold USDC.
+  const ensured: string[] = [];
   const base = sandboxAdapters()[0] as ProviderAdapter;
   // Accepts USDC on Base only, as Paycrest does, and hands back a Base deposit address that is valid for 15 minutes.
   const paycrest: ProviderAdapter = {
@@ -113,7 +115,7 @@ describe.skipIf(!enabled)("paying a bank account from the vault through NEAR Int
           adapters: [paycrest],
           velocity: DEFAULT_VELOCITY,
           now: () => new Date(),
-          intents: { hops, vault: faultyVault, tokenStorage: { ensure: async (account: string) => vault.registerStorage(account) }, guardBps: DEFAULT_GUARD_BPS, deadlineMarginMs: DEFAULT_DEADLINE_MARGIN_MS },
+          intents: { hops, vault: faultyVault, tokenStorage: { ensure: async (account: string) => (ensured.push(account), vault.registerStorage(account)) }, guardBps: DEFAULT_GUARD_BPS, deadlineMarginMs: DEFAULT_DEADLINE_MARGIN_MS },
         },
       }),
     });
@@ -296,14 +298,16 @@ describe.skipIf(!enabled)("paying a bank account from the vault through NEAR Int
     expect(reply.json().error.code).toBe("invalid_request");
   }, 60_000);
 
-  it("gives the provider a refund address on Base and the swap a refund to the vault on NEAR", async () => {
+  it("gives the provider a refund address on Base, and the swap a refund to the payer's own NEAR account, which can take it", async () => {
     reset();
     const user = await holder("refunds", 100_000_000n);
     const quoted = await quote(user.headers);
     const reply = await pay(user.headers, `k-${suffix}-refunds`, quoted.quote_id);
     expect(reply.statusCode, reply.body).toBe(201);
     expect(providerRefunds.at(-1)).toBe(BASE_REFUND);
-    expect(swapRefunds.at(-1)).toBe(config.vaultAccount);
+    expect(swapRefunds.at(-1)).toBe(user.account);
+    expect(swapRefunds.at(-1)).not.toBe(config.vaultAccount);
+    expect(ensured).toContain(user.account);
   }, 60_000);
 
   it("refuses before any provider order exists when there is no refund address on the provider's network", async () => {
