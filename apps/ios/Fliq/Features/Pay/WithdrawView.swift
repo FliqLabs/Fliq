@@ -27,6 +27,7 @@ struct WithdrawAmountView: View {
                 .foregroundStyle(Theme.textPrimary)
                 .padding(.horizontal, 16)
                 .frame(height: 40)
+                .contentShape(Capsule())
                 .overlay(Capsule().strokeBorder(flow.isOverBalance ? Theme.warning : Theme.hairline))
             }
             .accessibilityHint("Sends everything in your vault")

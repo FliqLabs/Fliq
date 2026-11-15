@@ -57,6 +57,28 @@ final class PayToUITests: XCTestCase {
         snap("p6-send-to-wallet")
     }
 
+    /// The outlined button used to answer only a tap on its words. A thumb lands anywhere on it.
+    @MainActor
+    func testNextAnswersATapNearItsEdgeNotOnlyOnItsWords() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--onboarded", "--funded", "--sample-recipients"]
+        app.launch()
+
+        app.buttons["Transfer"].tap()
+        XCTAssertTrue(app.buttons["Send"].waitForExistence(timeout: 3))
+        app.buttons["Send"].tap()
+        XCTAssertTrue(app.buttons["New recipient"].waitForExistence(timeout: 3))
+        app.buttons["New recipient"].tap()
+        XCTAssertTrue(app.buttons["USDC"].waitForExistence(timeout: 3))
+        app.buttons["USDC"].tap()
+        let next = app.buttons["Next"]
+        XCTAssertTrue(next.waitForExistence(timeout: 3))
+        app.buttons["5"].tap()
+
+        next.coordinate(withNormalizedOffset: CGVector(dx: 0.06, dy: 0.5)).tap()
+        XCTAssertTrue(app.staticTexts["To"].waitForExistence(timeout: 3), "One tap near the left edge moves on")
+    }
+
     @MainActor
     private func snap(_ name: String) {
         let png = XCUIScreen.main.screenshot().pngRepresentation
