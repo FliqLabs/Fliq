@@ -11,6 +11,7 @@ import { createHandlers } from "../apps/api/src/handlers.js";
 import { OneClickHops } from "../apps/api/src/hop.js";
 import { DEFAULT_DEADLINE_MARGIN_MS, DEFAULT_GUARD_BPS, DEFAULT_VELOCITY } from "../apps/api/src/payouts.js";
 import { sandboxAdapters } from "../apps/api/src/sandbox.js";
+import { syncVaultReceipts, UNSIGNED_MS } from "../apps/api/src/vault-sync.js";
 import { createOneClickClient, createOneClickMock, OneClickError, type OneClickClient } from "../packages/chains/oneclick/index.js";
 import { MockVault, type VaultClient } from "../packages/chains/vault/index.js";
 import { DEFAULT_ROUTING_CONFIG, NO_SIGNALS } from "../packages/domain/routing.js";
@@ -208,6 +209,44 @@ describe.skipIf(!enabled)("paying a bank account from the vault through NEAR Int
     const stored = await database.payout.findUniqueOrThrow({ where: { id: payout.payout_id } });
     expect(stored.routeKind).toBe("intents");
     expect((await pay(user.headers, `k-${suffix}-ok`, quoted.quote_id)).json()).toEqual(payout);
+  }, 120_000);
+
+  it("ends a cash-out the payer never signed, gives the money back and leaves it out of Activity", async () => {
+    reset();
+    const user = await holder("unsigned", 100_000_000n);
+    const quoted = await quote(user.headers);
+    const payout = (await pay(user.headers, `k-${suffix}-unsigned`, quoted.quote_id)).json();
+    const created = await database.payout.findUniqueOrThrow({ where: { id: payout.payout_id } });
+
+    const onlyThis = (async (fn: (tx: unknown) => unknown) =>
+      unit((tx) =>
+        fn(
+          new Proxy(tx, {
+            get: (target, key) =>
+              key === "payout"
+                ? new Proxy(target.payout, {
+                    get: (payouts, method) =>
+                      method === "findMany"
+                        ? (args: { where: object }) => payouts.findMany({ ...args, where: { ...args.where, id: payout.payout_id } })
+                        : Reflect.get(payouts, method),
+                  })
+                : Reflect.get(target, key),
+          }),
+        ) as Promise<unknown>,
+      )) as unknown as typeof unit;
+    const sync = (at: number) => syncVaultReceipts({ unit: onlyThis, vault, now: () => new Date(created.createdAt.getTime() + at), log: () => undefined });
+
+    const listed = async () =>
+      (await app.inject({ method: "GET", url: "/v1/activity", headers: user.headers })).json().items.map((item: { ref_id: string }) => item.ref_id);
+    expect(await listed(), "shown while it could still be signed").toContain(payout.payout_id);
+    expect((await sync(60_000)).map((r) => r.action)).toEqual(["none"]);
+    expect((await sync(UNSIGNED_MS + 1_000)).map((r) => r.action)).toEqual(["abandon"]);
+
+    expect(await database.payout.findUniqueOrThrow({ where: { id: payout.payout_id } })).toMatchObject({ state: "expired", failureReason: "not_signed" });
+    expect((await vault.getReceipt(payout.payout_id))?.state).toBe("released");
+    expect(await vault.getBalance(user.account)).toEqual({ available: 100_000_000n, reserved: 0n, total: 100_000_000n });
+    expect(await unit((tx) => vaultMirror(tx, user.account, "USDC"))).toEqual({ available: 100_000_000n, reserved: 0n });
+    expect(await listed()).not.toContain(payout.payout_id);
   }, 120_000);
 
   it("pays a small payout when the provider's order adds its network fee", async () => {

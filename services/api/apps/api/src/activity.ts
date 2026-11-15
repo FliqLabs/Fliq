@@ -70,7 +70,13 @@ const newerFirst = (a: ActivityItem, b: ActivityItem) => b.at.localeCompare(a.at
 async function payouts(tx: Db, config: Config, userId: string, filter: ActivityFilter, before: Date | null, take: number): Promise<ActivityItem[]> {
   const byWhom = filter === "mine" ? { agentId: null } : filter === "agents" ? { agentId: { not: null } } : {};
   const rows = await tx.payout.findMany({
-    where: { developerId: await developerIdFor(tx, userId), ...byWhom, ...(before ? { createdAt: { lte: before } } : {}) },
+    where: {
+      developerId: await developerIdFor(tx, userId),
+      ...byWhom,
+      ...(before ? { createdAt: { lte: before } } : {}),
+      // The app already told the payer it did not start. Nothing left the vault.
+      OR: [{ failureReason: null }, { failureReason: { not: "not_signed" } }],
+    },
     orderBy: { createdAt: "desc" },
     take,
     include: { recipient: true, events: { where: { toState: { in: ["deposit_seen", "settled"] } } } },

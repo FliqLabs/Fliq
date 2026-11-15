@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MockVault, VaultError, type VaultClient, type VaultReceipt } from "../packages/chains/vault/index.js";
-import { planVaultSync, syncVaultReceipts, type SyncedPayout } from "../apps/api/src/vault-sync.js";
+import { planVaultSync, syncVaultReceipts, UNSIGNED_MS, type SyncedPayout } from "../apps/api/src/vault-sync.js";
 import type { Unit } from "../apps/api/src/db.js";
 
 const NOW_NS = 1_000_000_000_000n;
@@ -40,6 +40,18 @@ describe("planVaultSync", () => {
     expect(planVaultSync(payout("expired"), registered)).toEqual({ kind: "release" });
     expect(planVaultSync(payout("failed"), registered)).toEqual({ kind: "release" });
     expect(planVaultSync(payout("awaiting_deposit"), registered).kind).toBe("none");
+  });
+
+  // Mainnet, 15 Nov: a cash-out was registered, the payer's Face ID step never reached the relayer, and the app showed
+  // it as sending until the provider let the order lapse almost an hour later.
+  it("gives up on an order the payer has not signed a few minutes after it was registered", () => {
+    const registered = receipt({ state: "registered", transferState: "registered" });
+    const created = new Date("2026-11-15T18:27:47Z");
+    const waiting = payout("awaiting_deposit", { createdAt: created });
+    expect(planVaultSync(waiting, registered, new Date(created.getTime() + UNSIGNED_MS - 1)).kind).toBe("none");
+    expect(planVaultSync(waiting, registered, new Date(created.getTime() + UNSIGNED_MS + 1))).toEqual({ kind: "abandon" });
+    const signing = receipt({ state: "registered", transferState: "executing" });
+    expect(planVaultSync(waiting, signing, new Date(created.getTime() + UNSIGNED_MS + 1)).kind, "a payout being signed is left alone").not.toBe("abandon");
   });
 
   it("mirrors the backend status with the provider references", () => {
@@ -106,6 +118,16 @@ describe("syncVaultReceipts", () => {
     expect((await vault.getReceipt("po_paid"))?.status).toBe("with_provider");
     expect((await vault.getReceipt("po_unpaid"))?.state).toBe("released");
     expect(await vault.getBalance(PAYER)).toEqual({ available: 15_000_000n, reserved: 0n, total: 15_000_000n });
+  });
+
+  it("releases an unsigned order on chain and ends the payout, freeing the payer's balance", async () => {
+    const { vault, deps, rows } = await setup();
+    rows.splice(0, rows.length, payout("awaiting_deposit", { id: "po_unpaid", createdAt: new Date(0) }));
+    const ended: string[] = [];
+    const results = await syncVaultReceipts({ ...deps, now: () => new Date(UNSIGNED_MS + 1_000), endUnsigned: async (id) => void ended.push(id) });
+    expect(results).toEqual([{ payoutId: "po_unpaid", action: "abandon" }]);
+    expect(ended).toEqual(["po_unpaid"]);
+    expect((await vault.getReceipt("po_unpaid"))?.state).toBe("released");
   });
 
   it("is a no-op on the second pass", async () => {
