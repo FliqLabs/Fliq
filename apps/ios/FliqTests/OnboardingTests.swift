@@ -90,3 +90,11 @@ private struct CancellableDirectory: NameDirectory {
         XCTAssertFalse(OnboardingView.isRejectedPasskey(.unexpected(status: 503)))
     }
 }
+
+@MainActor
+final class PasskeySignInFailureTests: XCTestCase {
+    func testAFailedSignInSaysSoAndKeepsTheSystemCode() {
+        XCTAssertEqual(OnboardingView.signInFailure("1004: The operation couldn't be completed."), "We couldn't sign you in with your passkey. Try again. (code 1004)")
+        XCTAssertEqual(OnboardingView.signInFailure("something else"), "We couldn't sign you in with your passkey. Try again.")
+    }
+}

@@ -70,6 +70,14 @@ struct OnboardingView: View {
                     response = try await passkeys.signIn(options, allowed: known, onlyIfOnThisDevice: known.isEmpty)
                 } catch PasskeyError.cancelled where known.isEmpty {
                     return try await createWithPasskey()
+                } catch PasskeyError.failed {
+                    // The narrow request was refused by the system: the recorded passkey is gone from this iPhone, or
+                    // the quiet lookup is not allowed here. Ask plainly, offering every fliq passkey the iPhone has.
+                    do {
+                        response = try await passkeys.signIn(options)
+                    } catch PasskeyError.failed(let reason) {
+                        return couldNotSignIn(reason)
+                    }
                 }
                 do {
                     let user = try await api.finishPasskey(.login, challengeId: options.challengeId, credential: response)
@@ -103,7 +111,18 @@ struct OnboardingView: View {
 
     private func couldNotCreate(_ error: any Error) {
         if case PasskeyError.cancelled = error { return }
+        if error is APIError || error is URLError { return passkeyMessage = "We couldn't reach fliq. Check your connection and try again." }
         passkeyMessage = "We couldn't create your passkey. Try again."
+    }
+
+    /// Says it was the sign-in that failed, with the system's own code so support can tell why.
+    private func couldNotSignIn(_ reason: String) {
+        passkeyMessage = Self.signInFailure(reason)
+    }
+
+    static func signInFailure(_ reason: String) -> String {
+        let code = reason.split(separator: ":").first.flatMap { Int($0) }
+        return "We couldn't sign you in with your passkey. Try again." + (code.map { " (code \($0))" } ?? "")
     }
 
     /// A returning user already has a name and goes straight to Home.

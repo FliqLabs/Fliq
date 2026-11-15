@@ -81,7 +81,10 @@ final class PasskeyAuthenticator: NSObject {
     }
 
     private func failure(_ error: any Error) -> any Error {
-        (error as? ASAuthorizationError)?.code == .canceled ? PasskeyError.cancelled : PasskeyError.failed(error.localizedDescription)
+        // The code leads the reason, so a failure can be told apart without showing the system's own sentence.
+        (error as? ASAuthorizationError)?.code == .canceled
+            ? PasskeyError.cancelled
+            : PasskeyError.failed("\((error as NSError).code): \(error.localizedDescription)")
     }
 
     private static func json(id: Data, response: [String: Any]) throws -> Data {
