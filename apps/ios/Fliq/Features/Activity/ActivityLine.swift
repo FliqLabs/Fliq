@@ -146,7 +146,7 @@ extension ActivityLine {
         case .payout, .unknown:
             badge = item.agent.map { .agent(AgentApp.named($0.name)) } ?? .bank(name: item.party.name, logoKey: bank?.logoKey)
             subtitle = outcome == .refunded
-                ? Self.join(date, provider.map { "\($0) failed" })
+                ? Self.join(date, "Not paid, refunded to you")
                 : Self.join(date, provider, bank?.name, item.seconds.map { "\($0)s" })
             dollars = outcome == .refunded ? nil : item.usd.map { "$" + $0 }
             category = "Cash out"
@@ -200,7 +200,7 @@ extension ActivityLine {
         let landed = time(date.addingTimeInterval(Double(seconds ?? 0)))
         switch outcome {
         case .done: return [left, Step(title: "Paid into \(bank ?? "the account") by \(provider)", detail: landed, done: true)]
-        case .refunded: return [left, Step(title: "\(provider) couldn't pay", detail: landed, done: false), Step(title: "Back in your vault", detail: "Refunded in full", done: true)]
+        case .refunded: return [left, Step(title: "The bank payment didn't go through", detail: "\(provider) couldn't pay. Nothing reached the account.", done: false), Step(title: "Back in your vault", detail: "Refunded in full", done: true)]
         case .failed: return [left, Step(title: "\(provider) couldn't pay", detail: landed, done: false)]
         case .refused: return [Step(title: "Refused", detail: "Nothing left your vault", done: false)]
         case .moving: return [left, Step(title: "Paying out with \(provider)", detail: "Usually under a minute", done: false)]
