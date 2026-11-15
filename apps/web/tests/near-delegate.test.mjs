@@ -9,6 +9,7 @@ import {
   signingHash,
   stepAction,
   submitDelegate,
+  vaultPayout,
   vaultTransfer,
 } from "../app/lib/near-delegate.ts";
 
@@ -118,4 +119,24 @@ test("a relay the vault refuses surfaces the vault's reason", async () => {
     ),
     /Over the daily cap\./,
   );
+});
+
+// Mainnet, 15 Nov: a web cash-out was registered but never signed, so nothing left the vault and it sat as sending.
+test("a cash-out signs the vault payout for the order the API registered, as the iPhone app does", () => {
+  const action = vaultPayout(
+    { sender: "frank.fliqaccount.near", publicKey: new Uint8Array(publicBytes), nonce: 7n, blockHeight: 100n },
+    "fliq-vault.near",
+    "po_01m75zg16kvty0rtwx8kz9eeg3",
+    10_070_359n,
+    "3b1b31c12912c31aaabef865f280ca705537ba3dc6fac8e9862e1f2b2a519c3c",
+  );
+  assert.equal(action.receiverId, "fliq-vault.near");
+  assert.equal(action.methodName, "payout");
+  assert.equal(action.deposit, 0n);
+  assert.ok(action.gas >= 60_000_000_000_000n);
+  assert.deepEqual(JSON.parse(new TextDecoder().decode(action.args)), {
+    order_id: "po_01m75zg16kvty0rtwx8kz9eeg3",
+    amount: "10070359",
+    deposit_address: "3b1b31c12912c31aaabef865f280ca705537ba3dc6fac8e9862e1f2b2a519c3c",
+  });
 });
