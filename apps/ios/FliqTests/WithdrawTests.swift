@@ -235,6 +235,26 @@ final class SendToNetworkTests: XCTestCase {
         XCTAssertEqual(bnb.explorer(transaction: "0xabc")?.absoluteString, "https://bscscan.com/tx/0xabc")
     }
 
+    func testReviewAskingSeveralTimesAtOnceMakesOneQuote() async throws {
+        let sends = SlowCountingSends()
+        let flow = WithdrawFlow(withdrawals: FixtureWithdrawals(), sends: sends, vault: VaultStore(balance: TokenAmount(baseUnits: 50_000_000)), recents: recents())
+        await flow.loadNetworks()
+        flow.network = try network("solana", in: flow)
+        flow.addressText = solanaWallet
+        await flow.checkAddress()
+        flow.enterAmount("10")
+
+        async let first: Void = flow.prepare()
+        async let second: Void = flow.prepare()
+        async let third: Void = flow.prepare()
+        _ = await (first, second, third)
+        _ = await flow.send()
+
+        let starts = await sends.starts
+        XCTAssertEqual(starts, 1)
+        XCTAssertNotNil(flow.sent)
+    }
+
     func testReviewShowsTheFeeAndWhatArrivesBeforeAnythingCanBeSent() async throws {
         let flow = await makeFlow()
         flow.network = try network("solana", in: flow)
@@ -290,4 +310,20 @@ final class SendToNetworkTests: XCTestCase {
         XCTAssertNil(flow.sent?.fee)
         XCTAssertNil(flow.quote)
     }
+}
+
+/// Answers like a slow network and counts how many quotes were asked for.
+private actor SlowCountingSends: SendsAPI {
+    private let real = FixtureSendsAPI()
+    private(set) var starts = 0
+
+    func networks() async throws -> [SendNetwork] { try await real.networks() }
+
+    func start(chain: String, address: String, amount: TokenAmount, idempotencyKey: String) async throws -> WalletSend {
+        starts += 1
+        try await Task.sleep(for: .milliseconds(200))
+        return try await real.start(chain: chain, address: address, amount: amount, idempotencyKey: idempotencyKey)
+    }
+
+    func send(id: String) async throws -> WalletSend { try await real.send(id: id) }
 }

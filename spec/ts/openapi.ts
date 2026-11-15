@@ -244,7 +244,7 @@ export interface paths {
         };
         /**
          * The networks a user can send USDC to from their fliq account
-         * @description In display order. A network NEAR Intents cannot reach right now is still listed, with available false. Sending to a NEAR wallet needs none of this: it is a transfer the user signs directly.
+         * @description In display order. A network NEAR Intents cannot reach right now is still listed, with available false. Sending to a NEAR wallet needs none of this: it is a transfer the user signs directly. Networks that deliver USDT (Tron, BNB Chain) are listed only when the client asks for them with tokens=usdc,usdt, so an older app that only knows USDC addresses never sees them.
          */
         get: operations["listSendNetworks"];
         put?: never;
@@ -2155,8 +2155,11 @@ export interface components {
             chain: string;
             /** @description The name to show */
             name: string;
-            /** @enum {string} */
-            token: "usdc";
+            /**
+             * @description What arrives on that network. The user always pays in USDC from their fliq account.
+             * @enum {string}
+             */
+            token: "usdc" | "usdt";
             /** @description The smallest amount that can be sent, in dollars */
             minimum: string;
             eta_seconds: number;
@@ -2177,8 +2180,11 @@ export interface components {
              * @enum {string}
              */
             state: "awaiting" | "moving" | "delivered" | "refunded" | "failed" | "expired";
-            /** @enum {string} */
-            token: "usdc";
+            /**
+             * @description What the wallet receives
+             * @enum {string}
+             */
+            token: "usdc" | "usdt";
             chain: string;
             to: string;
             /** @description What leaves the user's account */
@@ -3192,7 +3198,10 @@ export interface operations {
     };
     listSendNetworks: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Comma separated tokens the client can show. Defaults to usdc. */
+                tokens?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;

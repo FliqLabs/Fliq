@@ -38,6 +38,12 @@ final class WithdrawFlow {
     /// The quote for a send to another network: what arrives, the fee, and where on NEAR to send it.
     private(set) var quote: WalletSend?
     private(set) var isQuoting = false
+    private struct QuoteRequest: Equatable {
+        let chain: String
+        let address: String
+        let amount: String
+    }
+    @ObservationIgnored private var quoting: (request: QuoteRequest, task: Task<WalletSend, Error>)?
     private(set) var check: AddressCheck?
     private(set) var isChecking = false
     private(set) var amountText = ""
@@ -164,17 +170,30 @@ final class WithdrawFlow {
         if let quote, quote.to == address, quote.chain == network.chain, quote.amount == amount.decimalString, quote.deposit.expiresAt > .now.addingTimeInterval(60) {
             return quote.deposit.address
         }
+        // Review can ask several times before the first answer lands. They all share one request and one key,
+        // so the API makes one quote.
+        let request = QuoteRequest(chain: network.chain, address: address, amount: amount.decimalString)
+        if quoting?.request != request {
+            let sends = sends
+            let key = UUID().uuidString
+            quoting = (request, Task { try await sends.start(chain: request.chain, address: request.address, amount: amount, idempotencyKey: key) })
+        }
+        guard let pending = quoting?.task else { return nil }
         isQuoting = true
         defer { isQuoting = false }
         do {
-            let fresh = try await sends.start(chain: network.chain, address: address, amount: amount, idempotencyKey: UUID().uuidString)
+            let fresh = try await pending.value
+            if quoting?.request == request { quoting = nil }
+            guard request == QuoteRequest(chain: network.chain, address: address, amount: amount.decimalString) else { return nil }
             quote = fresh
             errorMessage = nil
             return fresh.deposit.address
         } catch APIError.server(_, let detail) {
+            if quoting?.request == request { quoting = nil }
             quote = nil
             errorMessage = detail.message
         } catch {
+            if quoting?.request == request { quoting = nil }
             quote = nil
             errorMessage = "Couldn't get the fee for \(network.name). Check your connection and try again."
         }

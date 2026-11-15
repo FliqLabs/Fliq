@@ -25,6 +25,7 @@ const USDC = "usdc.test.near";
 // Made-up addresses with the right shape for each network.
 const SOLANA_WALLET = "4Nd1mYQzvgV8Vr3Z3nYb7pD6T1K9wLx2aRkQeJcUuHsM";
 const BASE_WALLET = "0x00000000000000000000000000000000000000a1";
+const TRON_WALLET = "TA4Wt1DUCqz6YegbnsmqsWC5uUfbdBqPxm";
 
 const execution = (status: OneClickExecution["status"], extra: Partial<OneClickExecution> = {}): OneClickExecution => ({
   status,
@@ -79,12 +80,12 @@ describe.skipIf(!enabled)("sending USDC to a wallet on another network", () => {
 
   const token = (blockchain: string, symbol = "USDC"): OneClickToken => ({
     assetId: `mock:${blockchain}:${symbol.toLowerCase()}`,
-    decimals: 6,
+    decimals: blockchain === "bsc" ? 18 : 6,
     blockchain,
     symbol,
     contractAddress: blockchain === "near" ? USDC : undefined,
   });
-  let listed = [token("near"), token("sol"), token("base")];
+  let listed = [token("near"), token("sol"), token("base"), token("tron", "USDT"), token("bsc", "USDT")];
   const quotes: QuoteInput[] = [];
   const statuses = new Map<string, OneClickExecution>();
   const ensured: string[] = [];
@@ -101,6 +102,7 @@ describe.skipIf(!enabled)("sending USDC to a wallet on another network", () => {
         }
         quotes.push(input);
         counter += 1;
+        const scale = input.destinationAsset.startsWith("mock:bsc") ? 10n ** 12n : 1n;
         return {
           correlationId: `c${counter}`,
           signature: "sig",
@@ -108,8 +110,8 @@ describe.skipIf(!enabled)("sending USDC to a wallet on another network", () => {
           depositMemo: undefined,
           amountIn: input.amount,
           minAmountIn: input.amount,
-          amountOut: input.amount - 30_000n,
-          minAmountOut: input.amount - 60_000n,
+          amountOut: (input.amount - 30_000n) * scale,
+          minAmountOut: (input.amount - 60_000n) * scale,
           amountInUsd: undefined,
           amountOutUsd: undefined,
           deadline: input.deadline,
@@ -189,12 +191,38 @@ describe.skipIf(!enabled)("sending USDC to a wallet on another network", () => {
     expect(all.networks.map((network: { chain: string }) => network.chain)).toEqual(["solana", "base"]);
     expect(all.networks.every((network: { available: boolean }) => network.available)).toBe(true);
 
+    const both = (await app.inject({ method: "GET", url: "/v1/sends/networks?tokens=usdc,usdt", headers: user.headers })).json();
+    expect(both.networks.map((network: { chain: string; token: string }) => `${network.chain}:${network.token}`)).toEqual([
+      "solana:usdc",
+      "base:usdc",
+      "tron:usdt",
+      "bnb:usdt",
+    ]);
+
+    const before = listed;
     listed = [token("near"), token("sol")];
     clock += 61_000;
     const fewer = (await app.inject({ method: "GET", url: "/v1/sends/networks", headers: user.headers })).json();
     expect(fewer.networks.find((network: { chain: string }) => network.chain === "base").available).toBe(false);
-    listed = [token("near"), token("sol"), token("base")];
+    listed = before;
     clock += 61_000;
+  }, 60_000);
+
+  it("sends USDT to Tron and to BNB Chain, counting BNB Chain's 18 decimals in dollars", async () => {
+    const user = await signIn("usdt");
+    const tron = await start(user.headers, { chain: "tron", address: TRON_WALLET, amount: "10" });
+    expect(tron.statusCode, tron.body).toBe(201);
+    expect(tron.json()).toMatchObject({ token: "usdt", chain: "tron", receives: "9.97", fee: "0.03" });
+    expect(quotes.at(-1)).toMatchObject({ destinationAsset: "mock:tron:usdt", recipient: TRON_WALLET, refundTo: user.account });
+
+    const bnb = await start(user.headers, { chain: "bnb", address: BASE_WALLET, amount: "10" });
+    expect(bnb.statusCode, bnb.body).toBe(201);
+    expect(bnb.json()).toMatchObject({ token: "usdt", chain: "bnb", amount: "10.00", receives: "9.97", fee: "0.03" });
+
+    const small = await start(user.headers, { chain: "tron", address: TRON_WALLET, amount: "4" });
+    expect(small.json().error.message).toContain("$10.00");
+    const typo = await start(user.headers, { chain: "tron", address: "TA4Wt1DUCqz6YegbnsmqsWC5uUfbdBqPxa", amount: "10" });
+    expect(typo.json().error.message, "a mistyped character fails the checksum").toContain("not a Tron address");
   }, 60_000);
 
   it("quotes a send, with the refund going to the user's own account and both accounts able to hold USDC", async () => {
