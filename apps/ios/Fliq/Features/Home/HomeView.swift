@@ -12,6 +12,8 @@ struct HomeView: View {
     /// Remembered on this iPhone, so the balance stays hidden after the app is closed.
     @AppStorage("home.hidesBalance") private var hidesBalance = false
 
+    private var isMoving: Bool { activity?.lines.contains { $0.outcome == .moving } ?? false }
+
     var body: some View {
         GeometryReader { proxy in
             ScrollView {
@@ -21,8 +23,15 @@ struct HomeView: View {
                     balance
                     Spacer()
                     VStack(spacing: 12) {
-                        if let lines = activity?.lines.prefix(2), !lines.isEmpty {
-                            HomeRecentCard(lines: Array(lines), onSeeAll: onSeeAll) { selected = $0 }
+                        // Money on its way gets its own live card, so Recent shows what has finished.
+                        let lines = activity?.lines ?? []
+                        let finished = lines.filter { $0.outcome != .moving }.prefix(2)
+                        if !finished.isEmpty {
+                            HomeRecentCard(lines: Array(finished), onSeeAll: onSeeAll) { selected = $0 }
+                        }
+                        ForEach(lines.filter { $0.outcome == .moving }.prefix(2)) { line in
+                            HomeInProgressCard(line: line) { selected = $0 }
+                                .transition(.move(edge: .bottom).combined(with: .opacity))
                         }
                         WalletArrivedCard(inbox: model.inbox)
                     }
@@ -40,6 +49,13 @@ struct HomeView: View {
         }
         .background(Theme.ground.ignoresSafeArea())
         .task { await model.load() }
+        // While something is on its way, Home checks every few seconds, so the card turns into a Recent row when it lands.
+        .task(id: isMoving) {
+            while isMoving, !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(4))
+                await onRefresh()
+            }
+        }
         .sheet(item: $selected) { line in
             ActivityDetailSheet(line: line, onReceipt: onOpenPayout)
                 .presentationDragIndicator(.visible)

@@ -102,8 +102,10 @@ extension ActivityLine {
             badge = item.depositSource.map(Badge.source) ?? .incoming
             subtitle = Self.join(date, item.seconds.map { "\($0)s" })
             category = "Deposit"
-            let chain = item.depositSource?.chainId.capitalized ?? "another chain"
-            let sent = Step(title: "Sent on \(chain)", detail: Self.time(date), done: true)
+            let chain = item.isBankDeposit ? "your bank" : item.depositSource?.chainId.capitalized ?? "another chain"
+            let sent = item.isBankDeposit
+                ? Step(title: "Paid from your bank", detail: Self.time(date), done: true)
+                : Step(title: "Sent on \(chain)", detail: Self.time(date), done: true)
             if notReceived, item.status == "expired" {
                 dollars = nil
                 steps = [Step(title: DepositFailure.notReceived, detail: "Nothing arrived before this address closed. If you sent money, contact us and we'll sort it out.", done: false)]
@@ -119,7 +121,12 @@ extension ActivityLine {
             }
         case .transferIn, .transferOut:
             let incoming = item.kind == .transferIn
-            badge = .person(name: item.party.name, photo: item.party.photoUrl.flatMap(URL.init(string:)), incoming: incoming)
+            let network = item.party.name.split(separator: " ").first.map(String.init)?.lowercased()
+            if !incoming, item.party.nearAccount == nil, let network, ["solana", "base"].contains(network), item.party.name.contains(" wallet ") {
+                badge = .source(DepositSource(tokenId: "usdc", chainId: network, group: .dollars))
+            } else {
+                badge = .person(name: item.party.name, photo: item.party.photoUrl.flatMap(URL.init(string:)), incoming: incoming)
+            }
             subtitle = Self.join(date, item.party.nearAccount)
             dollars = nil
             category = incoming ? "Received" : "Sent"
@@ -315,14 +322,16 @@ struct ActivityCell: View {
 
 /// A white arc turning around a mark: the money is on its way.
 struct SpinningRing: View {
-    @State private var turning = false
-
+    // The angle comes from the clock, not from an animation started on appear: a repeating animation started that way
+    // froze whenever the list around it animated or redrew, which left a still ring on Home.
     var body: some View {
-        Circle()
-            .trim(from: 0, to: 0.7)
-            .stroke(Color.white, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
-            .rotationEffect(.degrees(turning ? 360 : 0))
-            .onAppear { withAnimation(.linear(duration: 1).repeatForever(autoreverses: false)) { turning = true } }
-            .accessibilityLabel("On its way")
+        TimelineView(.animation) { context in
+            let turn = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1)
+            Circle()
+                .trim(from: 0, to: 0.7)
+                .stroke(Color.white, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                .rotationEffect(.degrees(turn * 360))
+        }
+        .accessibilityLabel("On its way")
     }
 }
