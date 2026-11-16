@@ -210,6 +210,7 @@ export type DelegateDeps = {
 export async function submitDelegate(
   deps: DelegateDeps,
   build: (signer: Signer) => DelegateAction,
+  onSubmitted?: (result: RelayResult) => void,
 ): Promise<RelayResult> {
   const [key, block] = await Promise.all([
     rpc<{ nonce: number }>(deps.rpcUrl, "query", {
@@ -228,6 +229,7 @@ export async function submitDelegate(
   });
   const signature = await deps.sign(await signingHash(action));
   let result = await deps.relay(encodeSignedDelegate(action, signature));
+  if (result.status !== "failed") onSubmitted?.(result);
   for (let attempt = 0; attempt < (deps.pollAttempts ?? 20) && result.status === "pending"; attempt++) {
     await new Promise((resolve) => setTimeout(resolve, deps.pollMs ?? 1500));
     result = await deps.relayStatus(result.delegate_hash);

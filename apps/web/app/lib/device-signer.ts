@@ -19,7 +19,7 @@ export async function hasDeviceKey(user: User) {
 }
 
 /** Signs one vault call with this browser's device key and relays it, fliq paying the gas. */
-export async function signAndRelay(user: User, build: Parameters<typeof submitDelegate>[1]) {
+export async function signAndRelay(user: User, build: Parameters<typeof submitDelegate>[1], onSubmitted?: (result: Awaited<ReturnType<typeof submitDelegate>>) => void) {
   const key = user.near_account ? await loadNearKey(user.user_id).catch(() => null) : null;
   if (!key || !user.near_account) throw new NoDeviceKeyError();
   return submitDelegate(
@@ -32,6 +32,7 @@ export async function signAndRelay(user: User, build: Parameters<typeof submitDe
       relayStatus: walletApi.relayStatus,
     },
     build,
+    onSubmitted,
   );
 }
 

@@ -184,6 +184,10 @@ function WhoStep({ onPick }: { onPick: (target: Target) => void }) {
         <Icon name="plus" size={18} />
         New bank or mobile money account
       </button>
+      <Link className="btn line lg block" href="/wallet/send/wallet">
+        <Icon name="send" size={18} />
+        To a wallet on NEAR, Solana or Base
+      </Link>
       <p className="hint" style={{ textAlign: "center" }}>
         Paying someone on fliq? Type their fliq name. It lands in their vault instantly and costs nothing.
       </p>
