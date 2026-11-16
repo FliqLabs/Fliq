@@ -24,6 +24,7 @@ import {
   setup,
   type NotificationSettings,
 } from "./settings.js";
+import { registerLiveActivity, type LiveActivityInput } from "./live-activities.js";
 import { verifyAccessToken } from "./auth/tokens.js";
 import type { Handler } from "./app.js";
 import { createEmailLink, verifyEmailLink, type EmailSender } from "./auth/email-links.js";
@@ -375,6 +376,10 @@ export function createHandlers({
     }),
     registerDevice: async (request) => {
       await unit((tx) => registerDevice(tx, auth(request).userId, body<DeviceInput>(request)));
+      return { status: 204, body: undefined };
+    },
+    registerLiveActivity: async (request) => {
+      await unit((tx) => registerLiveActivity(tx, auth(request).userId, body<LiveActivityInput>(request)));
       return { status: 204, body: undefined };
     },
     removeDevice: async (request) => {

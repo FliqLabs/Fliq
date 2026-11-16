@@ -20,6 +20,7 @@ export interface PushTarget {
   token: string;
   environment: string;
   bundleId: string | null;
+  pushType?: "alert" | "liveactivity";
 }
 
 export type SendResult = { status: number; reason?: string };
@@ -91,14 +92,16 @@ export function createApnsSender(
   };
   return (target, payload) =>
     new Promise((resolve) => {
-      const topic = target.bundleId ?? credentials.topic;
-      if (!topic) return resolve({ status: 0, reason: "NoTopic" });
+      const app = target.bundleId ?? credentials.topic;
+      if (!app) return resolve({ status: 0, reason: "NoTopic" });
+      const pushType = target.pushType ?? "alert";
+      const topic = pushType === "liveactivity" ? `${app}.push-type.liveactivity` : app;
       const request = session(HOSTS[target.environment] ?? (HOSTS.production as string)).request({
         ":method": "POST",
         ":path": `/3/device/${target.token}`,
         authorization: `bearer ${bearer()}`,
         "apns-topic": topic,
-        "apns-push-type": "alert",
+        "apns-push-type": pushType,
         "apns-priority": "10",
         "content-type": "application/json",
       });

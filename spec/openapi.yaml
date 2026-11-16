@@ -602,6 +602,27 @@ paths:
           description: Registered; a token already registered moves to this user
         "400":
           $ref: "#/components/responses/Error"
+  /live-activities:
+    post:
+      operationId: registerLiveActivity
+      summary: Follow a deposit or cash-out with a Live Activity on this iPhone
+      description: >-
+        The API pushes each change of state to the Live Activity's push token, and ends the activity when the deposit
+        or cash-out reaches a final state, or three hours after it started.
+      tags: [accounts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LiveActivityRequest"
+      responses:
+        "204":
+          description: Registered; registering the same token again follows the given deposit or cash-out from the start
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
   /devices/{token}:
     delete:
       operationId: removeDevice
@@ -2971,6 +2992,29 @@ components:
         platform:
           type: string
           enum: [ios]
+        environment:
+          type: string
+          enum: [production, sandbox]
+          description: production for TestFlight and App Store builds, sandbox for builds run from Xcode
+        bundle_id:
+          type: string
+          maxLength: 255
+    LiveActivityRequest:
+      type: object
+      additionalProperties: false
+      required: [token, kind, ref_id, environment, bundle_id]
+      properties:
+        token:
+          type: string
+          description: The Live Activity's APNs push token in hex
+          pattern: "^[0-9a-fA-F]{32,512}$"
+        kind:
+          type: string
+          enum: [deposit, payout]
+        ref_id:
+          type: string
+          maxLength: 128
+          description: The deposit_id or payout_id the activity follows; it must belong to the caller
         environment:
           type: string
           enum: [production, sandbox]
