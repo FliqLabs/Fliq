@@ -11,6 +11,7 @@ import { Icon } from "../../components/app/icons";
 import { Avatar, BigMoney, Modal, Notice, PageState, Spinner } from "../../components/app/ui";
 import { bankLogo, PROVIDERS } from "../../lib/assets";
 import { NoDeviceKeyError, signAndRelay } from "../../lib/device-signer";
+import { ApiError } from "../../lib/fliq-api";
 import { vaultPayout, vaultTransfer } from "../../lib/near-delegate";
 import { explorerTxUrl } from "../../lib/near-explorer";
 import {
@@ -184,6 +185,10 @@ function WhoStep({ onPick }: { onPick: (target: Target) => void }) {
         <Icon name="plus" size={18} />
         New bank or mobile money account
       </button>
+      <Link className="btn line lg block" href="/wallet/send/wallet">
+        <Icon name="send" size={18} />
+        To a wallet on NEAR, Solana or Base
+      </Link>
       <p className="hint" style={{ textAlign: "center" }}>
         Paying someone on fliq? Type their fliq name. It lands in their vault instantly and costs nothing.
       </p>
@@ -502,7 +507,9 @@ export function SendFlow() {
       setStep("done");
     },
     onError: (failure) => {
-      if (target?.kind === "bank" && /account/i.test(failure.message)) forgetNumber(target.recipient.recipient_id);
+      if (target?.kind === "bank" && /account/i.test(failure.message) && !(failure instanceof ApiError && failure.code === "daily_limit")) {
+        forgetNumber(target.recipient.recipient_id);
+      }
     },
   });
 

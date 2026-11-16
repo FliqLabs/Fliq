@@ -5,6 +5,20 @@ export type ProviderId = "paycrest" | "busha" | "fonbnk" | "bitnob" | "transfi" 
 export type ProviderStatus = "live" | "stale" | "paused";
 
 export type VaultBalance = { account: string; available: string; reserved: string; total: string; in_sync: boolean };
+export type SendNetwork = { chain: "solana" | "base"; name: string; token: "usdc"; minimum: string; eta_seconds: number; available: boolean };
+export type WalletSend = {
+  send_id: string;
+  state: "awaiting" | "moving" | "delivered" | "refunded" | "failed" | "expired";
+  chain: string;
+  to: string;
+  amount: string;
+  receives: string;
+  fee: string;
+  eta_seconds: number;
+  deposit: { address: string; memo: string | null; expires_at: string };
+  origin_tx: string | null;
+  destination_tx: string | null;
+};
 
 export type ActivityItem = {
   activity_id: string;
@@ -237,6 +251,12 @@ export type NotificationSettings = {
   rate_alert: { enabled: boolean; currency: "NGN" | "KES"; above: number | null };
   weekly_summary: boolean;
 };
+export type DailyLimits = {
+  daily_limit: string | null;
+  spent_today: string;
+  remaining: string | null;
+  pending: { daily_limit: string | null; effective_at: string } | null;
+};
 
 export type { Agent, Money, RelayResult, SignStep, User };
 
@@ -244,9 +264,17 @@ const json = (body: unknown, method = "POST"): RequestInit => ({ method, body: J
 
 export const walletApi = {
   me: () => fliqApi<User>("me"),
+  limits: () => fliqApi<DailyLimits>("me/limits"),
+  updateLimits: (daily_limit: string | null) =>
+    fliqApi<DailyLimits>("me/limits", json({ daily_limit }, "PUT")),
+  cancelPendingLimit: () => fliqApi<DailyLimits>("me/limits/pending", { method: "DELETE" }),
   updateMe: (patch: Partial<Pick<User, "display_name" | "occupation">> & { home_currency?: "NGN" | "KES" }) =>
     fliqApi<User>("me", json(patch, "PATCH")),
   vault: () => fliqApi<VaultBalance>("vault"),
+  sendNetworks: () => fliqApi<{ networks: SendNetwork[] }>("sends/networks"),
+  createSend: (input: { chain: string; address: string; amount: string }, key: string) =>
+    fliqApi<WalletSend>("sends", { ...json(input), headers: { "Idempotency-Key": key } }),
+  send: (id: string) => fliqApi<WalletSend>(`sends/${encodeURIComponent(id)}`),
   activity: (filter: ActivityFilter, cursor?: string | null) =>
     fliqApi<ActivityList>(
       `activity?limit=25${filter === "all" ? "" : `&filter=${filter}`}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,

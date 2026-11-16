@@ -54,7 +54,7 @@ export function activitySub(item: ActivityItem) {
   const parts = [when(item.at)];
   if (item.kind === "deposit" && item.token) parts.push(item.token);
   if (item.provider) parts.push(providerName(item.provider));
-  if (item.kind === "transfer_in" || item.kind === "transfer_out") parts.push("fliq to fliq");
+  if ((item.kind === "transfer_in" || item.kind === "transfer_out") && item.party.near_account) parts.push("fliq to fliq");
   if (item.agent) parts.push(`by ${item.agent.name}`);
   return parts.join(" · ");
 }
@@ -64,6 +64,7 @@ export function StatusChip({ item }: { item: ActivityItem }) {
   if (item.status === "refunded") return <Chip tone="sand">Refunded</Chip>;
   if (item.status === "failed" || item.status === "expired") return <Chip tone="bad">Stopped</Chip>;
   if (item.status === "pending") return <Chip tone="acc">Sending</Chip>;
+  if (item.kind === "transfer_out" && item.status === "sent") return <Chip tone="good">Sent</Chip>;
   return <Chip tone="good">{isIncoming(item) ? "Received" : "Paid"}</Chip>;
 }
 
