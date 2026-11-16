@@ -4,7 +4,8 @@ import { useState } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { Icon } from "../../components/app/icons";
 import { walletApi, type ActivityFilter, type ActivityItem } from "../../lib/wallet-api";
-import { LIVE_MS } from "../../lib/wallet-queries";
+import { asBankActivity, bankActivityItem, useBankDeposits } from "../../lib/paj";
+import { LIVE_MS, useMe } from "../../lib/wallet-queries";
 import { ActivityAvatar, AmountCell, ReceiptDrawer, StatusChip, activitySub, when } from "../activity-ui";
 
 type Tab = "all" | "sent" | "received" | "agents";
@@ -22,6 +23,8 @@ export function ActivityPage() {
   const [tab, setTab] = useState<Tab>("all");
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState<ActivityItem | null>(null);
+  const me = useMe();
+  const bankDeposits = useBankDeposits(me.data?.user_id ?? me.data?.near_account);
   const api = TABS.find((item) => item.id === tab)!.api;
   const activity = useInfiniteQuery({
     queryKey: ["activity", api, "pages"],
@@ -31,7 +34,11 @@ export function ActivityPage() {
     refetchInterval: LIVE_MS,
   });
   const needle = query.trim().toLowerCase();
-  const items = (activity.data?.pages.flatMap((page) => page.items) ?? []).filter((item) => {
+  const serverItems = activity.data?.pages.flatMap((page) => page.items) ?? [];
+  const items = [...serverItems.map((item) => {
+    const bank = bankDeposits.find((record) => record.depositId === item.ref_id);
+    return bank ? asBankActivity(item, bank) : item;
+  }), ...bankDeposits.filter((record) => !serverItems.some((item) => item.ref_id === record.depositId)).map((record) => bankActivityItem(record))].filter((item) => {
     if (tab === "sent" && INCOMING.has(item.kind)) return false;
     if (tab === "received" && !INCOMING.has(item.kind)) return false;
     if (!needle) return true;

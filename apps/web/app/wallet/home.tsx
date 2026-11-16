@@ -18,6 +18,7 @@ import {
 } from "../lib/money";
 import { explorerAccountUrl } from "../lib/near-explorer";
 import type { ActivityItem, RateBoard } from "../lib/wallet-api";
+import { asBankActivity, bankActivityItem, useBankDeposits } from "../lib/paj";
 import {
   useActivity,
   useAgents,
@@ -198,6 +199,8 @@ function SendAgain() {
 
 function RecentActivity() {
   const activity = useActivity();
+  const me = useMe();
+  const bankDeposits = useBankDeposits(me.data?.user_id ?? me.data?.near_account);
   const [open, setOpen] = useState<ActivityItem | null>(null);
   return (
     <section className="card">
@@ -208,10 +211,13 @@ function RecentActivity() {
       <div className="rows">
         {activity.isPending && <LoadingRows />}
         {activity.isError && <div className="empty">{activity.error.message}</div>}
-        {activity.data?.items.length === 0 && (
+        {activity.data && activity.data.items.length === 0 && bankDeposits.length === 0 && (
           <div className="empty">Nothing yet. Add money to get started.</div>
         )}
-        {activity.data?.items
+        {[...(activity.data?.items ?? []).map((item) => {
+          const bank = bankDeposits.find((record) => record.depositId === item.ref_id);
+          return bank ? asBankActivity(item, bank) : item;
+        }), ...bankDeposits.filter((record) => !(activity.data?.items ?? []).some((item) => item.ref_id === record.depositId)).map((record) => bankActivityItem(record))]
           .slice(0, 5)
           .map((item) => <ActivityRow key={item.activity_id} item={item} onOpen={setOpen} />)}
       </div>
