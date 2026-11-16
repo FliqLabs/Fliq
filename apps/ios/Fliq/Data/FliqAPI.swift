@@ -28,6 +28,7 @@ protocol FliqAPI: Sendable {
     func removeProfilePhoto() async throws -> User
     func registerDevice(_ device: PushDevice) async throws
     func unregisterDevice(token: String) async throws
+    func registerLiveActivity(_ activity: LiveActivityRegistration) async throws
 
     func institutions(in country: Country) async throws -> [Institution]
     func vaultBalance() async throws -> VaultBalance
@@ -96,4 +97,5 @@ struct PushDevice: Encodable, Equatable, Sendable {
 extension FliqAPI {
     func registerDevice(_ device: PushDevice) async throws {}
     func unregisterDevice(token: String) async throws {}
+    func registerLiveActivity(_ activity: LiveActivityRegistration) async throws {}
 }

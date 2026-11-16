@@ -124,6 +124,10 @@ struct HTTPClient: FliqAPI {
         let _: Empty = try await send("DELETE", "devices/\(token)")
     }
 
+    func registerLiveActivity(_ activity: LiveActivityRegistration) async throws {
+        let _: Empty = try await send("POST", "live-activities", body: activity)
+    }
+
     func institutions(in country: Country) async throws -> [Institution] {
         let list: InstitutionList = try await send("GET", "institutions", query: ["country": country.rawValue])
         return list.items

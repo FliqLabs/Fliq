@@ -62,6 +62,43 @@ final class PayFlowUITests: XCTestCase {
         XCTAssertTrue(paid)
     }
 
+    /// A cash-out on its way shows in the Dynamic Island the moment the user leaves the app.
+    @MainActor
+    func testACashOutOnItsWayShowsInTheDynamicIsland() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--onboarded", "--funded"]
+        app.launch()
+
+        app.buttons["Transfer"].tap()
+        XCTAssertTrue(app.buttons["Send"].waitForExistence(timeout: 3))
+        app.buttons["Send"].tap()
+        XCTAssertTrue(app.buttons["New recipient"].waitForExistence(timeout: 3))
+        app.buttons["New recipient"].tap()
+        XCTAssertTrue(app.buttons["NGN"].waitForExistence(timeout: 3))
+        app.buttons["NGN"].tap()
+        XCTAssertTrue(app.buttons["Bank transfer"].waitForExistence(timeout: 3))
+        app.buttons["Bank transfer"].tap()
+        let number = app.textFields["Account number"]
+        XCTAssertTrue(number.waitForExistence(timeout: 3))
+        number.tap()
+        number.typeText("0123456789")
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "DARA OKONKWO")).firstMatch.waitForExistence(timeout: 3))
+        app.buttons["Continue"].tap()
+        XCTAssertTrue(app.buttons["5"].waitForExistence(timeout: 3))
+        app.buttons["5"].tap()
+        app.buttons["0"].tap()
+        app.buttons["Get quote"].tap()
+        XCTAssertTrue(app.buttons["Confirm with Face ID"].waitForExistence(timeout: 3))
+        app.buttons["Confirm with Face ID"].tap()
+        XCTAssertTrue(app.staticTexts["Left your vault"].waitForExistence(timeout: 5))
+
+        XCUIDevice.shared.press(.home)
+        for second in 1...3 {
+            sleep(1)
+            snap("c\(second)-island")
+        }
+    }
+
     @MainActor
     private func snap(_ name: String) {
         let png = XCUIScreen.main.screenshot().pngRepresentation
