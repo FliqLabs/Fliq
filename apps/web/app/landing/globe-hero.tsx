@@ -39,9 +39,9 @@ function HeroCopy({ copyRef }: { copyRef?: RefObject<HTMLDivElement | null> }) {
         id="hero-title"
         className="m-0 max-w-[750px] text-[clamp(27px,7.9vw,59px)] leading-[0.98] font-black tracking-[-0.063em] uppercase sm:text-[clamp(42px,4.8vw,78px)] sm:leading-[0.96] sm:tracking-[-0.06em]"
       >
-      <span className="block">Send crypto.</span>
-      <span className="block">Get paid</span>
-      <span className="block">in your bank.</span>
+        <span className="block">Hold dollars.</span>
+        <span className="block">Send them to anyone</span>
+        <span className="block">in seconds.</span>
       </h1>
       <p className="mx-0 mt-[22px] mb-[23px] max-w-[min(74vw,270px)] text-xs leading-[1.6] tracking-[-0.035em] text-balance sm:mt-6 sm:mb-[26px] sm:max-w-[430px] sm:text-[clamp(13px,1.28vw,18px)] sm:leading-normal">
         Any chain in. Any bank or mobile money out. Compare current payout routes after fees.
