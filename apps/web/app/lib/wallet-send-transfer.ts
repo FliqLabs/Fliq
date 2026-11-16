@@ -1,4 +1,5 @@
 import { signAndRelay } from "./device-signer";
+import { ApiError } from "./fliq-api";
 import { stepAction } from "./near-delegate";
 import { toTokenUnits } from "./money";
 import type { User } from "./wallet-api";
@@ -113,11 +114,12 @@ export async function sendFromVault(user: User, address: string, amount: string,
         onSubmitted();
       },
     );
-  } catch {
+  } catch (error) {
     if (onwardSubmitted)
       throw new SendNeedsReviewError(
         "The transfer was submitted to NEAR. Check Activity for its final status before trying again.",
       );
+    if (error instanceof ApiError && error.code === "daily_limit") throw error;
     throw new OnwardTransferError();
   }
 }

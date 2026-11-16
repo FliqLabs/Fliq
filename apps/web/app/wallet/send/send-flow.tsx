@@ -11,6 +11,7 @@ import { Icon } from "../../components/app/icons";
 import { Avatar, BigMoney, Modal, Notice, PageState, Spinner } from "../../components/app/ui";
 import { bankLogo, PROVIDERS } from "../../lib/assets";
 import { NoDeviceKeyError, signAndRelay } from "../../lib/device-signer";
+import { ApiError } from "../../lib/fliq-api";
 import { vaultPayout, vaultTransfer } from "../../lib/near-delegate";
 import { explorerTxUrl } from "../../lib/near-explorer";
 import {
@@ -506,7 +507,9 @@ export function SendFlow() {
       setStep("done");
     },
     onError: (failure) => {
-      if (target?.kind === "bank" && /account/i.test(failure.message)) forgetNumber(target.recipient.recipient_id);
+      if (target?.kind === "bank" && /account/i.test(failure.message) && !(failure instanceof ApiError && failure.code === "daily_limit")) {
+        forgetNumber(target.recipient.recipient_id);
+      }
     },
   });
 

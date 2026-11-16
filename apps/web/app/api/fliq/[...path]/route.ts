@@ -58,6 +58,9 @@ const protectedRoutes = new Set([
   "POST agents",
   "GET me/notification-settings",
   "PUT me/notification-settings",
+  "GET me/limits",
+  "PUT me/limits",
+  "DELETE me/limits/pending",
 ]);
 
 const protectedPatterns: [string, RegExp][] = [

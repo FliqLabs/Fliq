@@ -251,6 +251,12 @@ export type NotificationSettings = {
   rate_alert: { enabled: boolean; currency: "NGN" | "KES"; above: number | null };
   weekly_summary: boolean;
 };
+export type DailyLimits = {
+  daily_limit: string | null;
+  spent_today: string;
+  remaining: string | null;
+  pending: { daily_limit: string | null; effective_at: string } | null;
+};
 
 export type { Agent, Money, RelayResult, SignStep, User };
 
@@ -258,6 +264,10 @@ const json = (body: unknown, method = "POST"): RequestInit => ({ method, body: J
 
 export const walletApi = {
   me: () => fliqApi<User>("me"),
+  limits: () => fliqApi<DailyLimits>("me/limits"),
+  updateLimits: (daily_limit: string | null) =>
+    fliqApi<DailyLimits>("me/limits", json({ daily_limit }, "PUT")),
+  cancelPendingLimit: () => fliqApi<DailyLimits>("me/limits/pending", { method: "DELETE" }),
   updateMe: (patch: Partial<Pick<User, "display_name" | "occupation">> & { home_currency?: "NGN" | "KES" }) =>
     fliqApi<User>("me", json(patch, "PATCH")),
   vault: () => fliqApi<VaultBalance>("vault"),

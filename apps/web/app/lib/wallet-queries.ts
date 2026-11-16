@@ -20,10 +20,13 @@ export const keys = {
   passkeys: ["passkeys"] as const,
   sessions: ["sessions"] as const,
   notifications: ["notification-settings"] as const,
+  limits: ["daily-limits"] as const,
   institutions: (country: string) => ["institutions", country] as const,
 };
 
 export const useMe = () => useQuery({ queryKey: keys.me, queryFn: walletApi.me });
+export const useDailyLimits = () =>
+  useQuery({ queryKey: keys.limits, queryFn: walletApi.limits, refetchInterval: 60_000 });
 
 export const useVault = () => useQuery({ queryKey: keys.vault, queryFn: walletApi.vault, refetchInterval: LIVE_MS });
 

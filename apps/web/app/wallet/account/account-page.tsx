@@ -3,6 +3,7 @@
 /* eslint-disable @next/next/no-img-element -- flag is a tiny fixed image */
 
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { recoverNearKey, saveNearKey } from "../../claim-name/near-key";
@@ -382,6 +383,21 @@ export function AccountPage() {
       <Profile />
       <div className="set-h">Preferences</div>
       <Preferences />
+      <div className="set-h">Spending</div>
+      <section className="card set">
+        <div>
+          <span className="icw">
+            <Icon name="sliders" size={17} />
+          </span>
+          <div className="t">
+            <b>Daily limit</b>
+            <span>Choose how much can leave your account in 24 hours.</span>
+          </div>
+          <Link className="btn line sm" href="/wallet/account/daily-limit">
+            Manage
+          </Link>
+        </div>
+      </section>
       <div className="set-h">Security</div>
       <DeviceKey />
       <Security />
