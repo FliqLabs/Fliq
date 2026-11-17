@@ -124,6 +124,40 @@ final class PayToUITests: XCTestCase {
         snap("n5-delivered")
     }
 
+    /// $5 is under Tron's $10 minimum: the user is told on the Send to screen and cannot go on, so it never starts.
+    @MainActor
+    func testASendUnderTheNetworkMinimumStopsBeforeTheAddress() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--onboarded", "--funded", "--sample-recipients"]
+        app.launch()
+
+        app.buttons["Transfer"].tap()
+        XCTAssertTrue(app.buttons["Send"].waitForExistence(timeout: 3))
+        app.buttons["Send"].tap()
+        XCTAssertTrue(app.buttons["New recipient"].waitForExistence(timeout: 3))
+        app.buttons["New recipient"].tap()
+        XCTAssertTrue(app.buttons["USDC"].waitForExistence(timeout: 3))
+        app.buttons["USDC"].tap()
+        XCTAssertTrue(app.buttons["Next"].waitForExistence(timeout: 3))
+        app.buttons["5"].tap()
+        app.buttons["Next"].tap()
+
+        let tron = app.buttons["send.network.tron"]
+        XCTAssertTrue(tron.waitForExistence(timeout: 3))
+        XCTAssertEqual(tron.value as? String, "From $10")
+        tron.tap()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "The smallest amount you can send to Tron is $10")).firstMatch.waitForExistence(timeout: 3))
+        let field = app.textFields["Tron address"]
+        field.tap()
+        field.typeText("TA4Wt1DUCqz6YegbnsmqsWC5uUfbdBqPxm")
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "This looks like a Tron address")).firstMatch.waitForExistence(timeout: 3))
+        XCTAssertFalse(app.buttons["Next"].isEnabled, "A send too small for Tron cannot go on")
+        snap("m1-tron-minimum")
+
+        app.buttons["send.network.solana"].tap()
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "The smallest amount")).firstMatch.exists)
+    }
+
     /// USDT on Tron: the fifth network is reachable, the address is checked, and Review says USDT arrives.
     @MainActor
     func testSendUSDTToATronWallet() {

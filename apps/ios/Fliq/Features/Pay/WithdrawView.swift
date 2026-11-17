@@ -52,6 +52,13 @@ struct WithdrawToView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if flow.networks.count > 1 { networkPicker.padding(.top, 16) }
+            if let note = flow.minimumNote {
+                Text(note)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.warning)
+                    .padding(.top, 10)
+                    .padding(.horizontal, 4)
+            }
             toCard.padding(.top, flow.networks.count > 1 ? 12 : 16)
             status.padding(.top, 12)
             if flow.network.isNEAR, !flow.recentAddresses.isEmpty {
@@ -65,7 +72,7 @@ struct WithdrawToView: View {
             Spacer(minLength: 12)
             Button("Next") { environment.router.push(.withdrawReview) }
                 .buttonStyle(PrimaryButtonStyle())
-                .disabled(!flow.hasAddress)
+                .disabled(!flow.hasAddress || flow.isBelowMinimum)
                 .padding(.bottom, 12)
         }
         .fliqScreen("Send to")
@@ -89,6 +96,7 @@ struct WithdrawToView: View {
     private func networkPills(even: Bool) -> some View {
         ForEach(flow.networks) { network in
             let picked = network == flow.network
+            let tooSmall = flow.isBelowMinimum(for: network)
             Button { flow.network = network } label: {
                 Text(network.name)
                     .font(.system(size: 14, weight: .semibold))
@@ -98,8 +106,10 @@ struct WithdrawToView: View {
                     .frame(maxWidth: even ? .infinity : nil, minHeight: 40)
                     .background(picked ? Color.white : Theme.surface, in: Capsule())
                     .contentShape(Capsule())
+                    .opacity(tooSmall && !picked ? 0.4 : 1)
             }
             .buttonStyle(.pressable)
+            .accessibilityValue(tooSmall ? "From $\(Money.dollars(network.minimumAmount))" : "")
             .accessibilityAddTraits(picked ? .isSelected : [])
             .accessibilityIdentifier("send.network.\(network.chain)")
         }
@@ -118,7 +128,7 @@ struct WithdrawToView: View {
                     .keyboardType(.asciiCapable)
                     .textContentType(.none)
                     .submitLabel(.next)
-                    .onSubmit { if flow.hasAddress { environment.router.push(.withdrawReview) } }
+                    .onSubmit { if flow.hasAddress, !flow.isBelowMinimum { environment.router.push(.withdrawReview) } }
                     .font(.system(size: 17, weight: .medium, design: .monospaced))
                     .lineLimit(1)
                 if flow.addressText.isEmpty {
