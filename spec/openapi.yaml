@@ -3010,11 +3010,11 @@ components:
           pattern: "^[0-9a-fA-F]{32,512}$"
         kind:
           type: string
-          enum: [deposit, payout]
+          enum: [deposit, bank_deposit, payout, send]
         ref_id:
           type: string
           maxLength: 128
-          description: The deposit_id or payout_id the activity follows; it must belong to the caller
+          description: The deposit_id, payout_id or send_id the activity follows; it must belong to the caller
         environment:
           type: string
           enum: [production, sandbox]

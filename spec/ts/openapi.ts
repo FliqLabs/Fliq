@@ -1959,8 +1959,8 @@ export interface components {
             /** @description The Live Activity's APNs push token in hex */
             token: string;
             /** @enum {string} */
-            kind: "deposit" | "payout";
-            /** @description The deposit_id or payout_id the activity follows; it must belong to the caller */
+            kind: "deposit" | "bank_deposit" | "payout" | "send";
+            /** @description The deposit_id, payout_id or send_id the activity follows; it must belong to the caller */
             ref_id: string;
             /**
              * @description production for TestFlight and App Store builds, sandbox for builds run from Xcode
