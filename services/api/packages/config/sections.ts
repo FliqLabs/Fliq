@@ -62,6 +62,9 @@ export const near = defineSection((read) => {
     rpcUrl: new Secret(read.url("NEAR_RPC_URL", publicUrlSchemes(read))),
     vaultContractId: nearAccountOn(read, "VAULT_CONTRACT_ID", network),
     usdcContractId: nearAccountOn(read, "USDC_CONTRACT_ID", network),
+    // NEAR Intents is mainnet only, where 1Click refunds land, so it is not checked against the network.
+    intentsContractId:
+      read.optional("INTENTS_CONTRACT_ID", (name) => read.nearAccount(name)) ?? "intents.near",
   };
 });
 

@@ -512,6 +512,56 @@ paths:
                 $ref: "#/components/schemas/VaultDeposit"
         "404":
           $ref: "#/components/responses/Error"
+  /refunds:
+    get:
+      operationId: listRefunds
+      summary: Refunded deposits waiting in the user's NEAR Intents balance
+      description: >-
+        A top-up NEAR Intents could not finish is refunded to the user's NEAR Intents balance, which the vault
+        cannot see. These are the dollar stablecoins there worth at least five cents. Bring one back with
+        POST /refunds/return.
+      tags: [deposits]
+      responses:
+        "200":
+          description: Balances that can be brought back to the vault
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RefundList"
+        "404":
+          $ref: "#/components/responses/Error"
+        "503":
+          $ref: "#/components/responses/Error"
+  /refunds/return:
+    post:
+      operationId: returnRefund
+      summary: Quote one refunded balance back into the vault
+      description: >-
+        Quotes the whole balance of token_id back to the vault as USDC and starts following it like a top-up,
+        under deposit_id. The app then signs mt_transfer on intents_contract for units of token_id to
+        deposit_address, attaching one yoctoNEAR, and relays it with POST /relays.
+      tags: [deposits]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefundReturnRequest"
+      responses:
+        "201":
+          description: Quoted and followed, waiting for the transfer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RefundReturn"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "503":
+          $ref: "#/components/responses/Error"
   /activity:
     get:
       operationId: listActivity
@@ -4241,6 +4291,65 @@ components:
         created_at:
           type: string
           format: date-time
+    RefundBalance:
+      type: object
+      required: [token_id, symbol, chain, units, amount, intents_contract]
+      properties:
+        token_id:
+          type: string
+          description: The NEAR Intents token, as mt_transfer names it
+        symbol:
+          type: string
+          enum: [usdc, usdt]
+        chain:
+          $ref: "#/components/schemas/DepositChainId"
+        units:
+          type: string
+          description: The balance in the token's smallest unit
+        amount:
+          type: string
+          description: The balance as a decimal string
+        intents_contract:
+          type: string
+          description: The contract that holds it
+    RefundList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/RefundBalance"
+    RefundReturnRequest:
+      type: object
+      additionalProperties: false
+      required: [token_id]
+      properties:
+        token_id:
+          type: string
+          minLength: 1
+          description: A token_id from GET /refunds
+    RefundReturn:
+      type: object
+      required: [deposit_id, deposit_address, token_id, units, lands, intents_contract]
+      properties:
+        deposit_id:
+          type: string
+          description: Followed like any top-up with GET /deposits/{depositId}
+        deposit_address:
+          type: string
+          description: The account to mt_transfer the balance to
+        token_id:
+          type: string
+        units:
+          type: string
+          description: What to transfer, in the token's smallest unit
+        lands:
+          type: string
+          description: Estimated USDC the vault receives
+        intents_contract:
+          type: string
+          description: The contract to call mt_transfer on
     Person:
       type: object
       required: [near_account, display_name, photo_url, member_since]

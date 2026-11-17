@@ -726,6 +726,8 @@ model VaultDeposit {
   polledAt       DateTime?    @map("polled_at") @db.Timestamptz(6)
   // Set when the top-up pays a payment request, so landing it marks the request paid.
   requestId      String?      @map("request_id") @db.Text
+  // Set when the deposit takes a 1Click refund from the user's NEAR Intents balance back to the vault.
+  refundReturn   Boolean      @default(false) @map("refund_return")
   // The full 1Click quote, which 1Click asks integrators to keep.
   quote          Json
   createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)

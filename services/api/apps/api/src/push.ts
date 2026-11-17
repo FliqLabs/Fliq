@@ -179,13 +179,15 @@ export const depositMessage = (
   units: bigint,
   token: string,
   chain: string,
+  refundReturn = false,
 ): PushMessage => ({
   userId,
   kind: "deposit",
   refId,
   title: `${dollars(units)} arrived in your vault`,
-  body:
-    chain === "near"
+  body: refundReturn
+    ? "Your refund is back"
+    : chain === "near"
       ? "From NEAR"
       : `${token.toUpperCase()} from ${chain.charAt(0).toUpperCase()}${chain.slice(1)}`,
   setting: "received",
@@ -340,7 +342,7 @@ async function pending(tx: Db, since: Date, dataKey: Buffer): Promise<Pending[]>
     ...deposits.map((row) => ({
       messageId: row.id,
       build: async () =>
-        depositMessage(row.userId, row.id, row.landedUnits ?? row.amountUnits, row.token, row.chain),
+        depositMessage(row.userId, row.id, row.landedUnits ?? row.amountUnits, row.token, row.chain, row.refundReturn),
     })),
     ...events.map((event) => ({
       messageId: event.id,

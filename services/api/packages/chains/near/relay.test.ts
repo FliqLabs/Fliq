@@ -45,7 +45,7 @@ beforeEach(() => {
   deps = {
     rpc,
     store,
-    policy: { vaultContractId: VAULT, usdcContractId: USDC },
+    policy: { vaultContractId: VAULT, usdcContractId: USDC, intentsContractId: "intents.near" },
     relayerAccountId: RELAYER,
     relayerKeys: keys,
     now: () => Date.parse("2026-11-05T12:00:00Z"),

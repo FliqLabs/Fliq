@@ -1,5 +1,5 @@
 import { createOneClickClient } from "../../../packages/chains/oneclick/index.js";
-import { createNearRpc, createRelayerClient, TokenStorage, type NearRpc } from "../../../packages/chains/near/index.js";
+import { createNearRpc, createRelayerClient, INTENTS_CONTRACT, intentsBalances, TokenStorage, type NearRpc } from "../../../packages/chains/near/index.js";
 import { MockVault, NearVault, type VaultClient } from "../../../packages/chains/vault/index.js";
 import { createSolanaRpc, latestSolanaArrival } from "../../../packages/chains/watchers/index.js";
 import { DEFAULT_ROUTING_CONFIG, NO_SIGNALS } from "../../../packages/domain/routing.js";
@@ -11,6 +11,7 @@ import { createEmailSender } from "./auth/email-links.js";
 import { loadConfig } from "./config.js";
 import { createDatabase, unitOf } from "./db.js";
 import { createDeposits, startDepositWatch } from "./deposits.js";
+import { createRefunds } from "./refunds.js";
 import { createHandlers } from "./handlers.js";
 import { OneClickHops } from "./hop.js";
 import { DEFAULT_DEADLINE_MARGIN_MS, DEFAULT_GUARD_BPS, DEFAULT_VELOCITY } from "./payouts.js";
@@ -126,6 +127,16 @@ const deposits = createDeposits({
     : {}),
 });
 
+const intentsContract = process.env.INTENTS_CONTRACT_ID?.trim() || INTENTS_CONTRACT;
+const refunds = createRefunds({
+  client: oneClick,
+  vaultAccount: config.vaultAccount,
+  usdcContract,
+  slippageBps: Number(process.env.ONECLICK_DEPOSIT_SLIPPAGE_BPS ?? 200),
+  intentsContract,
+  ...(nearRpc ? { balances: (account: string) => intentsBalances(nearRpc, account, intentsContract) } : {}),
+});
+
 const sends = createSends({
   client: oneClick,
   usdcContract,
@@ -173,6 +184,7 @@ const handlers = createHandlers({
   ops,
   status: { probes },
   deposits,
+  refunds,
   sends,
   rateBoard,
   quotes: quoteDeps,

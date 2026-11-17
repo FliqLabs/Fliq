@@ -62,7 +62,7 @@ describe("agent delegate signing", () => {
     });
     expect(verified.publicKey).toBe(user.publicKey);
     expect(() =>
-      checkPolicy({ vaultContractId: VAULT, usdcContractId: "usdc.fliq.testnet" }, verified),
+      checkPolicy({ vaultContractId: VAULT, usdcContractId: "usdc.fliq.testnet", intentsContractId: "intents.near" }, verified),
     ).not.toThrow();
     expect(rpcCalls[0]).toMatchObject({
       method: "query",

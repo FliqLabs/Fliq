@@ -48,7 +48,7 @@ describe.skipIf(!enabled)("creating NEAR accounts and relaying calls through the
   const secret = new Secret(TOKEN);
   const relayerApp = buildRelayerApp({
     authToken: { current: secret, previous: undefined, accepts: (candidate) => secret.equals(candidate) },
-    relay: { rpc, store: new MemoryRelayStore(), policy: { vaultContractId: VAULT, usdcContractId: USDC }, relayerAccountId: RELAYER, relayerKeys: keys, now: Date.now },
+    relay: { rpc, store: new MemoryRelayStore(), policy: { vaultContractId: VAULT, usdcContractId: USDC, intentsContractId: "intents.near" }, relayerAccountId: RELAYER, relayerKeys: keys, now: Date.now },
     provision: { rpc, store: new MemoryRelayStore(), root: { accountId: ROOT, privateKey: rootKey.toString() }, fundingYocto: 0n, storageContracts: [USDC, VAULT] },
   });
 
