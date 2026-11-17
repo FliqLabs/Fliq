@@ -41,6 +41,7 @@ struct HTTPDepositAPI: DepositAPI {
         let token: String
         let chain: String
         let amount: String
+        var via: String?
     }
 
     func sources() async throws -> [DepositSource] {
@@ -64,7 +65,7 @@ struct HTTPDepositAPI: DepositAPI {
         }
         // The address takes any amount from its minimum up, so the smallest top-up is what gets quoted.
         let amount = (source.minimum ?? TokenAmount(baseUnits: TokenAmount.base)).decimalString
-        let request = DepositRequest(token: source.tokenId, chain: source.chainId, amount: amount)
+        let request = DepositRequest(token: source.tokenId, chain: source.chainId, amount: amount, via: source.fromBank ? "bank" : nil)
         // One key for every try: if an earlier try got through unseen, the API hands back that same address.
         let headers = ["Idempotency-Key": UUID().uuidString]
         do {

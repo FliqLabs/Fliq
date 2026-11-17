@@ -10,6 +10,8 @@ struct MoneyActivityAttributes: ActivityAttributes {
         var status: String
         var done: Bool
         var failed: Bool
+        /// What actually landed, set on the last step so the card ends on the vault's number, not the estimate.
+        var amount: String? = nil
 
         var progress: Double {
             guard steps > 0 else { return 0 }

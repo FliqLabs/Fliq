@@ -110,9 +110,9 @@ extension LiveMoney {
         }
     }
 
-    nonisolated static func bankDepositLanded(_ arrived: Bool) -> State {
+    nonisolated static func bankDepositLanded(_ arrived: Bool, landed: TokenAmount? = nil) -> State {
         arrived
-            ? State(step: 3, steps: 3, status: "In your vault", done: true, failed: false)
+            ? State(step: 3, steps: 3, status: "In your vault", done: true, failed: false, amount: landed.map { "$" + Money.dollars($0) })
             : State(step: 2, steps: 3, status: "Didn't arrive", done: false, failed: true)
     }
 

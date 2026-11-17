@@ -18,6 +18,8 @@ export interface ContentState {
   status: string;
   done: boolean;
   failed: boolean;
+  // What actually landed, sent with the last step so the card ends on the vault's number, not the estimate.
+  amount?: string;
 }
 
 export interface ActivityState {
@@ -152,15 +154,26 @@ export async function registerLiveActivity(tx: Db, userId: string, input: LiveAc
   });
 }
 
+export function withLanded(state: ActivityState | null, landedUnits: bigint | null): ActivityState | null {
+  if (!state?.content.done || landedUnits === null) return state;
+  return { ...state, content: { ...state.content, amount: usd(landedUnits) } };
+}
+
+function usd(units: bigint): string {
+  const cents = (units + 5_000n) / 10_000n;
+  return "$" + (cents / 100n).toLocaleString("en-US") + "." + String(cents % 100n).padStart(2, "0");
+}
+
 // Null when the row is gone. A state of null means nothing to push yet: the app shows the card until then.
 async function currentState(tx: Db, activity: { kind: string; refId: string }): Promise<{ state: ActivityState | null } | null> {
   if (activity.kind === "deposit" || activity.kind === "bank_deposit") {
     const deposit = await tx.vaultDeposit.findUnique({
       where: { id: activity.refId },
-      select: { state: true, chain: true, seenAt: true, bridgingAt: true },
+      select: { state: true, chain: true, seenAt: true, bridgingAt: true, landedUnits: true },
     });
     if (!deposit) return null;
-    return { state: activity.kind === "deposit" ? depositActivityState(deposit) : bankDepositActivityState(deposit) };
+    const state = activity.kind === "deposit" ? depositActivityState(deposit) : bankDepositActivityState(deposit);
+    return { state: withLanded(state, deposit.landedUnits) };
   }
   if (activity.kind === "send") {
     const send = await tx.walletSend.findUnique({ where: { id: activity.refId }, select: { state: true, chain: true } });
