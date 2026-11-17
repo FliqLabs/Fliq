@@ -64,6 +64,13 @@ final class ReceiveFlow {
         }
     }
 
+    /// One logo per chain the user can receive from, NEAR last since it has its own row.
+    var chainImages: [String] {
+        var seen: [String] = []
+        for source in listed where !source.isDirect && !seen.contains(source.chainImage) { seen.append(source.chainImage) }
+        return seen
+    }
+
     func networks(for token: String) -> [DepositSource] {
         offered.filter { $0.tokenId == token }.sorted { lhs, rhs in
             if lhs.isDirect != rhs.isDirect { return lhs.isDirect }
@@ -167,7 +174,9 @@ final class ReceiveFlow {
             refId: deposit.depositId ?? "demo-\(deposit.address)",
             amount: "$\(Money.dollars(landing))",
             from: deposit.source.title,
-            to: "Your vault"
+            to: "Your vault",
+            fromMark: deposit.source.chainImage,
+            toMark: "fliq"
         )
         LiveMoney.shared.show(attributes, LiveMoney.deposit(next, chain: deposit.source.chainId), final: next.stage.isFinal)
     }

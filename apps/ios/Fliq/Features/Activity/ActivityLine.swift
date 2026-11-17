@@ -8,6 +8,7 @@ struct ActivityLine: Identifiable {
         case agent(AgentApp)
         case source(DepositSource)
         case incoming
+        case nigerianBank
         case person(name: String, photo: URL?, incoming: Bool)
     }
 
@@ -99,7 +100,7 @@ extension ActivityLine {
 
         switch item.kind {
         case .deposit:
-            badge = item.depositSource.map(Badge.source) ?? .incoming
+            badge = item.isBankDeposit ? .nigerianBank : item.depositSource.map(Badge.source) ?? .incoming
             subtitle = Self.join(date, item.seconds.map { "\($0)s" })
             category = "Deposit"
             let chain = item.isBankDeposit ? "your bank" : item.depositSource?.chainId.capitalized ?? "another chain"
@@ -262,6 +263,8 @@ struct ActivityBadgeView: View {
         case .source(let source):
             SourceBadge(source: source, size: size * 0.9, ring: Theme.surface)
                 .frame(width: size, height: size)
+        case .nigerianBank:
+            NigeriaFlag(size: size)
         case .incoming:
             Icon("arrow.down", size: size * 0.4)
                 .foregroundStyle(Theme.confirmed)

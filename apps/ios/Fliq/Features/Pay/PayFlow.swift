@@ -183,7 +183,9 @@ final class PayFlow {
             refId: payout.payoutId,
             amount: "$\(Money.dollars(payout.amount))",
             from: "Vault",
-            to: LiveMoney.bankLine(institution: account.institution, number: account.number)
+            to: LiveMoney.bankLine(institution: account.institution, number: account.number),
+            fromMark: "fliq",
+            toMark: account.logoKey.map { "Bank-\($0)" }
         )
         LiveMoney.shared.show(attributes, LiveMoney.payout(payout.state), final: payout.state.isFinal)
     }

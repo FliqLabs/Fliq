@@ -29,7 +29,7 @@ struct MoneyLiveActivity: Widget {
                         .frame(maxHeight: .infinity, alignment: .top)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    Route(from: context.attributes.from, to: context.attributes.to, state: state)
+                    Route(attributes: context.attributes, state: state)
                         .padding(.horizontal, 4)
                         .padding(.top, 6)
                 }
@@ -85,7 +85,7 @@ private struct LockScreenCard: View {
                 .monospacedDigit()
                 .foregroundStyle(.white)
                 .contentTransition(.numericText())
-            Route(from: attributes.from, to: attributes.to, state: state)
+            Route(attributes: attributes, state: state)
         }
         .padding(18)
     }
@@ -138,15 +138,35 @@ private struct ProgressRing: View {
     }
 }
 
+/// A bank's logo, a chain's logo, the Nigerian flag or the fliq mark, in a small circle.
+private struct RouteMark: View {
+    let name: String?
+
+    var body: some View {
+        switch name {
+        case "flag.ng":
+            NigeriaFlag(size: 20)
+        case "fliq":
+            Image("FliqMark").resizable().scaledToFill().frame(width: 20, height: 20).clipShape(Circle())
+        case let name? where UIImage(named: name) != nil:
+            Image(name).resizable().scaledToFill().frame(width: 20, height: 20)
+                .background(name.hasPrefix("Bank-") ? Color.white : .clear)
+                .clipShape(Circle())
+        default:
+            EmptyView()
+        }
+    }
+}
+
 /// From, a line that fills as the money moves, then to: the Talise-style route row.
 private struct Route: View {
-    let from: String
-    let to: String
+    let attributes: MoneyActivityAttributes
     let state: MoneyActivityAttributes.ContentState
 
     var body: some View {
-        HStack(spacing: 10) {
-            Text(from)
+        HStack(spacing: 8) {
+            RouteMark(name: attributes.fromMark)
+            Text(attributes.from)
                 .lineLimit(1)
                 .layoutPriority(1)
             GeometryReader { proxy in
@@ -162,7 +182,8 @@ private struct Route: View {
                 .frame(maxHeight: .infinity)
             }
             .frame(minWidth: 40, maxHeight: 12)
-            Text(to)
+            RouteMark(name: attributes.toMark)
+            Text(attributes.to)
                 .lineLimit(1)
                 .layoutPriority(2)
         }
