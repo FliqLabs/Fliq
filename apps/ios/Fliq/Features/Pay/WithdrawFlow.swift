@@ -218,6 +218,7 @@ final class WithdrawFlow {
                 // The money has left NEAR. The screen says so and lets the user go; it is followed in the background.
                 sent?.crossing = true
                 quote = nil
+                showLive(crossing, state: .awaiting, amount: amount)
                 await onLeftVault()
                 Task { await follow(crossing) }
                 return true
@@ -245,7 +246,9 @@ final class WithdrawFlow {
     func follow(_ send: WalletSend) async {
         for _ in 0..<pollAttempts where !Task.isCancelled {
             try? await Task.sleep(for: pollInterval)
-            guard let fresh = try? await sends.send(id: send.sendId), fresh.state.isFinal else { continue }
+            guard let fresh = try? await sends.send(id: send.sendId) else { continue }
+            showLive(send, state: fresh.state, amount: sent?.amount ?? TokenAmount(decimalString: send.amount) ?? .zero)
+            guard fresh.state.isFinal else { continue }
             if fresh.state == .delivered {
                 // Read before writing: `sent` cannot be read inside an assignment to itself.
                 let explorer = fresh.destinationTx.flatMap { hash in sent?.network.explorer(transaction: hash) }
@@ -258,6 +261,18 @@ final class WithdrawFlow {
             }
             return
         }
+    }
+
+    /// A send to another network shows on the Lock Screen and in the Dynamic Island until it lands.
+    private func showLive(_ send: WalletSend, state: WalletSend.State, amount: TokenAmount) {
+        let attributes = MoneyActivityAttributes(
+            kind: .send,
+            refId: send.sendId,
+            amount: "$\(Money.dollars(amount))",
+            from: "Vault",
+            to: "\(LiveMoney.chainName(send.chain)) ••\(send.to.suffix(4))"
+        )
+        LiveMoney.shared.show(attributes, LiveMoney.send(state, chain: send.chain), final: state.isFinal)
     }
 
     private func explain(_ error: WithdrawError, amount: TokenAmount) async {

@@ -194,15 +194,20 @@ final class BankDepositFlow {
         if let depositId = destination?.deposit?.depositId {
             onPaid(ActivityStore.BankDeposit(depositId: depositId, naira: current.naira, usd: String(format: "%.2f", current.usdc), startedAt: .now))
         }
+        showLive(LiveMoney.bankDeposit(current.status), order: current)
         while !Task.isCancelled {
             if let fresh = try? await paj.order(current.id, session: session) {
                 order = fresh
+                showLive(LiveMoney.bankDeposit(fresh.status), order: fresh)
                 switch fresh.status {
                 case .completed:
-                    step = await reachesVault() ? .done : .notReceived
+                    let arrived = await reachesVault()
+                    step = arrived ? .done : .notReceived
+                    if !isStillMoving { showLive(LiveMoney.bankDepositLanded(arrived), order: fresh, final: true) }
                     return
                 case .failed, .cancelled:
-                    errorMessage = "Paj couldn't finish this deposit. If money left your bank, Paj refunds it."
+                    showLive(LiveMoney.bankDepositFailed, order: fresh, final: true)
+                    errorMessage = "This deposit didn't go through. If money left your bank, it comes back to you."
                     step = .pay
                     return
                 default: break
@@ -210,6 +215,19 @@ final class BankDepositFlow {
             }
             try? await Task.sleep(for: pollInterval)
         }
+    }
+
+    /// From "I've sent the money" the deposit shows on the Lock Screen and in the Dynamic Island, so nobody waits here.
+    private func showLive(_ state: LiveMoney.State?, order: Paj.Order, final: Bool = false) {
+        guard let state else { return }
+        let attributes = MoneyActivityAttributes(
+            kind: .bankDeposit,
+            refId: destination?.deposit?.depositId ?? "bank-\(order.id)",
+            amount: "$\(String(format: "%.2f", order.usdc))",
+            from: "Your bank",
+            to: "Your vault"
+        )
+        LiveMoney.shared.show(attributes, state, final: final)
     }
 
     var isPaid: Bool { order?.status == .paid || order?.status == .completed }

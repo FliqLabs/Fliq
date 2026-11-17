@@ -100,6 +100,34 @@ extension LiveMoney {
         }
     }
 
+    /// Money from the user's bank. The partner and the chain it crosses are never named.
+    nonisolated static func bankDeposit(_ order: Paj.Order.Status) -> State? {
+        switch order {
+        case .initiated, .unknown: State(step: 0, steps: 3, status: "Waiting for your transfer", done: false, failed: false)
+        case .paid: State(step: 1, steps: 3, status: "Your bank sent it", done: false, failed: false)
+        case .completed: State(step: 2, steps: 3, status: "Moving to your vault", done: false, failed: false)
+        case .failed, .cancelled: nil
+        }
+    }
+
+    nonisolated static func bankDepositLanded(_ arrived: Bool) -> State {
+        arrived
+            ? State(step: 3, steps: 3, status: "In your vault", done: true, failed: false)
+            : State(step: 2, steps: 3, status: "Didn't arrive", done: false, failed: true)
+    }
+
+    nonisolated static let bankDepositFailed = State(step: 0, steps: 3, status: "Didn't go through", done: false, failed: true)
+
+    nonisolated static func send(_ state: WalletSend.State, chain: String) -> State {
+        switch state {
+        case .awaiting: State(step: 1, steps: 3, status: "Sending", done: false, failed: false)
+        case .moving: State(step: 2, steps: 3, status: "On its way to \(chainName(chain))", done: false, failed: false)
+        case .delivered: State(step: 3, steps: 3, status: "Delivered", done: true, failed: false)
+        case .refunded: State(step: 2, steps: 3, status: "Refunded to your vault", done: false, failed: true)
+        case .failed, .expired: State(step: 0, steps: 3, status: "Not sent", done: false, failed: true)
+        }
+    }
+
     nonisolated static func chainName(_ chain: String) -> String {
         switch chain {
         case "near": "NEAR"

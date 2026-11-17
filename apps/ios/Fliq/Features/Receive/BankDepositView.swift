@@ -225,8 +225,8 @@ private struct SignInStep: View {
                 Text(flow.codeSent ? "Enter the code" : "Confirm it's you")
                     .font(.system(size: 20, weight: .medium))
                 Note(text: flow.codeSent
-                    ? "Paj sent a code to \(flow.contact)."
-                    : "Paj, the licensed partner that turns your Naira into dollars, checks who's paying once. After that this iPhone goes straight to your bank details.")
+                    ? "We sent a code to \(flow.contact)."
+                    : "A licensed partner turns your Naira into dollars and checks who's paying once. After that this iPhone goes straight to your bank details.")
                     .padding(.top, 8)
                 if flow.codeSent {
                     codeField.padding(.top, 20)
@@ -482,7 +482,7 @@ private struct DoneStep: View {
                     VStack(spacing: 0) {
                         SummaryRow(label: "You paid", value: NairaFormat.full(order.naira))
                         SummaryRow(label: "Rate", value: "\(NairaFormat.rate(order.rate)) = $1.00")
-                        SummaryRow(label: "Through", value: "Paj, by bank transfer")
+                        SummaryRow(label: "Through", value: "Bank transfer")
                     }
                     .padding(.vertical, 6)
                     .background(Layout.inset, in: RoundedRectangle(cornerRadius: Layout.groupRadius, style: .continuous))

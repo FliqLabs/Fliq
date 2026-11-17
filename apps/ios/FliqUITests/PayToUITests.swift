@@ -116,6 +116,10 @@ final class PayToUITests: XCTestCase {
 
         XCTAssertTrue(app.buttons["Done"].waitForExistence(timeout: 5), "The user can leave at once")
         snap("n4-on-its-way")
+        XCUIDevice.shared.press(.home)
+        sleep(1)
+        snap("n4b-dynamic-island")
+        app.activate()
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Sent to")).firstMatch.waitForExistence(timeout: 15), "Someone who stays sees it land")
         snap("n5-delivered")
     }

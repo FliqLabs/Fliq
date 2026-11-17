@@ -19,7 +19,9 @@ struct MoneyActivityAttributes: ActivityAttributes {
 
     enum Kind: String, Codable, Hashable, Sendable {
         case deposit
+        case bankDeposit = "bank_deposit"
         case payout
+        case send
     }
 
     var kind: Kind
@@ -30,8 +32,9 @@ struct MoneyActivityAttributes: ActivityAttributes {
 
     var title: String {
         switch kind {
-        case .deposit: "Deposit"
+        case .deposit, .bankDeposit: "Deposit"
         case .payout: "Withdrawal"
+        case .send: "Send"
         }
     }
 }

@@ -32,6 +32,26 @@ final class LiveMoneyTests: XCTestCase {
         XCTAssertEqual(LiveMoney.payout(.notReceived).status, "Not paid")
     }
 
+    func testABankDepositNeverNamesThePartnerOrTheChain() {
+        let steps: [Paj.Order.Status] = [.initiated, .paid, .completed]
+        XCTAssertEqual(steps.compactMap { LiveMoney.bankDeposit($0)?.status }, ["Waiting for your transfer", "Your bank sent it", "Moving to your vault"])
+        XCTAssertEqual(LiveMoney.bankDeposit(.completed)?.step, 2, "The API takes over at the same step")
+        XCTAssertNil(LiveMoney.bankDeposit(.failed))
+        XCTAssertEqual(LiveMoney.bankDepositLanded(true).status, "In your vault")
+        XCTAssertTrue(LiveMoney.bankDepositLanded(false).failed)
+        for state in steps.compactMap({ LiveMoney.bankDeposit($0) }) {
+            XCTAssertFalse(state.status.contains("Paj"))
+            XCTAssertFalse(state.status.contains("Solana"))
+        }
+    }
+
+    func testASendToAWalletMatchesWhatTheAPIPushes() {
+        XCTAssertEqual(LiveMoney.send(.awaiting, chain: "tron"), .init(step: 1, steps: 3, status: "Sending", done: false, failed: false))
+        XCTAssertEqual(LiveMoney.send(.moving, chain: "tron").status, "On its way to Tron")
+        XCTAssertEqual(LiveMoney.send(.delivered, chain: "solana"), .init(step: 3, steps: 3, status: "Delivered", done: true, failed: false))
+        XCTAssertEqual(LiveMoney.send(.expired, chain: "base").status, "Not sent")
+    }
+
     func testThePushedStateDecodesByTheKeysTheAPISends() throws {
         let json = #"{"step":2,"steps":3,"status":"The bank is paying","done":false,"failed":false}"#
         let state = try JSONDecoder().decode(MoneyActivityAttributes.ContentState.self, from: Data(json.utf8))
