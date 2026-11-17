@@ -105,7 +105,10 @@ export function createOneClickMock(options: OneClickMockOptions) {
     };
     if (body.dry !== true) {
       counter += 1;
-      const depositAddress = mockAddress(String(body.originAsset), `${counter}:${JSON.stringify(body)}`);
+      const depositAddress = mockAddress(
+        body.depositType === "INTENTS" ? "intents:near:" : String(body.originAsset),
+        `${counter}:${JSON.stringify(body)}`,
+      );
       quote.depositAddress = depositAddress;
       quote.deadline = deadline.toISOString();
       quote.timeWhenInactive = deadline.toISOString();

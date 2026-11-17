@@ -40,7 +40,7 @@ export const DEPOSIT_SOURCES: readonly Source[] = [
   { token: "usdc", chain: "near", group: "near", minimum: "0.01", etaSeconds: 2, watchMinutes: 0 },
 ];
 
-const ONECLICK_BLOCKCHAIN: Record<DepositChain, string> = {
+export const ONECLICK_BLOCKCHAIN: Record<DepositChain, string> = {
   base: "base",
   solana: "sol",
   tron: "tron",
@@ -106,7 +106,7 @@ export function formatUsd(microUsd: bigint): string {
   return `${cents / 100n}.${(cents % 100n).toString().padStart(2, "0")}`;
 }
 
-function quotedFee(quote: OneClickQuote, source: OneClickToken): bigint {
+export function quotedFee(quote: OneClickQuote, source: OneClickToken): bigint {
   const usdIn = quote.amountInUsd === undefined ? null : parseUnits(quote.amountInUsd, USD_DECIMALS);
   const usdOut = quote.amountOutUsd === undefined ? null : parseUnits(quote.amountOutUsd, USD_DECIMALS);
   if (usdIn !== null && usdOut !== null) return usdIn > usdOut ? usdIn - usdOut : 0n;
@@ -194,7 +194,7 @@ function intentsError(error: unknown, chain: string): ApiError {
   throw error;
 }
 
-async function vaultAccountOf(tx: Db, userId: string): Promise<string> {
+export async function vaultAccountOf(tx: Db, userId: string): Promise<string> {
   const user = await tx.user.findUnique({ where: { id: userId }, select: { nearAccount: true } });
   if (!user?.nearAccount) throw notFound("Claim a fliq name to get a vault.");
   return user.nearAccount;
@@ -360,7 +360,8 @@ export function createDeposits(deps: DepositDeps) {
 
   async function arrival(row: VaultDeposit): Promise<Arrival | null> {
     const look = deps.arrivals?.[row.chain as DepositChain];
-    if (!look || !deps.client) return null;
+    // A returned refund moves on the NEAR Intents contract, so its address is never on the origin chain.
+    if (!look || !deps.client || row.refundReturn) return null;
     try {
       const list = await tokenList(deps.client);
       const mint = list.find((item) => item.blockchain === ONECLICK_BLOCKCHAIN[row.chain as DepositChain] && item.symbol.toLowerCase() === row.token)?.contractAddress;

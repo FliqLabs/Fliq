@@ -44,7 +44,7 @@ beforeEach(() => {
     relay: {
       rpc,
       store,
-      policy: { vaultContractId: VAULT, usdcContractId: USDC },
+      policy: { vaultContractId: VAULT, usdcContractId: USDC, intentsContractId: "intents.near" },
       relayerAccountId: RELAYER,
       relayerKeys: keys,
       now: Date.now,
@@ -127,6 +127,24 @@ describe("relayer HTTP", () => {
     });
     expect(response.statusCode).toBe(403);
     expect(response.json().error.code).toBe("not_allowed");
+  });
+
+  it("relays a NEAR Intents refund to a 1Click deposit address and nowhere else", async () => {
+    const refund = {
+      receiverId: "intents.near",
+      methodName: "mt_transfer",
+      deposit: 1n,
+      nonce: 201n,
+      args: { receiver_id: "ab".repeat(32), token_id: "nep141:usdc.omft.near", amount: "1632606" },
+    };
+    const relayed = await post("/v1/relays", { signed_delegate: (await signDelegate(ada, refund)).base64 });
+    expect(relayed.statusCode).toBe(200);
+    expect(relayed.json()).toMatchObject({ status: "succeeded", receiver_id: "intents.near" });
+    const elsewhere = await post("/v1/relays", {
+      signed_delegate: (await signDelegate(ada, { ...refund, nonce: 202n, args: { ...refund.args, receiver_id: "evil.near" } })).base64,
+    });
+    expect(elsewhere.statusCode).toBe(403);
+    expect(elsewhere.json().error.code).toBe("not_allowed");
   });
 
   it("refuses a replayed nonce with 409", async () => {

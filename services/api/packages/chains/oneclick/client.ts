@@ -164,7 +164,7 @@ export function quoteBody(input: QuoteInput): Record<string, unknown> {
     swapType: input.swapType,
     slippageTolerance: input.slippageBps,
     originAsset: input.originAsset,
-    depositType: "ORIGIN_CHAIN",
+    depositType: input.depositType ?? "ORIGIN_CHAIN",
     destinationAsset: input.destinationAsset,
     amount: input.amount.toString(),
     refundTo: input.refundTo,

@@ -31,6 +31,8 @@ export type QuoteInput = {
   originAsset: string;
   destinationAsset: string;
   amount: bigint;
+  // INTENTS takes the input from an account's balance on the NEAR Intents contract instead of a chain transfer.
+  depositType?: "ORIGIN_CHAIN" | "INTENTS";
   refundTo: string;
   // INTENTS refunds to a NEAR account's Intents balance, for senders whose origin-chain address is unknown.
   refundType?: "ORIGIN_CHAIN" | "INTENTS";

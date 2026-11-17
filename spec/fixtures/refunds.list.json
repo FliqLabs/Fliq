@@ -1,0 +1,12 @@
+{
+  "items": [
+    {
+      "token_id": "nep141:sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near",
+      "symbol": "usdc",
+      "chain": "solana",
+      "units": "1632606",
+      "amount": "1.632606",
+      "intents_contract": "intents.near"
+    }
+  ]
+}

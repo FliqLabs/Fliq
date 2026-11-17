@@ -13,7 +13,11 @@ const app = buildRelayerApp({
   relay: {
     rpc,
     store,
-    policy: { vaultContractId: config.near.vaultContractId, usdcContractId: config.near.usdcContractId },
+    policy: {
+      vaultContractId: config.near.vaultContractId,
+      usdcContractId: config.near.usdcContractId,
+      intentsContractId: config.near.intentsContractId,
+    },
     relayerAccountId: config.relayer.accountId,
     relayerKeys: config.relayer.privateKeys.map((key) => key.reveal()),
     now: Date.now,
