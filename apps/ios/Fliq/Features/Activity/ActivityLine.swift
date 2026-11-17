@@ -111,6 +111,10 @@ extension ActivityLine {
                 dollars = nil
                 steps = [Step(title: DepositFailure.notReceived, detail: "Nothing arrived before this address closed. If you sent money, contact us and we'll sort it out.", done: false)]
                 facts = [("Status", statusText), ("Network", chain), ("Reference", item.refId)]
+            } else if notReceived, item.status == "refunded" {
+                dollars = nil
+                steps = [sent, Step(title: "Sent back to you", detail: "Your money is safe. Add it back to your vault from Home.", done: true)]
+                facts = [("Status", "Refunded to you"), ("You sent", item.token ?? ""), ("Network", chain), ("Reference", item.refId)]
             } else if notReceived {
                 dollars = nil
                 steps = [sent, Step(title: DepositFailure.notReceived, detail: DepositFailure.contactUs, done: false)]
