@@ -270,7 +270,9 @@ final class WithdrawFlow {
             refId: send.sendId,
             amount: "$\(Money.dollars(amount))",
             from: "Vault",
-            to: "\(LiveMoney.chainName(send.chain)) ••\(send.to.suffix(4))"
+            to: "\(LiveMoney.chainName(send.chain)) ••\(send.to.suffix(4))",
+            fromMark: "fliq",
+            toMark: send.chain == "near" ? "ChainNEAR" : "Chain" + send.chain.capitalized
         )
         LiveMoney.shared.show(attributes, LiveMoney.send(state, chain: send.chain), final: state.isFinal)
     }

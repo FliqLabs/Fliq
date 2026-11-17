@@ -53,4 +53,10 @@ final class ActivityLineTests: XCTestCase {
         XCTAssertTrue(line.subtitle.hasSuffix("Not paid, refunded to you"), "Says what happened to the money, not which provider failed")
         XCTAssertEqual(line.steps.last?.title, "Back in your vault")
     }
+
+    func testABankDepositShowsTheNigerianFlagNotAnArrow() {
+        let deposit = ActivityStore.BankDeposit(depositId: "dep_flag", naira: 10_000, usd: "6.96", startedAt: .now)
+        let line = ActivityLine(.history(.bankDeposit(deposit, status: "pending")), institutions: [:])
+        guard case .nigerianBank = line.badge else { return XCTFail("Expected the Nigerian flag, got \(line.badge)") }
+    }
 }

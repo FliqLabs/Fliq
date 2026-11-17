@@ -225,7 +225,9 @@ final class BankDepositFlow {
             refId: destination?.deposit?.depositId ?? "bank-\(order.id)",
             amount: "$\(String(format: "%.2f", order.usdc))",
             from: "Your bank",
-            to: "Your vault"
+            to: "Your vault",
+            fromMark: "flag.ng",
+            toMark: "fliq"
         )
         LiveMoney.shared.show(attributes, state, final: final)
     }

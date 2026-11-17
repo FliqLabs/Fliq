@@ -200,7 +200,9 @@ private struct ReceiveStartView: View {
             VStack(spacing: 10) {
                 if let onBankDeposit {
                     SheetRow(title: "Bank transfer", detail: "Pay in naira from any Nigerian bank", action: onBankDeposit) {
-                        Icon("building.columns", size: 24)
+                        NigeriaFlag(size: 36)
+                    } trailing: {
+                        LogoStack(images: ["Bank-gtbank", "Bank-opay", "Bank-access-bank"])
                     }
                 }
                 if let name {
@@ -208,12 +210,15 @@ private struct ReceiveStartView: View {
                         NEARMark(size: 22)
                     }
                 }
-                SheetRow(title: "External wallet", detail: flow.onlyOption?.title ?? "Choose a coin and network", action: onWallet) {
+                SheetRow(title: "External wallet", detail: flow.onlyOption?.title ?? "From any wallet or exchange", action: onWallet) {
                     if flow.isReserving {
                         ProgressView()
                     } else {
                         Icon("wallet.bifold", size: 24)
                     }
+                } trailing: {
+                    let chains = flow.chainImages
+                    LogoStack(images: Array(chains.prefix(3)), extra: max(0, chains.count - 3))
                 }
                 .disabled(flow.isReserving)
             }
@@ -502,11 +507,12 @@ struct TestNetworkNote: View {
     }
 }
 
-struct SheetRow<Mark: View>: View {
+struct SheetRow<Mark: View, Trailing: View>: View {
     let title: String
     let detail: String
     let action: () -> Void
     @ViewBuilder let mark: () -> Mark
+    @ViewBuilder var trailing: () -> Trailing
 
     var body: some View {
         Button(action: action) {
@@ -514,9 +520,11 @@ struct SheetRow<Mark: View>: View {
                 mark().frame(width: 44, height: 44)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title).font(.system(size: 18, weight: .semibold))
-                    Text(detail).font(.system(size: 15)).foregroundStyle(Theme.textSecondary).lineLimit(1)
+                    Text(detail).font(.system(size: 15)).foregroundStyle(Theme.textSecondary).lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                Spacer()
+                Spacer(minLength: 8)
+                trailing()
                 Icon("chevron.right", size: 18)
                     .foregroundStyle(Theme.textTertiary)
             }
@@ -528,6 +536,43 @@ struct SheetRow<Mark: View>: View {
         }
         .buttonStyle(.pressable(scale: 0.98))
         .accessibilityIdentifier(title)
+    }
+}
+
+extension SheetRow where Trailing == EmptyView {
+    init(title: String, detail: String, action: @escaping () -> Void, @ViewBuilder mark: @escaping () -> Mark) {
+        self.init(title: title, detail: detail, action: action, mark: mark, trailing: { EmptyView() })
+    }
+}
+
+/// A few overlapping logos and "+3", the way the best wallets show what a row covers before it is opened.
+struct LogoStack: View {
+    let images: [String]
+    var extra = 0
+    var size: CGFloat = 22
+
+    var body: some View {
+        HStack(spacing: 6) {
+            HStack(spacing: -size * 0.32) {
+                ForEach(Array(images.enumerated()), id: \.offset) { index, name in
+                    Image(name)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: size, height: size)
+                        .background(name.hasPrefix("Bank-") ? Color.white : .clear)
+                        .clipShape(Circle())
+                        .overlay(Circle().strokeBorder(Theme.surface, lineWidth: 1.5))
+                        .zIndex(Double(images.count - index))
+                }
+            }
+            if extra > 0 {
+                Text("+\(extra)")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.textSecondary)
+            }
+        }
+        .fixedSize()
+        .accessibilityHidden(true)
     }
 }
 

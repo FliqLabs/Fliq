@@ -29,6 +29,10 @@ struct MoneyActivityAttributes: ActivityAttributes {
     var amount: String
     var from: String
     var to: String
+    /// What to draw beside each end of the route: "flag.ng", "fliq", or an image name such as "ChainSolana" or
+    /// "Bank-gtbank". Optional so activities started by an older build still decode.
+    var fromMark: String?
+    var toMark: String?
 
     var title: String {
         switch kind {
