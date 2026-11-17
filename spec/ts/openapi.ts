@@ -446,6 +446,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/live-activities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Follow a deposit or cash-out with a Live Activity on this iPhone
+         * @description The API pushes each change of state to the Live Activity's push token, and ends the activity when the deposit or cash-out reaches a final state, or three hours after it started.
+         */
+        post: operations["registerLiveActivity"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/devices/{token}": {
         parameters: {
             query?: never;
@@ -1928,6 +1948,20 @@ export interface components {
             token: string;
             /** @enum {string} */
             platform: "ios";
+            /**
+             * @description production for TestFlight and App Store builds, sandbox for builds run from Xcode
+             * @enum {string}
+             */
+            environment: "production" | "sandbox";
+            bundle_id: string;
+        };
+        LiveActivityRequest: {
+            /** @description The Live Activity's APNs push token in hex */
+            token: string;
+            /** @enum {string} */
+            kind: "deposit" | "payout";
+            /** @description The deposit_id or payout_id the activity follows; it must belong to the caller */
+            ref_id: string;
             /**
              * @description production for TestFlight and App Store builds, sandbox for builds run from Xcode
              * @enum {string}
@@ -3463,6 +3497,30 @@ export interface operations {
                 content?: never;
             };
             400: components["responses"]["Error"];
+        };
+    };
+    registerLiveActivity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LiveActivityRequest"];
+            };
+        };
+        responses: {
+            /** @description Registered; registering the same token again follows the given deposit or cash-out from the start */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Error"];
+            404: components["responses"]["Error"];
         };
     };
     removeDevice: {

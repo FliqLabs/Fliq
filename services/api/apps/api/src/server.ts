@@ -27,6 +27,7 @@ import { createOps, opsConfigFromEnv } from "./ops.js";
 import { createSends, startSendWatch } from "./sends.js";
 import { payoutRefresher, startPayoutWatch } from "./payout-watch.js";
 import { apnsFromEnv, createApnsSender, startPushDispatch } from "./push.js";
+import { startLiveActivityDispatch } from "./live-activities.js";
 import { usageRecorder } from "./usage.js";
 import { httpsTransport } from "../../../packages/webhooks/transport.js";
 
@@ -198,8 +199,13 @@ startVaultSync(
   Number(process.env.VAULT_SYNC_INTERVAL_MS ?? 15_000),
 );
 const apns = apnsFromEnv(process.env);
+const apnsSender = apns ? createApnsSender(apns) : null;
 startPushDispatch(
-  { unit, send: apns ? createApnsSender(apns) : null, dataKey: config.dataKey, now: () => new Date(), log: (message) => app.log.warn(message) },
+  { unit, send: apnsSender, dataKey: config.dataKey, now: () => new Date(), log: (message) => app.log.warn(message) },
+  Number(process.env.PUSH_INTERVAL_MS ?? 3_000),
+);
+startLiveActivityDispatch(
+  { unit, send: apnsSender, now: () => new Date(), log: (message) => app.log.warn(message) },
   Number(process.env.PUSH_INTERVAL_MS ?? 3_000),
 );
 startWebhookDelivery(
