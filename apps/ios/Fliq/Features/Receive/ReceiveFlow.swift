@@ -155,7 +155,21 @@ final class ReceiveFlow {
             guard let next = try? await api.status(of: deposit) else { continue }
             status = next
             if next.stage == .landed, let landing { vault.credit(landing) }
+            showLive(next, deposit: deposit)
         }
+    }
+
+    /// Once the money is seen it shows in the Dynamic Island and on the Lock Screen, so the user can leave.
+    private func showLive(_ next: DepositStatus, deposit: DepositAddress) {
+        guard next.stage >= .seen, let landing else { return }
+        let attributes = MoneyActivityAttributes(
+            kind: .deposit,
+            refId: deposit.depositId ?? "demo-\(deposit.address)",
+            amount: "$\(Money.dollars(landing))",
+            from: deposit.source.title,
+            to: "Your vault"
+        )
+        LiveMoney.shared.show(attributes, LiveMoney.deposit(next, chain: deposit.source.chainId), final: next.stage.isFinal)
     }
 }
 

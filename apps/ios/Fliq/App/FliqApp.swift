@@ -11,7 +11,10 @@ struct FliqApp: App {
             Group {
                 if environment.profile.isOnboarded {
                     RootView()
-                        .task { await PushNotifications.shared.start(environment) }
+                        .task {
+                            LiveMoney.shared.start(environment)
+                            await PushNotifications.shared.start(environment)
+                        }
                         .fullScreenCover(isPresented: .constant(environment.lock.needsSetup)) {
                             SecureFliqView(lock: environment.lock)
                                 .preferredColorScheme(.dark)
