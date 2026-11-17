@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chainName, depositActivityState, liveActivityPayload, payoutActivityState } from "../apps/api/src/live-activities.js";
+import { bankDepositActivityState, chainName, depositActivityState, liveActivityPayload, payoutActivityState, sendActivityState } from "../apps/api/src/live-activities.js";
 
 const deposit = (state: string, at: { seenAt?: Date; bridgingAt?: Date } = {}) =>
   depositActivityState({ state, chain: "solana", seenAt: at.seenAt ?? null, bridgingAt: at.bridgingAt ?? null });
@@ -13,6 +13,24 @@ describe("live activity content", () => {
     expect(step(deposit("bridging", { seenAt: when, bridgingAt: when }))).toEqual([2, "Moving to your vault", false, false, false]);
     expect(step(deposit("landed"))).toEqual([3, "In your vault", true, false, true]);
     expect(deposit("landed").content.steps).toBe(3);
+  });
+
+  it("never names a chain for money from the user's bank, and leaves the first steps to the app", () => {
+    const bank = (state: string) => bankDepositActivityState({ state, chain: "solana", seenAt: when, bridgingAt: null });
+    expect(bank("waiting")).toBeNull();
+    expect(step(bank("seen") as ReturnType<typeof depositActivityState>)).toEqual([2, "Moving to your vault", false, false, false]);
+    expect(step(bank("bridging") as ReturnType<typeof depositActivityState>)).toEqual([2, "Moving to your vault", false, false, false]);
+    expect(step(bank("landed") as ReturnType<typeof depositActivityState>)).toEqual([3, "In your vault", true, false, true]);
+    expect(bank("refunded")?.final).toBe(true);
+  });
+
+  it("walks a send to a wallet until it is delivered", () => {
+    const send = (state: string) => step(sendActivityState({ state, chain: "tron" }));
+    expect(send("awaiting")).toEqual([1, "Sending", false, false, false]);
+    expect(send("moving")).toEqual([2, "On its way to Tron", false, false, false]);
+    expect(send("delivered")).toEqual([3, "Delivered", true, false, true]);
+    expect(send("refunded")).toEqual([2, "Refunded to your vault", false, true, true]);
+    expect(send("expired")).toEqual([0, "Not sent", false, true, true]);
   });
 
   it("names the chain the way the app does", () => {

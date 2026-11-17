@@ -53,6 +53,7 @@ describe.skipIf(!enabled)("Live Activities", () => {
     const users = await database.user.findMany({ where: { email: { in: emails } }, select: { id: true } });
     const ids = users.map((user) => user.id);
     await database.liveActivity.deleteMany({ where: { userId: { in: ids } } });
+    await database.walletSend.deleteMany({ where: { userId: { in: ids } } });
     await database.payout.deleteMany({ where: { developerId: { in: ids } } });
     await database.quote.deleteMany({ where: { developerId: { in: ids } } });
     await database.recipient.deleteMany({ where: { userId: { in: ids } } });
@@ -195,6 +196,70 @@ describe.skipIf(!enabled)("Live Activities", () => {
       ["update", "Refunding"],
       ["end", "Refunded to your vault"],
     ]);
+  });
+
+  it("leaves a bank deposit's card to the app until the money is seen, then never names the chain", async () => {
+    const ada = await holder("ada");
+    const depositId = `dep_bank_${suffix}`;
+    await createDeposit(depositId, ada.userId);
+    const token = randomBytes(20).toString("hex");
+    expect((await register(ada.headers, token, "bank_deposit", depositId)).statusCode).toBe(204);
+
+    const sent: { aps: Record<string, unknown> }[] = [];
+    const dispatch = () =>
+      dispatchLiveActivities({
+        unit,
+        send: async (target, payload) => {
+          if (target.token === token) sent.push(payload as { aps: Record<string, unknown> });
+          return { status: 200 };
+        },
+        now: () => new Date(),
+        log: () => {},
+      });
+    await dispatch();
+    expect(sent).toHaveLength(0);
+    await unit((tx) => tx.vaultDeposit.update({ where: { id: depositId }, data: { state: "seen", seenAt: new Date() } }));
+    await dispatch();
+    await unit((tx) => tx.vaultDeposit.update({ where: { id: depositId }, data: { state: "landed", landedAt: new Date() } }));
+    await dispatch();
+    expect(sent.map((item) => [item.aps.event, (item.aps["content-state"] as { status: string }).status])).toEqual([
+      ["update", "Moving to your vault"],
+      ["end", "In your vault"],
+    ]);
+  });
+
+  it("follows the caller's own send to a wallet and refuses anyone else's", async () => {
+    const tola = await holder("tola");
+    const other = await holder("other");
+    const sendId = `snd_live_${suffix}`;
+    await unit((tx) =>
+      tx.walletSend.create({
+        data: {
+          id: sendId, userId: tola.userId, account: `${sendId}.fliqaccount.testnet`, chain: "tron", toAddress: "TA4Wt1DUCqz6YegbnsmqsWC5uUfbdBqPxm",
+          amountUnits: 20_000_000n, receivesUnits: 18_400_000n, minReceivesUnits: 18_000_000n, depositAddress: `send-addr-${sendId}`,
+          etaSeconds: 75, expiresAt: new Date(Date.now() + 600_000), quote: {},
+        },
+      }),
+    );
+    const token = randomBytes(20).toString("hex");
+    expect((await register(other.headers, token, "send", sendId)).statusCode).toBe(404);
+    expect((await register(tola.headers, token, "send", sendId)).statusCode).toBe(204);
+    const sent: { aps: Record<string, unknown> }[] = [];
+    const dispatch = () =>
+      dispatchLiveActivities({
+        unit,
+        send: async (target, payload) => {
+          if (target.token === token) sent.push(payload as { aps: Record<string, unknown> });
+          return { status: 200 };
+        },
+        now: () => new Date(),
+        log: () => {},
+      });
+    await dispatch();
+    await unit((tx) => tx.walletSend.update({ where: { id: sendId }, data: { state: "delivered" } }));
+    await dispatch();
+    expect(sent.map((item) => (item.aps["content-state"] as { status: string }).status)).toEqual(["Sending", "Delivered"]);
+    await unit((tx) => tx.walletSend.delete({ where: { id: sendId } }));
   });
 
   it("forgets an activity whose token Apple says is gone", async () => {
