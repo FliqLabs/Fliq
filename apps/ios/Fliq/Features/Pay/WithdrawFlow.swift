@@ -99,9 +99,17 @@ final class WithdrawFlow {
     }
 
     /// Another network takes a small fee, so a send below its minimum would mostly be eaten by it.
-    var isBelowMinimum: Bool {
+    var isBelowMinimum: Bool { isBelowMinimum(for: network) }
+
+    func isBelowMinimum(for network: SendNetwork) -> Bool {
         guard !network.isNEAR, let amount else { return false }
         return amount < network.minimumAmount
+    }
+
+    /// Said on the Send to screen, before an address is typed, so a send too small for its network never starts.
+    var minimumNote: String? {
+        guard isBelowMinimum else { return nil }
+        return "The smallest amount you can send to \(network.name) is $\(Money.dollars(network.minimumAmount)). Go back to change the amount, or pick another network."
     }
 
     var hasAddress: Bool {
