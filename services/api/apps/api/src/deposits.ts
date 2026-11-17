@@ -59,6 +59,8 @@ const QUOTE_RETRY_DELAYS_MS = [300, 800];
 // A deposit that arrives after its address expired is still refunded by 1Click, so it is followed this long.
 const LATE_WINDOW_MS = 24 * 60 * 60_000;
 const USD_DECIMALS = 6;
+// Ten cents: the least a dollar deposit address is quoted for, so a short delivery still lands.
+const ADDRESS_FLOOR_UNITS = 100_000n;
 const FINAL: ReadonlySet<DepositState> = new Set(["landed", "refunded", "failed"]);
 
 export interface DepositDeps {
@@ -259,6 +261,38 @@ export function createDeposits(deps: DepositDeps) {
     });
   }
 
+  // A FLEX_INPUT address refunds anything under 99% of the amount it was quoted for. A bank partner or an exchange
+  // can deliver a little less than the user typed after its own fees, and that came back as a refund the app could
+  // not see (17 Nov). So a dollar address is quoted for a token floor: anything from it up lands in the vault. A route
+  // that will not quote so little (Tron's flat fee) keeps the amount the user asked for.
+  async function addressQuote(account: string, picked: Awaited<ReturnType<typeof route>>, units: bigint, deadline: Date) {
+    const floor = picked.origin.decimals === USD_DECIMALS ? ADDRESS_FLOOR_UNITS : null;
+    if (floor !== null && floor < units) {
+      const low = await quoteOnce(account, picked, floor, deadline);
+      if (low) return low;
+    }
+    return flexQuote(false, account, picked, units, deadline);
+  }
+
+  async function quoteOnce(account: string, picked: Awaited<ReturnType<typeof route>>, units: bigint, deadline: Date) {
+    return picked.client
+      .quote({
+        dry: false,
+        swapType: "FLEX_INPUT",
+        slippageBps: deps.slippageBps,
+        originAsset: picked.origin.assetId,
+        destinationAsset: picked.destination.assetId,
+        amount: units,
+        refundTo: account,
+        refundType: "INTENTS",
+        recipient: deps.vaultAccount,
+        customRecipientMsg: topUpMessage(account),
+        deadline,
+        appFees: [],
+      })
+      .catch(() => null);
+  }
+
   async function sources(unit: Unit, userId: string) {
     const account = await unit((tx) => vaultAccountOf(tx, userId));
     const list = deps.client ? await tokenList(deps.client).catch(() => null) : null;
@@ -301,7 +335,7 @@ export function createDeposits(deps: DepositDeps) {
     const picked = await route(input.token, input.chain);
     const units = amountOf(input, picked.origin, picked.source);
     const reservedUntil = new Date(now().getTime() + picked.source.watchMinutes * 60_000);
-    const quote = await flexQuote(false, account, picked, units, reservedUntil);
+    const quote = await addressQuote(account, picked, units, reservedUntil);
     const row = await tx.vaultDeposit.create({
       data: {
         id: newId("dep"),
