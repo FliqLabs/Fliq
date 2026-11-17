@@ -4197,6 +4197,10 @@ components:
         amount:
           type: string
           description: About how much the user will send, in the source token. Any amount from minimum up is taken.
+        via:
+          type: string
+          enum: [wallet, bank]
+          description: bank when the user pays from their bank through the on-ramp partner, so fliq names their bank and not the chain. Defaults to wallet.
     DepositState:
       type: string
       description: >-

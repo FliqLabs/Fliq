@@ -2629,6 +2629,11 @@ export interface components {
             chain: components["schemas"]["DepositChainId"];
             /** @description About how much the user will send, in the source token. Any amount from minimum up is taken. */
             amount: string;
+            /**
+             * @description bank when the user pays from their bank through the on-ramp partner, so fliq names their bank and not the chain. Defaults to wallet.
+             * @enum {string}
+             */
+            via?: "wallet" | "bank";
         };
         /**
          * @description waiting: nothing has arrived. seen: the transfer is on the source chain. underpaid: less than minimum arrived; more can be sent until reserved_until, after that it is refunded. bridging: moving to NEAR. landed: in the vault. refunded: returned to the user's NEAR account. expired: nothing arrived in time. failed: NEAR Intents could not complete it and support has been told.

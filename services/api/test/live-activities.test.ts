@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bankDepositActivityState, chainName, depositActivityState, liveActivityPayload, payoutActivityState, sendActivityState } from "../apps/api/src/live-activities.js";
+import { withLanded, bankDepositActivityState, chainName, depositActivityState, liveActivityPayload, payoutActivityState, sendActivityState } from "../apps/api/src/live-activities.js";
 
 const deposit = (state: string, at: { seenAt?: Date; bridgingAt?: Date } = {}) =>
   depositActivityState({ state, chain: "solana", seenAt: at.seenAt ?? null, bridgingAt: at.bridgingAt ?? null });
@@ -68,5 +68,11 @@ describe("live activity content", () => {
       },
     });
     expect(liveActivityPayload(content, 1_794_830_400, true).aps).toMatchObject({ event: "end", "dismissal-date": 1_794_831_300 });
+  });
+  it("ends a deposit's card on what actually landed, not the estimate it started with", () => {
+    const landed = withLanded(deposit("landed"), 1_954_321n);
+    expect(landed?.content).toMatchObject({ done: true, amount: "$1.95" });
+    expect(withLanded(deposit("bridging", { seenAt: when }), 1_954_321n)?.content.amount).toBeUndefined();
+    expect(withLanded(deposit("landed"), null)?.content.amount).toBeUndefined();
   });
 });

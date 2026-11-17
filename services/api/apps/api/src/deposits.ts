@@ -82,6 +82,7 @@ export interface DepositInput {
   token: DepositToken;
   chain: DepositChain;
   amount: string;
+  via?: "wallet" | "bank";
 }
 
 export const topUpMessage = (account: string) => JSON.stringify({ top_up: { account_id: account } });
@@ -347,6 +348,7 @@ export function createDeposits(deps: DepositDeps) {
         depositAddress: quote.depositAddress as string,
         depositMemo: quote.depositMemo ?? null,
         amountUnits: units,
+        fromBank: input.via === "bank",
         minimumUnits: quote.minAmountIn,
         feeMicroUsd: quotedFee(quote, picked.origin),
         landsUnits: quote.amountOut,

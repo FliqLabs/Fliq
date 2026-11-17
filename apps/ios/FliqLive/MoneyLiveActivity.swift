@@ -17,7 +17,7 @@ struct MoneyLiveActivity: Widget {
                         Text(context.attributes.title)
                             .font(.system(size: 13))
                             .foregroundStyle(.secondary)
-                        Text(context.attributes.amount)
+                        Text(context.state.amount ?? context.attributes.amount)
                             .font(.system(size: 26, weight: .bold))
                             .monospacedDigit()
                     }
@@ -42,7 +42,7 @@ struct MoneyLiveActivity: Widget {
                 if state.done || state.failed {
                     StatusIcon(state: state)
                 } else {
-                    Text(context.attributes.amount)
+                    Text(context.state.amount ?? context.attributes.amount)
                         .font(.system(size: 14, weight: .semibold))
                         .monospacedDigit()
                 }
@@ -80,7 +80,7 @@ private struct LockScreenCard: View {
                 Spacer()
                 StatusLabel(state: state)
             }
-            Text(attributes.amount)
+            Text(state.amount ?? attributes.amount)
                 .font(.system(size: 36, weight: .bold))
                 .monospacedDigit()
                 .foregroundStyle(.white)

@@ -54,6 +54,8 @@ const party = (name: string, extra: Partial<Party> = {}): Party => ({ name, near
 const PAYOUT_STATUS: Record<string, ActivityItem["status"]> = { settled: "paid", refunded: "refunded", expired: "expired", failed: "failed" };
 const DEPOSIT_STATUS: Record<string, ActivityItem["status"]> = { landed: "received", refunded: "refunded", expired: "expired", failed: "failed" };
 const REFUND_BACK = "Refund back in your vault";
+// The iPhone app matches this name to draw a bank deposit with the Nigerian flag.
+const FROM_BANK = "From your bank";
 
 const encodeCursor = (item: ActivityItem) => Buffer.from(`${item.at}|${item.activity_id}`).toString("base64url");
 
@@ -120,7 +122,7 @@ async function deposits(tx: Db, userId: string, before: Date | null, take: numbe
       kind: "deposit",
       status: DEPOSIT_STATUS[row.state] ?? "pending",
       at: row.createdAt.toISOString(),
-      party: party(row.refundReturn ? REFUND_BACK : `Received from ${CHAIN_NAMES[row.chain] ?? row.chain}`),
+      party: party(row.refundReturn ? REFUND_BACK : row.fromBank ? FROM_BANK : `Received from ${CHAIN_NAMES[row.chain] ?? row.chain}`),
       provider: null,
       agent: null,
       local: null,

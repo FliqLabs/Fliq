@@ -211,6 +211,16 @@ struct PajSessionStore: Sendable {
 }
 
 enum PajMessage {
+    static let busy = "Bank deposits are busy right now. Nothing was charged. Try again in a minute."
+
+    /// The partner's swap and server errors pass in a moment and are not the user's doing, so they are retried and
+    /// never shown as they come ("jup::err", a 5xx).
+    static func isTemporary(_ message: String) -> Bool {
+        let text = message.lowercased()
+        return text.contains("jup") || text.contains("::") || text.contains("didn't answer")
+            || text.contains("internal server error") || text.contains("timeout") || text.contains("swap")
+    }
+
     /// Paj and the web route both answer `{"message": ...}`, sometimes as a list.
     static func from(_ data: Data) -> String {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return "Bank deposits didn't answer. Try again." }
