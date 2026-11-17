@@ -251,6 +251,7 @@ final class AppEnvironment {
                 arguments.contains("--new-iphone") ? .canRestore : .notBackedUp, otherDevices: arguments.contains("--lost-iphone") ? 1 : 0
             ),
             accounts: accounts,
+            walletTopUp: FixtureWalletTopUp(refund: arguments.contains("--refund") ? Refund.sample : nil),
             preferences: Preferences(defaults: defaults), biometrics: AlwaysApprove(), lock: uiTestingLock(arguments, defaults: defaults)
         )
     }

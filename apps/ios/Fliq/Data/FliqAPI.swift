@@ -29,6 +29,8 @@ protocol FliqAPI: Sendable {
     func registerDevice(_ device: PushDevice) async throws
     func unregisterDevice(token: String) async throws
     func registerLiveActivity(_ activity: LiveActivityRegistration) async throws
+    func refunds() async throws -> [Refund]
+    func returnRefund(tokenId: String, idempotencyKey: String) async throws -> ReturnedRefund
 
     func institutions(in country: Country) async throws -> [Institution]
     func vaultBalance() async throws -> VaultBalance
@@ -98,4 +100,6 @@ extension FliqAPI {
     func registerDevice(_ device: PushDevice) async throws {}
     func unregisterDevice(token: String) async throws {}
     func registerLiveActivity(_ activity: LiveActivityRegistration) async throws {}
+    func refunds() async throws -> [Refund] { [] }
+    func returnRefund(tokenId: String, idempotencyKey: String) async throws -> ReturnedRefund { throw TransferError.notSetUp }
 }

@@ -15,7 +15,8 @@ final class ActivityLineTests: XCTestCase {
         return ActivityLine(.history(item), institutions: [:])
     }
 
-    func testARefundedDepositReadsAsNotReceivedAndStopsSpinning() throws {
+    /// A refunded deposit is in the user's NEAR Intents balance, and Home offers to bring it back, so it says so.
+    func testARefundedDepositSaysTheMoneyIsSafeAndStopsSpinning() throws {
         let line = try line(status: "refunded")
 
         XCTAssertEqual(line.statusText, "Not received")
@@ -23,8 +24,9 @@ final class ActivityLineTests: XCTestCase {
         XCTAssertNotEqual(line.outcome, .refunded, "Refunded would say the money is back in the vault")
         XCTAssertEqual(line.amount, "0.59 USDC", "What was sent, not a credit")
         XCTAssertNil(line.dollars)
-        XCTAssertEqual(line.steps.last?.title, "Not received")
-        XCTAssertEqual(line.steps.last?.detail, "Contact us and we'll sort it out.")
+        XCTAssertEqual(line.steps.last?.title, "Sent back to you")
+        XCTAssertEqual(line.steps.last?.detail, "Your money is safe. Add it back to your vault from Home.")
+        XCTAssertTrue(line.facts.contains { $0 == ("Status", "Refunded to you") })
         XCTAssertFalse(line.facts.contains { $0.0 == "Delivered" })
     }
 

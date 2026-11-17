@@ -199,6 +199,20 @@ extension DelegateAction {
         )
     }
 
+    /// A refund in the user's NEAR Intents balance, moved to the 1Click address that carries it into the vault.
+    /// Intents asks one yoctoNEAR, like every transfer a full-access key must approve.
+    static func intentsReturn(from sender: String, refund: ReturnedRefund, nonce: UInt64, blockHeight: UInt64, publicKey: Data) -> DelegateAction {
+        let args = #"{"receiver_id":"\#(refund.depositAddress)","token_id":"\#(refund.tokenId)","amount":"\#(refund.units)"}"#
+        return DelegateAction(
+            senderId: sender,
+            receiverId: refund.intentsContract,
+            call: FunctionCall(methodName: "mt_transfer", args: Data(args.utf8), gas: 50_000_000_000_000, deposit: 1),
+            nonce: nonce,
+            maxBlockHeight: blockHeight + lifetimeBlocks,
+            publicKey: publicKey
+        )
+    }
+
     /// A call the API asked the device to sign, such as the vault's `set_agent` or `remove_agent`.
     static func step(_ step: SignStep, from sender: String, nonce: UInt64, blockHeight: UInt64, publicKey: Data) -> DelegateAction {
         DelegateAction(
