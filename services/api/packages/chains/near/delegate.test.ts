@@ -3,8 +3,13 @@ import { describe, expect, it } from "vitest";
 import { checkPolicy, DelegateError, PolicyError, verifySignedDelegate, type RelayPolicy } from "./index";
 import { newUser, PAYOUT_ARGS, signDelegate, signKeyChange, TGAS, USDC, VAULT } from "./near.fixtures";
 
-const policy: RelayPolicy = { vaultContractId: VAULT, usdcContractId: USDC };
+const policy: RelayPolicy = { vaultContractId: VAULT, usdcContractId: USDC, intentsContractId: "intents.near" };
 const ada = newUser("ada.fliq.testnet");
+const MT_TRANSFER_ARGS = {
+  receiver_id: "3f1c9a7e5b2d4f6081a3c5e7f9b1d3a5c7e9f1b3d5a7c9e1f3b5d7a9c1e3f5b7",
+  token_id: "nep141:sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near",
+  amount: "1632606",
+};
 
 async function verified(spec: Parameters<typeof signDelegate>[1] = {}) {
   return verifySignedDelegate((await signDelegate(ada, spec)).base64);
@@ -185,6 +190,14 @@ describe("checkPolicy", () => {
         args: { account_id: "rejois.near", registration_only: true },
       },
     ],
+    [
+      "a 1Click refund on NEAR Intents sent to a quote's deposit address",
+      { receiverId: "intents.near", methodName: "mt_transfer", deposit: 1n, args: MT_TRANSFER_ARGS },
+    ],
+    [
+      "the same with a memo",
+      { receiverId: "intents.near", methodName: "mt_transfer", deposit: 1n, args: { ...MT_TRANSFER_ARGS, memo: "fliq refund" } },
+    ],
   ])("allows %s", async (_, spec) => {
     const delegate = verifySignedDelegate((await signDelegate(ada, spec)).base64);
     expect(() => checkPolicy(policy, delegate)).not.toThrow();
@@ -301,6 +314,38 @@ describe("checkPolicy", () => {
         deposit: 1_250_000_000_000_000_000_000n,
         args: { account_id: "ada.fliq.testnet" },
       },
+    ],
+    [
+      "an Intents transfer to a named account instead of a deposit address",
+      { receiverId: "intents.near", methodName: "mt_transfer", deposit: 1n, args: { ...MT_TRANSFER_ARGS, receiver_id: "evil.near" } },
+    ],
+    [
+      "an Intents transfer to an upper-case hex address",
+      { receiverId: "intents.near", methodName: "mt_transfer", deposit: 1n, args: { ...MT_TRANSFER_ARGS, receiver_id: "AB".repeat(32) } },
+    ],
+    [
+      "another Intents method",
+      { receiverId: "intents.near", methodName: "mt_transfer_call", deposit: 1n, args: { ...MT_TRANSFER_ARGS, msg: "" } },
+    ],
+    [
+      "an Intents transfer without the one yocto",
+      { receiverId: "intents.near", methodName: "mt_transfer", deposit: 0n, args: MT_TRANSFER_ARGS },
+    ],
+    [
+      "an Intents transfer with an extra argument",
+      { receiverId: "intents.near", methodName: "mt_transfer", deposit: 1n, args: { ...MT_TRANSFER_ARGS, approval: null } },
+    ],
+    [
+      "an Intents transfer of a token that is not nep141",
+      { receiverId: "intents.near", methodName: "mt_transfer", deposit: 1n, args: { ...MT_TRANSFER_ARGS, token_id: "nep245:v2_1.omni.hot.tg:1" } },
+    ],
+    [
+      "an Intents transfer of nothing",
+      { receiverId: "intents.near", methodName: "mt_transfer", deposit: 1n, args: { ...MT_TRANSFER_ARGS, amount: "0" } },
+    ],
+    [
+      "an Intents transfer with more than 100 Tgas",
+      { receiverId: "intents.near", methodName: "mt_transfer", deposit: 1n, gas: 101n * TGAS, args: MT_TRANSFER_ARGS },
     ],
   ])("refuses %s", async (_, spec) => {
     const delegate = verifySignedDelegate(

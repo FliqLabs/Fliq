@@ -563,6 +563,24 @@ model PushToken {
   @@schema("auth")
 }
 
+// A Live Activity on the iPhone following one deposit or cash-out, updated by push until it ends.
+model LiveActivity {
+  token       String    @id @db.Text
+  userId      String    @map("user_id") @db.Text
+  kind        String    @db.Text
+  refId       String    @map("ref_id") @db.Text
+  environment String    @db.Text
+  bundleId    String    @map("bundle_id") @db.Text
+  // The content state last pushed, as JSON, so an unchanged state is not sent again.
+  lastSent    String?   @map("last_sent") @db.Text
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  endedAt     DateTime? @map("ended_at") @db.Timestamptz(6)
+
+  @@index([endedAt, createdAt])
+  @@map("live_activities")
+  @@schema("auth")
+}
+
 enum RequestState {
   open
   paid
@@ -708,6 +726,10 @@ model VaultDeposit {
   polledAt       DateTime?    @map("polled_at") @db.Timestamptz(6)
   // Set when the top-up pays a payment request, so landing it marks the request paid.
   requestId      String?      @map("request_id") @db.Text
+  // Set when the deposit takes a 1Click refund from the user's NEAR Intents balance back to the vault.
+  refundReturn   Boolean      @default(false) @map("refund_return")
+  // Paid in from the user's bank through the on-ramp partner. The user sees their bank, never the chain it crossed.
+  fromBank       Boolean      @default(false) @map("from_bank")
   // The full 1Click quote, which 1Click asks integrators to keep.
   quote          Json
   createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)

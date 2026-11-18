@@ -299,8 +299,8 @@ export const walletApi = {
   depositSources: () => fliqApi<{ sources: DepositSource[] }>("deposits/sources"),
   depositEstimate: (source: DepositSource, amount: string) =>
     fliqApi<DepositEstimate>(`deposits/estimate?token=${source.token}&chain=${source.chain}&amount=${amount}`),
-  createDeposit: (source: DepositSource, amount: string) =>
-    fliqApi<VaultDeposit>("deposits", json({ token: source.token, chain: source.chain, amount })),
+  createDeposit: (source: DepositSource, amount: string, idempotencyKey?: string) =>
+    fliqApi<VaultDeposit>("deposits", { ...json({ token: source.token, chain: source.chain, amount }), ...(idempotencyKey ? { headers: { "Idempotency-Key": idempotencyKey } } : {}) }),
   deposit: (id: string) => fliqApi<VaultDeposit>(`deposits/${encodeURIComponent(id)}`),
   requests: () => fliqApi<{ items: PaymentRequest[] }>("requests"),
   createRequest: (input: { amount: string; note: string; cash_out_on_arrival: boolean }) =>

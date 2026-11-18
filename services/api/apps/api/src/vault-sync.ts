@@ -128,7 +128,9 @@ async function syncOne(deps: VaultSyncDeps, payout: SyncedPayout): Promise<SyncR
       await deps.unit((tx) => releaseReservation(tx, payout.id, receipt.payer, "USDC", receipt.amount));
     }
     // Released is final on chain, and an ended payout never leaves its state, so there is nothing left to mirror.
-    const settled = action.kind === "none" && action.reason === "released" && ENDED_UNPAID.has(payout.state);
+    const settled =
+      (action.kind === "none" && action.reason === "released" && ENDED_UNPAID.has(payout.state)) ||
+      (action.kind === "none" && action.reason === "in_sync" && payout.state === "settled");
     return { payoutId: payout.id, action: action.kind, settled };
   } catch (error) {
     const code = error instanceof VaultError ? error.code : (error as Error).name;

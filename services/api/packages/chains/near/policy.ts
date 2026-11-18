@@ -10,6 +10,9 @@ const POSITIVE_INTEGER = /^[1-9]\d*$/;
 const NEAR_ACCOUNT = /^(?=.{2,64}$)(([a-z\d]+[-_])*[a-z\d]+\.)*([a-z\d]+[-_])*[a-z\d]+$/;
 const CORRIDOR = /^[A-Z]{2}-[A-Z]{3}-[a-z_]+$/;
 const ED25519_KEY = /^ed25519:[1-9A-HJ-NP-Za-km-z]{43,44}$/;
+// 1Click deposit addresses are implicit accounts: 64 lowercase hex characters.
+const IMPLICIT_ACCOUNT = /^[0-9a-f]{64}$/;
+const NEP141_TOKEN = /^nep141:[a-z0-9._-]+$/;
 const U64_MAX = 2n ** 64n - 1n;
 // set_agent charges the owner for the policy's storage out of the attached deposit and refunds the rest.
 // A policy is a few hundred bytes, so 0.01 NEAR is ample and bounds what one relayed call can attach.
@@ -17,7 +20,7 @@ export const MAX_AGENT_STORAGE_DEPOSIT = 10n ** 22n;
 // USDC's storage_balance_bounds().min on NEAR is 0.00125 NEAR. Twice that bounds what one registration can attach.
 export const MAX_USDC_REGISTRATION_DEPOSIT = 25n * 10n ** 20n;
 
-export type RelayPolicy = { vaultContractId: string; usdcContractId: string };
+export type RelayPolicy = { vaultContractId: string; usdcContractId: string; intentsContractId: string };
 
 export class PolicyError extends Error {
   constructor(detail: string) {
@@ -103,7 +106,21 @@ function rules(policy: RelayPolicy): Map<string, Map<string, Rule>> {
       if (!POSITIVE_INTEGER.test(String(args.amount))) throw new PolicyError("amount must be a positive integer string");
     },
   };
+  // A 1Click refund the user holds on NEAR Intents, sent to the deposit address of a quote that lands it in the vault.
+  const mtTransfer: Rule = {
+    deposit: exactly(ONE_YOCTO),
+    checkArgs: (args) => {
+      exactKeys(args, ["receiver_id", "token_id", "amount", "memo"], ["receiver_id", "token_id", "amount"]);
+      if (!IMPLICIT_ACCOUNT.test(String(args.receiver_id)))
+        throw new PolicyError("receiver_id must be a 1Click deposit address");
+      if (!NEP141_TOKEN.test(String(args.token_id))) throw new PolicyError("token_id must be a nep141 token");
+      if (!POSITIVE_INTEGER.test(String(args.amount))) throw new PolicyError("amount must be a positive integer string");
+      if (args.memo !== undefined && (typeof args.memo !== "string" || args.memo.length > 64))
+        throw new PolicyError("memo must be a short string");
+    },
+  };
   return new Map([
+    [policy.intentsContractId, new Map([["mt_transfer", mtTransfer]])],
     [
       policy.vaultContractId,
       new Map([

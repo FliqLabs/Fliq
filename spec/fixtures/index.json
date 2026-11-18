@@ -30,6 +30,8 @@
   "deposit.estimate.json": "DepositEstimate",
   "deposit.waiting.json": "VaultDeposit",
   "deposit.landed.json": "VaultDeposit",
+  "refunds.list.json": "RefundList",
+  "refunds.return.json": "RefundReturn",
   "payout.refunded.json": "Payout",
   "payout.claim.json": "PayoutClaim",
   "rates.board.usdc-ngn.json": "RateBoard",

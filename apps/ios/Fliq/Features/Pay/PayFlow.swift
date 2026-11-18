@@ -147,6 +147,7 @@ final class PayFlow {
             if let payout {
                 activity?.record(payout, at: sentAt ?? .now)
                 vault?.debit(payout.amount)
+                showLive(payout, to: verified)
                 if saveAccount { accounts?.save(verified) }
             }
             errorMessage = nil
@@ -175,6 +176,20 @@ final class PayFlow {
         }
     }
 
+    /// The cash-out in the Dynamic Island and on the Lock Screen, so the user never waits on this screen.
+    private func showLive(_ payout: Payout, to account: VerifiedAccount) {
+        let attributes = MoneyActivityAttributes(
+            kind: .payout,
+            refId: payout.payoutId,
+            amount: "$\(Money.dollars(payout.amount))",
+            from: "Vault",
+            to: LiveMoney.bankLine(institution: account.institution, number: account.number),
+            fromMark: "fliq",
+            toMark: account.logoKey.map { "Bank-\($0)" }
+        )
+        LiveMoney.shared.show(attributes, LiveMoney.payout(payout.state), final: payout.state.isFinal)
+    }
+
     /// Polls until the payout reaches a final state. Only a bank reference counts as paid.
     func track() async {
         while let current = payout, !current.state.isFinal, !Task.isCancelled {
@@ -182,6 +197,7 @@ final class PayFlow {
             if let next = try? await api.payout(id: current.payoutId) {
                 payout = next
                 activity?.record(next)
+                if let verified { showLive(next, to: verified) }
                 if next.state == .refunded, current.state != .refunded { vault?.credit(next.amount) }
             }
         }

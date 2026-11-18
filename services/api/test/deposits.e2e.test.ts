@@ -42,7 +42,7 @@ describe.skipIf(!enabled)("topping up the vault from another chain", () => {
   // What the stand-in Solana RPC answers for an address, and what 1Click was told.
   const onSolana = new Map<string, Arrival | Error>();
   const submissions: DepositSubmission[] = [];
-  const oneClick = { quoteRefusals: 0, refusesSubmissions: false };
+  const oneClick = { quoteRefusals: 0, refusesSubmissions: false, takesFloor: false };
   const toldOneClick = (address: string) => submissions.filter((submission) => submission.depositAddress === address);
 
   let server: Server;
@@ -64,6 +64,11 @@ describe.skipIf(!enabled)("topping up the vault from another chain", () => {
         if (oneClick.quoteRefusals > 0) {
           oneClick.quoteRefusals -= 1;
           throw new OneClickError("quote", "rejected", "try again", 400);
+        }
+        // Real 1Click quotes a FLEX address for as little as a cent; the mock's floor is a dollar.
+        if (oneClick.takesFloor && input.amount < 1_000_000n) {
+          const quoted = await real.quote({ ...input, amount: 1_000_000n }, options);
+          return { ...quoted, minAmountIn: (input.amount * 99n) / 100n };
         }
         return real.quote(input, options);
       },
@@ -224,6 +229,16 @@ describe.skipIf(!enabled)("topping up the vault from another chain", () => {
     expect(await vault.getBalance(user.account)).toMatchObject({ available: 199_800_199n });
   }, 90_000);
 
+  it("lands a delivery that is short of what the user typed, as a bank partner's fee makes it", async () => {
+    const user = await holder("partnerfee");
+    oneClick.takesFloor = true;
+    const deposit = (await reserve(user.headers, `pf-${suffix}`, { token: "usdc", chain: "base", amount: "2.00" })).json();
+    oneClick.takesFloor = false;
+    expect(deposit.minimum).toBe("0.099");
+    await send(deposit.address, 1_590_000n);
+    expect((await pollUntil(user.headers, deposit.deposit_id, "landed")).state).toBe("landed");
+  }, 60_000);
+
   it("asks 1Click again when it refuses a quote, and only gives up after the third refusal", async () => {
     const user = await holder("retry");
     oneClick.quoteRefusals = 2;
@@ -231,7 +246,8 @@ describe.skipIf(!enabled)("topping up the vault from another chain", () => {
     expect(created.statusCode, created.body).toBe(201);
     expect(oneClick.quoteRefusals).toBe(0);
 
-    oneClick.quoteRefusals = 3;
+    // One refusal goes to the ten-cent floor quote, which is tried once and then left for the amount typed.
+    oneClick.quoteRefusals = 4;
     const refused = await reserve(user.headers, `r2-${suffix}`, { token: "usdc", chain: "solana", amount: "200.00" });
     expect(refused.statusCode).toBe(400);
     oneClick.quoteRefusals = 0;

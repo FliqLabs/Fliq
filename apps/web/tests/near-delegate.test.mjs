@@ -100,6 +100,29 @@ test("submitting uses the next nonce, relays once and follows a pending relay to
   assert.deepEqual(calls.map(([kind]) => kind), ["relay", "status"]);
 });
 
+// A vault send is three calls in a row. The second must not reuse the first one's nonce while the key read lags.
+test("calls made back to back never reuse a nonce, even when the chain still reports the old one", async () => {
+  globalThis.fetch = async (_url, init) =>
+    new Response(JSON.stringify({ result: JSON.parse(init.body).method === "query" ? { nonce: 41 } : { header: { height: 1 } } }));
+  const used = [];
+  const deps = {
+    rpcUrl: "x",
+    sender: "back.to.back.near",
+    publicKey: "ed25519:5FjQ8mT3vXk2NcR7yLpW9sBdH4uZaE6gKoJt1qMi9kQ",
+    sign: async () => new Uint8Array(64),
+    relay: async () => ({ status: "succeeded", delegate_hash: "h", sender_id: "", receiver_id: "" }),
+    relayStatus: async () => {
+      throw new Error("not called");
+    },
+  };
+  for (let call = 0; call < 3; call++)
+    await submitDelegate(deps, (signer) => {
+      used.push(signer.nonce);
+      return { ...transfer, nonce: signer.nonce };
+    });
+  assert.deepEqual(used, [42n, 43n, 44n]);
+});
+
 test("a relay the vault refuses surfaces the vault's reason", async () => {
   globalThis.fetch = async (_url, init) =>
     new Response(JSON.stringify({ result: JSON.parse(init.body).method === "query" ? { nonce: 1 } : { header: { height: 1 } } }));

@@ -52,6 +52,13 @@ describe("1Click client requests", () => {
     );
   });
 
+  it("takes the input from a NEAR Intents balance when asked to", () => {
+    expect(quoteBody({ ...quoteInput, depositType: "INTENTS", refundType: "INTENTS" })).toMatchObject({
+      depositType: "INTENTS",
+      refundType: "INTENTS",
+    });
+  });
+
   it("refuses fractional basis points and non-positive amounts before calling", () => {
     expect(() => quoteBody({ ...quoteInput, slippageBps: 0.5 })).toThrow(RangeError);
     expect(() => quoteBody({ ...quoteInput, appFees: [{ recipient: "f.near", feeBps: 2.5 }] })).toThrow(

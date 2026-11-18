@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
+import { Outfit } from "next/font/google";
 import { StatusPageClient } from "./status-page-client";
+
+const outfit = Outfit({ subsets: ["latin"], weight: "700" });
 
 export const metadata: Metadata = {
   title: "System Status | Fliq",
@@ -7,5 +10,5 @@ export const metadata: Metadata = {
 };
 
 export default function StatusPage() {
-  return <StatusPageClient />;
+  return <StatusPageClient brandClassName={outfit.className} />;
 }

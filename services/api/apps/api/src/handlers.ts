@@ -24,6 +24,7 @@ import {
   setup,
   type NotificationSettings,
 } from "./settings.js";
+import { registerLiveActivity, type LiveActivityInput } from "./live-activities.js";
 import { verifyAccessToken } from "./auth/tokens.js";
 import type { Handler } from "./app.js";
 import { createEmailLink, verifyEmailLink, type EmailSender } from "./auth/email-links.js";
@@ -46,6 +47,7 @@ import { NO_OPS, type Ops } from "./ops.js";
 import { createSends, parseSendTokens, type SendInput, type Sends } from "./sends.js";
 import { createDeposits, type DepositChain, type DepositInput, type Deposits, type DepositToken } from "./deposits.js";
 import { withIdempotency } from "./idempotency.js";
+import { createRefunds, type Refunds } from "./refunds.js";
 import { exportPayoutsCsv, parsePayoutFilter, type PayoutQuery } from "./payout-history.js";
 import { parseDays, usageReport } from "./usage.js";
 import { createKey, liveAccess, revokeKey, rotateKey, type Caller, type KeyRequest } from "./keys.js";
@@ -94,6 +96,7 @@ export interface HandlerDeps {
   ops?: Ops;
   status?: { probes: readonly Probe[]; config?: StatusConfig };
   deposits?: Deposits;
+  refunds?: Refunds;
   sends?: Sends;
   rateBoard?: RateBoard;
   now?: () => Date;
@@ -116,6 +119,7 @@ export function createHandlers({
   ops = NO_OPS,
   status = { probes: [] },
   deposits = createDeposits({ client: undefined, vaultAccount: config.vaultAccount, usdcContract: "", slippageBps: 0 }),
+  refunds = createRefunds({ client: undefined, vaultAccount: config.vaultAccount, usdcContract: "", slippageBps: 0 }),
   sends = createSends({ client: undefined, usdcContract: "", slippageBps: 0 }),
   rateBoard = createRateBoard(quotes, unit),
   relayer,
@@ -377,6 +381,10 @@ export function createHandlers({
       await unit((tx) => registerDevice(tx, auth(request).userId, body<DeviceInput>(request)));
       return { status: 204, body: undefined };
     },
+    registerLiveActivity: async (request) => {
+      await unit((tx) => registerLiveActivity(tx, auth(request).userId, body<LiveActivityInput>(request)));
+      return { status: 204, body: undefined };
+    },
     removeDevice: async (request) => {
       await unit((tx) => removeDevice(tx, auth(request).userId, (request.params as { token: string }).token));
       return { status: 204, body: undefined };
@@ -477,6 +485,15 @@ export function createHandlers({
       status: 200,
       body: await deposits.get(unit, auth(request).userId, (request.params as { depositId: string }).depositId),
     }),
+    listRefunds: async (request) => ({ status: 200, body: await refunds.list(unit, auth(request).userId) }),
+    returnRefund: async (request) => {
+      ops.assertRunning("deposits");
+      await ops.assertRoomInVault();
+      return withIdempotency(unit, auth(request).userId, request, async (tx) => ({
+        status: 201,
+        body: await refunds.bringBack(tx, auth(request).userId, body<{ token_id: string }>(request).token_id),
+      }));
+    },
     lookupPerson: async (request) => ({
       status: 200,
       body: await unit((tx) => lookupPerson(tx, config, (request.params as { name: string }).name)),

@@ -190,7 +190,7 @@ struct RootView: View {
         let network: NearNetwork = environment.isLive ? .current : .testnet
         let vault = environment.profile.name ?? NearNetwork.current.vault
         let testWallet = environment.pajTestRecipient
-        let solana = DepositSource(tokenId: "usdc", chainId: "solana", group: .dollars)
+        let solana = DepositSource(tokenId: "usdc", chainId: "solana", group: .dollars, fromBank: true)
         let route = network.receivesFromOtherChains ? solana : nil
         bankDeposit = BankDepositFlow(paj: environment.paj, signIn: environment.pajSignIn, deposits: deposits, route: route) {
             if network.receivesFromOtherChains {

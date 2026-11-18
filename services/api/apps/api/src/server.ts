@@ -1,5 +1,5 @@
 import { createOneClickClient } from "../../../packages/chains/oneclick/index.js";
-import { createNearRpc, createRelayerClient, TokenStorage, type NearRpc } from "../../../packages/chains/near/index.js";
+import { createNearRpc, createRelayerClient, INTENTS_CONTRACT, intentsBalances, TokenStorage, type NearRpc } from "../../../packages/chains/near/index.js";
 import { MockVault, NearVault, type VaultClient } from "../../../packages/chains/vault/index.js";
 import { createSolanaRpc, latestSolanaArrival } from "../../../packages/chains/watchers/index.js";
 import { DEFAULT_ROUTING_CONFIG, NO_SIGNALS } from "../../../packages/domain/routing.js";
@@ -11,6 +11,7 @@ import { createEmailSender } from "./auth/email-links.js";
 import { loadConfig } from "./config.js";
 import { createDatabase, unitOf } from "./db.js";
 import { createDeposits, startDepositWatch } from "./deposits.js";
+import { createRefunds } from "./refunds.js";
 import { createHandlers } from "./handlers.js";
 import { OneClickHops } from "./hop.js";
 import { DEFAULT_DEADLINE_MARGIN_MS, DEFAULT_GUARD_BPS, DEFAULT_VELOCITY } from "./payouts.js";
@@ -27,6 +28,7 @@ import { createOps, opsConfigFromEnv } from "./ops.js";
 import { createSends, startSendWatch } from "./sends.js";
 import { payoutRefresher, startPayoutWatch } from "./payout-watch.js";
 import { apnsFromEnv, createApnsSender, startPushDispatch } from "./push.js";
+import { startLiveActivityDispatch } from "./live-activities.js";
 import { usageRecorder } from "./usage.js";
 import { httpsTransport } from "../../../packages/webhooks/transport.js";
 
@@ -52,7 +54,14 @@ if (registrationKey && !nearRpcUrl) throw new Error("NEAR_REGISTRATION_PRIVATE_K
 const mockVault = registrationKey
   ? null
   : new MockVault({ registrar: registrationAccount, usdc: usdcContract, now: () => BigInt(Date.now()) * 1_000_000n });
-const nearRpc = nearRpcUrl ? createNearRpc({ url: nearRpcUrl }) : null;
+// Public mainnet endpoints taken in turn when the main one rate limits. NEAR_RPC_FALLBACK_URLS overrides them.
+const MAINNET_FALLBACKS = ["https://free.rpc.fastnear.com", "https://rpc.mainnet.near.org"];
+const nearRpcFallbacks = process.env.NEAR_RPC_FALLBACK_URLS?.trim()
+  ? process.env.NEAR_RPC_FALLBACK_URLS.split(",").map((url) => url.trim()).filter(Boolean)
+  : nearRpcUrl?.includes("mainnet")
+    ? MAINNET_FALLBACKS
+    : [];
+const nearRpc = nearRpcUrl ? createNearRpc({ url: nearRpcUrl, fallbackUrls: nearRpcFallbacks }) : null;
 const vault: VaultClient =
   mockVault ??
   new NearVault({
@@ -125,6 +134,16 @@ const deposits = createDeposits({
     : {}),
 });
 
+const intentsContract = process.env.INTENTS_CONTRACT_ID?.trim() || INTENTS_CONTRACT;
+const refunds = createRefunds({
+  client: oneClick,
+  vaultAccount: config.vaultAccount,
+  usdcContract,
+  slippageBps: Number(process.env.ONECLICK_DEPOSIT_SLIPPAGE_BPS ?? 200),
+  intentsContract,
+  ...(nearRpc ? { balances: (account: string) => intentsBalances(nearRpc, account, intentsContract) } : {}),
+});
+
 const sends = createSends({
   client: oneClick,
   usdcContract,
@@ -172,6 +191,7 @@ const handlers = createHandlers({
   ops,
   status: { probes },
   deposits,
+  refunds,
   sends,
   rateBoard,
   quotes: quoteDeps,
@@ -198,8 +218,13 @@ startVaultSync(
   Number(process.env.VAULT_SYNC_INTERVAL_MS ?? 15_000),
 );
 const apns = apnsFromEnv(process.env);
+const apnsSender = apns ? createApnsSender(apns) : null;
 startPushDispatch(
-  { unit, send: apns ? createApnsSender(apns) : null, dataKey: config.dataKey, now: () => new Date(), log: (message) => app.log.warn(message) },
+  { unit, send: apnsSender, dataKey: config.dataKey, now: () => new Date(), log: (message) => app.log.warn(message) },
+  Number(process.env.PUSH_INTERVAL_MS ?? 3_000),
+);
+startLiveActivityDispatch(
+  { unit, send: apnsSender, now: () => new Date(), log: (message) => app.log.warn(message) },
   Number(process.env.PUSH_INTERVAL_MS ?? 3_000),
 );
 startWebhookDelivery(

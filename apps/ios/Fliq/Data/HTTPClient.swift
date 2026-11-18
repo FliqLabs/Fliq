@@ -124,6 +124,19 @@ struct HTTPClient: FliqAPI {
         let _: Empty = try await send("DELETE", "devices/\(token)")
     }
 
+    func registerLiveActivity(_ activity: LiveActivityRegistration) async throws {
+        let _: Empty = try await send("POST", "live-activities", body: activity)
+    }
+
+    func refunds() async throws -> [Refund] {
+        let list: RefundList = try await send("GET", "refunds")
+        return list.items
+    }
+
+    func returnRefund(tokenId: String, idempotencyKey: String) async throws -> ReturnedRefund {
+        try await send("POST", "refunds/return", body: ["token_id": tokenId], headers: ["Idempotency-Key": idempotencyKey])
+    }
+
     func institutions(in country: Country) async throws -> [Institution] {
         let list: InstitutionList = try await send("GET", "institutions", query: ["country": country.rawValue])
         return list.items

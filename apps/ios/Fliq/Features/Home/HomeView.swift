@@ -33,6 +33,7 @@ struct HomeView: View {
                             HomeInProgressCard(line: line) { selected = $0 }
                                 .transition(.move(edge: .bottom).combined(with: .opacity))
                         }
+                        RefundCard(inbox: model.inbox)
                         WalletArrivedCard(inbox: model.inbox)
                     }
                     .padding(.horizontal, 16)

@@ -202,15 +202,36 @@ function smoothed(outcomes: Outcomes | null, config: RoutingConfig): number {
   return (successes + config.priorOrders * prior) / (orders + config.priorOrders);
 }
 
-// The first chain this provider accepts for the asset that the hop can reach from the sender's chain.
-// A hop that cannot say whether it reaches a chain in time counts as not reaching it.
-async function hopChain(adapter: ProviderAdapter, request: RouteRequest, hop: HopPricer, waitMs: number): Promise<Chain | null> {
+// Every chain this provider accepts for the asset that the hop can reach from the sender's chain, in the provider's
+// order. A hop that cannot say whether it reaches a chain in time counts as not reaching it.
+async function hopChains(adapter: ProviderAdapter, request: RouteRequest, hop: HopPricer, waitMs: number): Promise<Chain[]> {
+  const chains: Chain[] = [];
   for (const source of adapter.capabilities().sources) {
-    if (source.asset !== request.source.asset || source.chain === request.source.chain) continue;
+    if (source.asset !== request.source.asset || source.chain === request.source.chain || chains.includes(source.chain)) continue;
     const reachable = await Promise.race([hop.reachable(source.asset, request.source.chain, source.chain), timeout(waitMs)]).catch(() => false);
-    if (reachable) return source.chain;
+    if (reachable) chains.push(source.chain);
   }
-  return null;
+  return chains;
+}
+
+// 1Click can list a chain and still fail to price it (18 Nov: NEAR to Base answered 500 while NEAR to Solana priced),
+// so a hop that fails moves on to the provider's next chain instead of losing the whole route.
+async function priceFirstHop(
+  adapter: ProviderAdapter,
+  request: RouteRequest,
+  plan: ReturnType<typeof splitOurFee>,
+  vias: Chain[],
+  hop: HopPricer,
+): Promise<{ quote: ProviderQuote; leg: HopLeg | null }> {
+  let failure: unknown = new Error("no hop chain");
+  for (const via of vias) {
+    try {
+      return await priceRoute(adapter, request, plan, via, hop);
+    } catch (error) {
+      failure = error;
+    }
+  }
+  throw failure;
 }
 
 async function priceRoute(
@@ -245,25 +266,26 @@ export async function quoteRoutes(
   hop?: HopPricer,
 ): Promise<RouteSet> {
   const dropped: Dropped[] = [];
-  const candidates: { adapter: ProviderAdapter; state: BreakerState; via: Chain | null }[] = [];
+  const candidates: { adapter: ProviderAdapter; state: BreakerState; vias: Chain[] }[] = [];
   for (const adapter of adapters) {
     let refusal = accepts(adapter, request);
-    let via: Chain | null = null;
+    let vias: Chain[] = [];
     if (refusal === "source" && hop && hoppable(adapter, request)) {
-      via = await hopChain(adapter, request, hop, config.hopFanOutMs);
-      if (via) refusal = withinLimits(adapter, request) ? null : "limits";
+      vias = await hopChains(adapter, request, hop, config.hopFanOutMs);
+      if (vias.length > 0) refusal = withinLimits(adapter, request) ? null : "limits";
     }
     const state = signals.breaker(adapter.id, request.corridor);
     if (refusal) dropped.push({ provider: adapter.id, reason: refusal });
     else if (state === "open") dropped.push({ provider: adapter.id, reason: "breaker_open" });
-    else candidates.push({ adapter, state, via });
+    else candidates.push({ adapter, state, vias });
   }
 
   const plan = splitOurFee(request, config.routingFeeBps);
   const quoted = await Promise.all(
-    candidates.map(async ({ adapter, state, via }) => {
+    candidates.map(async ({ adapter, state, vias }) => {
       try {
-        const priced = await Promise.race([priceRoute(adapter, request, plan, via, hop), timeout(via ? config.hopFanOutMs : config.fanOutMs)]);
+        const pricing = vias.length > 0 && hop ? priceFirstHop(adapter, request, plan, vias, hop) : priceRoute(adapter, request, plan, null, hop);
+        const priced = await Promise.race([pricing, timeout(vias.length > 0 ? config.hopFanOutMs : config.fanOutMs)]);
         return { adapter, state, ...priced };
       } catch (error) {
         dropped.push({ provider: adapter.id, reason: (error as Error).message === "timeout" ? "timeout" : "error" });

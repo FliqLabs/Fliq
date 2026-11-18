@@ -102,7 +102,7 @@ struct HomeInProgressCard: View {
         let how: String
         switch line.category {
         case "Cash out": how = line.facts.first { $0.0 == "Paid out by" }.map { "With \($0.1)" } ?? "Paying out"
-        case "Deposit": how = line.title == ActivityItem.bankPartyName ? "From your bank, with Paj" : line.facts.first { $0.0 == "Network" }.map { "From \($0.1)" } ?? "Arriving"
+        case "Deposit": how = line.title == ActivityItem.bankPartyName ? "From your bank" : line.facts.first { $0.0 == "Network" }.map { "From \($0.1)" } ?? "Arriving"
         default: how = "Sending"
         }
         let seconds = max(0, Int(now.timeIntervalSince(line.date)))

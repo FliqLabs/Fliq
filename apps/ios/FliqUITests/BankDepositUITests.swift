@@ -48,6 +48,18 @@ final class BankDepositUITests: XCTestCase {
 
         XCTAssertTrue(app.staticTexts["Checking with the bank"].waitForExistence(timeout: 3))
         snap("d5-checking")
+        XCUIDevice.shared.press(.home)
+        sleep(1)
+        snap("d5a-dynamic-island")
+        let lock = NSSelectorFromString("pressLockButton")
+        if XCUIDevice.shared.responds(to: lock) {
+            XCUIDevice.shared.perform(lock)
+            sleep(2)
+            XCUIDevice.shared.perform(lock)
+            sleep(2)
+            snap("d5c-lock-screen")
+        }
+        app.activate()
         // The user can leave as soon as the bank transfer is in: Done is there before the money has landed.
         XCTAssertTrue(app.buttons["Done"].waitForExistence(timeout: 12))
         XCTAssertFalse(app.staticTexts["Transfer received"].exists, "No spinner to sit and watch")
@@ -57,6 +69,7 @@ final class BankDepositUITests: XCTestCase {
         snap("d6-done")
         app.buttons["Done"].tap()
         XCTAssertTrue(app.staticTexts["Vault balance"].waitForExistence(timeout: 5))
+        snap("d7-home")
     }
 
     @MainActor

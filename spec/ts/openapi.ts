@@ -375,6 +375,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/refunds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Refunded deposits waiting in the user's NEAR Intents balance
+         * @description A top-up NEAR Intents could not finish is refunded to the user's NEAR Intents balance, which the vault cannot see. These are the dollar stablecoins there worth at least five cents. Bring one back with POST /refunds/return.
+         */
+        get: operations["listRefunds"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/refunds/return": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Quote one refunded balance back into the vault
+         * @description Quotes the whole balance of token_id back to the vault as USDC and starts following it like a top-up, under deposit_id. The app then signs mt_transfer on intents_contract for units of token_id to deposit_address, attaching one yoctoNEAR, and relays it with POST /relays.
+         */
+        post: operations["returnRefund"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/activity": {
         parameters: {
             query?: never;
@@ -440,6 +480,26 @@ export interface paths {
         put?: never;
         /** Register this device for push notifications, with the APNs gateway and app it belongs to */
         post: operations["registerDevice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/live-activities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Follow a deposit or cash-out with a Live Activity on this iPhone
+         * @description The API pushes each change of state to the Live Activity's push token, and ends the activity when the deposit or cash-out reaches a final state, or three hours after it started.
+         */
+        post: operations["registerLiveActivity"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1935,6 +1995,20 @@ export interface components {
             environment: "production" | "sandbox";
             bundle_id: string;
         };
+        LiveActivityRequest: {
+            /** @description The Live Activity's APNs push token in hex */
+            token: string;
+            /** @enum {string} */
+            kind: "deposit" | "bank_deposit" | "payout" | "send";
+            /** @description The deposit_id, payout_id or send_id the activity follows; it must belong to the caller */
+            ref_id: string;
+            /**
+             * @description production for TestFlight and App Store builds, sandbox for builds run from Xcode
+             * @enum {string}
+             */
+            environment: "production" | "sandbox";
+            bundle_id: string;
+        };
         AgentRef: {
             agent_id: string;
             name: string;
@@ -2555,6 +2629,11 @@ export interface components {
             chain: components["schemas"]["DepositChainId"];
             /** @description About how much the user will send, in the source token. Any amount from minimum up is taken. */
             amount: string;
+            /**
+             * @description bank when the user pays from their bank through the on-ramp partner, so fliq names their bank and not the chain. Defaults to wallet.
+             * @enum {string}
+             */
+            via?: "wallet" | "bank";
         };
         /**
          * @description waiting: nothing has arrived. seen: the transfer is on the source chain. underpaid: less than minimum arrived; more can be sent until reserved_until, after that it is refunded. bridging: moving to NEAR. landed: in the vault. refunded: returned to the user's NEAR account. expired: nothing arrived in time. failed: NEAR Intents could not complete it and support has been told.
@@ -2602,6 +2681,39 @@ export interface components {
             origin_tx: string | null;
             /** Format: date-time */
             created_at: string;
+        };
+        RefundBalance: {
+            /** @description The NEAR Intents token, as mt_transfer names it */
+            token_id: string;
+            /** @enum {string} */
+            symbol: "usdc" | "usdt";
+            chain: components["schemas"]["DepositChainId"];
+            /** @description The balance in the token's smallest unit */
+            units: string;
+            /** @description The balance as a decimal string */
+            amount: string;
+            /** @description The contract that holds it */
+            intents_contract: string;
+        };
+        RefundList: {
+            items: components["schemas"]["RefundBalance"][];
+        };
+        RefundReturnRequest: {
+            /** @description A token_id from GET /refunds */
+            token_id: string;
+        };
+        RefundReturn: {
+            /** @description Followed like any top-up with GET /deposits/{depositId} */
+            deposit_id: string;
+            /** @description The account to mt_transfer the balance to */
+            deposit_address: string;
+            token_id: string;
+            /** @description What to transfer, in the token's smallest unit */
+            units: string;
+            /** @description Estimated USDC the vault receives */
+            lands: string;
+            /** @description The contract to call mt_transfer on */
+            intents_contract: string;
         };
         Person: {
             near_account: string;
@@ -3371,6 +3483,57 @@ export interface operations {
             404: components["responses"]["Error"];
         };
     };
+    listRefunds: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Balances that can be brought back to the vault */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RefundList"];
+                };
+            };
+            404: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    returnRefund: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RefundReturnRequest"];
+            };
+        };
+        responses: {
+            /** @description Quoted and followed, waiting for the transfer */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RefundReturn"];
+                };
+            };
+            400: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
     listActivity: {
         parameters: {
             query?: {
@@ -3463,6 +3626,30 @@ export interface operations {
                 content?: never;
             };
             400: components["responses"]["Error"];
+        };
+    };
+    registerLiveActivity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LiveActivityRequest"];
+            };
+        };
+        responses: {
+            /** @description Registered; registering the same token again follows the given deposit or cash-out from the start */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Error"];
+            404: components["responses"]["Error"];
         };
     };
     removeDevice: {

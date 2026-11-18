@@ -24,6 +24,8 @@ struct DepositSource: Hashable, Sendable, Identifiable {
     var available = true
     /// Set for the user's own NEAR account, which needs nothing reserved.
     var address: String?
+    /// Paid in from the user's bank through the on-ramp partner, so fliq names their bank and never the chain.
+    var fromBank = false
 
     var id: String { "\(tokenId)-\(chainId)" }
     var token: String { tokenId.uppercased() }

@@ -255,4 +255,11 @@ describe("dispatch", () => {
     const { unit } = world();
     expect(await dispatchPushes({ unit, send: null, dataKey, now: () => now, log: () => {} })).toBe(0);
   });
+  it("names the user's bank, not the chain, for money paid in from their bank", () => {
+    expect(depositMessage("u", "dep", 1_950_000n, "usdc", "solana", false, true)).toMatchObject({
+      title: "$1.95 arrived in your vault",
+      body: "From your bank",
+    });
+    expect(depositMessage("u", "dep", 1_950_000n, "usdc", "solana").body).toBe("USDC from Solana");
+  });
 });

@@ -27,6 +27,8 @@ final class BankDepositFlow {
     private(set) var step = Step.amount
     /// True when the wait for the vault ran out before the money landed.
     private(set) var isStillMoving = false
+    /// What reached the vault, which is what the user is told: the partner's figure is an estimate before its fees.
+    private(set) var landed: TokenAmount?
     private(set) var nairaText = "5000"
     private(set) var rate: Double?
     private(set) var quote: Paj.Quote?
@@ -194,15 +196,20 @@ final class BankDepositFlow {
         if let depositId = destination?.deposit?.depositId {
             onPaid(ActivityStore.BankDeposit(depositId: depositId, naira: current.naira, usd: String(format: "%.2f", current.usdc), startedAt: .now))
         }
+        showLive(LiveMoney.bankDeposit(current.status), order: current)
         while !Task.isCancelled {
             if let fresh = try? await paj.order(current.id, session: session) {
                 order = fresh
+                showLive(LiveMoney.bankDeposit(fresh.status), order: fresh)
                 switch fresh.status {
                 case .completed:
-                    step = await reachesVault() ? .done : .notReceived
+                    let arrived = await reachesVault()
+                    step = arrived ? .done : .notReceived
+                    if !isStillMoving { showLive(LiveMoney.bankDepositLanded(arrived, landed: landed), order: fresh, final: true) }
                     return
                 case .failed, .cancelled:
-                    errorMessage = "Paj couldn't finish this deposit. If money left your bank, Paj refunds it."
+                    showLive(LiveMoney.bankDepositFailed, order: fresh, final: true)
+                    errorMessage = "This deposit didn't go through. If money left your bank, it comes back to you."
                     step = .pay
                     return
                 default: break
@@ -212,13 +219,28 @@ final class BankDepositFlow {
         }
     }
 
+    /// From "I've sent the money" the deposit shows on the Lock Screen and in the Dynamic Island, so nobody waits here.
+    private func showLive(_ state: LiveMoney.State?, order: Paj.Order, final: Bool = false) {
+        guard let state else { return }
+        let attributes = MoneyActivityAttributes(
+            kind: .bankDeposit,
+            refId: destination?.deposit?.depositId ?? "bank-\(order.id)",
+            amount: "$\(String(format: "%.2f", order.usdc))",
+            from: "Your bank",
+            to: "Your vault",
+            fromMark: "flag.ng",
+            toMark: "fliq"
+        )
+        LiveMoney.shared.show(attributes, state, final: final)
+    }
+
     var isPaid: Bool { order?.status == .paid || order?.status == .completed }
 
     private func createOrder(_ session: Paj.Session) async {
         await working {
             let target = try await destinationFor()
             destination = target
-            let placed = try await paj.createOrder(naira: naira, recipient: target.address, session: session)
+            let placed = try await placeOrder(recipient: target.address, session: session)
             // Paj fixes the amount only now. Bank details for an order that cannot arrive are never shown.
             guard placed.usdc >= minimumUSDC ?? 0 else {
                 quote = Paj.Quote(naira: placed.naira, usdc: placed.usdc, rate: placed.rate)
@@ -231,6 +253,22 @@ final class BankDepositFlow {
         }
     }
 
+    /// The partner buys the dollars through a swap that sometimes fails for a moment, so an order is tried three
+    /// times before the user hears of it, and then in plain words.
+    private func placeOrder(recipient: String, session: Paj.Session) async throws -> Paj.Order {
+        for attempt in 0..<3 {
+            if attempt > 0 { try? await Task.sleep(for: Self.orderRetryDelay) }
+            do {
+                return try await paj.createOrder(naira: naira, recipient: recipient, session: session)
+            } catch let failure as Paj.Failure where PajMessage.isTemporary(failure.message) {
+                continue
+            }
+        }
+        throw Paj.Failure(message: PajMessage.busy)
+    }
+
+    static var orderRetryDelay: Duration = .milliseconds(1500)
+
     private func loadMinimum() async {
         guard let route, let deposits, let sources = try? await deposits.sources() else { return }
         minimum = sources.first { $0.id == route.id }?.minimum ?? minimum
@@ -242,9 +280,12 @@ final class BankDepositFlow {
         isStillMoving = false
         guard let deposits, let deposit = destination?.deposit else { return true }
         for _ in 0..<40 where !Task.isCancelled {
-            if let stage = try? await deposits.status(of: deposit).stage {
-                if stage.isNotComing { return false }
-                if stage.isFinal { return true }
+            if let status = try? await deposits.status(of: deposit) {
+                if status.stage.isNotComing { return false }
+                if status.stage.isFinal {
+                    landed = status.landed
+                    return true
+                }
             }
             try? await Task.sleep(for: pollInterval)
         }

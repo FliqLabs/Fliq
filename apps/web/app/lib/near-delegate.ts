@@ -206,6 +206,18 @@ export type DelegateDeps = {
   pollAttempts?: number;
 };
 
+// The relayer answers once a call is optimistic, so a read of the key can still return the previous nonce.
+const lastNonce = new Map<string, bigint>();
+
+function nextNonce(sender: string, publicKey: string, onChain: number) {
+  const id = `${sender}:${publicKey}`;
+  const fromChain = BigInt(onChain) + 1n;
+  const fromLast = (lastNonce.get(id) ?? 0n) + 1n;
+  const nonce = fromChain > fromLast ? fromChain : fromLast;
+  lastNonce.set(id, nonce);
+  return nonce;
+}
+
 /** Signs one call, hands it to the relayer and follows it until the chain answers. */
 export async function submitDelegate(
   deps: DelegateDeps,
@@ -215,7 +227,7 @@ export async function submitDelegate(
   const [key, block] = await Promise.all([
     rpc<{ nonce: number }>(deps.rpcUrl, "query", {
       request_type: "view_access_key",
-      finality: "final",
+      finality: "optimistic",
       account_id: deps.sender,
       public_key: deps.publicKey,
     }),
@@ -224,7 +236,7 @@ export async function submitDelegate(
   const action = build({
     sender: deps.sender,
     publicKey: rawPublicKey(deps.publicKey),
-    nonce: BigInt(key.nonce) + 1n,
+    nonce: nextNonce(deps.sender, deps.publicKey, key.nonce),
     blockHeight: BigInt(block.header.height),
   });
   const signature = await deps.sign(await signingHash(action));
