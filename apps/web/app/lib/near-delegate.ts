@@ -128,6 +128,21 @@ export function encodeSignedDelegate(action: DelegateAction, signature: Uint8Arr
 
 type Signer = { sender: string; publicKey: Uint8Array; nonce: bigint; blockHeight: bigint };
 
+/** Moves USDC from the user's own NEAR account into the vault: the ft_transfer_call the relayer accepts with an empty msg. */
+export function nearTopUp(signer: Signer, usdc: string, vault: string, units: bigint): DelegateAction {
+  return {
+    senderId: signer.sender,
+    receiverId: usdc,
+    methodName: "ft_transfer_call",
+    args: new TextEncoder().encode(JSON.stringify({ receiver_id: vault, amount: units.toString(), msg: "" })),
+    gas: 50_000_000_000_000n,
+    deposit: 1n,
+    nonce: signer.nonce,
+    maxBlockHeight: signer.blockHeight + LIFETIME_BLOCKS,
+    publicKey: signer.publicKey,
+  };
+}
+
 /** Vault to vault between fliq users. The vault takes exactly one yoctoNEAR, so only a full-access key can move money. */
 export function vaultTransfer(signer: Signer, vault: string, recipient: string, units: bigint): DelegateAction {
   return {

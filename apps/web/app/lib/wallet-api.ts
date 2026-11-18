@@ -5,6 +5,7 @@ export type ProviderId = "paycrest" | "busha" | "fonbnk" | "bitnob" | "transfi" 
 export type ProviderStatus = "live" | "stale" | "paused";
 
 export type VaultBalance = { account: string; available: string; reserved: string; total: string; in_sync: boolean };
+export type VaultInbox = { usdc: string; usdc_contract: string };
 export type SendNetwork = { chain: "solana" | "base"; name: string; token: "usdc"; minimum: string; eta_seconds: number; available: boolean };
 export type WalletSend = {
   send_id: string;
@@ -271,6 +272,7 @@ export const walletApi = {
   updateMe: (patch: Partial<Pick<User, "display_name" | "occupation">> & { home_currency?: "NGN" | "KES" }) =>
     fliqApi<User>("me", json(patch, "PATCH")),
   vault: () => fliqApi<VaultBalance>("vault"),
+  nearInbox: () => fliqApi<VaultInbox>("vault/inbox"),
   sendNetworks: () => fliqApi<{ networks: SendNetwork[] }>("sends/networks"),
   createSend: (input: { chain: string; address: string; amount: string }, key: string) =>
     fliqApi<WalletSend>("sends", { ...json(input), headers: { "Idempotency-Key": key } }),

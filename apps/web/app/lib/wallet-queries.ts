@@ -10,6 +10,7 @@ export const RATES_MS = 15_000;
 export const keys = {
   me: ["me"] as const,
   vault: ["vault"] as const,
+  inbox: ["vault-inbox"] as const,
   activity: (filter: ActivityFilter) => ["activity", filter] as const,
   rates: (currency: string) => ["rate-board", currency] as const,
   recipients: ["recipients"] as const,
@@ -29,6 +30,9 @@ export const useDailyLimits = () =>
   useQuery({ queryKey: keys.limits, queryFn: walletApi.limits, refetchInterval: 60_000 });
 
 export const useVault = () => useQuery({ queryKey: keys.vault, queryFn: walletApi.vault, refetchInterval: LIVE_MS });
+
+export const useNearInbox = () =>
+  useQuery({ queryKey: keys.inbox, queryFn: walletApi.nearInbox, refetchInterval: LIVE_MS, retry: false });
 
 export const useActivity = (filter: ActivityFilter = "all") =>
   useQuery({ queryKey: keys.activity(filter), queryFn: () => walletApi.activity(filter), refetchInterval: LIVE_MS });

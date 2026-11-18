@@ -235,6 +235,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/vault/inbox": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * USDC waiting in the user's own NEAR account, outside the vault
+         * @description NEAR Intents returns a failed cash-out or cross-chain send to the user's NEAR account, not the vault. USDC sent directly to a fliq name also lands there. This balance must be moved into the vault before it can be used for a payout.
+         */
+        get: operations["getVaultInbox"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/sends/networks": {
         parameters: {
             query?: never;
@@ -2585,6 +2605,12 @@ export interface components {
             /** @description False when the ledger mirror disagrees with the chain */
             in_sync: boolean;
         };
+        VaultInbox: {
+            /** @description USDC waiting in the user's NEAR account, outside the vault, as a decimal string */
+            usdc: string;
+            /** @description The USDC token contract address, needed to build the ft_transfer_call that moves the funds */
+            usdc_contract: string;
+        };
         /** @enum {string} */
         DepositTokenId: "usdc" | "usdt" | "btc";
         /** @enum {string} */
@@ -3303,6 +3329,27 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VaultBalance"];
+                };
+            };
+            404: components["responses"]["Error"];
+        };
+    };
+    getVaultInbox: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description USDC waiting outside the vault, with the contract address needed to move it */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultInbox"];
                 };
             };
             404: components["responses"]["Error"];

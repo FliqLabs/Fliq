@@ -51,10 +51,11 @@ import { createRefunds, type Refunds } from "./refunds.js";
 import { exportPayoutsCsv, parsePayoutFilter, type PayoutQuery } from "./payout-history.js";
 import { parseDays, usageReport } from "./usage.js";
 import { createKey, liveAccess, revokeKey, rotateKey, type Caller, type KeyRequest } from "./keys.js";
+import type { NearRpc } from "../../../packages/chains/near/index.js";
 import type { VaultClient } from "../../../packages/chains/vault/index.js";
 import { lookupPerson, recentPeople } from "./people.js";
 import { DEFAULT_STATUS_CONFIG, statusReport, type Probe, type StatusConfig } from "./status.js";
-import { vaultBalance } from "./vault.js";
+import { vaultBalance, vaultInboxBalance } from "./vault.js";
 import { deleteRecipient, listInstitutions, listRecipients, saveRecipient, updateRecipient, verifyAccount, type AccountLookup } from "./recipients.js";
 import { bankReference, createPayout, getPayout, type PayoutDeps, type PayoutInput } from "./payouts.js";
 import { openClaim, quoteRetry } from "./recovery.js";
@@ -87,6 +88,7 @@ export interface HandlerDeps {
   provisioner: NearProvisioner;
   // The private relayer, when one is configured: it creates NEAR accounts and pays gas for user-signed calls.
   relayer?: RelayerClient;
+  nearRpc?: NearRpc;
   quotes: QuoteDeps;
   payouts: Omit<PayoutDeps, "quotes">;
   // Asks the provider about a payout the caller is watching, so its state is fresh when read.
@@ -123,6 +125,7 @@ export function createHandlers({
   sends = createSends({ client: undefined, usdcContract: "", slippageBps: 0 }),
   rateBoard = createRateBoard(quotes, unit),
   relayer,
+  nearRpc,
   now = () => new Date(),
   webhookResolve,
 }: HandlerDeps): Record<string, Handler> {
@@ -368,6 +371,7 @@ export function createHandlers({
     }),
 
     getVaultBalance: async (request) => ({ status: 200, body: await vaultBalance(unit, vault, auth(request).userId) }),
+    getVaultInbox: async (request) => ({ status: 200, body: await vaultInboxBalance(unit, nearRpc, config.usdcContract, auth(request).userId) }),
 
     listActivity: async (request) => {
       const { filter, limit, cursor } = request.query as { filter?: string; limit?: string; cursor?: string };

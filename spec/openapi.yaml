@@ -340,6 +340,24 @@ paths:
                 $ref: "#/components/schemas/VaultBalance"
         "404":
           $ref: "#/components/responses/Error"
+  /vault/inbox:
+    get:
+      operationId: getVaultInbox
+      summary: USDC waiting in the user's own NEAR account, outside the vault
+      description: >-
+        NEAR Intents returns a failed cash-out or cross-chain send to the user's NEAR account, not the vault.
+        USDC sent directly to a fliq name also lands there. This balance must be moved into the vault before
+        it can be used for a payout.
+      tags: [vault]
+      responses:
+        "200":
+          description: USDC waiting outside the vault, with the contract address needed to move it
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VaultInbox"
+        "404":
+          $ref: "#/components/responses/Error"
   /sends/networks:
     get:
       operationId: listSendNetworks
@@ -4122,6 +4140,16 @@ components:
         in_sync:
           type: boolean
           description: False when the ledger mirror disagrees with the chain
+    VaultInbox:
+      type: object
+      required: [usdc, usdc_contract]
+      properties:
+        usdc:
+          type: string
+          description: USDC waiting in the user's NEAR account, outside the vault, as a decimal string
+        usdc_contract:
+          type: string
+          description: The USDC token contract address, needed to build the ft_transfer_call that moves the funds
     DepositTokenId:
       type: string
       enum: [usdc, usdt, btc]
