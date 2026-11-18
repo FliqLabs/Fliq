@@ -76,6 +76,8 @@ export interface DepositDeps {
   arrivals?: Partial<Record<DepositChain, (deposit: { address: string; mint: string; since: Date }) => Promise<Arrival | null>>>;
   // On chain, 1Click's ft_transfer_call has already credited the vault. A stand-in vault has to be told.
   onLanded?: (landing: { account: string; units: bigint; message: string }) => Promise<void> | void;
+  // Tells the team when a deposit ends without reaching the vault, so they hear it before the user writes in.
+  alert?: (message: string) => void;
 }
 
 export interface DepositInput {
@@ -157,6 +159,16 @@ export function nextDeposit(current: Tracked, execution: OneClickExecution | und
     bridgingAt: current.bridgingAt ?? (reached(2) ? at : null),
     landedAt: current.landedAt ?? (state === "landed" ? at : null),
   };
+}
+
+// The line the team gets when a deposit ends somewhere other than the vault, or null when it did not just do so.
+export function depositProblem(before: DepositState, after: VaultDeposit): string | null {
+  if (before === after.state || (after.state !== "refunded" && after.state !== "failed")) return null;
+  const what = `${after.token.toUpperCase()} from ${after.chain}`;
+  if (after.state === "failed") return `deposit ${after.id} failed: ${what} for ${after.account}. Check it in 1Click.`;
+  const amount = after.refundedUnits === null ? "the money" : formatUnits(after.refundedUnits, after.decimals);
+  const reason = after.refundReason ? ` (${after.refundReason})` : "";
+  return `deposit ${after.id} refunded${reason}: ${amount} ${what} went back to ${after.account}. The app returns it to their vault.`;
 }
 
 export function depositView(row: VaultDeposit) {
@@ -394,7 +406,7 @@ export function createDeposits(deps: DepositDeps) {
     }
     const arrived = execution?.status === "PENDING_DEPOSIT" && row.state === "waiting" ? await arrival(row) : null;
     const at = now();
-    const { updated, landed, sighted } = await unit(async (tx) => {
+    const { updated, landed, sighted, problem } = await unit(async (tx) => {
       await tx.$queryRaw`SELECT id FROM core.vault_deposits WHERE id = ${row.id} FOR UPDATE`;
       const current = await tx.vaultDeposit.findUniqueOrThrow({ where: { id: row.id } });
       const followed = nextDeposit(current, execution, at);
@@ -407,8 +419,9 @@ export function createDeposits(deps: DepositDeps) {
         await postEntry(tx, vaultCredited(saved.id, saved.account, "USDC", saved.landedUnits as bigint));
         await markRequestPaid(tx, saved);
       }
-      return { updated: saved, landed: landedNow, sighted: sightedNow };
+      return { updated: saved, landed: landedNow, sighted: sightedNow, problem: depositProblem(current.state, saved) };
     });
+    if (problem) deps.alert?.(problem);
     if (sighted) tellOneClick(updated);
     if (landed) await deps.onLanded?.({ account: updated.account, units: updated.landedUnits as bigint, message: topUpMessage(updated.account) });
     return updated;
@@ -446,7 +459,12 @@ export function createDeposits(deps: DepositDeps) {
 export type Deposits = ReturnType<typeof createDeposits>;
 
 // Deposits are followed even when nobody has the app open, so a landing is credited to the ledger mirror on time.
-export function startDepositWatch(unit: Unit, deposits: Deposits, intervalMs = 10_000): () => void {
+export function startDepositWatch(
+  unit: Unit,
+  deposits: Deposits,
+  intervalMs = 10_000,
+  log: (message: string) => void = (message) => console.error(message),
+): () => void {
   let running = false;
   const tick = async () => {
     if (running) return;
@@ -454,7 +472,7 @@ export function startDepositWatch(unit: Unit, deposits: Deposits, intervalMs = 1
     try {
       await deposits.sweep(unit, intervalMs);
     } catch (error) {
-      console.error("[deposits] sweep failed", (error as Error).name);
+      log(`[deposits] sweep failed: ${(error as Error).name}`);
     } finally {
       running = false;
     }

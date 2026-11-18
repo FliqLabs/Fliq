@@ -113,6 +113,7 @@ describe("push messages", () => {
   it("drops a token Apple says is gone", () => {
     expect(isDeadToken({ status: 410, reason: "Unregistered" })).toBe(true);
     expect(isDeadToken({ status: 400, reason: "BadDeviceToken" })).toBe(true);
+    expect(isDeadToken({ status: 403, reason: "BadEnvironmentKeyInToken" })).toBe(true);
     expect(isDeadToken({ status: 429, reason: "TooManyRequests" })).toBe(false);
   });
 });

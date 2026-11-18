@@ -50,3 +50,17 @@ export function createAlerts(deps: AlertDeps): (message: string) => void {
     void send(config, `fliq: ${message}`).catch((error: Error) => deps.log(`[alerts] not delivered: ${error.name}`));
   };
 }
+
+// True on the call that makes `count` events within `windowMs`. One user typing an amount no provider takes is not an
+// outage; several failures close together are.
+export function createBurst(count: number, windowMs: number, now: () => number = Date.now): () => boolean {
+  let times: number[] = [];
+  return () => {
+    const at = now();
+    times = times.filter((time) => at - time < windowMs);
+    times.push(at);
+    if (times.length < count) return false;
+    times = [];
+    return true;
+  };
+}
