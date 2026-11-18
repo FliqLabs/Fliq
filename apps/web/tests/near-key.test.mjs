@@ -40,3 +40,27 @@ test("a changed recovery code is rejected", async () => {
   const changed = code.slice(0, 20) + (code[20] === "A" ? "B" : "A") + code.slice(21);
   await assert.rejects(recoverNearKey(changed), /typo/);
 });
+
+test("the same passkey secret makes the same NEAR key, and a different one does not", async () => {
+  const { derivePasskeyKey } = await import("../app/claim-name/near-key.ts");
+  const prf = new Uint8Array(32).fill(7);
+  const first = await derivePasskeyKey(prf);
+  const again = await derivePasskeyKey(new Uint8Array(32).fill(7));
+  const other = await derivePasskeyKey(new Uint8Array(32).fill(8));
+
+  assert.equal(first.publicKey, again.publicKey);
+  assert.notEqual(first.publicKey, other.publicKey);
+  assert.equal(first.privateKey.extractable, false);
+  assert.equal(decodeBase58(first.publicKey.slice("ed25519:".length)).length, 32);
+
+  const message = new TextEncoder().encode("fliq passkey key test");
+  const signature = await crypto.subtle.sign("Ed25519", first.privateKey, message);
+  const publicKey = await crypto.subtle.importKey(
+    "raw",
+    decodeBase58(first.publicKey.slice("ed25519:".length)),
+    "Ed25519",
+    false,
+    ["verify"],
+  );
+  assert.equal(await crypto.subtle.verify("Ed25519", publicKey, signature, message), true);
+});

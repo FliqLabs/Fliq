@@ -5,6 +5,8 @@ const BASE58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 /** NEP-461 puts this before the action, so a signed delegate can never be replayed as a transaction. */
 const SIGNING_PREFIX = 2 ** 30 + 366;
 const FUNCTION_CALL = 2;
+const ADD_KEY = 5;
+const FULL_ACCESS = 1;
 const ED25519 = 0;
 /** The relayer only passes about ten minutes of blocks, and refuses more than 1,200. */
 export const LIFETIME_BLOCKS = 600n;
@@ -19,6 +21,8 @@ export type DelegateAction = {
   nonce: bigint;
   maxBlockHeight: bigint;
   publicKey: Uint8Array;
+  /** Set when the action adds this raw ed25519 key to the signer's own account with full access, instead of a call. */
+  addKey?: Uint8Array;
 };
 
 export type SignStep = {
@@ -95,11 +99,19 @@ export function encodeDelegateAction(action: DelegateAction): Uint8Array {
   out.string(action.senderId);
   out.string(action.receiverId);
   out.u32(1);
-  out.u8(FUNCTION_CALL);
-  out.string(action.methodName);
-  out.bytes(action.args);
-  out.u64(action.gas);
-  out.u128(action.deposit);
+  if (action.addKey) {
+    out.u8(ADD_KEY);
+    out.u8(ED25519);
+    out.raw(action.addKey);
+    out.u64(0n);
+    out.u8(FULL_ACCESS);
+  } else {
+    out.u8(FUNCTION_CALL);
+    out.string(action.methodName);
+    out.bytes(action.args);
+    out.u64(action.gas);
+    out.u128(action.deposit);
+  }
   out.u64(action.nonce);
   out.u64(action.maxBlockHeight);
   out.u8(ED25519);
@@ -171,6 +183,23 @@ export function vaultPayout(signer: Signer, vault: string, orderId: string, unit
     nonce: signer.nonce,
     maxBlockHeight: signer.blockHeight + LIFETIME_BLOCKS,
     publicKey: signer.publicKey,
+  };
+}
+
+/** Adds a full-access key to the signer's own account, the only key change the relayer accepts. It is how the key
+ *  made from the user's passkey gets onto the account, so any browser with that passkey can sign. */
+export function addFullAccessKey(signer: Signer, key: Uint8Array): DelegateAction {
+  return {
+    senderId: signer.sender,
+    receiverId: signer.sender,
+    methodName: "",
+    args: new Uint8Array(),
+    gas: 0n,
+    deposit: 0n,
+    nonce: signer.nonce,
+    maxBlockHeight: signer.blockHeight + LIFETIME_BLOCKS,
+    publicKey: signer.publicKey,
+    addKey: key,
   };
 }
 
