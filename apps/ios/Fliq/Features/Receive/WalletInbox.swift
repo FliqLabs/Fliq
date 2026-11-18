@@ -20,9 +20,23 @@ final class WalletInbox {
     var onAdded: @MainActor () async -> Void = {}
 
     private let topUp: any WalletTopUp
+    private let offered: UserDefaults
 
-    init(topUp: any WalletTopUp = FixtureWalletTopUp()) {
+    init(topUp: any WalletTopUp = FixtureWalletTopUp(), offered: UserDefaults = .standard) {
         self.topUp = topUp
+        self.offered = offered
+    }
+
+    static let offeredKey = "fliq.refunds.offered"
+
+    /// A refund is offered once without a tap: the first time Home sees it, Face ID asks to add it back, so the user
+    /// never has to find the card. Cancelling leaves the card; the same refund is not asked about again.
+    func returnNewRefunds() async {
+        let seen = Set(offered.stringArray(forKey: Self.offeredKey) ?? [])
+        let fresh = refunds.map { "\($0.tokenId)#\($0.units)" }.filter { !seen.contains($0) }
+        guard !fresh.isEmpty, !isReturning else { return }
+        offered.set(Array(Array(seen.union(fresh)).suffix(50)), forKey: Self.offeredKey)
+        await bringBackRefunds()
     }
 
     var refundTotal: TokenAmount {

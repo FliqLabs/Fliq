@@ -76,6 +76,50 @@ final class WalletTopUpTests: XCTestCase {
 
         XCTAssertEqual(inbox.errorMessage, WalletInbox.failed)
     }
+
+    @MainActor
+    func testANewRefundIsAddedBackWithoutATapButOnlyOnce() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "refunds-\(UUID().uuidString)"))
+        let topUp = CountingTopUp()
+        let inbox = WalletInbox(topUp: topUp, offered: defaults)
+
+        await inbox.load()
+        await inbox.returnNewRefunds()
+        XCTAssertEqual(topUp.returned.value, 1)
+        XCTAssertTrue(inbox.refundOnItsWay)
+
+        await inbox.load()
+        await inbox.returnNewRefunds()
+        XCTAssertEqual(topUp.returned.value, 1, "the same refund is not asked about twice")
+    }
+
+    @MainActor
+    func testNothingIsAskedWhenNothingCameBack() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "refunds-\(UUID().uuidString)"))
+        let topUp = CountingTopUp(refund: nil)
+        let inbox = WalletInbox(topUp: topUp, offered: defaults)
+
+        await inbox.load()
+        await inbox.returnNewRefunds()
+        XCTAssertEqual(topUp.returned.value, 0)
+    }
+}
+
+private final class Counter: @unchecked Sendable {
+    var value = 0
+}
+
+private struct CountingTopUp: WalletTopUp {
+    var refund: Refund? = .sample
+    let returned = Counter()
+
+    func waiting() async throws -> TokenAmount { .zero }
+    func addToVault(_ amount: TokenAmount) async throws -> RelayResult? { nil }
+    func refunds() async throws -> [Refund] { refund.map { [$0] } ?? [] }
+    func bringBack(_ refund: Refund) async throws -> RelayResult? {
+        returned.value += 1
+        return nil
+    }
 }
 
 private struct FailingTopUp: WalletTopUp, @unchecked Sendable {

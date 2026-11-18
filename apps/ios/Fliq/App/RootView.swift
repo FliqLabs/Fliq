@@ -90,6 +90,7 @@ struct RootView: View {
             await environment.refreshActivity()
             await environment.inbox.load()
             await home?.loadProfile()
+            await environment.inbox.returnNewRefunds()
         }
     }
 
