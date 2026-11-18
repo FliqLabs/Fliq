@@ -54,7 +54,14 @@ if (registrationKey && !nearRpcUrl) throw new Error("NEAR_REGISTRATION_PRIVATE_K
 const mockVault = registrationKey
   ? null
   : new MockVault({ registrar: registrationAccount, usdc: usdcContract, now: () => BigInt(Date.now()) * 1_000_000n });
-const nearRpc = nearRpcUrl ? createNearRpc({ url: nearRpcUrl }) : null;
+// Public mainnet endpoints taken in turn when the main one rate limits. NEAR_RPC_FALLBACK_URLS overrides them.
+const MAINNET_FALLBACKS = ["https://free.rpc.fastnear.com", "https://rpc.mainnet.near.org"];
+const nearRpcFallbacks = process.env.NEAR_RPC_FALLBACK_URLS?.trim()
+  ? process.env.NEAR_RPC_FALLBACK_URLS.split(",").map((url) => url.trim()).filter(Boolean)
+  : nearRpcUrl?.includes("mainnet")
+    ? MAINNET_FALLBACKS
+    : [];
+const nearRpc = nearRpcUrl ? createNearRpc({ url: nearRpcUrl, fallbackUrls: nearRpcFallbacks }) : null;
 const vault: VaultClient =
   mockVault ??
   new NearVault({
