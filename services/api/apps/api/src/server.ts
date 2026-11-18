@@ -191,6 +191,7 @@ const handlers = createHandlers({
   provisioner,
   ...(relayer ? { relayer } : {}),
   vault,
+  ...(nearRpc ? { nearRpc } : {}),
   ops,
   status: { probes },
   deposits,

@@ -23,6 +23,7 @@
   "recipients.list.json": "RecipientList",
   "institutions.ng.json": "InstitutionList",
   "vault.balance.json": "VaultBalance",
+  "vault.inbox.json": "VaultInbox",
   "person.tobi.json": "Person",
   "people.recent.json": "RecentPeopleList",
   "status.report.json": "StatusReport",
