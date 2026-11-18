@@ -34,10 +34,14 @@ import { httpsTransport } from "../../../packages/webhooks/transport.js";
 
 const config = loadConfig();
 const unit = unitOf(createDatabase());
+// Lines a person must act on (watchers, refunded deposits, server errors, a quote outage) go to the alert channel as
+// well as the log. They are written with console until the app's logger exists.
+let warn = (message: string) => console.warn(message);
+const alert = createAlerts({ config: alertConfigFromEnv(process.env), log: (message) => warn(message) });
 
 // Every provider whose keys are set, otherwise the sandbox provider so a fresh clone needs no keys.
 const configured = enabledAdapters(process.env, {
-  alert: (alert) => console.warn(`[provider alert] ${alert.provider} ${alert.kind}`),
+  alert: (event) => alert(`[provider alert] ${event.provider} ${event.kind}`),
 }).map((adapter) => withCache(adapter, { hashKey: config.hashKey }));
 const adapters = configured.length > 0 ? configured : sandboxAdapters();
 
@@ -123,6 +127,7 @@ const deposits = createDeposits({
   usdcContract,
   slippageBps: Number(process.env.ONECLICK_DEPOSIT_SLIPPAGE_BPS ?? 200),
   arrivals: { solana: ({ address, mint, since }) => latestSolanaArrival(solanaRpc, address, mint, since) },
+  alert,
   // The MockVault stands in for the chain, so it is handed the ft_transfer_call 1Click makes to the real vault.
   ...(mockVault
     ? {
@@ -172,8 +177,6 @@ const provisioner = relayer
   ? new RelayerProvisioner(relayer, config.vaultAccount)
   : new MockProvisioner(config.vaultAccount, mockVault ? (account) => mockVault.registerStorage(account) : undefined);
 
-// Lines from the watchers are the ones a person must act on, so they go to the alert channel as well as the log.
-const alert = createAlerts({ config: alertConfigFromEnv(process.env), log: (message) => app.log.warn(message) });
 const ops = createOps({
   ...opsConfigFromEnv(process.env),
   ...(vault instanceof NearVault ? { liabilities: () => vault.getLiabilities() } : {}),
@@ -206,11 +209,12 @@ const handlers = createHandlers({
 
 const app = buildApp({ config, unit, handlers, logger: true, limiter: createLimiter(process.env.REDIS_URL),
   webhooks: createWebhookHandler({ unit, adapters, dataKey: config.dataKey }),
-  recordUsage: usageRecorder(unit, (message) => console.error(message)) });
+  recordUsage: usageRecorder(unit, (message) => console.error(message)), alert });
+warn = (message) => app.log.warn(message);
 await app.listen({ port: config.port, host: "0.0.0.0" });
 startHealthChecks(unit, probes, Number(process.env.HEALTH_CHECK_INTERVAL_MS ?? 60_000));
 startRateSampler(rateBoard, Number(process.env.RATE_SAMPLE_INTERVAL_MS ?? 60_000));
-startDepositWatch(unit, deposits, Number(process.env.DEPOSIT_WATCH_INTERVAL_MS ?? 10_000));
+startDepositWatch(unit, deposits, Number(process.env.DEPOSIT_WATCH_INTERVAL_MS ?? 10_000), alert);
 startSendWatch(unit, sends, Number(process.env.SEND_WATCH_INTERVAL_MS ?? 10_000), alert);
 startPayoutWatch(payoutWatch, Number(process.env.PAYOUT_WATCH_INTERVAL_MS ?? 20_000));
 startVaultSync(

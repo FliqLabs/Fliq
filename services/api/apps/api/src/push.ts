@@ -39,7 +39,9 @@ const HOSTS: Record<string, string> = {
   production: "https://api.push.apple.com",
   sandbox: "https://api.sandbox.push.apple.com",
 };
-const DEAD_REASONS = new Set(["BadDeviceToken", "Unregistered", "DeviceTokenNotForTopic"]);
+// BadEnvironmentKeyInToken: the APNs key is for production only, so a token from an Xcode (sandbox) build can never
+// be reached with it. Retrying only fills the log.
+const DEAD_REASONS = new Set(["BadDeviceToken", "Unregistered", "DeviceTokenNotForTopic", "BadEnvironmentKeyInToken"]);
 
 export function apnsFromEnv(env: NodeJS.ProcessEnv): ApnsCredentials | null {
   const { APNS_KEY_ID: keyId, APNS_TEAM_ID: teamId, APNS_KEY: key, APNS_TOPIC: topic } = env;

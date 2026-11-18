@@ -7,6 +7,7 @@ import type { Unit } from "./db.js";
 import { authenticateAgent } from "./agent-auth.js";
 import { ApiError, forbidden, invalidRequest, unauthorized } from "./errors.js";
 import type { Reply } from "./idempotency.js";
+import { createBurst } from "./alerts.js";
 import { authenticateKey, keyEnvironmentOf } from "./keys.js";
 import { loadSpec, operations } from "./openapi.js";
 import { ProvenKeys, rateLimitHook, type Limiter } from "./rate-limit.js";
@@ -53,7 +54,12 @@ export interface AppDeps {
   limiter?: Limiter;
   webhooks?: (provider: string, webhook: InboundWebhook) => Promise<Reply>;
   recordUsage?: (event: { keyId?: string; token?: string; outcome: UsageOutcome; payoutCreated: boolean; at: Date }) => Promise<void>;
+  // Reaches the team: server errors, and cash-out quotes failing for several people at once.
+  alert?: (message: string) => void;
 }
+
+// Cash-out quotes and the rate shown before one: "no route" from either means users cannot cash out.
+const pricesCashOut = (url: string | undefined) => url === "/v1/quotes" || url === "/v1/rates/:token/:currency";
 
 function errorBody(code: string, message: string) {
   return { error: { code, message } };
@@ -101,13 +107,24 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     });
   }
 
+  const noRoutes = createBurst(3, 10 * 60_000);
+  const alert = deps.alert ?? (() => undefined);
+  const where = (request: FastifyRequest) => `${request.method} ${request.routeOptions.url ?? request.url.split("?")[0]}`;
+
   app.setErrorHandler((error: any, request: FastifyRequest, reply: FastifyReply) => {
-    if (error instanceof ApiError) return reply.status(error.status).send(errorBody(error.code, error.message));
+    if (error instanceof ApiError) {
+      if (error.status >= 500) alert(`${error.status} ${error.code} on ${where(request)}: ${error.message}`);
+      if (error.code === "no_route" && pricesCashOut(request.routeOptions.url) && noRoutes()) {
+        alert(`cash-out quotes are failing: 3 "no route" answers in 10 minutes on ${where(request)}. Users see "No quote right now".`);
+      }
+      return reply.status(error.status).send(errorBody(error.code, error.message));
+    }
     if (error.validation) {
       const where = error.validation[0]?.instancePath || "body";
       return reply.status(400).send(errorBody("invalid_request", `Invalid request at ${where}: ${error.validation[0]?.message}.`));
     }
     request.log.error({ err: { type: error.name, message: error.message } }, "unhandled error");
+    alert(`500 on ${where(request)}: ${error.name}: ${String(error.message).slice(0, 200)}`);
     return reply.status(500).send(errorBody("internal", "Something went wrong."));
   });
 
