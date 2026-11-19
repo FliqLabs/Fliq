@@ -89,10 +89,16 @@ final class PersonPayFlow {
         } catch let error as KeychainError where error.status == errSecUserCanceled || error.status == errSecAuthFailed {
             paid = nil
             errorMessage = nil
+        } catch let error as NEARRPCError where error.isUnknownAccessKey {
+            paid = nil
+            errorMessage = Self.notAdded
         } catch {
             paid = nil
             errorMessage = "The payment didn't go through. Nothing moved."
         }
         return false
     }
+
+    /// This iPhone's key is not on the account, as on a phone signed in after setting up on the web.
+    static let notAdded = "This iPhone can't send yet. Add it in Settings > Security > Account backup with your passkey."
 }

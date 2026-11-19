@@ -60,6 +60,41 @@ final class AccountRecoveryTests: XCTestCase {
         XCTAssertEqual(state, .notBackedUp)
     }
 
+    func testThePasskeyKeyMakesTheSameNEARKeyAsFliqCash() throws {
+        // tests/near-key.test.mjs on the web derives this key from the same 32 bytes of 7.
+        let key = try PasskeyKey(prf: SymmetricKey(data: Data(repeating: 7, count: 32)))
+        XCTAssertEqual(try key.publicKey(), "ed25519:GJdxtPyaS35TPCJuEMK8ue3MKWvCC8oexZq3QUQsVQkH")
+        XCTAssertEqual(PasskeyKey.salt.map { String(format: "%02x", $0) }.joined(), "45943c39c14910389b5e020758f700096dd70cfdebc35eef2e3e3f386948bd7a")
+    }
+
+    func testThePasskeyAddsThisIPhoneWhenItsKeyIsOnTheAccount() async throws {
+        let passkey = try PasskeyKey(prf: SymmetricKey(data: Data(repeating: 7, count: 32)))
+        chain([try passkey.publicKey()])
+        try await makeRecovery(MemoryRecoveryKeys()).restore(with: passkey)
+
+        let expected = KeyDelegate(
+            account: account,
+            change: .add(try XCTUnwrap(NEARKey.decode(try device.publicKey()))),
+            nonce: 42,
+            maxBlockHeight: 1000 + DelegateAction.lifetimeBlocks,
+            publicKey: try XCTUnwrap(NEARKey.decode(try passkey.publicKey()))
+        )
+        let sent = try relayed()
+        XCTAssertEqual(sent.dropLast(65), expected.borsh)
+        let signer = try Curve25519.Signing.PublicKey(rawRepresentation: try XCTUnwrap(NEARKey.decode(try passkey.publicKey())))
+        XCTAssertTrue(signer.isValidSignature(sent.suffix(64), for: expected.signingHash))
+    }
+
+    func testAPasskeyWhoseKeyIsNotOnTheAccountChangesNothing() async throws {
+        let passkey = try PasskeyKey(prf: SymmetricKey(data: Data(repeating: 8, count: 32)))
+        chain([])
+        do {
+            try await makeRecovery(MemoryRecoveryKeys()).restore(with: passkey)
+            XCTFail("A passkey key that is not on the account cannot add this iPhone")
+        } catch RecoveryError.passkeyNotOnAccount {}
+        XCTAssertNil(RecoveryStub.requests.first { $0.url?.path == "/v1/relays" })
+    }
+
     func testBackingUpAddsTheSyncedKeySignedByThisIPhone() async throws {
         let backups = MemoryRecoveryKeys()
         chain([try device.publicKey()])
