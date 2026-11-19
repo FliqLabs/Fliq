@@ -15,6 +15,8 @@ final class PasskeyAuthenticator: NSObject {
     private var controller: ASAuthorizationController?
     /// The passkey the last successful register or sign-in used, for `PasskeyMemory`.
     private(set) var lastCredentialID: Data?
+    /// The NEAR key the last passkey made, when this iOS and passkey can. Kept in memory only. See `PasskeyKey`.
+    private(set) var lastPasskeyKey: PasskeyKey?
 
     func register(_ options: PasskeyOptions) async throws -> Data {
         guard
@@ -26,12 +28,14 @@ final class PasskeyAuthenticator: NSObject {
 
         let provider = ASAuthorizationPlatformPublicKeyCredentialProvider(relyingPartyIdentifier: rp)
         let request = provider.createCredentialRegistrationRequest(challenge: challenge, name: Self.label, userID: userID)
-        // Lets the passkey make the NEAR key fliq.cash and other iPhones can use. See `PasskeyKey`.
-        if #available(iOS 18.0, *) { request.prf = .checkForSupport }
+        // The passkey makes the NEAR key fliq.cash and other iPhones can use, so the account can start with it.
+        if #available(iOS 18.0, *) { request.prf = .inputValues(.init(saltInput1: PasskeyKey.salt)) }
         guard let credential = try await perform(request).credential as? ASAuthorizationPlatformPublicKeyCredentialRegistration,
               let attestation = credential.rawAttestationObject
         else { throw PasskeyError.failed("No passkey was created.") }
         lastCredentialID = credential.credentialID
+        lastPasskeyKey = nil
+        if #available(iOS 18.0, *), let secret = credential.prf?.first { lastPasskeyKey = try? PasskeyKey(prf: secret) }
 
         return try Self.json(id: credential.credentialID, response: [
             "clientDataJSON": credential.rawClientDataJSON.base64URL,
@@ -48,11 +52,14 @@ final class PasskeyAuthenticator: NSObject {
         let provider = ASAuthorizationPlatformPublicKeyCredentialProvider(relyingPartyIdentifier: options.options.rp?.id ?? relyingParty)
         let request = provider.createCredentialAssertionRequest(challenge: challenge)
         request.allowedCredentials = allowed.map { ASAuthorizationPlatformPublicKeyCredentialDescriptor(credentialID: $0) }
+        if #available(iOS 18.0, *) { request.prf = .inputValues(.init(saltInput1: PasskeyKey.salt)) }
         let found = try await perform(request, options: onlyIfOnThisDevice ? .preferImmediatelyAvailableCredentials : [])
         guard let credential = found.credential as? ASAuthorizationPlatformPublicKeyCredentialAssertion else {
             throw PasskeyError.failed("No passkey was used.")
         }
         lastCredentialID = credential.credentialID
+        lastPasskeyKey = nil
+        if #available(iOS 18.0, *), let secret = credential.prf?.first { lastPasskeyKey = try? PasskeyKey(prf: secret) }
 
         return try Self.json(id: credential.credentialID, response: [
             "clientDataJSON": credential.rawClientDataJSON.base64URL,

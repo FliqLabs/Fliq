@@ -48,6 +48,8 @@ protocol AccountRecovering: Sendable {
     /// Puts this iPhone's key on the account, signed by the key the user's passkey makes. It works once fliq.cash has
     /// put that key on the account, which it does the first time the user signs in there with the passkey.
     func restore(with passkey: any DeviceKeys) async throws
+    /// The same for a named account, such as one just made with the passkey's key while the profile has no name yet.
+    func addThisIPhone(to account: String, with passkey: any DeviceKeys) async throws
     /// Every key that can move the account's money, this iPhone first. Nil when the chain cannot be read.
     func keys() async -> [AccountKey]?
     /// Takes a key off the account, signed by this iPhone's key. Removing the backup also forgets it.
@@ -100,6 +102,10 @@ struct AccountRecovery: AccountRecovering {
 
     func restore(with passkey: any DeviceKeys) async throws {
         guard let account = await account() else { throw RecoveryError.noAccount }
+        try await addThisIPhone(to: account, with: passkey)
+    }
+
+    func addThisIPhone(to account: String, with passkey: any DeviceKeys) async throws {
         guard let added = NEARKey.decode(try device.publicKey()) else { throw RecoveryError.noBackup }
         guard try await rpc.hasAccessKey(account: account, publicKey: try passkey.publicKey()) else {
             throw RecoveryError.passkeyNotOnAccount
@@ -161,6 +167,8 @@ actor FixtureAccountRecovery: AccountRecovering {
         guard current == .canRestore || current == .cannotSign else { return }
         current = current == .canRestore ? .backedUp : .notBackedUp
     }
+
+    func addThisIPhone(to account: String, with passkey: any DeviceKeys) async throws {}
 
     func keys() async -> [AccountKey]? {
         var all: [AccountKey] = []
