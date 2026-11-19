@@ -1980,6 +1980,8 @@ export interface components {
             reason: "over_daily_cap" | "over_per_payout_cap" | "corridor_not_allowed" | "not_saved_account" | "provider_failed" | "expired" | null;
             /** @description The payout, deposit, transfer or refusal behind the row */
             ref_id: string;
+            /** @description The NEAR transaction behind the row, so a receipt can link to it on an explorer. Set for transfers. */
+            tx_hash?: string | null;
         };
         ActivityList: {
             items: components["schemas"]["ActivityItem"][];

@@ -40,7 +40,7 @@ struct PaidView: View {
             }
             .padding(.top, 30)
 
-            ShareLink(item: receipt) {
+            ReceiptShareButton(document: ReceiptDocument(payout: payout)) {
                 IconLabel("Share receipt", icon: "square.and.arrow.up")
                     .font(.system(size: 15, weight: .medium))
                     .frame(maxWidth: .infinity, minHeight: 50)
@@ -84,18 +84,6 @@ struct PaidView: View {
         let time = settled.at.formatted(date: .omitted, time: .standard)
         guard let seconds = payout.seconds else { return time }
         return "\(time) · \(seconds) seconds"
-    }
-
-    private var receipt: String {
-        var lines = [
-            "fliq receipt",
-            "\(Money.local(payout.receive, payout.currency)) to \(payout.accountName)",
-            "Sent $\(payout.amount.decimalString) at $1 = \(Money.rate(payout.rate, payout.currency))",
-            "Paid out by \(payout.provider.displayName)",
-        ]
-        if let reference = payout.bankReference { lines.append("NIP session \(reference)") }
-        if let receipt = payout.vaultReceipt { lines.append("Vault receipt \(receipt)") }
-        return lines.joined(separator: "\n")
     }
 }
 

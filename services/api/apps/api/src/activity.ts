@@ -25,6 +25,8 @@ export type ActivityItem = {
   seconds: number | null;
   reason: string | null;
   ref_id: string;
+  /** The NEAR transaction, so a receipt can point anyone to it on an explorer. Only transfers have one today. */
+  tx_hash: string | null;
 };
 
 const CHAIN_NAMES: Record<string, string> = {
@@ -105,6 +107,7 @@ async function payouts(tx: Db, config: Config, userId: string, filter: ActivityF
       seconds: seen && settled ? Math.round((settled.getTime() - seen.getTime()) / 1000) : null,
       reason: row.state === "refunded" ? "provider_failed" : row.state === "expired" ? "expired" : null,
       ref_id: row.id,
+      tx_hash: null,
     };
   });
 }
@@ -131,6 +134,7 @@ async function deposits(tx: Db, userId: string, before: Date | null, take: numbe
       seconds: row.seenAt && row.landedAt ? Math.round((row.landedAt.getTime() - row.seenAt.getTime()) / 1000) : null,
       reason: row.state === "expired" ? "expired" : null,
       ref_id: row.id,
+      tx_hash: null,
     };
   });
 }
@@ -172,6 +176,7 @@ async function transfers(tx: Db, userId: string, before: Date | null, take: numb
       seconds: null,
       reason: null,
       ref_id: row.id,
+      tx_hash: row.txHash,
     };
   });
 }
@@ -195,6 +200,7 @@ async function refusals(tx: Db, userId: string, before: Date | null, take: numbe
       seconds: null,
       reason: REFUSAL_REASONS[row.reason] ?? null,
       ref_id: row.id,
+      tx_hash: null,
     };
   });
 }

@@ -3001,6 +3001,9 @@ components:
         ref_id:
           type: string
           description: The payout, deposit, transfer or refusal behind the row
+        tx_hash:
+          type: [string, "null"]
+          description: The NEAR transaction behind the row, so a receipt can link to it on an explorer. Set for transfers.
     ActivityList:
       type: object
       required: [items, next_cursor]

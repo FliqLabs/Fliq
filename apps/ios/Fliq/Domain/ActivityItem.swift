@@ -48,6 +48,8 @@ struct ActivityItem: Decodable, Identifiable, Equatable, Sendable {
     let seconds: Int?
     let reason: String?
     let refId: String
+    /// The NEAR transaction behind the row, for the receipt's explorer link. Only transfers have one.
+    var txHash: String? = nil
 
     var id: String { activityId }
 }
