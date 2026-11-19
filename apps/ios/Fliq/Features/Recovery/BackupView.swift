@@ -8,6 +8,7 @@ struct BackupView: View {
     @State private var working = false
     @State private var message: String?
     @State private var confirmingOff = false
+    @State private var restoring: RecoveryState?
 
     var body: some View {
         ScrollView {
@@ -54,7 +55,25 @@ struct BackupView: View {
                 .buttonStyle(PrimaryButtonStyle())
                 .disabled(working)
                 .padding(.bottom, 12)
+            } else if state == .canRestore || state == .cannotSign {
+                Button {
+                    restoring = state
+                } label: {
+                    IconLabel("Add this iPhone", icon: "iphone")
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                .padding(.bottom, 12)
             }
+        }
+        .sheet(item: $restoring) { restoringState in
+            RestoreSheet(state: restoringState) {
+                restoring = nil
+                Task { await load() }
+            }
+            .presentationDetents([.medium])
+            .presentationDragIndicator(.visible)
+            .presentationCornerRadius(32)
+            .presentationBackground(Color(hex: 0x161616))
         }
         .fliqScreen("Account backup")
         .task { await load() }
@@ -102,7 +121,7 @@ struct BackupView: View {
         switch state {
         case .backedUp: "If you lose this iPhone, sign in on a new one with the same Apple ID and your money is there."
         case .notBackedUp: "Right now only this iPhone can move your money. If it is lost or reset, nobody can reach your balance, not even fliq."
-        case .canRestore, .cannotSign: "Add this iPhone to your account from the Home screen first."
+        case .canRestore, .cannotSign: "This iPhone can't move your money yet. Add it with your passkey, then turn on backup."
         case nil: loaded ? "Check your connection and pull down to try again." : " "
         }
     }
@@ -147,13 +166,14 @@ struct RestoreSheet: View {
     @Environment(AppEnvironment.self) private var environment
     @State private var working = false
     @State private var message: String?
+    @State private var passkeys = PasskeyAuthenticator()
 
     var body: some View {
         VStack(spacing: 0) {
-            Icon(canRestore ? "iphone" : "exclamationmark.shield", size: 44)
-                .foregroundStyle(canRestore ? Theme.textPrimary : Theme.warning)
+            Icon("iphone", size: 44)
+                .foregroundStyle(Theme.textPrimary)
                 .padding(.top, 36)
-            Text(canRestore ? "Add this iPhone to your account" : "This iPhone can't move your money")
+            Text("Add this iPhone to your account")
                 .font(.system(size: 22, weight: .medium))
                 .multilineTextAlignment(.center)
                 .padding(.top, 16)
@@ -178,8 +198,16 @@ struct RestoreSheet: View {
                 }
                 .buttonStyle(PrimaryButtonStyle())
                 .disabled(working)
+            } else {
+                Button {
+                    Task { await restoreWithPasskey() }
+                } label: {
+                    if working { ProgressView() } else { IconLabel("Add this iPhone with your passkey", icon: "person.badge.key") }
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                .disabled(working)
             }
-            Button(canRestore ? "Not now" : "OK", action: onDone)
+            Button("Not now", action: onDone)
                 .font(.system(size: 15, weight: .medium))
                 .foregroundStyle(Theme.textSecondary)
                 .frame(height: 48)
@@ -194,8 +222,31 @@ struct RestoreSheet: View {
     private var detail: String {
         canRestore
             ? "You're signed in and your balance is safe. Your backup is on this iPhone, so one more step lets it send and cash out."
-            : "You're signed in and your balance is safe, but this iPhone has no backup to unlock it with. Open fliq on the iPhone you set it up on and turn on Account backup in Settings."
+            : "You're signed in and your balance is safe. Use your passkey once so this iPhone can send and cash out."
     }
+
+    private func restoreWithPasskey() async {
+        working = true
+        defer { working = false }
+        do {
+            guard let key = try await passkeys.passkeyKey(allowed: PasskeyMemory().ids) else {
+                message = Self.noPasskeyKey
+                return
+            }
+            try await environment.recovery.restore(with: key)
+            onDone()
+        } catch PasskeyError.cancelled {
+            return
+        } catch RecoveryError.passkeyNotOnAccount {
+            message = Self.noPasskeyKey
+        } catch TransferError.stillPending {
+            message = "Still going through. Try sending in a minute."
+        } catch {
+            message = "That didn't go through. Nothing changed. Try again."
+        }
+    }
+
+    static let noPasskeyKey = "Your passkey can't add this iPhone yet. Sign in once at fliq.cash in the browser you used before, or turn on Account backup on your first iPhone. Then try again."
 
     private func restore() async {
         working = true

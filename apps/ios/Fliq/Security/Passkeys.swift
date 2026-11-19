@@ -26,6 +26,8 @@ final class PasskeyAuthenticator: NSObject {
 
         let provider = ASAuthorizationPlatformPublicKeyCredentialProvider(relyingPartyIdentifier: rp)
         let request = provider.createCredentialRegistrationRequest(challenge: challenge, name: Self.label, userID: userID)
+        // Lets the passkey make the NEAR key fliq.cash and other iPhones can use. See `PasskeyKey`.
+        if #available(iOS 18.0, *) { request.prf = .checkForSupport }
         guard let credential = try await perform(request).credential as? ASAuthorizationPlatformPublicKeyCredentialRegistration,
               let attestation = credential.rawAttestationObject
         else { throw PasskeyError.failed("No passkey was created.") }
@@ -58,6 +60,21 @@ final class PasskeyAuthenticator: NSObject {
             "signature": credential.signature.base64URL,
             "userHandle": credential.userID.base64URL,
         ])
+    }
+
+    /// Asks the passkey for the secret that makes its NEAR key. Nothing goes to the API: the challenge is only there
+    /// because the system sheet needs one. Nil when this iOS or this passkey cannot do it.
+    func passkeyKey(relyingParty: String = "fliq.cash", allowed: [Data] = []) async throws -> PasskeyKey? {
+        guard #available(iOS 18.0, *) else { return nil }
+        let provider = ASAuthorizationPlatformPublicKeyCredentialProvider(relyingPartyIdentifier: relyingParty)
+        let request = provider.createCredentialAssertionRequest(challenge: Data((0..<32).map { _ in UInt8.random(in: 0...255) }))
+        request.allowedCredentials = allowed.map { ASAuthorizationPlatformPublicKeyCredentialDescriptor(credentialID: $0) }
+        request.prf = .inputValues(.init(saltInput1: PasskeyKey.salt))
+        guard let credential = try await perform(request).credential as? ASAuthorizationPlatformPublicKeyCredentialAssertion else {
+            throw PasskeyError.failed("No passkey was used.")
+        }
+        guard let secret = credential.prf?.first else { return nil }
+        return try PasskeyKey(prf: secret)
     }
 
     /// What the passkey sheet shows for this passkey. Testnet and mainnet share fliq.cash, so the label tells them apart.

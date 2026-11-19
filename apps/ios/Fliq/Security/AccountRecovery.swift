@@ -34,6 +34,8 @@ enum RecoveryError: Error, Equatable {
     case noAccount
     case notApproved
     case noBackup
+    /// The key this passkey makes is not on the account yet, so it cannot add this iPhone.
+    case passkeyNotOnAccount
 }
 
 protocol AccountRecovering: Sendable {
@@ -43,6 +45,9 @@ protocol AccountRecovering: Sendable {
     func backUp() async throws
     /// Puts this iPhone's key on the account, signed by the backup key.
     func restore() async throws
+    /// Puts this iPhone's key on the account, signed by the key the user's passkey makes. It works once fliq.cash has
+    /// put that key on the account, which it does the first time the user signs in there with the passkey.
+    func restore(with passkey: any DeviceKeys) async throws
     /// Every key that can move the account's money, this iPhone first. Nil when the chain cannot be read.
     func keys() async -> [AccountKey]?
     /// Takes a key off the account, signed by this iPhone's key. Removing the backup also forgets it.
@@ -93,6 +98,15 @@ struct AccountRecovery: AccountRecovering {
         try await add(added, to: account, signedBy: backup, reason: "Add this iPhone to your fliq account")
     }
 
+    func restore(with passkey: any DeviceKeys) async throws {
+        guard let account = await account() else { throw RecoveryError.noAccount }
+        guard let added = NEARKey.decode(try device.publicKey()) else { throw RecoveryError.noBackup }
+        guard try await rpc.hasAccessKey(account: account, publicKey: try passkey.publicKey()) else {
+            throw RecoveryError.passkeyNotOnAccount
+        }
+        try await add(added, to: account, signedBy: passkey, reason: "Add this iPhone to your fliq account")
+    }
+
     func keys() async -> [AccountKey]? {
         guard let account = await account(), let deviceKey = try? device.publicKey(),
               let onChain = try? await rpc.fullAccessKeys(account: account) else { return nil }
@@ -141,6 +155,11 @@ actor FixtureAccountRecovery: AccountRecovering {
     func restore() async throws {
         guard current == .canRestore else { throw RecoveryError.noBackup }
         current = .backedUp
+    }
+
+    func restore(with passkey: any DeviceKeys) async throws {
+        guard current == .canRestore || current == .cannotSign else { return }
+        current = current == .canRestore ? .backedUp : .notBackedUp
     }
 
     func keys() async -> [AccountKey]? {
