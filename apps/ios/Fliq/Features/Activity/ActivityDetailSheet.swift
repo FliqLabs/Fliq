@@ -60,7 +60,7 @@ struct ActivityDetailSheet: View {
                 .padding(.horizontal, 4)
                 .padding(.top, 20)
 
-                ShareLink(item: shareText) {
+                ReceiptShareButton(document: ReceiptDocument(line: line)) {
                     Label("Share receipt", systemImage: "square.and.arrow.up")
                         .font(.system(size: 17, weight: .medium))
                         .frame(maxWidth: .infinity, minHeight: 52)
@@ -85,12 +85,6 @@ struct ActivityDetailSheet: View {
         .safeAreaInset(edge: .top) {
             if closes { closeBar }
         }
-    }
-
-    /// What the share sheet sends: one line per fact, the way a bank receipt reads in a chat.
-    private var shareText: String {
-        let facts = line.facts.filter { !$0.1.isEmpty }.map { "\($0.0): \($0.1)" }
-        return (["fliq receipt", "\(line.amount) · \(line.title)", ActivityLine.time(line.date)] + facts).joined(separator: "\n")
     }
 
     private var closeBar: some View {
