@@ -65,4 +65,58 @@ final class ClaimWithDeviceKeyTests: XCTestCase {
         XCTAssertFalse(claimed)
         XCTAssertEqual(flow.status, .unreachable)
     }
+
+    func testWithAPasskeyKeyTheAccountStartsWithItAndThenAddsThisIPhone() async throws {
+        let passkey = try PasskeyKey(prf: SymmetricKey(data: Data(repeating: 7, count: 32)))
+        let adds = RecordingRecovery()
+        await adds.failFirst(2)
+        let flow = OnboardingFlow(api: FixtureClient(), names: FixtureNameDirectory(), isLive: true, keys: FixedKeys(), recovery: adds)
+        flow.passkeyKey = passkey
+        flow.addRetryDelay = .zero
+        flow.nameText = "frank"
+        await flow.resolve(try XCTUnwrap(flow.name))
+
+        let claimed = await flow.claim()
+        await flow.addingThisIPhone?.value
+
+        XCTAssertTrue(claimed)
+        let added = await adds.added
+        XCTAssertEqual(added.count, 1)
+        XCTAssertEqual(added.first?.0, "frank" + FliqName.suffix)
+        XCTAssertEqual(added.first?.1, try passkey.publicKey())
+    }
+
+    func testWithoutAPasskeyKeyTheAccountStartsWithThisIPhonesKey() async throws {
+        let adds = RecordingRecovery()
+        let flow = OnboardingFlow(api: FixtureClient(), names: FixtureNameDirectory(), isLive: true, keys: FixedKeys(), recovery: adds)
+        flow.nameText = "frank"
+        await flow.resolve(try XCTUnwrap(flow.name))
+
+        let claimed = await flow.claim()
+
+        XCTAssertTrue(claimed)
+        XCTAssertNil(flow.addingThisIPhone)
+        let added = await adds.added
+        XCTAssertTrue(added.isEmpty)
+    }
+}
+
+/// Records the iPhones added to an account, failing the first few times like a chain that has not caught up.
+actor RecordingRecovery: AccountRecovering {
+    private(set) var added: [(String, String)] = []
+    var failuresLeft = 0
+    func failFirst(_ count: Int) { failuresLeft = count }
+    func state() async -> RecoveryState? { nil }
+    func backUp() async throws {}
+    func restore() async throws {}
+    func restore(with passkey: any DeviceKeys) async throws {}
+    func keys() async -> [AccountKey]? { nil }
+    func remove(_ key: AccountKey) async throws {}
+    func addThisIPhone(to account: String, with passkey: any DeviceKeys) async throws {
+        if failuresLeft > 0 {
+            failuresLeft -= 1
+            throw RecoveryError.passkeyNotOnAccount
+        }
+        added.append((account, try passkey.publicKey()))
+    }
 }

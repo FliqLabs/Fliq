@@ -1,3 +1,4 @@
+import CryptoKit
 import XCTest
 @testable import Fliq
 
@@ -191,6 +192,28 @@ final class HTTPClientTests: XCTestCase {
         let body = try XCTUnwrap(request.httpBodyStream.map(Data.init(reading:)) ?? request.httpBody)
         let sent = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: String])
         XCTAssertEqual(sent, ["name": "frank", "public_key": "ed25519:11111111111111111111111111111111"])
+    }
+
+    @MainActor
+    func testAnAccountMadeWithAPasskeyKeyStartsWithThatKey() async throws {
+        StubProtocol.respond { _ in (201, try fixtures.data("user.new")) }
+        let passkey = try PasskeyKey(prf: SymmetricKey(data: Data(repeating: 7, count: 32)))
+        var client = makeClient()
+        client.claimRetryDelay = .zero
+        let flow = OnboardingFlow(api: client, names: FixtureNameDirectory(), isLive: true, keys: FixedKeys(), recovery: RecordingRecovery())
+        flow.passkeyKey = passkey
+        flow.addRetryDelay = .zero
+        flow.nameText = "frank"
+        while flow.status == .checking { try await Task.sleep(for: .milliseconds(50)) }
+
+        let claimed = await flow.claim()
+        await flow.addingThisIPhone?.value
+
+        XCTAssertTrue(claimed)
+        let request = try XCTUnwrap(StubProtocol.requests.first { $0.url?.path == "/v1/me/name" })
+        let body = try XCTUnwrap(request.httpBodyStream.map(Data.init(reading:)) ?? request.httpBody)
+        let sent = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: String])
+        XCTAssertEqual(sent["public_key"], try passkey.publicKey())
     }
 
     func testClaimGivesUpWhenTheAccountStaysPending() async throws {

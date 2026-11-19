@@ -25,12 +25,20 @@ final class OnboardingFlow {
 
     /// The name the API recorded for this user. Fixtures never record one.
     private(set) var claimed: String?
+    /// The NEAR key the passkey made at sign-up, when it could. The account starts with it, so any browser or iPhone
+    /// with this passkey can later add itself. This iPhone's own key is added right after, signed by it.
+    var passkeyKey: (any DeviceKeys)?
+    /// Adding this iPhone's key after the account is made. Tests wait on it.
+    private(set) var addingThisIPhone: Task<Void, Never>?
+    static let addRetries = 8
+    var addRetryDelay: Duration = .seconds(1.5)
 
     private let api: any FliqAPI
     private let isLive: Bool
     private let names: any NameDirectory
     private let keys: any DeviceKeys
     private let photos: (any PhotoUploads)?
+    private let recovery: (any AccountRecovering)?
     private var check: Task<Void, Never>?
 
     init(
@@ -38,9 +46,11 @@ final class OnboardingFlow {
         names: any NameDirectory,
         isLive: Bool = false,
         keys: any DeviceKeys = KeychainDeviceKeys(),
-        photos: (any PhotoUploads)? = nil
+        photos: (any PhotoUploads)? = nil,
+        recovery: (any AccountRecovering)? = nil
     ) {
         self.photos = photos
+        self.recovery = recovery
         self.api = api
         self.isLive = isLive
         self.names = names
@@ -61,8 +71,11 @@ final class OnboardingFlow {
             status = .unreachable
             return false
         }
+        let passkey = recovery == nil ? nil : passkeyKey
+        let startKey = (try? passkey?.publicKey()) ?? publicKey
         do {
-            claimed = try await api.claimName(name, publicKey: publicKey).nearAccount
+            claimed = try await api.claimName(name, publicKey: startKey).nearAccount
+            if let passkey, startKey != publicKey, let claimed { addThisIPhone(to: claimed, with: passkey) }
             return true
         } catch APIError.server(status: 409, _) {
             status = .taken
@@ -71,6 +84,23 @@ final class OnboardingFlow {
         } catch {
             status = .unreachable
             return false
+        }
+    }
+
+    /// The account was just made, so the chain can take a moment to show it. If every try fails, the app's restore
+    /// sheet offers the same step with the passkey at the next launch, so nothing is lost.
+    private func addThisIPhone(to account: String, with passkey: any DeviceKeys) {
+        guard let recovery else { return }
+        let delay = addRetryDelay
+        addingThisIPhone = Task {
+            for attempt in 0..<Self.addRetries {
+                do {
+                    try await recovery.addThisIPhone(to: account, with: passkey)
+                    return
+                } catch {
+                    if attempt + 1 < Self.addRetries { try? await Task.sleep(for: delay) }
+                }
+            }
         }
     }
 
