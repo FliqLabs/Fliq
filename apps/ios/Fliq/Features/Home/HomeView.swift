@@ -11,6 +11,8 @@ struct HomeView: View {
     @State private var selected: ActivityLine?
     /// Remembered on this iPhone, so the balance stays hidden after the app is closed.
     @AppStorage("home.hidesBalance") private var hidesBalance = false
+    /// Dollars, or a local currency at the live payout rate. Remembered on this iPhone.
+    @AppStorage(DisplayCurrency.storageKey) private var shown: DisplayCurrency = .usd
 
     private var isMoving: Bool { activity?.lines.contains { $0.outcome == .moving } ?? false }
 
@@ -110,38 +112,78 @@ struct HomeView: View {
             .accessibilityLabel(hidesBalance ? "Show balance" : "Hide balance")
             .accessibilityIdentifier("home.hideBalance")
 
-            HStack(alignment: .firstTextBaseline, spacing: 2) {
-                Text("$")
-                    .font(.system(size: 30, weight: .light))
-                    .foregroundStyle(Theme.textSecondary)
-                Text(hidesBalance ? Self.hiddenAmount : Money.dollars(model.balance))
-                    .font(Theme.hero())
-                    .tracking(-1.9)
-                    .foregroundStyle(Theme.textPrimary)
-                    .contentTransition(.numericText())
+            Menu {
+                Picker("Show balance in", selection: $shown) {
+                    ForEach(DisplayCurrency.allCases) { currency in
+                        Text("\(currency.name) (\(currency.symbol))").tag(currency)
+                    }
+                }
+            } label: {
+                HStack(alignment: .firstTextBaseline, spacing: 2) {
+                    Text(symbol)
+                        .font(.system(size: 30, weight: .light))
+                        .foregroundStyle(Theme.textSecondary)
+                    Text(hidesBalance ? Self.hiddenAmount : amount)
+                        .font(Theme.hero())
+                        .tracking(-1.9)
+                        .foregroundStyle(Theme.textPrimary)
+                        .contentTransition(.numericText())
+                        .minimumScaleFactor(0.5)
+                        .lineLimit(1)
+                    Icon("chevron.down", size: 14)
+                        .foregroundStyle(Theme.textTertiary)
+                        .padding(.leading, 6)
+                }
+                .padding(.horizontal, 24)
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
             .animation(.snappy(duration: 0.25), value: hidesBalance)
+            .animation(.snappy(duration: 0.25), value: shown)
             .accessibilityElement(children: .combine)
-            .accessibilityLabel(hidesBalance ? "Balance hidden" : "$\(Money.dollars(model.balance))")
+            .accessibilityLabel(hidesBalance ? "Balance hidden" : symbol + amount)
+            .accessibilityHint("Change the currency")
+            .accessibilityIdentifier("home.currency")
 
             ratePill
         }
     }
 
+    /// The local rate being shown, or nil while dollars are shown or the rate hasn't landed yet.
+    private var localRate: Rate? { shown.local.flatMap(model.rate(for:)) }
+
+    /// Falls back to dollars until a rate is known, so the balance never shows a made-up figure.
+    private var symbol: String { localRate == nil ? "$" : shown.symbol }
+
+    private var amount: String {
+        guard let local = shown.local, let value = model.balance(in: local) else { return Money.dollars(model.balance) }
+        return Money.grouped(value)
+    }
+
+    /// The pill quotes the currency on screen, or naira while dollars are shown.
+    private var pillCurrency: Currency { shown.local ?? .ngn }
+
     @ViewBuilder
     private var ratePill: some View {
-        if let rate = model.rate {
+        if let rate = model.rate(for: pillCurrency) {
             let value = Text(Money.rate(rate.rate, rate.currency))
                 .fontWeight(.medium)
                 .foregroundStyle(Theme.textPrimary)
-            Text("$1 = \(value) · \(rate.providersQuoting) quoting")
-                .font(.system(size: 13))
-                .foregroundStyle(Theme.textSecondary)
-                .padding(.horizontal, 14)
-                .frame(height: 32)
-                .fliqGlass(Capsule())
-                .padding(.top, 6)
-        } else if model.rateFailed {
+            Group {
+                if localRate != nil, !hidesBalance {
+                    let dollars = Text("$" + Money.dollars(model.balance)).fontWeight(.medium).foregroundStyle(Theme.textPrimary)
+                    Text("\(dollars) · $1 = \(value)")
+                } else {
+                    Text("$1 = \(value) · \(rate.providersQuoting) quoting")
+                }
+            }
+            .font(.system(size: 13))
+            .foregroundStyle(Theme.textSecondary)
+            .padding(.horizontal, 14)
+            .frame(height: 32)
+            .fliqGlass(Capsule())
+            .padding(.top, 6)
+        } else if model.rateFailed(for: pillCurrency) {
             Text("Rate unavailable")
                 .font(.system(size: 13))
                 .foregroundStyle(Theme.textTertiary)

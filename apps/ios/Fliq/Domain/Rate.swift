@@ -4,7 +4,7 @@ enum Token: String, Codable, Sendable {
     case usdc, usdt
 }
 
-enum Currency: String, Codable, Sendable {
+enum Currency: String, Codable, CaseIterable, Sendable {
     case ngn, kes
 
     var symbol: String {

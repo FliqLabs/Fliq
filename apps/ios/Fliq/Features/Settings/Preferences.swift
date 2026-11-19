@@ -49,3 +49,36 @@ final class Preferences {
         defaults.set(notices.map(\.rawValue).sorted(), forKey: "prefs.notices")
     }
 }
+
+/// The currency Home shows the balance in. A bank payout starts typing in the bank's currency unless this is dollars.
+/// Kept on this iPhone; dollars until the owner picks another.
+enum DisplayCurrency: String, CaseIterable, Identifiable, Sendable {
+    case usd, ngn, kes
+
+    static let storageKey = "display.currency"
+
+    static func stored(in defaults: UserDefaults = .standard) -> DisplayCurrency {
+        defaults.string(forKey: storageKey).flatMap(Self.init) ?? .usd
+    }
+
+    var id: String { rawValue }
+
+    /// Nil for dollars, which need no rate.
+    var local: Currency? {
+        switch self {
+        case .usd: nil
+        case .ngn: .ngn
+        case .kes: .kes
+        }
+    }
+
+    var symbol: String { local?.symbol ?? "$" }
+
+    var name: String {
+        switch self {
+        case .usd: "US dollar"
+        case .ngn: "Naira"
+        case .kes: "Kenyan shilling"
+        }
+    }
+}

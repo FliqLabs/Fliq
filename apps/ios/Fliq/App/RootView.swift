@@ -158,7 +158,14 @@ struct RootView: View {
     }
 
     private func startPayment(to account: VerifiedAccount? = nil, save: Bool = true) {
-        let flow = PayFlow(api: environment.api, activity: environment.activity, vault: environment.vault, accounts: environment.accounts, transfers: environment.transfers)
+        let flow = PayFlow(
+            api: environment.api,
+            activity: environment.activity,
+            vault: environment.vault,
+            accounts: environment.accounts,
+            transfers: environment.transfers,
+            startsInLocal: DisplayCurrency.stored() != .usd
+        )
         flow.saveAccount = save
         self.flow = flow
         guard let account else { return environment.router.push(.payNew) }

@@ -36,7 +36,9 @@ final class PayFlow {
 
     private let accounts: AccountBook?
 
-    init(api: any FliqAPI, activity: ActivityStore? = nil, vault: VaultStore? = nil, accounts: AccountBook? = nil, transfers: (any VaultTransfers)? = nil) {
+    /// `startsInLocal` opens the keypad in the bank's currency: set when the owner shows their balance in a local currency.
+    init(api: any FliqAPI, activity: ActivityStore? = nil, vault: VaultStore? = nil, accounts: AccountBook? = nil, transfers: (any VaultTransfers)? = nil, startsInLocal: Bool = false) {
+        unit = startsInLocal ? .local : .dollars
         self.transfers = transfers
         self.accounts = accounts
         self.api = api
@@ -90,6 +92,11 @@ final class PayFlow {
     func loadRate() async {
         guard rate?.currency != currency else { return }
         rate = try? await api.rate(.usdc, currency)
+        // Without a rate a local amount can't be priced, so the keypad goes back to dollars rather than stall.
+        if rate == nil, unit == .local {
+            unit = .dollars
+            amountText = ""
+        }
     }
 
     @discardableResult
