@@ -1,3 +1,5 @@
+import { passkeyKeySalt } from "../claim-name/near-key";
+import { adoptPasskeyKey } from "../lib/device-signer";
 import { fliqApi, type User } from "../lib/fliq-api";
 
 type Challenge<T> = { challenge_id: string; options: T };
@@ -13,6 +15,19 @@ type RequestJson = Omit<PublicKeyCredentialRequestOptions, "challenge" | "allowC
 };
 
 export class PasskeyPromptError extends Error {}
+
+type PrfOutputs = { prf?: { enabled?: boolean; results?: { first?: BufferSource } } };
+
+// The PRF secret makes the user's NEAR signing key, so it never goes to the API.
+function withoutPrf(credential: PublicKeyCredential) {
+  const { prf, ...rest } = credential.getClientExtensionResults() as AuthenticationExtensionsClientOutputs & PrfOutputs;
+  void prf;
+  return rest;
+}
+
+function prfSecret(credential: PublicKeyCredential) {
+  return (credential.getClientExtensionResults() as PrfOutputs).prf?.results?.first ?? null;
+}
 
 function decode(value: string): ArrayBuffer {
   const binary = atob(value.replace(/-/g, "+").replace(/_/g, "/"));
@@ -101,6 +116,8 @@ export async function signInWithPasskey(mode: "login" | "register"): Promise<Use
             ...item,
             id: decode(item.id),
           })),
+          // Lets the passkey make the same NEAR signing key in any browser. Ignored where it is not supported.
+          extensions: { ...challenge.options.extensions, prf: {} } as AuthenticationExtensionsClientInputs,
         },
       }),
       "register",
@@ -116,7 +133,7 @@ export async function signInWithPasskey(mode: "login" | "register"): Promise<Use
           rawId: encode(credential.rawId),
           type: credential.type,
           authenticatorAttachment: credential.authenticatorAttachment,
-          clientExtensionResults: credential.getClientExtensionResults(),
+          clientExtensionResults: withoutPrf(credential),
           response: {
             clientDataJSON: encode(response.clientDataJSON),
             attestationObject: encode(response.attestationObject),
@@ -128,7 +145,10 @@ export async function signInWithPasskey(mode: "login" | "register"): Promise<Use
     return result.user;
   }
 
-  const challenge = await fliqApi<Challenge<RequestJson>>(`${base}/options`, { method: "POST" });
+  const [challenge, salt] = await Promise.all([
+    fliqApi<Challenge<RequestJson>>(`${base}/options`, { method: "POST" }),
+    passkeyKeySalt(),
+  ]);
   assertBrowserReady(challenge.options.rpId);
   const credential = await requestCredential(
     navigator.credentials.get({
@@ -140,6 +160,7 @@ export async function signInWithPasskey(mode: "login" | "register"): Promise<Use
           ...item,
           id: decode(item.id),
         })),
+        extensions: { ...challenge.options.extensions, prf: { eval: { first: salt } } } as AuthenticationExtensionsClientInputs,
       },
     }),
     "login",
@@ -155,7 +176,7 @@ export async function signInWithPasskey(mode: "login" | "register"): Promise<Use
         rawId: encode(credential.rawId),
         type: credential.type,
         authenticatorAttachment: credential.authenticatorAttachment,
-        clientExtensionResults: credential.getClientExtensionResults(),
+        clientExtensionResults: withoutPrf(credential),
         response: {
           clientDataJSON: encode(response.clientDataJSON),
           authenticatorData: encode(response.authenticatorData),
@@ -165,5 +186,8 @@ export async function signInWithPasskey(mode: "login" | "register"): Promise<Use
       },
     }),
   });
+  // A passkey that can make the signing key lets this browser pay with no recovery code. Never blocks sign-in.
+  const secret = prfSecret(credential);
+  if (secret) await adoptPasskeyKey(result.user, secret).catch(() => undefined);
   return result.user;
 }

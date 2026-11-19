@@ -7,6 +7,7 @@ import { createPortal } from "react-dom";
 import { AuthShell } from "../auth/auth-shell";
 import { EmailLinkSent } from "./email-link-sent";
 import { labelPasskey, PasskeyPromptError, signInWithPasskey } from "../auth/passkey";
+import { linkPasskeyKey } from "../lib/device-signer";
 import { ApiError, fliqApi, type User } from "../lib/fliq-api";
 
 type PasskeyAction = "login" | "check-before-create" | "register";
@@ -53,6 +54,7 @@ export function SignInForm({
     queryClient.clear();
     queryClient.setQueryData(["me"], user);
     labelPasskey(user);
+    void linkPasskeyKey(user);
     if (onSignedIn) onSignedIn(user);
     else router.replace(user.near_account ? "/wallet" : "/claim-name");
   }

@@ -15,6 +15,8 @@ final class PasskeyAuthenticator: NSObject {
     private var controller: ASAuthorizationController?
     /// The passkey the last successful register or sign-in used, for `PasskeyMemory`.
     private(set) var lastCredentialID: Data?
+    /// The NEAR key the last passkey made, when this iOS and passkey can. Kept in memory only. See `PasskeyKey`.
+    private(set) var lastPasskeyKey: PasskeyKey?
 
     func register(_ options: PasskeyOptions) async throws -> Data {
         guard
@@ -26,10 +28,14 @@ final class PasskeyAuthenticator: NSObject {
 
         let provider = ASAuthorizationPlatformPublicKeyCredentialProvider(relyingPartyIdentifier: rp)
         let request = provider.createCredentialRegistrationRequest(challenge: challenge, name: Self.label, userID: userID)
+        // The passkey makes the NEAR key fliq.cash and other iPhones can use, so the account can start with it.
+        if #available(iOS 18.0, *) { request.prf = .inputValues(.init(saltInput1: PasskeyKey.salt)) }
         guard let credential = try await perform(request).credential as? ASAuthorizationPlatformPublicKeyCredentialRegistration,
               let attestation = credential.rawAttestationObject
         else { throw PasskeyError.failed("No passkey was created.") }
         lastCredentialID = credential.credentialID
+        lastPasskeyKey = nil
+        if #available(iOS 18.0, *), let secret = credential.prf?.first { lastPasskeyKey = try? PasskeyKey(prf: secret) }
 
         return try Self.json(id: credential.credentialID, response: [
             "clientDataJSON": credential.rawClientDataJSON.base64URL,
@@ -46,11 +52,14 @@ final class PasskeyAuthenticator: NSObject {
         let provider = ASAuthorizationPlatformPublicKeyCredentialProvider(relyingPartyIdentifier: options.options.rp?.id ?? relyingParty)
         let request = provider.createCredentialAssertionRequest(challenge: challenge)
         request.allowedCredentials = allowed.map { ASAuthorizationPlatformPublicKeyCredentialDescriptor(credentialID: $0) }
+        if #available(iOS 18.0, *) { request.prf = .inputValues(.init(saltInput1: PasskeyKey.salt)) }
         let found = try await perform(request, options: onlyIfOnThisDevice ? .preferImmediatelyAvailableCredentials : [])
         guard let credential = found.credential as? ASAuthorizationPlatformPublicKeyCredentialAssertion else {
             throw PasskeyError.failed("No passkey was used.")
         }
         lastCredentialID = credential.credentialID
+        lastPasskeyKey = nil
+        if #available(iOS 18.0, *), let secret = credential.prf?.first { lastPasskeyKey = try? PasskeyKey(prf: secret) }
 
         return try Self.json(id: credential.credentialID, response: [
             "clientDataJSON": credential.rawClientDataJSON.base64URL,
@@ -58,6 +67,21 @@ final class PasskeyAuthenticator: NSObject {
             "signature": credential.signature.base64URL,
             "userHandle": credential.userID.base64URL,
         ])
+    }
+
+    /// Asks the passkey for the secret that makes its NEAR key. Nothing goes to the API: the challenge is only there
+    /// because the system sheet needs one. Nil when this iOS or this passkey cannot do it.
+    func passkeyKey(relyingParty: String = "fliq.cash", allowed: [Data] = []) async throws -> PasskeyKey? {
+        guard #available(iOS 18.0, *) else { return nil }
+        let provider = ASAuthorizationPlatformPublicKeyCredentialProvider(relyingPartyIdentifier: relyingParty)
+        let request = provider.createCredentialAssertionRequest(challenge: Data((0..<32).map { _ in UInt8.random(in: 0...255) }))
+        request.allowedCredentials = allowed.map { ASAuthorizationPlatformPublicKeyCredentialDescriptor(credentialID: $0) }
+        request.prf = .inputValues(.init(saltInput1: PasskeyKey.salt))
+        guard let credential = try await perform(request).credential as? ASAuthorizationPlatformPublicKeyCredentialAssertion else {
+            throw PasskeyError.failed("No passkey was used.")
+        }
+        guard let secret = credential.prf?.first else { return nil }
+        return try PasskeyKey(prf: secret)
     }
 
     /// What the passkey sheet shows for this passkey. Testnet and mainnet share fliq.cash, so the label tells them apart.

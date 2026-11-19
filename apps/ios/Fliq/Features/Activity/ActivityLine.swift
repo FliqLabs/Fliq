@@ -34,6 +34,10 @@ struct ActivityLine: Identifiable {
     let facts: [(String, String)]
     let steps: [Step]
     let payoutId: String?
+    /// The NEAR transaction, when the API knows it, so a receipt can link to it.
+    var txHash: String?
+    /// The bank's NIP session ID for a cash-out, when this phone has it.
+    var bankReference: String?
 
     var isAgent: Bool { if case .agent = badge { true } else { false } }
 }
@@ -77,6 +81,7 @@ extension ActivityLine {
         ] + (agentName.map { [("Agent", $0)] } ?? [])
         steps = Self.payoutSteps(outcome, at: date, seconds: payout.seconds, bank: bank?.name, provider: provider)
         payoutId = payout.payoutId
+        bankReference = payout.bankReference
     }
 
     private init(item: ActivityItem, institutions: [String: Institution]) {
@@ -97,6 +102,7 @@ extension ActivityLine {
         statusText = status.0
         statusColor = status.1
         payoutId = item.kind == .payout ? item.refId : nil
+        txHash = item.txHash
 
         switch item.kind {
         case .deposit:

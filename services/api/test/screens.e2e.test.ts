@@ -231,7 +231,8 @@ describe.skipIf(!enabled)("the app's activity, agents, requests and settings", (
 
     const all = (await get("/v1/activity", frank.headers)).json().items;
     expect(all.map((item: { kind: string }) => item.kind)).toEqual(["transfer_out", "deposit", "payout"]);
-    expect(all[0]).toMatchObject({ status: "sent", usd: "5.00", party: { near_account: tobi.account } });
+    expect(all[0]).toMatchObject({ status: "sent", usd: "5.00", party: { near_account: tobi.account }, tx_hash: `tx-transfer-${suffix}` });
+    expect(all[2].tx_hash).toBeNull();
     expect(all[1]).toMatchObject({ status: "received", party: { name: "Received from Solana" }, token: "20 USDC" });
     expect(all[2]).toMatchObject({ ref_id: payout.payout_id, provider: payout.provider, party: { account_last4: "6789" }, local: { currency: "NGN" } });
     expect((await get("/v1/activity", tobi.headers)).json().items[0]).toMatchObject({ kind: "transfer_in", status: "received", party: { near_account: frank.account } });

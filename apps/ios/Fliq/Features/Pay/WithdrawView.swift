@@ -334,7 +334,7 @@ struct WithdrawReviewView: View {
 
                 if sent.delivered {
                     HStack(spacing: 12) {
-                        ShareLink(item: "fliq receipt\n$\(Money.dollars(sent.amount)) sent to \(sent.address)\n\(sent.network.tokenName) on \(sent.network.name)\n\(ActivityLine.time(sent.at))" + (sent.explorer.map { "\n\($0.absoluteString)" } ?? "")) {
+                        ReceiptShareButton(document: ReceiptDocument(sent: sent)) {
                             IconLabel("Share", icon: "square.and.arrow.up")
                                 .frame(maxWidth: .infinity, minHeight: 50)
                                 .background(Theme.surfaceRaised, in: Capsule())

@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { createPrivateKey, createPublicKey, sign } from "node:crypto";
 import {
   LIFETIME_BLOCKS,
+  addFullAccessKey,
   encodeDelegateAction,
   encodeSignedDelegate,
   rawPublicKey,
@@ -162,4 +163,19 @@ test("a cash-out signs the vault payout for the order the API registered, as the
     amount: "10070359",
     deposit_address: "3b1b31c12912c31aaabef865f280ca705537ba3dc6fac8e9862e1f2b2a519c3c",
   });
+});
+
+test("adding a full-access key is encoded exactly as near-api-js encodes it, the same vector iOS checks", async () => {
+  const action = addFullAccessKey(
+    {
+      sender: "ada.fliqaccount.near",
+      publicKey: Uint8Array.from({ length: 32 }, (_, index) => index + 1),
+      nonce: 7n,
+      blockHeight: 1000n - LIFETIME_BLOCKS,
+    },
+    Uint8Array.from({ length: 32 }, (_, index) => index + 101),
+  );
+  const expected =
+    "6e010040140000006164612e666c69716163636f756e742e6e656172140000006164612e666c69716163636f756e742e6e65617201000000050065666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f80818283840000000000000000010700000000000000e803000000000000000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
+  assert.equal("6e010040" + Buffer.from(encodeDelegateAction(action)).toString("hex"), expected);
 });

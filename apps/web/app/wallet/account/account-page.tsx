@@ -12,6 +12,7 @@ import { ThemeSwitch } from "../../components/app/theme";
 import { Avatar, Chip, Notice, PageState, Spinner, Toggle, useCopy, useToast } from "../../components/app/ui";
 import { fliqApi } from "../../lib/fliq-api";
 import { hasDeviceKey } from "../../lib/device-signer";
+import { signInWithPasskey } from "../../auth/passkey";
 import { CURRENCIES } from "../../lib/money";
 import { walletApi, type NotificationSettings } from "../../lib/wallet-api";
 import { keys, useMe, useNotificationSettings, usePasskeys, useSessions } from "../../lib/wallet-queries";
@@ -227,6 +228,19 @@ function DeviceKey() {
     queryFn: () => hasDeviceKey(me.data!),
     enabled: me.isSuccess,
   });
+  const fromPasskey = useMutation({
+    mutationFn: async () => {
+      const user = me.data!;
+      await signInWithPasskey("login");
+      if (!(await hasDeviceKey(user))) {
+        throw new Error("Your passkey can't approve payments here yet. Approve one payment in the browser you used before, then try again.");
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["device-key"] });
+      toast("This browser can now sign for your vault");
+    },
+  });
   const restore = useMutation({
     mutationFn: async () => {
       const user = me.data!;
@@ -250,10 +264,18 @@ function DeviceKey() {
         </span>
         <div className="t">
           <b>This browser&apos;s signing key</b>
-          <span>Signs fliq to fliq transfers and agent limits. It never leaves this browser.</span>
+          <span>Signs your payments and agent limits. Your passkey sets it up in any browser.</span>
         </div>
         {device.isPending ? <Spinner /> : device.data ? <Chip tone="good">Ready</Chip> : <Chip tone="sand">Not on this browser</Chip>}
       </div>
+      {device.isSuccess && !device.data && (
+        <div>
+          <button type="button" className="btn ink" onClick={() => fromPasskey.mutate()} disabled={fromPasskey.isPending}>
+            {fromPasskey.isPending ? "Checking" : "Use my passkey"}
+          </button>
+          {fromPasskey.isError && <Notice tone="bad">{fromPasskey.error.message}</Notice>}
+        </div>
+      )}
       {device.isSuccess && !device.data && (
         <div>
           <form

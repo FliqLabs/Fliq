@@ -10,7 +10,7 @@ import { signInWithPasskey } from "../../auth/passkey";
 import { Icon } from "../../components/app/icons";
 import { Avatar, BigMoney, Modal, Notice, PageState, Spinner } from "../../components/app/ui";
 import { bankLogo, PROVIDERS } from "../../lib/assets";
-import { NoDeviceKeyError, signAndRelay } from "../../lib/device-signer";
+import { linkPasskeyKey, NoDeviceKeyError, signAndRelay } from "../../lib/device-signer";
 import { ApiError } from "../../lib/fliq-api";
 import { vaultPayout, vaultTransfer } from "../../lib/near-delegate";
 import { explorerTxUrl } from "../../lib/near-explorer";
@@ -496,6 +496,8 @@ export function SendFlow() {
       return { kind: "payout" as const, payout };
     },
     onSuccess: (result) => {
+      // After the money moved, put the passkey's key on the account once, so every browser with this passkey can pay.
+      if (me.data) void linkPasskeyKey(me.data);
       queryClient.invalidateQueries({ queryKey: keys.vault });
       queryClient.invalidateQueries({ queryKey: ["activity"] });
       if (result.kind === "payout") {
@@ -794,7 +796,7 @@ export function SendFlow() {
                   <>
                     {" "}
                     <Link className="link" href="/wallet/account#device">
-                      Restore it
+                      Set up this browser
                     </Link>
                   </>
                 )}

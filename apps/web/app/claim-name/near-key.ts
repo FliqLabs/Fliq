@@ -187,3 +187,34 @@ export async function saveNearKey(key: StoredNearKey): Promise<void> {
     database.close();
   }
 }
+
+const PASSKEY_KEY_LABEL = "fliq near key v1";
+
+/** What the passkey's PRF is asked to sign. Fixed, so the same passkey gives the same secret in every browser. */
+export async function passkeyKeySalt(): Promise<ArrayBuffer> {
+  return crypto.subtle.digest("SHA-256", new TextEncoder().encode(PASSKEY_KEY_LABEL));
+}
+
+/** The NEAR signing key made from a passkey's PRF output. Any browser with the same passkey makes the same key, so
+ *  once it is on the account the user can pay from any of them. Only a non-extractable private key is kept. */
+export async function derivePasskeyKey(prf: BufferSource): Promise<Pick<StoredNearKey, "publicKey" | "privateKey">> {
+  const material = await crypto.subtle.importKey("raw", prf, "HKDF", false, ["deriveBits"]);
+  const secret = new Uint8Array(
+    await crypto.subtle.deriveBits(
+      { name: "HKDF", hash: "SHA-256", salt: new Uint8Array(), info: new TextEncoder().encode(PASSKEY_KEY_LABEL) },
+      material,
+      KEY_LENGTH * 8,
+    ),
+  );
+  const pkcs8 = new Uint8Array(16 + KEY_LENGTH);
+  pkcs8.set([0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x04, 0x22, 0x04, 0x20]);
+  pkcs8.set(secret, 16);
+  const extractable = await crypto.subtle.importKey("pkcs8", pkcs8, "Ed25519", true, ["sign"]);
+  pkcs8.fill(0);
+  const jwk = await crypto.subtle.exportKey("jwk", extractable);
+  if (!jwk.x) throw new Error("The browser returned an invalid NEAR key.");
+  const publicBytes = decodeBase64Url(jwk.x);
+  const privateKey = await importPrivateKey(secret, publicBytes);
+  secret.fill(0);
+  return { publicKey: `ed25519:${encodeBase58(publicBytes)}`, privateKey };
+}

@@ -22,7 +22,9 @@ struct OnboardingView: View {
         accounts = environment.accounts
         isLive = environment.isLive
         api = environment.api
-        _flow = State(initialValue: OnboardingFlow(api: environment.api, names: environment.names, isLive: environment.isLive, photos: environment.photos))
+        _flow = State(initialValue: OnboardingFlow(
+            api: environment.api, names: environment.names, isLive: environment.isLive, photos: environment.photos, recovery: environment.recovery
+        ))
     }
 
     var body: some View {
@@ -82,6 +84,7 @@ struct OnboardingView: View {
                 do {
                     let user = try await api.finishPasskey(.login, challengeId: options.challengeId, credential: response)
                     memory.remember(passkeys.lastCredentialID)
+                    flow.passkeyKey = passkeys.lastPasskeyKey
                     signedIn(user)
                 } catch let error as APIError where Self.isRejectedPasskey(error) {
                     memory.forget()
@@ -106,6 +109,7 @@ struct OnboardingView: View {
         let response = try await passkeys.register(options)
         let user = try await api.finishPasskey(.register, challengeId: options.challengeId, credential: response)
         memory.remember(passkeys.lastCredentialID)
+        flow.passkeyKey = passkeys.lastPasskeyKey
         signedIn(user)
     }
 
