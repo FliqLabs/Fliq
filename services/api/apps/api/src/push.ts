@@ -198,7 +198,8 @@ export const depositMessage = (
   setting: "received",
 });
 
-// The partner stopped a bank deposit after the naira arrived. Always sent: the user has to act on it.
+// The partner ended a bank deposit with FAILED. Always sent: the user has to act on it. ERROR is not pushed, since
+// the partner retries after it.
 export const bankStoppedMessage = (userId: string, refId: string): PushMessage => ({
   userId,
   kind: "deposit",
@@ -313,7 +314,7 @@ async function pending(tx: Db, since: Date, dataKey: Buffer): Promise<Pending[]>
     take: BATCH,
   });
   const stoppedBank = await tx.vaultDeposit.findMany({
-    where: { fromBank: true, landedAt: null, bankStatus: { in: ["ERROR", "FAILED"] }, bankStatusAt: { gt: since } },
+    where: { fromBank: true, landedAt: null, bankStatus: "FAILED", bankStatusAt: { gt: since } },
     orderBy: { bankStatusAt: "asc" },
     take: BATCH,
   });

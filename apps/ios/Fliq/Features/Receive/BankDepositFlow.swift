@@ -212,6 +212,7 @@ final class BankDepositFlow {
         while !Task.isCancelled {
             if let fresh = try? await paj.order(current.id, session: session) {
                 order = fresh
+                isRetrying = fresh.status == .error
                 if fresh.status != reported {
                     reported = fresh.status
                     await report(fresh, sent: true)
@@ -223,9 +224,9 @@ final class BankDepositFlow {
                     step = arrived ? .done : .notReceived
                     if !isStillMoving { showLive(LiveMoney.bankDepositLanded(arrived, landed: landed), order: fresh, final: true) }
                     return
-                case .failed, .cancelled, .error:
-                    // The partner can end an order seconds after it opens, before any money is sent (20 Nov). Its
-                    // bank details are taken away so nobody pays into it, and the user is told what to do either way.
+                case .failed, .cancelled:
+                    // The partner ended the order. Its bank details are taken away so nobody pays into it, and the
+                    // user is told what to do whether or not they already sent the money.
                     showLive(LiveMoney.bankDepositFailed, order: fresh, final: true)
                     errorMessage = nil
                     step = .stopped
@@ -298,6 +299,11 @@ final class BankDepositFlow {
         }
         throw Paj.Failure(message: PajMessage.busy)
     }
+
+    /// ERROR is the partner retrying, not the end: on 20 Nov an order went ERROR and landed ten minutes later.
+    /// The watch keeps going; the API tells the team if nothing lands within a quarter of an hour.
+    private(set) var isRetrying = false
+    static let retryNote = "Our partner is retrying this deposit. If you've sent the money, it's safe and on its way: you can leave this screen. Don't send it again."
 
     static let stoppedTitle = "This deposit stopped"
     static let stuckMessage = "Don't send money to those bank details. If you already sent it, your money is safe: keep your bank receipt. " + DepositFailure.contactUs

@@ -359,7 +359,7 @@ private struct PayStep: View {
                                     ProgressView().controlSize(.small)
                                     Text("Checking with the bank").font(.system(size: 18, weight: .medium))
                                 }
-                                Note(text: "Most transfers show up within a minute or two. You can close this screen: the money lands in your vault either way.")
+                                Note(text: flow.isRetrying ? BankDepositFlow.retryNote : "Most transfers show up within a minute or two. You can close this screen: the money lands in your vault either way.")
                             }
                             .transition(.opacity.combined(with: .move(edge: .bottom)))
                         } else {

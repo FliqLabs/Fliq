@@ -84,12 +84,15 @@ export interface DepositDeps {
   publicBaseUrl?: string;
 }
 
-// The bank partner's order states. ERROR is not in its docs but is what its dashboard showed on 20 Nov, after the
-// naira had arrived. Anything else it sends is kept as written and shown as still moving.
-export type BankStatus = "INIT" | "PAID" | "COMPLETED" | "ERROR" | "FAILED" | "CANCELLED";
-const BANK_STOPPED: ReadonlySet<string> = new Set(["ERROR", "FAILED"]);
+// The bank partner's order states. Its docs call ERROR final, but on 20 Nov an order went ERROR and then COMPLETED
+// ten minutes later, and landed. So ERROR is a retry in progress: it only becomes a problem if nothing lands within
+// BANK_ERROR_GRACE_MS. FAILED is the only status taken as the end. Anything else is kept as written and shown as moving.
+export type BankStatus = "INIT" | "PAID" | "PROCESSING" | "COMPLETED" | "ERROR" | "FAILED" | "CANCELLED";
+const BANK_STOPPED: ReadonlySet<string> = new Set(["FAILED"]);
 // After the user says they sent the money, the partner usually reports PAID within minutes. An hour is a problem.
 export const BANK_OVERDUE_MS = 60 * 60_000;
+// How long an ERROR may last before the team hears of it. The 20 Nov order recovered in about ten minutes.
+export const BANK_ERROR_GRACE_MS = 15 * 60_000;
 
 export interface BankReport {
   order_id: string;
@@ -521,8 +524,8 @@ export function createDeposits(deps: DepositDeps) {
     return true;
   }
 
-  // A bank deposit the user sent an hour ago that still has not reached the partner's PAID, or the vault, is told
-  // to the team once. Nothing here moves money.
+  // Told to the team once, and nothing here moves money: a bank deposit the user sent an hour ago that the partner
+  // still has at INIT, and one the partner has had at ERROR for BANK_ERROR_GRACE_MS without it landing.
   async function overdueBank(unit: Unit, limit = 20): Promise<number> {
     const at = now();
     const rows = await unit((tx) =>
@@ -531,17 +534,28 @@ export function createDeposits(deps: DepositDeps) {
           fromBank: true,
           bankAlertedAt: null,
           landedAt: null,
-          bankSentAt: { lt: new Date(at.getTime() - BANK_OVERDUE_MS), gt: new Date(at.getTime() - LATE_WINDOW_MS) },
-          OR: [{ bankStatus: null }, { bankStatus: "INIT" }],
+          createdAt: { gt: new Date(at.getTime() - LATE_WINDOW_MS) },
+          OR: [
+            { bankSentAt: { lt: new Date(at.getTime() - BANK_OVERDUE_MS) }, OR: [{ bankStatus: null }, { bankStatus: "INIT" }] },
+            { bankStatus: "ERROR", bankStatusAt: { lt: new Date(at.getTime() - BANK_ERROR_GRACE_MS) } },
+          ],
         },
         take: limit,
       }),
     );
     for (const row of rows) {
       await unit((tx) => tx.vaultDeposit.update({ where: { id: row.id }, data: { bankAlertedAt: at } }));
+      const order = row.bankOrderId ?? "(unknown)";
+      if (row.bankStatus === "ERROR") {
+        const minutes = Math.round((at.getTime() - (row.bankStatusAt as Date).getTime()) / 60_000);
+        deps.alert?.(
+          `bank deposit ${row.id} for ${row.account}: the bank partner has had order ${order} at ERROR for ${minutes} min and nothing has landed. If the user paid, ask the partner to complete or refund it.`,
+        );
+        continue;
+      }
       const minutes = Math.round((at.getTime() - (row.bankSentAt as Date).getTime()) / 60_000);
       deps.alert?.(
-        `bank deposit ${row.id} for ${row.account}: sent ${minutes} min ago and the bank partner still has order ${row.bankOrderId ?? "(unknown)"} at ${row.bankStatus ?? "no status"}. Check it on the partner's dashboard.`,
+        `bank deposit ${row.id} for ${row.account}: sent ${minutes} min ago and the bank partner still has order ${order} at ${row.bankStatus ?? "no status"}. Check it on the partner's dashboard.`,
       );
     }
     return rows.length;

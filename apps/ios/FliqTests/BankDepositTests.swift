@@ -216,9 +216,10 @@ final class BankDepositTests: XCTestCase {
         XCTAssertEqual(Paj.Order.Status(rawValue: "ERROR"), .error)
         XCTAssertEqual(Paj.Order.Status(rawValue: "PROCESSING"), .processing)
         XCTAssertEqual(LiveMoney.bankDeposit(.processing)?.status, "Your bank sent it", "A confirmed transfer never reads as still waiting")
-        XCTAssertNil(LiveMoney.bankDeposit(.error), "Never shown as waiting for a transfer that already arrived")
+        XCTAssertEqual(LiveMoney.bankDeposit(.error)?.status, "Being retried", "Never shown as waiting for a transfer that already arrived")
+        XCTAssertEqual(LiveMoney.bankDeposit(.error)?.failed, false)
 
-        let flow = gated(paj: FeePaj(settles: .error))
+        let flow = gated(paj: FeePaj(settles: .failed))
         await flow.load()
         await signIn(flow)
 
@@ -229,12 +230,25 @@ final class BankDepositTests: XCTestCase {
         XCTAssertTrue(BankDepositFlow.stuckMessage.contains("your money is safe"))
     }
 
+    func testAnErrorIsARetryAndTheDepositStillLands() async {
+        let steps = StatusSteps([.error, .error, .completed])
+        let flow = gated(paj: FeePaj(steps: steps))
+        await flow.load()
+        await signIn(flow)
+
+        await flow.watch()
+
+        XCTAssertEqual(flow.step, .done, "The 20 Nov order went ERROR, then COMPLETED and landed")
+        XCTAssertFalse(flow.isRetrying)
+        XCTAssertTrue(BankDepositFlow.retryNote.contains("Don't send it again"))
+    }
+
     func testTheOrderGivesThePartnerOurLinkAndEveryStatusReachesTheAPI() async {
         let reports = BankReports()
         let seen = PajSeen()
         var deposits = StubDeposits(stage: .landed)
         deposits.reports = reports
-        let flow = gated(deposits: deposits, paj: FeePaj(settles: .error, seen: seen))
+        let flow = gated(deposits: deposits, paj: FeePaj(seen: seen, steps: StatusSteps([.error, .completed])))
         await flow.load()
         await signIn(flow)
         await flow.reporting?.value
@@ -248,6 +262,7 @@ final class BankDepositTests: XCTestCase {
             BankOrderReport(orderId: "made-up-order", status: "INIT", sent: nil),
             BankOrderReport(orderId: "made-up-order", status: "INIT", sent: true),
             BankOrderReport(orderId: "made-up-order", status: "ERROR", sent: true),
+            BankOrderReport(orderId: "made-up-order", status: "COMPLETED", sent: true),
         ])
     }
 
@@ -279,6 +294,8 @@ private struct FeePaj: PajAPI, PajSignIn {
     /// What the order reads as once the user says they've sent the money.
     var settles: Paj.Order.Status = .completed
     var seen: PajSeen?
+    /// Statuses read one after another once the user says they sent it, the last repeating. Overrides `settles`.
+    var steps: StatusSteps?
 
     func publicRate() async throws -> Double { 1000 }
 
@@ -292,7 +309,8 @@ private struct FeePaj: PajAPI, PajSignIn {
     }
 
     func order(_ id: String, session: Paj.Session) async throws -> Paj.Order {
-        order(naira: 5000, status: settles)
+        if let steps { return order(naira: 5000, status: await steps.next()) }
+        return order(naira: 5000, status: settles)
     }
 
     private func order(naira: Int, status: Paj.Order.Status) -> Paj.Order {
@@ -307,6 +325,12 @@ private struct FeePaj: PajAPI, PajSignIn {
     func verify(_ contact: String, code: String) async throws -> Paj.Session {
         Paj.Session(token: "made-up", expiresAt: .now.addingTimeInterval(86_400), contact: contact)
     }
+}
+
+private actor StatusSteps {
+    private var left: [Paj.Order.Status]
+    init(_ steps: [Paj.Order.Status]) { left = steps }
+    func next() -> Paj.Order.Status { left.count > 1 ? left.removeFirst() : left[0] }
 }
 
 private actor PajSeen {
