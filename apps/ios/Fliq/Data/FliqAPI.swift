@@ -30,6 +30,8 @@ protocol FliqAPI: Sendable {
     func unregisterDevice(token: String) async throws
     func registerLiveActivity(_ activity: LiveActivityRegistration) async throws
     func refunds() async throws -> [Refund]
+    /// The public side of a payment request link. Needs no session.
+    func publicRequest(_ link: PayLink) async throws -> PublicPayRequest
     func returnRefund(tokenId: String, idempotencyKey: String) async throws -> ReturnedRefund
 
     func institutions(in country: Country) async throws -> [Institution]
@@ -101,5 +103,6 @@ extension FliqAPI {
     func unregisterDevice(token: String) async throws {}
     func registerLiveActivity(_ activity: LiveActivityRegistration) async throws {}
     func refunds() async throws -> [Refund] { [] }
+    func publicRequest(_ link: PayLink) async throws -> PublicPayRequest { throw APIError.unexpected(status: 404) }
     func returnRefund(tokenId: String, idempotencyKey: String) async throws -> ReturnedRefund { throw TransferError.notSetUp }
 }

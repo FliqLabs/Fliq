@@ -128,6 +128,10 @@ struct HTTPClient: FliqAPI {
         let _: Empty = try await send("POST", "live-activities", body: activity)
     }
 
+    func publicRequest(_ link: PayLink) async throws -> PublicPayRequest {
+        try await send("GET", "pay/\(link.name)/\(link.code)")
+    }
+
     func refunds() async throws -> [Refund] {
         let list: RefundList = try await send("GET", "refunds")
         return list.items

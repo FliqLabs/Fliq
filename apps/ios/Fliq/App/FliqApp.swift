@@ -36,6 +36,10 @@ struct FliqApp: App {
             .environment(environment)
             .preferredColorScheme(.dark)
             .task { environment.lock.launched() }
+            // A payment request link ("Open fliq" on its web page). Home opens it once the user is in.
+            .onOpenURL { url in
+                if let link = PayLink(url) { environment.pendingPayLink = link }
+            }
             .onChange(of: scenePhase) { _, phase in
                 switch phase {
                 case .background: environment.lock.movedToBackground()
