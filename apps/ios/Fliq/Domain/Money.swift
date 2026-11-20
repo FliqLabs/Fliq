@@ -59,7 +59,12 @@ enum Money {
     private static let locale = Locale(identifier: "en_US")
 
     static func local(_ amount: Int, _ currency: Currency) -> String {
-        currency.symbol + amount.formatted(.number.locale(locale))
+        currency.symbol + grouped(amount)
+    }
+
+    /// A whole amount with thousands separators and no symbol: 190000 -> "190,000".
+    static func grouped(_ amount: Int) -> String {
+        amount.formatted(.number.locale(locale))
     }
 
     static func rate(_ rate: Double, _ currency: Currency) -> String {

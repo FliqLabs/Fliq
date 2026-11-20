@@ -92,6 +92,16 @@ final class PayFlowTests: XCTestCase {
         XCTAssertEqual(flow.amountText, "72.66")
     }
 
+    func testAPayoutStartsInTheBankCurrencyWhenHomeShowsOne() async {
+        let flow = PayFlow(api: FixtureClient(), startsInLocal: true)
+        XCTAssertEqual(flow.unit, .local)
+        await flow.loadRate()
+        XCTAssertEqual(flow.unit, .local)
+        flow.enterAmount("100000")
+        XCTAssertEqual(flow.estimatedReceive, 100_000)
+        XCTAssertEqual(flow.amount?.baseUnits, 72_660_000)
+    }
+
     func testSwitchingCurrencyWaitsForARateAndKeepsAnEmptyAmountEmpty() async {
         let flow = makeFlow()
         flow.switchUnit()
