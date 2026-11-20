@@ -212,6 +212,12 @@ final class BankDepositFlow {
                     errorMessage = "This deposit didn't go through. If money left your bank, it comes back to you."
                     step = .pay
                     return
+                case .error:
+                    // Not "waiting": the transfer arrived and then stopped. Saying so is what lets the user act.
+                    showLive(LiveMoney.bankDepositFailed, order: fresh, final: true)
+                    errorMessage = Self.stuckMessage
+                    step = .pay
+                    return
                 default: break
                 }
             }
@@ -266,6 +272,8 @@ final class BankDepositFlow {
         }
         throw Paj.Failure(message: PajMessage.busy)
     }
+
+    static let stuckMessage = "Your bank sent it, but it stopped before reaching your vault. Your money is safe. Keep your bank receipt. " + DepositFailure.contactUs
 
     static var orderRetryDelay: Duration = .milliseconds(1500)
 

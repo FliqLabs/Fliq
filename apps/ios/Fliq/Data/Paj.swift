@@ -19,6 +19,8 @@ enum Paj {
             case completed = "COMPLETED"
             case failed = "FAILED"
             case cancelled = "CANCELLED"
+            /// The bank transfer arrived but the partner could not send the dollars on. The naira is held, not lost.
+            case error = "ERROR"
             case unknown
         }
 
