@@ -200,6 +200,8 @@ final class BankDepositTests: XCTestCase {
 
     func testAnOrderThePartnerStoppedSaysSoInsteadOfWaiting() async {
         XCTAssertEqual(Paj.Order.Status(rawValue: "ERROR"), .error)
+        XCTAssertEqual(Paj.Order.Status(rawValue: "PROCESSING"), .processing)
+        XCTAssertEqual(LiveMoney.bankDeposit(.processing)?.status, "Your bank sent it", "A confirmed transfer never reads as still waiting")
         XCTAssertNil(LiveMoney.bankDeposit(.error), "Never shown as waiting for a transfer that already arrived")
 
         let flow = gated(paj: FeePaj(settles: .error))

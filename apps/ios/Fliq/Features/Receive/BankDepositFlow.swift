@@ -247,7 +247,7 @@ final class BankDepositFlow {
         LiveMoney.shared.show(attributes, state, final: final)
     }
 
-    var isPaid: Bool { order?.status == .paid || order?.status == .completed }
+    var isPaid: Bool { [.paid, .processing, .completed].contains(order?.status) }
 
     private func createOrder(_ session: Paj.Session) async {
         await working {
