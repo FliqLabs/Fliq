@@ -201,8 +201,12 @@ export type DepositEstimate = {
   lands: string;
   eta_seconds: number;
 };
+export type BankOrderReport = { order_id: string; status?: string; sent?: boolean };
 export type VaultDeposit = {
   deposit_id: string;
+  // Only on a deposit from the user's bank, and missing from servers older than 20 Nov.
+  bank_status?: string | null;
+  bank_webhook_url?: string | null;
   state: "waiting" | "seen" | "underpaid" | "bridging" | "landed" | "refunded" | "expired" | "failed";
   token: DepositSource["token"];
   chain: DepositSource["chain"];
@@ -301,8 +305,10 @@ export const walletApi = {
   depositSources: () => fliqApi<{ sources: DepositSource[] }>("deposits/sources"),
   depositEstimate: (source: DepositSource, amount: string) =>
     fliqApi<DepositEstimate>(`deposits/estimate?token=${source.token}&chain=${source.chain}&amount=${amount}`),
-  createDeposit: (source: DepositSource, amount: string, idempotencyKey?: string) =>
-    fliqApi<VaultDeposit>("deposits", { ...json({ token: source.token, chain: source.chain, amount }), ...(idempotencyKey ? { headers: { "Idempotency-Key": idempotencyKey } } : {}) }),
+  createDeposit: (source: DepositSource, amount: string, idempotencyKey?: string, via?: "bank") =>
+    fliqApi<VaultDeposit>("deposits", { ...json({ token: source.token, chain: source.chain, amount, ...(via ? { via } : {}) }), ...(idempotencyKey ? { headers: { "Idempotency-Key": idempotencyKey } } : {}) }),
+  // Links a bank deposit to the partner's order, so it shows in Activity everywhere and the team hears if it stops.
+  reportBankOrder: (id: string, report: BankOrderReport) => fliqApi<VaultDeposit>(`deposits/${encodeURIComponent(id)}/bank-order`, json(report)),
   deposit: (id: string) => fliqApi<VaultDeposit>(`deposits/${encodeURIComponent(id)}`),
   requests: () => fliqApi<{ items: PaymentRequest[] }>("requests"),
   createRequest: (input: { amount: string; note: string; cash_out_on_arrival: boolean }) =>

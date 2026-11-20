@@ -213,6 +213,28 @@ final class BankDepositTests: XCTestCase {
         XCTAssertTrue(flow.errorMessage?.contains("Your money is safe") == true)
     }
 
+    func testTheOrderGivesThePartnerOurLinkAndEveryStatusReachesTheAPI() async {
+        let reports = BankReports()
+        let seen = PajSeen()
+        var deposits = StubDeposits(stage: .landed)
+        deposits.reports = reports
+        let flow = gated(deposits: deposits, paj: FeePaj(settles: .error, seen: seen))
+        await flow.load()
+        await signIn(flow)
+        await flow.reporting?.value
+        let webhook = await seen.webhook
+        XCTAssertEqual(webhook, StubDeposits.webhook)
+
+        await flow.watch()
+
+        let sent = await reports.items
+        XCTAssertEqual(sent, [
+            BankOrderReport(orderId: "made-up-order", status: "INIT", sent: nil),
+            BankOrderReport(orderId: "made-up-order", status: "INIT", sent: true),
+            BankOrderReport(orderId: "made-up-order", status: "ERROR", sent: true),
+        ])
+    }
+
     func testADepositThatLandsIsDone() async {
         let flow = gated(deposits: StubDeposits(stage: .landed))
         await flow.load()
@@ -240,6 +262,7 @@ final class BankDepositTests: XCTestCase {
 private struct FeePaj: PajAPI, PajSignIn {
     /// What the order reads as once the user says they've sent the money.
     var settles: Paj.Order.Status = .completed
+    var seen: PajSeen?
 
     func publicRate() async throws -> Double { 1000 }
 
@@ -247,8 +270,9 @@ private struct FeePaj: PajAPI, PajSignIn {
         Paj.Quote(naira: naira, usdc: Double(naira) / 2000, rate: 1000)
     }
 
-    func createOrder(naira: Int, recipient: String, session: Paj.Session) async throws -> Paj.Order {
-        order(naira: naira, status: .initiated)
+    func createOrder(naira: Int, recipient: String, webhook: URL?, session: Paj.Session) async throws -> Paj.Order {
+        await seen?.place(webhook)
+        return order(naira: naira, status: .initiated)
     }
 
     func order(_ id: String, session: Paj.Session) async throws -> Paj.Order {
@@ -269,11 +293,24 @@ private struct FeePaj: PajAPI, PajSignIn {
     }
 }
 
+private actor PajSeen {
+    private(set) var webhook: URL?
+    func place(_ webhook: URL?) { self.webhook = webhook }
+}
+
+private actor BankReports {
+    private(set) var items: [BankOrderReport] = []
+    func add(_ report: BankOrderReport) { items.append(report) }
+}
+
 private struct StubDeposits: DepositAPI {
+    static let webhook = URL(string: "https://api.example.test/v1/bank-deposits/dep_made_up/secret")!
     static let address = DepositAddress(
         source: DepositSource(tokenId: "usdc", chainId: "solana", group: .dollars), depositId: "dep_made_up", address: "made-up-address",
-        minimum: TokenAmount(baseUnits: 1_000_000), fee: .zero, reservedUntil: .distantFuture, estimatedSeconds: 35, isDemo: false
+        minimum: TokenAmount(baseUnits: 1_000_000), fee: .zero, reservedUntil: .distantFuture, estimatedSeconds: 35, isDemo: false,
+        bankWebhookURL: webhook
     )
+    var reports: BankReports?
 
     var minimum = TokenAmount(baseUnits: 1_000_000)
     var stage = DepositStatus.Stage.landed
@@ -286,6 +323,10 @@ private struct StubDeposits: DepositAPI {
 
     func status(of deposit: DepositAddress) async throws -> DepositStatus {
         DepositStatus(stage: stage, received: nil, seenAt: nil, bridgingAt: nil, landedAt: nil)
+    }
+
+    func reportBankOrder(_ report: BankOrderReport, for deposit: DepositAddress) async throws {
+        await reports?.add(report)
     }
 }
 

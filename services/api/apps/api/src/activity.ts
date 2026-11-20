@@ -1,3 +1,4 @@
+import type { VaultDeposit } from "@prisma/client";
 import { decrypt } from "../../../packages/db/src/crypto.js";
 import type { Config } from "./config.js";
 import { formatTokenAmount } from "./dashboard.js";
@@ -112,18 +113,38 @@ async function payouts(tx: Db, config: Config, userId: string, filter: ActivityF
   });
 }
 
+// A bank deposit moves through the partner before anything reaches the chain, so its address can be "waiting" or even
+// "expired" while the naira is on its way. Its row follows the partner instead, for a day.
+const BANK_FOLLOWED_MS = 24 * 60 * 60_000;
+const BANK_STOPPED = ["ERROR", "FAILED"];
+
+function depositStatus(row: VaultDeposit, now: Date): { status: ActivityItem["status"]; reason: string | null } {
+  if (row.state === "landed") return { status: "received", reason: null };
+  if (row.fromBank && row.bankStatus && BANK_STOPPED.includes(row.bankStatus)) return { status: "failed", reason: "bank_stopped" };
+  const followed = row.fromBank && (row.bankSentAt !== null || row.bankStatus !== null) && now.getTime() - row.createdAt.getTime() < BANK_FOLLOWED_MS;
+  if (followed && (row.state === "waiting" || row.state === "expired")) return { status: "pending", reason: null };
+  return { status: DEPOSIT_STATUS[row.state] ?? "pending", reason: row.state === "expired" ? "expired" : null };
+}
+
 async function deposits(tx: Db, userId: string, before: Date | null, take: number): Promise<ActivityItem[]> {
   const rows = await tx.vaultDeposit.findMany({
-    where: { userId, state: { notIn: ["waiting"] }, ...(before ? { createdAt: { lte: before } } : {}) },
+    where: {
+      userId,
+      // A bank deposit is listed from the moment the user says they sent it, before anything reaches its address.
+      OR: [{ state: { notIn: ["waiting"] } }, { fromBank: true, OR: [{ bankSentAt: { not: null } }, { bankStatus: { in: ["PAID", "COMPLETED", ...BANK_STOPPED] } }] }],
+      ...(before ? { createdAt: { lte: before } } : {}),
+    },
     orderBy: { createdAt: "desc" },
     take,
   });
+  const now = new Date();
   return rows.map((row) => {
     const received = row.receivedUnits ?? row.amountUnits;
+    const { status, reason } = depositStatus(row, now);
     return {
       activity_id: `act_${row.id}`,
       kind: "deposit",
-      status: DEPOSIT_STATUS[row.state] ?? "pending",
+      status,
       at: row.createdAt.toISOString(),
       party: party(row.refundReturn ? REFUND_BACK : row.fromBank ? FROM_BANK : `Received from ${CHAIN_NAMES[row.chain] ?? row.chain}`),
       provider: null,
@@ -132,7 +153,7 @@ async function deposits(tx: Db, userId: string, before: Date | null, take: numbe
       usd: formatUnits(row.landedUnits ?? row.landsUnits, 6),
       token: `${formatUnits(received, row.decimals).replace(/\.00$/, "")} ${row.token.toUpperCase()}`,
       seconds: row.seenAt && row.landedAt ? Math.round((row.landedAt.getTime() - row.seenAt.getTime()) / 1000) : null,
-      reason: row.state === "expired" ? "expired" : null,
+      reason,
       ref_id: row.id,
       tx_hash: null,
     };

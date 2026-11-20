@@ -19,5 +19,7 @@
   "landed_at": null,
   "seconds": null,
   "origin_tx": null,
-  "created_at": "2026-10-29T08:02:00Z"
+  "created_at": "2026-10-29T08:02:00Z",
+  "bank_status": null,
+  "bank_webhook_url": null
 }

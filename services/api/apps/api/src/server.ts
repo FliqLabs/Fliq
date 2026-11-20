@@ -128,6 +128,8 @@ const deposits = createDeposits({
   slippageBps: Number(process.env.ONECLICK_DEPOSIT_SLIPPAGE_BPS ?? 200),
   arrivals: { solana: ({ address, mint, since }) => latestSolanaArrival(solanaRpc, address, mint, since) },
   alert,
+  // Railway names the public domain itself; PUBLIC_API_URL overrides it behind a custom domain.
+  publicBaseUrl: process.env.PUBLIC_API_URL || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : undefined),
   // The MockVault stands in for the chain, so it is handed the ft_transfer_call 1Click makes to the real vault.
   ...(mockVault
     ? {
@@ -210,6 +212,7 @@ const handlers = createHandlers({
 
 const app = buildApp({ config, unit, handlers, logger: true, limiter: createLimiter(process.env.REDIS_URL),
   webhooks: createWebhookHandler({ unit, adapters, dataKey: config.dataKey }),
+  bankWebhook: (depositId, token, rawBody) => deposits.bankWebhook(unit, depositId, token, rawBody),
   recordUsage: usageRecorder(unit, (message) => console.error(message)), alert });
 warn = (message) => app.log.warn(message);
 await app.listen({ port: config.port, host: "0.0.0.0" });

@@ -35,6 +35,8 @@ struct HTTPDepositAPI: DepositAPI {
         let seenAt: Date?
         let bridgingAt: Date?
         let landedAt: Date?
+        /// Missing from servers older than 20 Nov.
+        var bankWebhookUrl: String?
     }
 
     private struct DepositRequest: Encodable {
@@ -105,8 +107,14 @@ struct HTTPDepositAPI: DepositAPI {
             source: source, depositId: deposit.depositId, address: deposit.address, memo: deposit.memo,
             minimum: TokenAmount(decimalString: deposit.minimum) ?? .zero,
             fee: TokenAmount(decimalString: deposit.fee) ?? .zero,
-            reservedUntil: deposit.reservedUntil, estimatedSeconds: deposit.etaSeconds, isDemo: false
+            reservedUntil: deposit.reservedUntil, estimatedSeconds: deposit.etaSeconds, isDemo: false,
+            bankWebhookURL: deposit.bankWebhookUrl.flatMap(URL.init(string:))
         )
+    }
+
+    func reportBankOrder(_ report: BankOrderReport, for deposit: DepositAddress) async throws {
+        guard let id = deposit.depositId else { return }
+        let _: VaultDeposit = try await client.send("POST", "deposits/\(id)/bank-order", body: report)
     }
 
     static func status(_ deposit: VaultDeposit) -> DepositStatus {

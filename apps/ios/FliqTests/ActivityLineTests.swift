@@ -2,13 +2,13 @@ import XCTest
 @testable import Fliq
 
 final class ActivityLineTests: XCTestCase {
-    private func line(kind: String = "deposit", status: String) throws -> ActivityLine {
+    private func line(kind: String = "deposit", status: String, reason: String? = nil, party: String = "Received from Solana") throws -> ActivityLine {
         let json = """
         {
           "activity_id": "act_made_up", "kind": "\(kind)", "status": "\(status)", "at": "2026-11-14T10:00:00.000Z",
-          "party": { "name": "Received from Solana", "near_account": null, "institution": null, "account_last4": null, "photo_url": null },
+          "party": { "name": "\(party)", "near_account": null, "institution": null, "account_last4": null, "photo_url": null },
           "provider": null, "agent": null, "local": null, "usd": "0.58", "token": "0.59 USDC", "seconds": null,
-          "reason": null, "ref_id": "dep_made_up"
+          "reason": \(reason.map { "\"\($0)\"" } ?? "null"), "ref_id": "dep_made_up"
         }
         """
         let item = try FliqJSON.decoder().decode(ActivityItem.self, from: Data(json.utf8))
@@ -35,6 +35,14 @@ final class ActivityLineTests: XCTestCase {
         let expired = try line(status: "expired")
         XCTAssertEqual(expired.statusText, "Not received")
         XCTAssertEqual(expired.steps.map(\.title), ["Not received"], "Nothing was seen, so nothing is called sent")
+    }
+
+    func testABankDepositThePartnerStoppedSaysTheMoneyIsSafe() throws {
+        let line = try line(status: "failed", reason: "bank_stopped", party: ActivityItem.bankPartyName)
+        XCTAssertEqual(line.steps.map(\.title), ["Paid from your bank", "Stopped before your vault"])
+        XCTAssertTrue(line.steps.last?.detail.contains("Your money is safe") == true)
+        XCTAssertTrue(line.facts.contains { $0 == ("Status", "Stopped") })
+        XCTAssertNotEqual(line.outcome, .moving)
     }
 
     func testADepositStillOnItsWayIsArriving() throws {

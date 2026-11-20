@@ -43,6 +43,9 @@ describe.skipIf(!enabled)("topping up the vault from another chain", () => {
   const onSolana = new Map<string, Arrival | Error>();
   const submissions: DepositSubmission[] = [];
   const oneClick = { quoteRefusals: 0, refusesSubmissions: false, takesFloor: false };
+  // What the team would be told, and where this API says it can be reached.
+  const alerts: string[] = [];
+  const publicBaseUrl = "https://api.example.test";
   const toldOneClick = (address: string) => submissions.filter((submission) => submission.depositAddress === address);
 
   let server: Server;
@@ -94,6 +97,8 @@ describe.skipIf(!enabled)("topping up the vault from another chain", () => {
       slippageBps: 200,
       pause: async () => {},
       now,
+      publicBaseUrl,
+      alert: (message) => void alerts.push(message),
       onLanded: ({ units, message }) => void vault.ftOnTransfer({ predecessor: USDC, senderId: "intents.near", amount: units, msg: message }),
     });
     const adapters = sandboxAdapters();
@@ -101,6 +106,7 @@ describe.skipIf(!enabled)("topping up the vault from another chain", () => {
       config,
       unit,
       logger: Boolean(process.env.E2E_LOG),
+      bankWebhook: (depositId, token, rawBody) => deposits.bankWebhook(unit, depositId, token, rawBody),
       handlers: createHandlers({
         config,
         unit,
@@ -352,4 +358,64 @@ describe.skipIf(!enabled)("topping up the vault from another chain", () => {
     expect((await vault.getBalance(user.account)).available).toBeGreaterThan(0n);
     expect(await unit((tx) => tx.vaultDeposit.findUniqueOrThrow({ where: { id: deposit.deposit_id } }))).toMatchObject({ state: "landed" });
   }, 60_000);
+
+  // MARK: bank deposits
+
+  const report = (headers: Record<string, string>, id: string, payload: Record<string, unknown>) =>
+    app.inject({ method: "POST", url: `/v1/deposits/${id}/bank-order`, payload, headers });
+  const hook = (url: string, payload: Record<string, unknown>) =>
+    app.inject({ method: "POST", url: new URL(url).pathname, payload: JSON.stringify(payload), headers: { "content-type": "application/json" } });
+  const listed = async (headers: Record<string, string>, id: string) =>
+    ((await app.inject({ method: "GET", url: "/v1/activity?limit=50", headers })).json().items as { ref_id: string; status: string; reason: string | null; party: { name: string } }[]).find(
+      (item) => item.ref_id === id,
+    );
+
+  it("follows a bank deposit through the partner's order, shows it from the moment it is sent and says when it stops", async () => {
+    const user = await holder("bank");
+    const other = await holder("nosy");
+    const deposit = (await reserve(user.headers, `b-${suffix}`, { token: "usdc", chain: "solana", amount: "33.77", via: "bank" })).json();
+    expect(deposit.bank_status).toBeNull();
+    expect(deposit.bank_webhook_url).toMatch(new RegExp(`^${publicBaseUrl}/v1/bank-deposits/${deposit.deposit_id}/[A-Za-z0-9_-]{32}$`));
+    expect(await listed(user.headers, deposit.deposit_id), "Bank details alone are not a deposit").toBeUndefined();
+
+    expect((await report(other.headers, deposit.deposit_id, { order_id: "ord_bank_1" })).statusCode, "Only the owner reports").toBe(404);
+    const sent = await report(user.headers, deposit.deposit_id, { order_id: "ord_bank_1", status: "init", sent: true });
+    expect(sent.statusCode).toBe(200);
+    expect(sent.json().bank_status).toBe("INIT");
+    expect(await listed(user.headers, deposit.deposit_id)).toMatchObject({ status: "pending", reason: null, party: { name: "From your bank" } });
+    expect((await report(user.headers, deposit.deposit_id, { order_id: "ord_other" })).statusCode, "One deposit, one order").toBe(400);
+
+    const forged = deposit.bank_webhook_url.replace(/[^/]+$/, "x".repeat(32));
+    expect((await hook(forged, { id: "ord_bank_1", status: "COMPLETED" })).statusCode).toBe(404);
+    expect((await read(user.headers, deposit.deposit_id)).json().bank_status, "A forged link changes nothing").toBe("INIT");
+
+    const before = alerts.length;
+    expect((await hook(deposit.bank_webhook_url, { id: "ord_bank_1", status: "ERROR", fiatAmount: 50000 })).statusCode).toBe(200);
+    expect((await read(user.headers, deposit.deposit_id)).json().bank_status).toBe("ERROR");
+    expect(await listed(user.headers, deposit.deposit_id)).toMatchObject({ status: "failed", reason: "bank_stopped" });
+    expect(alerts.slice(before)).toEqual([expect.stringContaining("ord_bank_1 ERROR")]);
+
+    await hook(deposit.bank_webhook_url, { id: "ord_bank_1", status: "ERROR" });
+    await report(user.headers, deposit.deposit_id, { order_id: "ord_bank_1", status: "ERROR" });
+    expect(alerts.length - before, "The team is told once").toBe(1);
+  });
+
+  it("tells the team once when a sent bank deposit is still waiting an hour later", async () => {
+    const user = await holder("slowbank");
+    const deposit = (await reserve(user.headers, `sb-${suffix}`, { token: "usdc", chain: "solana", amount: "10", via: "bank" })).json();
+    await report(user.headers, deposit.deposit_id, { order_id: "ord_slow_1", status: "INIT", sent: true });
+    const before = alerts.length;
+    await deposits.overdueBank(unit);
+    expect(alerts.length, "Not yet an hour").toBe(before);
+
+    clock.offsetMs += 61 * 60_000;
+    try {
+      await deposits.overdueBank(unit);
+      await deposits.overdueBank(unit);
+      expect(alerts.slice(before)).toEqual([expect.stringContaining("ord_slow_1 at INIT")]);
+      expect(await listed(user.headers, deposit.deposit_id), "Still shown as on its way, not expired").toMatchObject({ status: "pending" });
+    } finally {
+      clock.offsetMs -= 61 * 60_000;
+    }
+  });
 });

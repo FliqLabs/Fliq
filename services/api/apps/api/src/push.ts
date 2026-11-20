@@ -198,6 +198,16 @@ export const depositMessage = (
   setting: "received",
 });
 
+// The partner stopped a bank deposit after the naira arrived. Always sent: the user has to act on it.
+export const bankStoppedMessage = (userId: string, refId: string): PushMessage => ({
+  userId,
+  kind: "deposit",
+  refId,
+  title: "Your bank deposit stopped",
+  body: "Your money is safe. Contact us with your bank receipt and we'll sort it out.",
+  setting: null,
+});
+
 export function payoutMessage(
   userId: string,
   payout: {
@@ -302,6 +312,11 @@ async function pending(tx: Db, since: Date, dataKey: Buffer): Promise<Pending[]>
     orderBy: { landedAt: "asc" },
     take: BATCH,
   });
+  const stoppedBank = await tx.vaultDeposit.findMany({
+    where: { fromBank: true, landedAt: null, bankStatus: { in: ["ERROR", "FAILED"] }, bankStatusAt: { gt: since } },
+    orderBy: { bankStatusAt: "asc" },
+    take: BATCH,
+  });
   const events = await tx.payoutEvent.findMany({
     where: { createdAt: { gt: since }, toState: { in: PAYOUT_TERMINAL as never } },
     orderBy: { createdAt: "asc" },
@@ -348,6 +363,10 @@ async function pending(tx: Db, since: Date, dataKey: Buffer): Promise<Pending[]>
       messageId: row.id,
       build: async () =>
         depositMessage(row.userId, row.id, row.landedUnits ?? row.amountUnits, row.token, row.chain, row.refundReturn, row.fromBank),
+    })),
+    ...stoppedBank.map((row) => ({
+      messageId: `${row.id}:bank_stopped`,
+      build: async () => bankStoppedMessage(row.userId, row.id),
     })),
     ...events.map((event) => ({
       messageId: event.id,

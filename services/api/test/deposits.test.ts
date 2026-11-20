@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatUnits, formatUsd, nextDeposit, parseUnits, topUpMessage } from "../apps/api/src/deposits.js";
+import { bankProblem, bankWebhookUrl, formatUnits, formatUsd, nextDeposit, parseUnits, topUpMessage } from "../apps/api/src/deposits.js";
 import type { OneClickExecution } from "../packages/chains/oneclick/index.js";
 
 const reservedUntil = new Date("2026-10-29T08:12:00Z");
@@ -111,3 +111,23 @@ describe("following a top-up", () => {
     expect(nextDeposit(fresh, undefined, new Date("2026-10-29T08:11:00Z"))).toBe(fresh);
   });
 });
+
+describe("bank deposits", () => {
+  const row = { id: "dep_1", account: "ada.fliq.near", bankOrderId: "ord_1", bankStatus: "ERROR", landedAt: null, bankAlertedAt: null };
+
+  it("tells the team when the partner stops one, once, and never once it has landed", () => {
+    expect(bankProblem(row)).toContain("ord_1 ERROR");
+    expect(bankProblem({ ...row, bankStatus: "FAILED" })).toContain("FAILED");
+    expect(bankProblem({ ...row, bankAlertedAt: new Date() })).toBeNull();
+    expect(bankProblem({ ...row, landedAt: new Date() })).toBeNull();
+    expect(bankProblem({ ...row, bankStatus: "PAID" })).toBeNull();
+    expect(bankProblem({ ...row, bankStatus: null })).toBeNull();
+  });
+
+  it("gives the partner a link only when this API knows its own address", () => {
+    expect(bankWebhookUrl("https://api.example.test/", { id: "dep_1", bankHookToken: "secret" })).toBe("https://api.example.test/v1/bank-deposits/dep_1/secret");
+    expect(bankWebhookUrl(undefined, { id: "dep_1", bankHookToken: "secret" })).toBeNull();
+    expect(bankWebhookUrl("https://api.example.test", { id: "dep_1", bankHookToken: null })).toBeNull();
+  });
+});
+
