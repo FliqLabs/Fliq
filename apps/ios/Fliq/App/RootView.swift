@@ -23,6 +23,8 @@ struct RootView: View {
     @State private var activityPath: [AppRoute] = []
     /// Set when this iPhone is signed in but its key is not on the account yet.
     @State private var restoring: RecoveryState?
+    /// Why a payment request link could not be paid: already paid, cancelled, your own, or not found.
+    @State private var payLinkProblem: String?
 
     var body: some View {
         @Bindable var router = environment.router
@@ -83,6 +85,12 @@ struct RootView: View {
         }
         .onAppear {
             if home == nil { home = HomeModel(api: environment.api, vault: environment.vault, inbox: environment.inbox) }
+        }
+        .task(id: environment.pendingPayLink) { await openPayLink() }
+        .alert("Payment request", isPresented: Binding(get: { payLinkProblem != nil }, set: { if !$0 { payLinkProblem = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(payLinkProblem ?? "")
         }
         .task(id: router.path.isEmpty) {
             guard router.path.isEmpty else { return }
@@ -176,6 +184,40 @@ struct RootView: View {
     private func startPersonPayment(to account: String?) {
         personFlow = PersonPayFlow(api: environment.api, transfers: environment.transfers, vault: environment.vault, account: account)
         environment.router.push(.payPerson)
+    }
+
+    /// Opens Pay on the person who asked, straight away, then fills in the amount from the request. A request that
+    /// can't be paid steps back out with a reason.
+    private func openPayLink() async {
+        guard let link = environment.pendingPayLink else { return }
+        environment.pendingPayLink = nil
+        sheet = nil
+        tab = .home
+        environment.router.reset()
+        startPersonPayment(to: link.name)
+        let opened = personFlow
+        do {
+            let request = try await environment.api.publicRequest(link)
+            guard personFlow === opened else { return }
+            if let problem = Self.problem(with: request, me: environment.profile.name) {
+                environment.router.reset()
+                payLinkProblem = problem
+                return
+            }
+            if opened?.amountText.isEmpty == true { opened?.enterAmount(request.amount) }
+        } catch APIError.server(let status, _) where status == 404 {
+            environment.router.reset()
+            payLinkProblem = "This payment request doesn't exist. Check the link with the person who sent it."
+        } catch {
+            // Offline: Pay is already open on the right person, so the user can type the amount themselves.
+        }
+    }
+
+    static func problem(with request: PublicPayRequest, me: String?) -> String? {
+        if request.state == "paid" { return "This request has already been paid." }
+        if request.state != "open" { return "This request was cancelled." }
+        if let me, me == request.nearAccount { return "This is your own request. Send the link to the person paying you." }
+        return nil
     }
 
     private func startWithdraw(to address: String? = nil) {

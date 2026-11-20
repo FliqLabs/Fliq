@@ -17,6 +17,8 @@ final class AppEnvironment {
     let vault: VaultStore
     /// The amount that just landed, shown as a banner over any screen for a few seconds.
     private(set) var arrival: TokenAmount?
+    /// A payment request link the app was opened with, waiting for Home to open it. Kept through sign-in.
+    var pendingPayLink: PayLink?
     @ObservationIgnored private var arrivalWatch: Task<Void, Never>?
     let deposits: any DepositAPI
     let recovery: any AccountRecovering
