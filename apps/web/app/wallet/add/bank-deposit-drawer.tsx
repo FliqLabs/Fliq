@@ -69,9 +69,11 @@ export function BankDepositDrawer({ source, onClose }: { source: DepositSource; 
       const quotedUsdc = usdcAmountAtLeastMinimum(freshQuote.amount, source.minimum);
       if (!quotedUsdc) throw new Error(`This amount is below the ${source.minimum} USDC minimum at the current Paj quote. Enter a larger amount.`);
       depositKey.current ??= typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `web-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      const reserved = await walletApi.createDeposit(source, source.minimum, depositKey.current);
+      const reserved = await walletApi.createDeposit(source, source.minimum, depositKey.current, "bank");
       setOrderAttempted(true);
-      const placed = await pajApi.order(parsed, reserved.address, session);
+      const placed = await pajApi.order(parsed, reserved.address, session, reserved.bank_webhook_url);
+      // Not awaited: the bank details show at once, and "I've sent the money" links the order again.
+      void walletApi.reportBankOrder(reserved.deposit_id, { order_id: placed.id, status: placed.status }).catch(() => undefined);
       const usdc = usdcAmountAtLeastMinimum(placed.amount, source.minimum);
       if (!usdc) throw new Error(`This amount is below the ${source.minimum} USDC minimum after Paj's fees.`);
       if (!isCompleteBankDetails(placed)) throw new Error("Paj returned incomplete bank details. No safe transfer instructions are available.");
@@ -82,7 +84,7 @@ export function BankDepositDrawer({ source, onClose }: { source: DepositSource; 
   });
   const sent = useMutation({
     mutationFn: async () => { if (!order || !depositId || deposit.data?.state === "expired") throw new Error("These bank details have expired. Start a new deposit."); return order; },
-    onSuccess: (placed) => { const usdc = decimalText(placed.amount); if (!usdc || !owner) { setError("Your wallet session is unavailable. Sign in again before recording this deposit."); return; } recordBankDeposit({ depositId: depositId!, naira: parsed, usdc, startedAt: new Date().toISOString() }, owner); setStep("receiving"); queryClient.invalidateQueries({ queryKey: keys.activity("all") }); },
+    onSuccess: (placed) => { void walletApi.reportBankOrder(depositId!, { order_id: placed.id, status: placed.status, sent: true }).catch(() => undefined); const usdc = decimalText(placed.amount); if (!usdc || !owner) { setError("Your wallet session is unavailable. Sign in again before recording this deposit."); return; } recordBankDeposit({ depositId: depositId!, naira: parsed, usdc, startedAt: new Date().toISOString() }, owner); setStep("receiving"); queryClient.invalidateQueries({ queryKey: keys.activity("all") }); },
   });
 
   useEffect(() => {

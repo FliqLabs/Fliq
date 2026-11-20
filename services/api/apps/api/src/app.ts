@@ -53,6 +53,8 @@ export interface AppDeps {
   logger?: boolean;
   limiter?: Limiter;
   webhooks?: (provider: string, webhook: InboundWebhook) => Promise<Reply>;
+  // The bank partner's per-order webhook. True when the link's token matched and the status was kept.
+  bankWebhook?: (depositId: string, token: string, rawBody: string) => Promise<boolean>;
   recordUsage?: (event: { keyId?: string; token?: string; outcome: UsageOutcome; payoutCreated: boolean; at: Date }) => Promise<void>;
   // Reaches the team: server errors, and cash-out quotes failing for several people at once.
   alert?: (message: string) => void;
@@ -192,6 +194,19 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     });
     for (const operation of all.filter((candidate) => candidate.isAgent)) route(scope, operation);
   });
+
+  const bankWebhook = deps.bankWebhook;
+  if (bankWebhook) {
+    app.register(async (scope) => {
+      scope.addContentTypeParser("application/json", { parseAs: "string" }, (_request, rawBody, done) => done(null, rawBody));
+      scope.post("/v1/bank-deposits/:depositId/:token", async (request, reply) => {
+        const { depositId, token } = request.params as { depositId: string; token: string };
+        const kept = await bankWebhook(depositId, token, typeof request.body === "string" ? request.body : "");
+        // A wrong link reads as a missing one, so the route does not confirm which deposits exist.
+        return kept ? reply.status(200).send({ received: true }) : reply.status(404).send(errorBody("not_found", "No such deposit."));
+      });
+    });
+  }
 
   const receiveWebhook = deps.webhooks;
   if (receiveWebhook) {

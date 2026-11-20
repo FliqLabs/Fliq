@@ -1,3 +1,4 @@
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import type { DepositState, VaultDeposit } from "@prisma/client";
 import { OneClickError, type OneClickClient, type OneClickExecution, type OneClickQuote, type OneClickToken } from "../../../packages/chains/oneclick/index.js";
 import type { Arrival } from "../../../packages/chains/watchers/index.js";
@@ -78,6 +79,22 @@ export interface DepositDeps {
   onLanded?: (landing: { account: string; units: bigint; message: string }) => Promise<void> | void;
   // Tells the team when a deposit ends without reaching the vault, so they hear it before the user writes in.
   alert?: (message: string) => void;
+  // This API's public address. A bank deposit hands the partner a webhook link under it; without one, only the
+  // app's own reports keep the deposit's bank status.
+  publicBaseUrl?: string;
+}
+
+// The bank partner's order states. ERROR is not in its docs but is what its dashboard showed on 20 Nov, after the
+// naira had arrived. Anything else it sends is kept as written and shown as still moving.
+export type BankStatus = "INIT" | "PAID" | "COMPLETED" | "ERROR" | "FAILED" | "CANCELLED";
+const BANK_STOPPED: ReadonlySet<string> = new Set(["ERROR", "FAILED"]);
+// After the user says they sent the money, the partner usually reports PAID within minutes. An hour is a problem.
+export const BANK_OVERDUE_MS = 60 * 60_000;
+
+export interface BankReport {
+  order_id: string;
+  status?: string;
+  sent?: boolean;
 }
 
 export interface DepositInput {
@@ -171,7 +188,18 @@ export function depositProblem(before: DepositState, after: VaultDeposit): strin
   return `deposit ${after.id} refunded${reason}: ${amount} ${what} went back to ${after.account}. The app returns it to their vault.`;
 }
 
-export function depositView(row: VaultDeposit) {
+export function bankWebhookUrl(base: string | undefined, row: Pick<VaultDeposit, "id" | "bankHookToken">): string | null {
+  if (!base || !row.bankHookToken) return null;
+  return `${base.replace(/\/+$/, "")}/v1/bank-deposits/${row.id}/${row.bankHookToken}`;
+}
+
+// The line the team gets when a bank deposit stops at the partner. Null when nothing new went wrong.
+export function bankProblem(row: Pick<VaultDeposit, "id" | "account" | "bankOrderId" | "bankStatus" | "landedAt" | "bankAlertedAt">): string | null {
+  if (row.bankAlertedAt || row.landedAt || !row.bankStatus || !BANK_STOPPED.has(row.bankStatus)) return null;
+  return `bank deposit ${row.id} for ${row.account}: the bank partner marked order ${row.bankOrderId ?? "(unknown)"} ${row.bankStatus}. The naira left the user's bank. Ask the partner to complete or refund it.`;
+}
+
+export function depositView(row: VaultDeposit, publicBaseUrl?: string) {
   const usdc = (units: bigint | null) => (units === null ? null : formatUnits(units, USD_DECIMALS));
   const source = (units: bigint | null) => (units === null ? null : formatUnits(units, row.decimals));
   return {
@@ -196,6 +224,8 @@ export function depositView(row: VaultDeposit) {
     seconds: row.seenAt && row.landedAt ? Math.round((row.landedAt.getTime() - row.seenAt.getTime()) / 1000) : null,
     origin_tx: row.originTx,
     created_at: row.createdAt.toISOString(),
+    bank_status: row.bankStatus,
+    bank_webhook_url: bankWebhookUrl(publicBaseUrl, row),
   };
 }
 
@@ -361,6 +391,7 @@ export function createDeposits(deps: DepositDeps) {
         depositMemo: quote.depositMemo ?? null,
         amountUnits: units,
         fromBank: input.via === "bank",
+        bankHookToken: input.via === "bank" ? randomBytes(24).toString("base64url") : null,
         minimumUnits: quote.minAmountIn,
         feeMicroUsd: quotedFee(quote, picked.origin),
         landsUnits: quote.amountOut,
@@ -369,7 +400,7 @@ export function createDeposits(deps: DepositDeps) {
         quote: quote.raw as object,
       },
     });
-    return depositView(row);
+    return depositView(row, deps.publicBaseUrl);
   }
 
   async function arrival(row: VaultDeposit): Promise<Arrival | null> {
@@ -433,7 +464,87 @@ export function createDeposits(deps: DepositDeps) {
   async function get(unit: Unit, userId: string, depositId: string) {
     const row = await unit((tx) => tx.vaultDeposit.findFirst({ where: { id: depositId, userId } }));
     if (!row) throw notFound("No such deposit.");
-    return depositView(due(row, now(), POLL_EVERY_MS) ? await advance(unit, row) : row);
+    return depositView(due(row, now(), POLL_EVERY_MS) ? await advance(unit, row) : row, deps.publicBaseUrl);
+  }
+
+  // One status for a bank deposit, from the app or from the partner's webhook. A deposit that has landed keeps its
+  // story: a late or replayed status cannot make it look stuck. The row is locked so two reports cannot both alert.
+  async function applyBank(unit: Unit, depositId: string, change: { orderId?: string; status?: string; sent?: boolean }, owner?: string) {
+    const at = now();
+    const { saved, problem } = await unit(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM core.vault_deposits WHERE id = ${depositId} FOR UPDATE`;
+      const current = await tx.vaultDeposit.findFirst({ where: { id: depositId, fromBank: true, ...(owner ? { userId: owner } : {}) } });
+      if (!current) throw notFound("No such bank deposit.");
+      if (change.orderId && current.bankOrderId && change.orderId !== current.bankOrderId) {
+        throw invalidRequest("This deposit already belongs to another bank order.");
+      }
+      const status = change.status?.trim().toUpperCase().slice(0, 32) || null;
+      const moved = status !== null && status !== current.bankStatus && current.state !== "landed";
+      const next = await tx.vaultDeposit.update({
+        where: { id: depositId },
+        data: {
+          bankOrderId: current.bankOrderId ?? change.orderId ?? null,
+          ...(moved ? { bankStatus: status, bankStatusAt: at } : {}),
+          ...(change.sent && !current.bankSentAt ? { bankSentAt: at } : {}),
+        },
+      });
+      const line = bankProblem(next);
+      if (!line) return { saved: next, problem: null };
+      return { saved: await tx.vaultDeposit.update({ where: { id: depositId }, data: { bankAlertedAt: at } }), problem: line };
+    });
+    if (problem) deps.alert?.(problem);
+    return saved;
+  }
+
+  async function reportBank(unit: Unit, userId: string, depositId: string, report: BankReport) {
+    const orderId = typeof report.order_id === "string" ? report.order_id.trim() : "";
+    if (!orderId || orderId.length > 128) throw invalidRequest("order_id is required.");
+    const saved = await applyBank(unit, depositId, { orderId, ...(report.status ? { status: report.status } : {}), sent: report.sent === true }, userId);
+    return depositView(saved, deps.publicBaseUrl);
+  }
+
+  // The partner signs nothing, so the link itself is the proof: a token only this deposit's link carries, compared in
+  // constant time. A status from it changes what the user is shown, never money: the vault is credited from the chain.
+  async function bankWebhook(unit: Unit, depositId: string, token: string, rawBody: string): Promise<boolean> {
+    const row = await unit((tx) => tx.vaultDeposit.findFirst({ where: { id: depositId, fromBank: true }, select: { bankHookToken: true } }));
+    const expected = Buffer.from(row?.bankHookToken ?? "");
+    const given = Buffer.from(token);
+    if (!row?.bankHookToken || expected.length !== given.length || !timingSafeEqual(expected, given)) return false;
+    let body: { id?: unknown; status?: unknown };
+    try {
+      body = JSON.parse(rawBody) as { id?: unknown; status?: unknown };
+    } catch {
+      throw invalidRequest("The body is not valid JSON.");
+    }
+    if (typeof body.status !== "string") throw invalidRequest("status is required.");
+    await applyBank(unit, depositId, { ...(typeof body.id === "string" ? { orderId: body.id } : {}), status: body.status });
+    return true;
+  }
+
+  // A bank deposit the user sent an hour ago that still has not reached the partner's PAID, or the vault, is told
+  // to the team once. Nothing here moves money.
+  async function overdueBank(unit: Unit, limit = 20): Promise<number> {
+    const at = now();
+    const rows = await unit((tx) =>
+      tx.vaultDeposit.findMany({
+        where: {
+          fromBank: true,
+          bankAlertedAt: null,
+          landedAt: null,
+          bankSentAt: { lt: new Date(at.getTime() - BANK_OVERDUE_MS), gt: new Date(at.getTime() - LATE_WINDOW_MS) },
+          OR: [{ bankStatus: null }, { bankStatus: "INIT" }],
+        },
+        take: limit,
+      }),
+    );
+    for (const row of rows) {
+      await unit((tx) => tx.vaultDeposit.update({ where: { id: row.id }, data: { bankAlertedAt: at } }));
+      const minutes = Math.round((at.getTime() - (row.bankSentAt as Date).getTime()) / 60_000);
+      deps.alert?.(
+        `bank deposit ${row.id} for ${row.account}: sent ${minutes} min ago and the bank partner still has order ${row.bankOrderId ?? "(unknown)"} at ${row.bankStatus ?? "no status"}. Check it on the partner's dashboard.`,
+      );
+    }
+    return rows.length;
   }
 
   async function sweep(unit: Unit, everyMs: number, limit = 50): Promise<number> {
@@ -453,7 +564,7 @@ export function createDeposits(deps: DepositDeps) {
     return rows.length;
   }
 
-  return { sources, estimate, create, get, sweep };
+  return { sources, estimate, create, get, sweep, reportBank, bankWebhook, overdueBank };
 }
 
 export type Deposits = ReturnType<typeof createDeposits>;
@@ -471,6 +582,7 @@ export function startDepositWatch(
     running = true;
     try {
       await deposits.sweep(unit, intervalMs);
+      await deposits.overdueBank(unit);
     } catch (error) {
       log(`[deposits] sweep failed: ${(error as Error).name}`);
     } finally {

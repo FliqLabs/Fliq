@@ -530,6 +530,39 @@ paths:
                 $ref: "#/components/schemas/VaultDeposit"
         "404":
           $ref: "#/components/responses/Error"
+  /deposits/{depositId}/bank-order:
+    post:
+      operationId: reportBankDeposit
+      summary: Link a bank deposit to the bank partner's order and report what the app sees
+      description: >-
+        Called by the app when it creates the partner's order, when the user says they sent the money (sent true),
+        and whenever it reads a new order status. From sent on, the deposit shows in GET /activity before anything
+        arrives. The partner's own webhook, at the deposit's bank_webhook_url, reports the same statuses. Statuses
+        change what the user is shown, never money: the vault is credited from the chain.
+      tags: [deposits]
+      parameters:
+        - name: depositId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BankOrderReport"
+      responses:
+        "200":
+          description: The deposit with its bank status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VaultDeposit"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
   /refunds:
     get:
       operationId: listRefunds
@@ -2997,7 +3030,8 @@ components:
           type: [integer, "null"]
         reason:
           type: [string, "null"]
-          enum: [over_daily_cap, over_per_payout_cap, corridor_not_allowed, not_saved_account, provider_failed, expired, null]
+          enum: [over_daily_cap, over_per_payout_cap, corridor_not_allowed, not_saved_account, provider_failed, expired, bank_stopped, null]
+          description: bank_stopped is a bank deposit the bank partner stopped after the money left the user's bank
         ref_id:
           type: string
           description: The payout, deposit, transfer or refusal behind the row
@@ -4240,6 +4274,22 @@ components:
         landed: in the vault. refunded: returned to the user's NEAR account. expired: nothing arrived in time.
         failed: NEAR Intents could not complete it and support has been told.
       enum: [waiting, seen, underpaid, bridging, landed, refunded, expired, failed]
+    BankOrderReport:
+      type: object
+      required: [order_id]
+      additionalProperties: false
+      properties:
+        order_id:
+          type: string
+          maxLength: 128
+          description: The bank partner's order id
+        status:
+          type: string
+          maxLength: 32
+          description: The order status the app last read (INIT, PAID, COMPLETED, ERROR)
+        sent:
+          type: boolean
+          description: True when the user says they sent the money
     VaultDeposit:
       type: object
       required:
@@ -4265,12 +4315,24 @@ components:
           seconds,
           origin_tx,
           created_at,
+          bank_status,
+          bank_webhook_url,
         ]
       properties:
         deposit_id:
           type: string
         state:
           $ref: "#/components/schemas/DepositState"
+        bank_status:
+          type: [string, "null"]
+          description: >-
+            For a deposit from the user's bank, the bank partner's last order status (INIT, PAID, COMPLETED, ERROR).
+            Null for every other deposit.
+        bank_webhook_url:
+          type: [string, "null"]
+          description: >-
+            For a deposit from the user's bank, the link to give the bank partner as its order's webhook. It carries
+            a secret only this deposit has. Null for every other deposit.
         token:
           $ref: "#/components/schemas/DepositTokenId"
         chain:

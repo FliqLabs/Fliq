@@ -55,6 +55,8 @@ struct DepositAddress: Equatable, Sendable {
     let estimatedSeconds: Int
     /// True for fixture addresses. Nothing sent to them is received.
     let isDemo: Bool
+    /// For a bank deposit, the link the bank partner reports its order's status to. Nil for everything else.
+    var bankWebhookURL: URL? = nil
 
     func landing(_ received: TokenAmount) -> TokenAmount {
         TokenAmount(baseUnits: max(0, received.baseUnits - fee.baseUnits))
@@ -86,6 +88,19 @@ protocol DepositAPI: Sendable {
     func sources() async throws -> [DepositSource]
     func reserve(_ source: DepositSource, vault: String) async throws -> DepositAddress
     func status(of deposit: DepositAddress) async throws -> DepositStatus
+    /// Links a bank deposit to the partner's order and says what the app sees, so the deposit shows in Activity
+    /// on every device and the team hears when it stops.
+    func reportBankOrder(_ report: BankOrderReport, for deposit: DepositAddress) async throws
+}
+
+extension DepositAPI {
+    func reportBankOrder(_ report: BankOrderReport, for deposit: DepositAddress) async throws {}
+}
+
+struct BankOrderReport: Encodable, Equatable, Sendable {
+    let orderId: String
+    var status: String?
+    var sent: Bool?
 }
 
 /// The API refused to open an address for this source right now, for example NEAR Intents on a testnet server.

@@ -111,11 +111,12 @@ async function pajRequest<T>(path: string, session: PajSession, init?: RequestIn
 export const pajApi = {
   quote: (naira: string, session: PajSession) =>
     pajRequest<PajQuote>(`/pub/rates/onramp-value?currency=NGN&fiatAmount=${encodeURIComponent(naira)}&mint=${PAJ_MINT}`, session),
-  order: async (naira: string, recipient: string, session: PajSession) => {
+  // webhookURL is where Paj reports the order's status to the fliq API.
+  order: async (naira: string, recipient: string, session: PajSession, webhookURL?: string | null) => {
     try {
       return await pajRequest<PajOrder>("/pub/onramp", session, {
         method: "POST",
-        body: JSON.stringify({ fiatAmount: Number(naira), currency: "NGN", recipient, mint: PAJ_MINT, chain: "SOLANA" }),
+        body: JSON.stringify({ fiatAmount: Number(naira), currency: "NGN", recipient, mint: PAJ_MINT, chain: "SOLANA", ...(webhookURL ? { webhookURL } : {}) }),
       });
     } catch (error) {
       // A timeout or 5xx may mean Paj created the order before the response was lost. Never retry it blindly.

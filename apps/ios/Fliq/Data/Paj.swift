@@ -51,7 +51,8 @@ enum Paj {
 protocol PajAPI: Sendable {
     func publicRate() async throws -> Double
     func quote(naira: Int, session: Paj.Session) async throws -> Paj.Quote
-    func createOrder(naira: Int, recipient: String, session: Paj.Session) async throws -> Paj.Order
+    /// `webhook` is where the partner reports the order's status. Nil sends none.
+    func createOrder(naira: Int, recipient: String, webhook: URL?, session: Paj.Session) async throws -> Paj.Order
     func order(_ id: String, session: Paj.Session) async throws -> Paj.Order
 }
 
@@ -88,10 +89,11 @@ struct HTTPPaj: PajAPI {
         return Paj.Quote(naira: Int(reply.fiatAmount), usdc: reply.amount, rate: reply.rate)
     }
 
-    func createOrder(naira: Int, recipient: String, session: Paj.Session) async throws -> Paj.Order {
-        let body: [String: Any] = [
+    func createOrder(naira: Int, recipient: String, webhook: URL?, session: Paj.Session) async throws -> Paj.Order {
+        var body: [String: Any] = [
             "fiatAmount": naira, "currency": "NGN", "recipient": recipient, "mint": Paj.usdcMint, "chain": "SOLANA",
         ]
+        if let webhook { body["webhookURL"] = webhook.absoluteString }
         let reply: OrderReply = try await send("POST", "pub/onramp", body: body, token: session.token)
         return reply.order
     }
@@ -245,7 +247,7 @@ actor FixturePaj: PajAPI, PajSignIn {
         Paj.Quote(naira: naira, usdc: (Double(naira) / 1397.04).rounded(toPlaces: 6), rate: 1397.72)
     }
 
-    func createOrder(naira: Int, recipient: String, session: Paj.Session) async throws -> Paj.Order {
+    func createOrder(naira: Int, recipient: String, webhook: URL?, session: Paj.Session) async throws -> Paj.Order {
         polls = 0
         return Self.demoOrder(naira: naira, status: .initiated)
     }

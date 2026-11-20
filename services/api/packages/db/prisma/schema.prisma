@@ -730,6 +730,16 @@ model VaultDeposit {
   refundReturn   Boolean      @default(false) @map("refund_return")
   // Paid in from the user's bank through the on-ramp partner. The user sees their bank, never the chain it crossed.
   fromBank       Boolean      @default(false) @map("from_bank")
+  // The bank partner's order for a bank deposit, and the last status it or the app reported (INIT, PAID,
+  // COMPLETED, ERROR). The partner's webhook proves itself with bankHookToken, which only this deposit's link carries.
+  bankOrderId    String?      @map("bank_order_id") @db.Text
+  bankStatus     String?      @map("bank_status") @db.Text
+  bankStatusAt   DateTime?    @map("bank_status_at") @db.Timestamptz(6)
+  bankHookToken  String?      @map("bank_hook_token") @db.Text
+  // When the user said they had sent the money. From then the deposit shows in Activity even before anything arrives.
+  bankSentAt     DateTime?    @map("bank_sent_at") @db.Timestamptz(6)
+  // Set once the team has been told a bank deposit stopped or is overdue, so it is said once.
+  bankAlertedAt  DateTime?    @map("bank_alerted_at") @db.Timestamptz(6)
   // The full 1Click quote, which 1Click asks integrators to keep.
   quote          Json
   createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -738,6 +748,7 @@ model VaultDeposit {
   @@unique([depositAddress])
   @@index([userId, createdAt])
   @@index([state, reservedUntil])
+  @@index([bankOrderId])
   @@map("vault_deposits")
   @@schema("core")
 }

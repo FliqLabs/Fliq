@@ -45,7 +45,7 @@ import {
 import { requireHttpsUrl, settle } from "./errors.js";
 import { NO_OPS, type Ops } from "./ops.js";
 import { createSends, parseSendTokens, type SendInput, type Sends } from "./sends.js";
-import { createDeposits, type DepositChain, type DepositInput, type Deposits, type DepositToken } from "./deposits.js";
+import { createDeposits, type BankReport, type DepositChain, type DepositInput, type Deposits, type DepositToken } from "./deposits.js";
 import { withIdempotency } from "./idempotency.js";
 import { createRefunds, type Refunds } from "./refunds.js";
 import { exportPayoutsCsv, parsePayoutFilter, type PayoutQuery } from "./payout-history.js";
@@ -488,6 +488,10 @@ export function createHandlers({
     getDeposit: async (request) => ({
       status: 200,
       body: await deposits.get(unit, auth(request).userId, (request.params as { depositId: string }).depositId),
+    }),
+    reportBankDeposit: async (request) => ({
+      status: 200,
+      body: await deposits.reportBank(unit, auth(request).userId, (request.params as { depositId: string }).depositId, body<BankReport>(request)),
     }),
     listRefunds: async (request) => ({ status: 200, body: await refunds.list(unit, auth(request).userId) }),
     returnRefund: async (request) => {

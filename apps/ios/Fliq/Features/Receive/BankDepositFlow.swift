@@ -197,9 +197,16 @@ final class BankDepositFlow {
             onPaid(ActivityStore.BankDeposit(depositId: depositId, naira: current.naira, usd: String(format: "%.2f", current.usdc), startedAt: .now))
         }
         showLive(LiveMoney.bankDeposit(current.status), order: current)
+        // From here the deposit is in Activity on every device, whether or not this screen stays open.
+        await report(current, sent: true)
+        var reported = current.status
         while !Task.isCancelled {
             if let fresh = try? await paj.order(current.id, session: session) {
                 order = fresh
+                if fresh.status != reported {
+                    reported = fresh.status
+                    await report(fresh, sent: true)
+                }
                 showLive(LiveMoney.bankDeposit(fresh.status), order: fresh)
                 switch fresh.status {
                 case .completed:
@@ -246,7 +253,7 @@ final class BankDepositFlow {
         await working {
             let target = try await destinationFor()
             destination = target
-            let placed = try await placeOrder(recipient: target.address, session: session)
+            let placed = try await placeOrder(recipient: target.address, webhook: target.deposit?.bankWebhookURL, session: session)
             // Paj fixes the amount only now. Bank details for an order that cannot arrive are never shown.
             guard placed.usdc >= minimumUSDC ?? 0 else {
                 quote = Paj.Quote(naira: placed.naira, usdc: placed.usdc, rate: placed.rate)
@@ -256,16 +263,30 @@ final class BankDepositFlow {
             order = placed
             step = .pay
             notice = nil
+            // Linked at once so the team can find the order; not awaited, the bank details show straight away.
+            let link = Task { await report(placed, sent: false) }
+            reporting = link
         }
+    }
+
+    /// The task linking a new order, kept so tests can wait for it.
+    @ObservationIgnored private(set) var reporting: Task<Void, Never>?
+
+    /// Tells the API what this order is and what Paj says about it. A report that fails changes nothing on screen:
+    /// the deposit still lands from the chain, and the next report carries the same facts.
+    private func report(_ order: Paj.Order, sent: Bool) async {
+        guard let deposits, let deposit = destination?.deposit, deposit.depositId != nil else { return }
+        let status = order.status == .unknown ? nil : order.status.rawValue
+        try? await deposits.reportBankOrder(BankOrderReport(orderId: order.id, status: status, sent: sent ? true : nil), for: deposit)
     }
 
     /// The partner buys the dollars through a swap that sometimes fails for a moment, so an order is tried three
     /// times before the user hears of it, and then in plain words.
-    private func placeOrder(recipient: String, session: Paj.Session) async throws -> Paj.Order {
+    private func placeOrder(recipient: String, webhook: URL?, session: Paj.Session) async throws -> Paj.Order {
         for attempt in 0..<3 {
             if attempt > 0 { try? await Task.sleep(for: Self.orderRetryDelay) }
             do {
-                return try await paj.createOrder(naira: naira, recipient: recipient, session: session)
+                return try await paj.createOrder(naira: naira, recipient: recipient, webhook: webhook, session: session)
             } catch let failure as Paj.Failure where PajMessage.isTemporary(failure.message) {
                 continue
             }

@@ -395,6 +395,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/deposits/{depositId}/bank-order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Link a bank deposit to the bank partner's order and report what the app sees
+         * @description Called by the app when it creates the partner's order, when the user says they sent the money (sent true), and whenever it reads a new order status. From sent on, the deposit shows in GET /activity before anything arrives. The partner's own webhook, at the deposit's bank_webhook_url, reports the same statuses. Statuses change what the user is shown, never money: the vault is credited from the chain.
+         */
+        post: operations["reportBankDeposit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/refunds": {
         parameters: {
             query?: never;
@@ -1976,8 +1996,11 @@ export interface components {
             /** @description What was sent from another chain, for a top-up, for example 200 USDC */
             token: string | null;
             seconds: number | null;
-            /** @enum {string|null} */
-            reason: "over_daily_cap" | "over_per_payout_cap" | "corridor_not_allowed" | "not_saved_account" | "provider_failed" | "expired" | null;
+            /**
+             * @description bank_stopped is a bank deposit the bank partner stopped after the money left the user's bank
+             * @enum {string|null}
+             */
+            reason: "over_daily_cap" | "over_per_payout_cap" | "corridor_not_allowed" | "not_saved_account" | "provider_failed" | "expired" | "bank_stopped" | null;
             /** @description The payout, deposit, transfer or refusal behind the row */
             ref_id: string;
             /** @description The NEAR transaction behind the row, so a receipt can link to it on an explorer. Set for transfers. */
@@ -2668,9 +2691,21 @@ export interface components {
          * @enum {string}
          */
         DepositState: "waiting" | "seen" | "underpaid" | "bridging" | "landed" | "refunded" | "expired" | "failed";
+        BankOrderReport: {
+            /** @description The bank partner's order id */
+            order_id: string;
+            /** @description The order status the app last read (INIT, PAID, COMPLETED, ERROR) */
+            status?: string;
+            /** @description True when the user says they sent the money */
+            sent?: boolean;
+        };
         VaultDeposit: {
             deposit_id: string;
             state: components["schemas"]["DepositState"];
+            /** @description For a deposit from the user's bank, the bank partner's last order status (INIT, PAID, COMPLETED, ERROR). Null for every other deposit. */
+            bank_status: string | null;
+            /** @description For a deposit from the user's bank, the link to give the bank partner as its order's webhook. It carries a secret only this deposit has. Null for every other deposit. */
+            bank_webhook_url: string | null;
             token: components["schemas"]["DepositTokenId"];
             chain: components["schemas"]["DepositChainId"];
             /** @description Where to send, on chain only */
@@ -3529,6 +3564,34 @@ export interface operations {
                     "application/json": components["schemas"]["VaultDeposit"];
                 };
             };
+            404: components["responses"]["Error"];
+        };
+    };
+    reportBankDeposit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                depositId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BankOrderReport"];
+            };
+        };
+        responses: {
+            /** @description The deposit with its bank status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultDeposit"];
+                };
+            };
+            400: components["responses"]["Error"];
             404: components["responses"]["Error"];
         };
     };
