@@ -16,6 +16,8 @@ enum Paj {
         enum Status: String, Sendable {
             case initiated = "INIT"
             case paid = "PAID"
+            /// Paj's v2 name for a confirmed bank transfer it is turning into USDC. Same step as PAID.
+            case processing = "PROCESSING"
             case completed = "COMPLETED"
             case failed = "FAILED"
             case cancelled = "CANCELLED"

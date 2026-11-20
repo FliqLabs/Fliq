@@ -131,7 +131,7 @@ async function deposits(tx: Db, userId: string, before: Date | null, take: numbe
     where: {
       userId,
       // A bank deposit is listed from the moment the user says they sent it, before anything reaches its address.
-      OR: [{ state: { notIn: ["waiting"] } }, { fromBank: true, OR: [{ bankSentAt: { not: null } }, { bankStatus: { in: ["PAID", "COMPLETED", ...BANK_STOPPED] } }] }],
+      OR: [{ state: { notIn: ["waiting"] } }, { fromBank: true, OR: [{ bankSentAt: { not: null } }, { bankStatus: { in: ["PAID", "PROCESSING", "COMPLETED", ...BANK_STOPPED] } }] }],
       ...(before ? { createdAt: { lte: before } } : {}),
     },
     orderBy: { createdAt: "desc" },
