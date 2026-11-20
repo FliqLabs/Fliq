@@ -116,7 +116,8 @@ async function payouts(tx: Db, config: Config, userId: string, filter: ActivityF
 // A bank deposit moves through the partner before anything reaches the chain, so its address can be "waiting" or even
 // "expired" while the naira is on its way. Its row follows the partner instead, for a day.
 const BANK_FOLLOWED_MS = 24 * 60 * 60_000;
-const BANK_STOPPED = ["ERROR", "FAILED"];
+// ERROR is not here: the partner retries after it, and an order has gone ERROR then COMPLETED (20 Nov).
+const BANK_STOPPED = ["FAILED"];
 
 function depositStatus(row: VaultDeposit, now: Date): { status: ActivityItem["status"]; reason: string | null } {
   if (row.state === "landed") return { status: "received", reason: null };
@@ -131,7 +132,7 @@ async function deposits(tx: Db, userId: string, before: Date | null, take: numbe
     where: {
       userId,
       // A bank deposit is listed from the moment the user says they sent it, before anything reaches its address.
-      OR: [{ state: { notIn: ["waiting"] } }, { fromBank: true, OR: [{ bankSentAt: { not: null } }, { bankStatus: { in: ["PAID", "PROCESSING", "COMPLETED", ...BANK_STOPPED] } }] }],
+      OR: [{ state: { notIn: ["waiting"] } }, { fromBank: true, OR: [{ bankSentAt: { not: null } }, { bankStatus: { in: ["PAID", "PROCESSING", "COMPLETED", "ERROR", ...BANK_STOPPED] } }] }],
       ...(before ? { createdAt: { lte: before } } : {}),
     },
     orderBy: { createdAt: "desc" },

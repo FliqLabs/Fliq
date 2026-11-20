@@ -15,9 +15,15 @@ struct BankDepositDestination: Equatable, Sendable {
 final class BankDepositFlow {
     enum Step: Equatable {
         case amount, signIn, pay, receiving, done, notReceived, cancelled
+        /// The partner ended the order without paying out. Its bank details must not be shown again.
+        case stopped
     }
 
     static let presets = [5_000, 10_000, 20_000, 50_000]
+    /// The partner refuses larger orders from users it hasn't verified (20 Nov). Checked here so nobody signs in
+    /// and fetches a quote only to be refused. Raise it once users can verify with the partner.
+    static let maximumNaira = 50_000
+    static let maximumNote = "The most you can add at a time is ₦50,000."
     static let quoteDelay: Duration = .milliseconds(400)
     /// Used until the API's own minimum has loaded. It mirrors SOURCES in services/api/apps/api/src/deposits.ts.
     static let fallbackMinimum = TokenAmount(baseUnits: TokenAmount.base)
@@ -83,7 +89,9 @@ final class BankDepositFlow {
         return Double(naira) / rate
     }
 
-    var canContinue: Bool { naira >= 100 && clearsMinimum && !isWorking }
+    var canContinue: Bool { naira >= 100 && !isOverMaximum && clearsMinimum && !isWorking }
+
+    var isOverMaximum: Bool { naira > Self.maximumNaira }
 
     /// Less than the minimum never arrives: the deposit address hands it back instead of passing it to the vault.
     var clearsMinimum: Bool {
@@ -100,6 +108,7 @@ final class BankDepositFlow {
     }
 
     var minimumNote: String? {
+        if isOverMaximum { return Self.maximumNote }
         guard naira > 0, !clearsMinimum, let smallestNaira else { return nil }
         return naira < smallestNaira
             ? "The smallest amount is about \(NairaFormat.short(smallestNaira))."
@@ -203,6 +212,7 @@ final class BankDepositFlow {
         while !Task.isCancelled {
             if let fresh = try? await paj.order(current.id, session: session) {
                 order = fresh
+                isRetrying = fresh.status == .error
                 if fresh.status != reported {
                     reported = fresh.status
                     await report(fresh, sent: true)
@@ -215,15 +225,11 @@ final class BankDepositFlow {
                     if !isStillMoving { showLive(LiveMoney.bankDepositLanded(arrived, landed: landed), order: fresh, final: true) }
                     return
                 case .failed, .cancelled:
+                    // The partner ended the order. Its bank details are taken away so nobody pays into it, and the
+                    // user is told what to do whether or not they already sent the money.
                     showLive(LiveMoney.bankDepositFailed, order: fresh, final: true)
-                    errorMessage = "This deposit didn't go through. If money left your bank, it comes back to you."
-                    step = .pay
-                    return
-                case .error:
-                    // Not "waiting": the transfer arrived and then stopped. Saying so is what lets the user act.
-                    showLive(LiveMoney.bankDepositFailed, order: fresh, final: true)
-                    errorMessage = Self.stuckMessage
-                    step = .pay
+                    errorMessage = nil
+                    step = .stopped
                     return
                 default: break
                 }
@@ -294,7 +300,13 @@ final class BankDepositFlow {
         throw Paj.Failure(message: PajMessage.busy)
     }
 
-    static let stuckMessage = "Your bank sent it, but it stopped before reaching your vault. Your money is safe. Keep your bank receipt. " + DepositFailure.contactUs
+    /// ERROR is the partner retrying, not the end: on 20 Nov an order went ERROR and landed ten minutes later.
+    /// The watch keeps going; the API tells the team if nothing lands within a quarter of an hour.
+    private(set) var isRetrying = false
+    static let retryNote = "Our partner is retrying this deposit. If you've sent the money, it's safe and on its way: you can leave this screen. Don't send it again."
+
+    static let stoppedTitle = "This deposit stopped"
+    static let stuckMessage = "Don't send money to those bank details. If you already sent it, your money is safe: keep your bank receipt. " + DepositFailure.contactUs
 
     static var orderRetryDelay: Duration = .milliseconds(1500)
 

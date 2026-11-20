@@ -392,12 +392,35 @@ describe.skipIf(!enabled)("topping up the vault from another chain", () => {
     const before = alerts.length;
     expect((await hook(deposit.bank_webhook_url, { id: "ord_bank_1", status: "ERROR", fiatAmount: 50000 })).statusCode).toBe(200);
     expect((await read(user.headers, deposit.deposit_id)).json().bank_status).toBe("ERROR");
-    expect(await listed(user.headers, deposit.deposit_id)).toMatchObject({ status: "failed", reason: "bank_stopped" });
-    expect(alerts.slice(before)).toEqual([expect.stringContaining("ord_bank_1 ERROR")]);
+    expect(await listed(user.headers, deposit.deposit_id), "The partner retries after ERROR").toMatchObject({ status: "pending", reason: null });
+    expect(alerts.length, "Nobody is woken for an ERROR that may pass").toBe(before);
 
-    await hook(deposit.bank_webhook_url, { id: "ord_bank_1", status: "ERROR" });
-    await report(user.headers, deposit.deposit_id, { order_id: "ord_bank_1", status: "ERROR" });
+    await hook(deposit.bank_webhook_url, { id: "ord_bank_1", status: "FAILED" });
+    expect(await listed(user.headers, deposit.deposit_id)).toMatchObject({ status: "failed", reason: "bank_stopped" });
+    expect(alerts.slice(before)).toEqual([expect.stringContaining("ord_bank_1 FAILED")]);
+
+    await hook(deposit.bank_webhook_url, { id: "ord_bank_1", status: "FAILED" });
+    await report(user.headers, deposit.deposit_id, { order_id: "ord_bank_1", status: "FAILED" });
     expect(alerts.length - before, "The team is told once").toBe(1);
+  });
+
+  it("tells the team when an ERROR has lasted a quarter of an hour without landing", async () => {
+    const user = await holder("errbank");
+    const deposit = (await reserve(user.headers, `eb-${suffix}`, { token: "usdc", chain: "solana", amount: "10", via: "bank" })).json();
+    await report(user.headers, deposit.deposit_id, { order_id: "ord_err_1", status: "INIT", sent: true });
+    await hook(deposit.bank_webhook_url, { id: "ord_err_1", status: "ERROR" });
+    const before = alerts.length;
+    clock.offsetMs += 10 * 60_000;
+    try {
+      await deposits.overdueBank(unit);
+      expect(alerts.length, "Ten minutes is how long the 20 Nov order took to recover").toBe(before);
+      clock.offsetMs += 6 * 60_000;
+      await deposits.overdueBank(unit);
+      await deposits.overdueBank(unit);
+      expect(alerts.slice(before)).toEqual([expect.stringContaining("ord_err_1 at ERROR for 16 min")]);
+    } finally {
+      clock.offsetMs -= 16 * 60_000;
+    }
   });
 
   it("tells the team once when a sent bank deposit is still waiting an hour later", async () => {

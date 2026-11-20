@@ -1997,7 +1997,7 @@ export interface components {
             token: string | null;
             seconds: number | null;
             /**
-             * @description bank_stopped is a bank deposit the bank partner stopped after the money left the user's bank
+             * @description bank_stopped is a bank deposit the bank partner ended with FAILED. ERROR is not stopped, the partner retries after it.
              * @enum {string|null}
              */
             reason: "over_daily_cap" | "over_per_payout_cap" | "corridor_not_allowed" | "not_saved_account" | "provider_failed" | "expired" | "bank_stopped" | null;

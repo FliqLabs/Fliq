@@ -40,7 +40,7 @@ final class ActivityLineTests: XCTestCase {
     func testABankDepositThePartnerStoppedSaysTheMoneyIsSafe() throws {
         let line = try line(status: "failed", reason: "bank_stopped", party: ActivityItem.bankPartyName)
         XCTAssertEqual(line.steps.map(\.title), ["Paid from your bank", "Stopped before your vault"])
-        XCTAssertTrue(line.steps.last?.detail.contains("Your money is safe") == true)
+        XCTAssertTrue(line.steps.last?.detail.contains("If you sent money, it's safe") == true)
         XCTAssertTrue(line.facts.contains { $0 == ("Status", "Stopped") })
         XCTAssertNotEqual(line.outcome, .moving)
     }

@@ -106,7 +106,8 @@ extension LiveMoney {
         case .initiated, .unknown: State(step: 0, steps: 3, status: "Waiting for your transfer", done: false, failed: false)
         case .paid, .processing: State(step: 1, steps: 3, status: "Your bank sent it", done: false, failed: false)
         case .completed: State(step: 2, steps: 3, status: "Moving to your vault", done: false, failed: false)
-        case .failed, .cancelled, .error: nil
+        case .error: State(step: 1, steps: 3, status: "Being retried", done: false, failed: false)
+        case .failed, .cancelled: nil
         }
     }
 

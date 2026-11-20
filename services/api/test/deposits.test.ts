@@ -115,11 +115,11 @@ describe("following a top-up", () => {
 describe("bank deposits", () => {
   const row = { id: "dep_1", account: "ada.fliq.near", bankOrderId: "ord_1", bankStatus: "ERROR", landedAt: null, bankAlertedAt: null };
 
-  it("tells the team when the partner stops one, once, and never once it has landed", () => {
-    expect(bankProblem(row)).toContain("ord_1 ERROR");
-    expect(bankProblem({ ...row, bankStatus: "FAILED" })).toContain("FAILED");
-    expect(bankProblem({ ...row, bankAlertedAt: new Date() })).toBeNull();
-    expect(bankProblem({ ...row, landedAt: new Date() })).toBeNull();
+  it("tells the team when the partner ends one with FAILED, once, and never once it has landed", () => {
+    expect(bankProblem(row), "ERROR is retried by the partner; the grace check covers it").toBeNull();
+    expect(bankProblem({ ...row, bankStatus: "FAILED" })).toContain("ord_1 FAILED");
+    expect(bankProblem({ ...row, bankStatus: "FAILED", bankAlertedAt: new Date() })).toBeNull();
+    expect(bankProblem({ ...row, bankStatus: "FAILED", landedAt: new Date() })).toBeNull();
     expect(bankProblem({ ...row, bankStatus: "PAID" })).toBeNull();
     expect(bankProblem({ ...row, bankStatus: null })).toBeNull();
   });
