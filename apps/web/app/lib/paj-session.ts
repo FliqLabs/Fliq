@@ -1,3 +1,5 @@
+import { type NextRequest } from "next/server";
+
 const NO_STORE = { "Cache-Control": "no-store" };
 // The iPhone app waits 20 s (30 s from build 4) for an answer, so both steps together must finish well inside that.
 const SESSION_CHECK_TIMEOUT_MS = 4_000;
@@ -23,13 +25,13 @@ function isText(value: unknown, max = MAX_FIELD): value is string {
   return typeof value === "string" && value.length > 0 && value.length <= max;
 }
 
-async function hasFliqSession(request: Request) {
-  const authorization = request.headers.get("authorization") ?? "";
-  if (!/^Bearer \S+$/.test(authorization)) return false;
+async function hasFliqSession(request: NextRequest) {
+  const accessToken = request.cookies.get("fliq_access")?.value;
+  if (!accessToken) return false;
   const apiBase = process.env.FLIQ_API_BASE_URL ?? "https://api-mainnet-64d65ef4.up.railway.app/v1";
   const check = () =>
     fetch(`${apiBase}/me`, {
-      headers: { Authorization: authorization },
+      headers: { Authorization: `Bearer ${accessToken}` },
       cache: "no-store",
       signal: AbortSignal.timeout(SESSION_CHECK_TIMEOUT_MS),
     });
@@ -100,14 +102,14 @@ async function forwardToPaj(path: string, payload: object) {
   }
 }
 
-async function readBody(request: Request) {
+async function readBody(request: NextRequest) {
   const body = await request.json().catch(() => null);
   return typeof body === "object" && body !== null && !Array.isArray(body)
     ? (body as Record<string, unknown>)
     : null;
 }
 
-export async function initiatePajSession(request: Request) {
+export async function initiatePajSession(request: NextRequest) {
   if (!(await hasFliqSession(request))) return json({ error: "sign_in_required" }, 401);
   const body = await readBody(request);
   if (!body) return invalid("Send a JSON object.");
@@ -116,7 +118,7 @@ export async function initiatePajSession(request: Request) {
   return forwardToPaj("/pub/initiate", contact);
 }
 
-export async function verifyPajSession(request: Request) {
+export async function verifyPajSession(request: NextRequest) {
   if (!(await hasFliqSession(request))) return json({ error: "sign_in_required" }, 401);
   const body = await readBody(request);
   if (!body) return invalid("Send a JSON object.");
