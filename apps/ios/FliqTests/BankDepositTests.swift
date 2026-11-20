@@ -91,8 +91,7 @@ final class BankDepositTests: XCTestCase {
     private static let solana = DepositSource(tokenId: "usdc", chainId: "solana", group: .dollars)
 
     /// A flow whose money goes through a deposit address, at ₦1,000 to the dollar before Paj's fee and ₦2,000 after it.
-    private func gated(deposits: StubDeposits = StubDeposits()) -> BankDepositFlow {
-        let paj = FeePaj()
+    private func gated(deposits: StubDeposits = StubDeposits(), paj: FeePaj = FeePaj()) -> BankDepositFlow {
         let flow = BankDepositFlow(paj: paj, signIn: paj, sessions: nil, deposits: deposits, route: Self.solana) {
             BankDepositDestination(address: "made-up-address", deposit: StubDeposits.address)
         }
@@ -199,6 +198,21 @@ final class BankDepositTests: XCTestCase {
         }
     }
 
+    func testAnOrderThePartnerStoppedSaysSoInsteadOfWaiting() async {
+        XCTAssertEqual(Paj.Order.Status(rawValue: "ERROR"), .error)
+        XCTAssertNil(LiveMoney.bankDeposit(.error), "Never shown as waiting for a transfer that already arrived")
+
+        let flow = gated(paj: FeePaj(settles: .error))
+        await flow.load()
+        await signIn(flow)
+
+        await flow.watch()
+
+        XCTAssertEqual(flow.step, .pay)
+        XCTAssertEqual(flow.errorMessage, BankDepositFlow.stuckMessage)
+        XCTAssertTrue(flow.errorMessage?.contains("Your money is safe") == true)
+    }
+
     func testADepositThatLandsIsDone() async {
         let flow = gated(deposits: StubDeposits(stage: .landed))
         await flow.load()
@@ -224,6 +238,9 @@ final class BankDepositTests: XCTestCase {
 
 /// Paj at ₦1,000 to the dollar, keeping half as its fee, with an order that is complete the first time it is read.
 private struct FeePaj: PajAPI, PajSignIn {
+    /// What the order reads as once the user says they've sent the money.
+    var settles: Paj.Order.Status = .completed
+
     func publicRate() async throws -> Double { 1000 }
 
     func quote(naira: Int, session: Paj.Session) async throws -> Paj.Quote {
@@ -235,7 +252,7 @@ private struct FeePaj: PajAPI, PajSignIn {
     }
 
     func order(_ id: String, session: Paj.Session) async throws -> Paj.Order {
-        order(naira: 5000, status: .completed)
+        order(naira: 5000, status: settles)
     }
 
     private func order(naira: Int, status: Paj.Order.Status) -> Paj.Order {
