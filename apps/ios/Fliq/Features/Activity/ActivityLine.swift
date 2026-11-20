@@ -115,7 +115,7 @@ extension ActivityLine {
                 : Step(title: "Sent on \(chain)", detail: Self.time(date), done: true)
             if item.reason == "bank_stopped" {
                 dollars = nil
-                steps = [sent, Step(title: "Stopped before your vault", detail: "Your money is safe. Keep your bank receipt. " + DepositFailure.contactUs, done: false)]
+                steps = [sent, Step(title: "Stopped before your vault", detail: "If you sent money, it's safe. Keep your bank receipt. " + DepositFailure.contactUs, done: false)]
                 facts = [("Status", "Stopped"), ("Reference", item.refId)]
             } else if notReceived, item.status == "expired" {
                 dollars = nil

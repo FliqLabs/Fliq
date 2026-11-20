@@ -18,6 +18,20 @@ final class BankDepositTests: XCTestCase {
         XCTAssertEqual(flow.naira, 20_000)
     }
 
+    func testMoreThanFiftyThousandNairaIsStoppedBeforeAnythingStarts() async {
+        let flow = flow()
+        await flow.load()
+        flow.enterAmount("50000")
+        XCTAssertTrue(flow.canContinue)
+        XCTAssertNil(flow.minimumNote)
+
+        flow.enterAmount("500000")
+        XCTAssertFalse(flow.canContinue)
+        XCTAssertEqual(flow.minimumNote, "The most you can add at a time is ₦50,000.")
+        await flow.getBankDetails()
+        XCTAssertEqual(flow.step, .amount, "Never asks to sign in for an amount that would be refused")
+    }
+
     func testOnlyAnEmailOrAnInternationalPhoneCanSignIn() {
         XCTAssertTrue(BankDepositFlow.isContact("gift@entrypointlabs.xyz"))
         XCTAssertTrue(BankDepositFlow.isContact("+2348012345678"))
@@ -210,9 +224,9 @@ final class BankDepositTests: XCTestCase {
 
         await flow.watch()
 
-        XCTAssertEqual(flow.step, .pay)
-        XCTAssertEqual(flow.errorMessage, BankDepositFlow.stuckMessage)
-        XCTAssertTrue(flow.errorMessage?.contains("Your money is safe") == true)
+        XCTAssertEqual(flow.step, .stopped, "The bank details are taken away so nobody pays into a dead order")
+        XCTAssertTrue(BankDepositFlow.stuckMessage.hasPrefix("Don't send money to those bank details."))
+        XCTAssertTrue(BankDepositFlow.stuckMessage.contains("your money is safe"))
     }
 
     func testTheOrderGivesThePartnerOurLinkAndEveryStatusReachesTheAPI() async {

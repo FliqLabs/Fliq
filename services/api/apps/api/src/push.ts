@@ -204,7 +204,7 @@ export const bankStoppedMessage = (userId: string, refId: string): PushMessage =
   kind: "deposit",
   refId,
   title: "Your bank deposit stopped",
-  body: "Your money is safe. Contact us with your bank receipt and we'll sort it out.",
+  body: "If you sent money, it's safe. Contact us with your bank receipt and we'll sort it out.",
   setting: null,
 });
 

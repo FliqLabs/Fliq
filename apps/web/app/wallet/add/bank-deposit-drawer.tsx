@@ -7,6 +7,8 @@ import { decimalText, depositIsFinal, formatNaira, isCompleteBankDetails, isPosi
 import { walletApi, type DepositSource } from "../../lib/wallet-api";
 import { keys, useMe } from "../../lib/wallet-queries";
 
+const MAX_BANK_DEPOSIT_NAIRA = 50_000;
+
 type Step = "amount" | "email" | "code" | "pay" | "receiving";
 
 function orderDetails(order: PajOrder) {
@@ -94,13 +96,15 @@ export function BankDepositDrawer({ source, onClose }: { source: DepositSource; 
     }
   }, [deposit.data?.state, queryClient]);
 
-  const amountOk = isPositiveDecimal(parsed);
+  // Paj refuses larger orders from users it hasn't verified (20 Nov), so they stop here, before email and quote.
+  const overMaximum = isPositiveDecimal(parsed) && Number(parsed) > MAX_BANK_DEPOSIT_NAIRA;
+  const amountOk = isPositiveDecimal(parsed) && !overMaximum;
   const instructionsReady = Boolean(order && isCompleteBankDetails(order) && deposit.data?.state !== "expired");
   return (
     <Drawer title="Bank transfer · Nigeria" onClose={onClose} footer={step === "pay" && instructionsReady ? <button type="button" className="btn ink lg" disabled={sent.isPending} onClick={() => sent.mutate()}>{sent.isPending ? "Saving" : "I've sent the money"}</button> : step === "receiving" ? <button type="button" className="btn ink lg" onClick={onClose}>Close</button> : undefined}>
       {step === "amount" && <>
         <p className="muted">Pay in naira from any Nigerian bank. Paj converts it to USDC for your vault.</p>
-        <div className="field"><label htmlFor="paj-naira">How much will you send?</label><input id="paj-naira" className="inp num" inputMode="numeric" placeholder="₦2,500" value={amount} onChange={(event) => { setAmount(event.target.value); setError(null); }} />{amount && !amountOk && <span className="err">Enter a whole, positive naira amount.</span>}</div>
+        <div className="field"><label htmlFor="paj-naira">How much will you send?</label><input id="paj-naira" className="inp num" inputMode="numeric" placeholder="₦2,500" value={amount} onChange={(event) => { setAmount(event.target.value); setError(null); }} />{amount && overMaximum && <span className="err">The most you can add at a time is ₦50,000.</span>}{amount && !amountOk && !overMaximum && <span className="err">Enter a whole, positive naira amount.</span>}</div>
         {amountOk && <div className="card" style={{ padding: 14 }}>You are paying <b>{formatNaira(parsed)}</b>. The exact USDC amount is confirmed by Paj after email verification.</div>}
         {quote.isError && <Notice tone="bad">{quote.error.message}</Notice>}
         {error && <Notice tone="bad">{error}</Notice>}

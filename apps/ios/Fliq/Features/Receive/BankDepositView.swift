@@ -34,7 +34,7 @@ struct BankDepositView: View {
 
     private var reached: Int {
         switch flow.step {
-        case .amount, .signIn, .cancelled: 0
+        case .amount, .signIn, .cancelled, .stopped: 0
         case .pay, .receiving: flow.isPaid ? 2 : 1
         case .done, .notReceived: 2
         }
@@ -52,6 +52,7 @@ struct BankDepositView: View {
         case .done: DoneStep(flow: flow, landed: !flow.isStillMoving, onDone: onDone)
         case .notReceived: NotReceivedStep(onDone: onDone)
         case .cancelled: CancelledStep(flow: flow)
+        case .stopped: StoppedStep(flow: flow)
         }
     }
 }
@@ -518,6 +519,24 @@ private struct SummaryRow: View {
         .font(.system(size: 15))
         .padding(.horizontal, 18)
         .padding(.vertical, 12)
+    }
+}
+
+private struct StoppedStep: View {
+    let flow: BankDepositFlow
+
+    var body: some View {
+        VStack(spacing: 0) {
+            DepositCard {
+                Text(BankDepositFlow.stoppedTitle).font(.system(size: 24, weight: .regular)).tracking(-0.4)
+                Note(text: BankDepositFlow.stuckMessage)
+                    .padding(.top, 10)
+                Button("Start a new deposit", action: flow.startOver)
+                    .buttonStyle(PrimaryButtonStyle(filled: true))
+                    .padding(.top, 22)
+            }
+            Spacer(minLength: 0)
+        }
     }
 }
 

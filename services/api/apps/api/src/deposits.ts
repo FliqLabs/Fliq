@@ -196,7 +196,7 @@ export function bankWebhookUrl(base: string | undefined, row: Pick<VaultDeposit,
 // The line the team gets when a bank deposit stops at the partner. Null when nothing new went wrong.
 export function bankProblem(row: Pick<VaultDeposit, "id" | "account" | "bankOrderId" | "bankStatus" | "landedAt" | "bankAlertedAt">): string | null {
   if (row.bankAlertedAt || row.landedAt || !row.bankStatus || !BANK_STOPPED.has(row.bankStatus)) return null;
-  return `bank deposit ${row.id} for ${row.account}: the bank partner marked order ${row.bankOrderId ?? "(unknown)"} ${row.bankStatus}. The naira left the user's bank. Ask the partner to complete or refund it.`;
+  return `bank deposit ${row.id} for ${row.account}: the bank partner marked order ${row.bankOrderId ?? "(unknown)"} ${row.bankStatus}. If the user paid, the naira is with the partner: ask it to complete or refund the order.`;
 }
 
 export function depositView(row: VaultDeposit, publicBaseUrl?: string) {
