@@ -6,8 +6,8 @@ struct ActivityList: Decodable, Sendable {
     let nextCursor: String?
 }
 
-struct ActivityItem: Decodable, Identifiable, Equatable, Sendable {
-    enum Kind: String, Decodable, Sendable {
+struct ActivityItem: Codable, Identifiable, Equatable, Sendable {
+    enum Kind: String, Codable, Sendable {
         case payout, deposit, refused, unknown
         case transferIn = "transfer_in"
         case transferOut = "transfer_out"
@@ -17,7 +17,7 @@ struct ActivityItem: Decodable, Identifiable, Equatable, Sendable {
         }
     }
 
-    struct Party: Decodable, Equatable, Sendable {
+    struct Party: Codable, Equatable, Sendable {
         let name: String
         let nearAccount: String?
         let institution: String?
@@ -25,12 +25,12 @@ struct ActivityItem: Decodable, Identifiable, Equatable, Sendable {
         let photoUrl: String?
     }
 
-    struct Agent: Decodable, Equatable, Sendable {
+    struct Agent: Codable, Equatable, Sendable {
         let agentId: String
         let name: String
     }
 
-    struct Local: Decodable, Equatable, Sendable {
+    struct Local: Codable, Equatable, Sendable {
         let amount: String
         let currency: String
     }

@@ -27,7 +27,12 @@ final class HomeModel {
     /// Send stays enabled at zero: the vault enforces caps and balance on chain either way.
     var balance: TokenAmount { vault.balance }
 
-    var photoURL: URL? { me?.photoUrl.flatMap(URL.init(string:)) }
+    /// Known before the balance is read? Without a kept balance Home shows a placeholder, never a false $0.
+    var isBalanceKnown: Bool { vault.isKnown }
+
+    /// The photo from last time, so the avatar is there at launch.
+    static let photoKey = "home.lastPhotoURL"
+    var photoURL: URL? { (me?.photoUrl ?? defaults.string(forKey: Self.photoKey)).flatMap(URL.init(string:)) }
 
     func rate(for currency: Currency) -> Rate? { rates[currency] }
 
@@ -40,7 +45,9 @@ final class HomeModel {
 
     /// Runs on every return to Home, so a photo changed in Settings shows straight away.
     func loadProfile() async {
-        if let user = try? await api.me() { me = user }
+        guard let user = try? await api.me() else { return }
+        me = user
+        if let photo = user.photoUrl { defaults.set(photo, forKey: Self.photoKey) } else { defaults.removeObject(forKey: Self.photoKey) }
     }
 
     func load() async {

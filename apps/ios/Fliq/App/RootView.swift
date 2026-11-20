@@ -292,7 +292,13 @@ struct RootView: View {
             }
         case .agents: AgentsView(store: environment.agents)
         case .settings: SettingsView()
-        case .settingsAccounts: AccountsView(onAdd: { startPayment() })
+        case .settingsAccounts: AccountsView(onAdd: { environment.router.push(.settingsAddAccount) })
+        case .settingsAddAccount:
+            // Saving an account is not a payment: confirm it with the bank, keep it, and go back to the list.
+            AddAccountView(api: environment.api) { account in
+                if environment.accounts.own == nil { environment.accounts.setOwn(account) } else { environment.accounts.save(account) }
+                environment.router.path.removeLast()
+            }
         case .settingsSecurity: SecurityView()
         case .settingsNotifications: NotificationsView()
         case .settingsBackup: BackupView()
@@ -323,7 +329,7 @@ struct RootView: View {
             if let payout = flow.payout {
                 RefundedView(payout: payout, quote: flow.quote, onTryAgain: { startPayment(to: flow.verified) })
             }
-        case .payPerson, .withdraw, .withdrawTo, .withdrawReview, .bankDeposit, .receipt, .agents, .agentConnect, .settings, .settingsAccounts, .settingsSecurity, .settingsNotifications, .settingsDailyLimit, .settingsBackup: EmptyView()
+        case .payPerson, .withdraw, .withdrawTo, .withdrawReview, .bankDeposit, .receipt, .agents, .agentConnect, .settings, .settingsAccounts, .settingsAddAccount, .settingsSecurity, .settingsNotifications, .settingsDailyLimit, .settingsBackup: EmptyView()
         }
     }
 

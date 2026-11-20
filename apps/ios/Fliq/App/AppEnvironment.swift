@@ -126,7 +126,10 @@ final class AppEnvironment {
             vault: { try? await api.me().vault }
         )
         let environment = AppEnvironment(
-            api: api, isLive: true, profile: profile, deposits: HTTPDepositAPI(client: api),
+            api: api, isLive: true, profile: profile,
+            // The last balance and history are shown at launch, then refreshed: nobody opens fliq to a $0 that isn't true.
+            activity: ActivityStore(cache: .standard), vault: VaultStore(cache: .standard),
+            deposits: HTTPDepositAPI(client: api),
             recovery: AccountRecovery(
                 api: api, rpc: NEARRPC(url: rpc), device: keys, recovery: KeychainRecoveryKeys(), biometrics: DeviceBiometrics(),
                 account: { await profile.name }
@@ -177,6 +180,9 @@ final class AppEnvironment {
     func signedOutByServer() {
         router.reset()
         profile.signOut()
+        vault.forget()
+        activity.forget()
+        UserDefaults.standard.removeObject(forKey: HomeModel.photoKey)
     }
 
     /// Forgot the app passcode: sign out and clear the lock. Signing back in with the passkey loses nothing.

@@ -11,6 +11,7 @@ enum AppRoute: Hashable {
     case agents
     case settings
     case settingsAccounts
+    case settingsAddAccount
     case settingsSecurity
     case settingsNotifications
     case settingsBackup
