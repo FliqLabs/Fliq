@@ -1821,9 +1821,12 @@ export interface components {
             /** @description False when the sender supplied the name because the bank could not look it up */
             name_verified?: boolean;
         };
+        /** @description Send exactly one of account or recipient_id. */
         PayoutRequest: {
             quote_id: string;
-            account: components["schemas"]["Account"];
+            account?: components["schemas"]["Account"];
+            /** @description A saved recipient of the signed-in user, from GET /recipients, paid without sending its number again. Recipient lists only show the last four digits, so this is how an app that did not save the number pays it. */
+            recipient_id?: string;
             /** @description Your own reference. Unique per account, so a second payout with the same one is refused. */
             client_reference?: string;
             /** @description Where a failed payout is refunded. Defaults to the signed-in user's fliq name. */
@@ -2610,6 +2613,11 @@ export interface components {
             account_name: string;
             bank: components["schemas"]["RecipientBank"];
             account_last4: string;
+            /**
+             * @description Where the account is, so it is paid in its own currency
+             * @enum {string}
+             */
+            country?: "ng" | "ke" | "gh" | "id" | "ph";
             /** Format: date-time */
             created_at: string;
             /** @description The user's own account */

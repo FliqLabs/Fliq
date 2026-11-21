@@ -411,4 +411,26 @@ describe.skipIf(!enabled)("payout creation against a real database", () => {
     expect(paid.statusCode).toBe(201);
     expect(paid.json().account_name).toBe("ADA LOVELACE");
   }, 120_000);
+
+  it("pays a saved account by its id, which only its owner can use", async () => {
+    const authed = { authorization: `Bearer ${frank.access}` };
+    const saved = (await app.inject({ method: "POST", url: "/v1/recipients", payload: { bank: ACCOUNT.bank, number: ACCOUNT.number }, headers: authed })).json();
+    expect(saved).toMatchObject({ account_last4: ACCOUNT.number.slice(-4), country: "ng" });
+    const listed = await app.inject({ method: "GET", url: "/v1/recipients", headers: authed });
+    expect(JSON.stringify(listed.json()), "Lists never carry the full number").not.toContain(ACCOUNT.number);
+
+    const refund = { refund_address: "0x1111111111111111111111111111111111111111" };
+    const paid = await pay(app, frank.access, `k-${suffix}-rcp`, { quote_id: await quote(frank.access), recipient_id: saved.recipient_id, ...refund });
+    expect(paid.statusCode).toBe(201);
+    expect(paid.json()).toMatchObject({ account: ACCOUNT, account_name: "DARA OKONKWO" });
+
+    const both = await pay(app, frank.access, `k-${suffix}-rcp2`, { quote_id: await quote(frank.access), recipient_id: saved.recipient_id, account: ACCOUNT, ...refund });
+    expect(both.statusCode).toBe(400);
+    const neither = await pay(app, frank.access, `k-${suffix}-rcp3`, { quote_id: await quote(frank.access), ...refund });
+    expect(neither.statusCode).toBe(400);
+
+    const other = await signIn("notfrank");
+    const stolen = await pay(app, other.access, `k-${suffix}-rcp4`, { quote_id: await quote(other.access), recipient_id: saved.recipient_id, ...refund });
+    expect(stolen.statusCode).toBe(404);
+  }, 120_000);
 });

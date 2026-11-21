@@ -32,7 +32,7 @@ struct AccountsView: View {
                         .listRowBackground(RoundedRectangle(cornerRadius: 14).fill(Theme.surface))
                         .listRowSeparator(.hidden)
                 } else {
-                    ForEach(book.saved, id: \.number) { account in
+                    ForEach(book.saved, id: \.self) { account in
                         row(account, badge: nil)
                             .swipeActions(edge: .trailing) {
                                 Button("Remove", role: .destructive) { book.remove(account) }
