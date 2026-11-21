@@ -42,7 +42,7 @@ import {
   payoutStats,
   workspaceView,
 } from "./dashboard.js";
-import { requireHttpsUrl, settle } from "./errors.js";
+import { invalidRequest, requireHttpsUrl, settle } from "./errors.js";
 import { NO_OPS, type Ops } from "./ops.js";
 import { createSends, parseSendTokens, type SendInput, type Sends } from "./sends.js";
 import { createDeposits, type BankReport, type DepositChain, type DepositInput, type Deposits, type DepositToken } from "./deposits.js";
@@ -56,7 +56,7 @@ import type { VaultClient } from "../../../packages/chains/vault/index.js";
 import { lookupPerson, recentPeople } from "./people.js";
 import { DEFAULT_STATUS_CONFIG, statusReport, type Probe, type StatusConfig } from "./status.js";
 import { vaultBalance, vaultInboxBalance } from "./vault.js";
-import { deleteRecipient, listInstitutions, listRecipients, saveRecipient, updateRecipient, verifyAccount, type AccountLookup } from "./recipients.js";
+import { deleteRecipient, listInstitutions, listRecipients, saveRecipient, savedAccount, updateRecipient, verifyAccount, type AccountLookup } from "./recipients.js";
 import { bankReference, createPayout, getPayout, type PayoutDeps, type PayoutInput } from "./payouts.js";
 import { openClaim, quoteRetry } from "./recovery.js";
 import { createRateBoard, type RateBoard } from "./rate-board.js";
@@ -331,7 +331,13 @@ export function createHandlers({
 
     createPayout: async (request) => {
       ops.assertRunning("payouts");
-      return createPayout(unit, { ...payouts, quotes }, auth(request).userId, request.headers["idempotency-key"] as string | undefined, body<PayoutInput>(request));
+      const userId = auth(request).userId;
+      // Either the account itself, or a saved one by its id, whose number the server already holds.
+      const { recipient_id: recipientId, ...input } = body<Omit<PayoutInput, "account"> & { account?: PayoutInput["account"]; recipient_id?: string }>(request);
+      if (recipientId !== undefined && input.account) throw invalidRequest("Send account or recipient_id, not both.");
+      const account = recipientId !== undefined ? await unit((tx) => savedAccount(tx, config, userId, recipientId)) : input.account;
+      if (!account) throw invalidRequest("account or recipient_id is required.");
+      return createPayout(unit, { ...payouts, quotes }, userId, request.headers["idempotency-key"] as string | undefined, { ...input, account });
     },
     getPayout: async (request) => ({
       status: 200,

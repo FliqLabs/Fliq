@@ -132,6 +132,18 @@ struct HTTPClient: FliqAPI {
         try await send("GET", "pay/\(link.name)/\(link.code)")
     }
 
+    func saveRecipient(_ input: RecipientInput) async throws -> Recipient {
+        try await send("POST", "recipients", body: input)
+    }
+
+    func markOwnRecipient(id: String) async throws {
+        let _: Recipient = try await send("PATCH", "recipients/\(id)", body: ["own": true])
+    }
+
+    func deleteRecipient(id: String) async throws {
+        let _: Empty = try await send("DELETE", "recipients/\(id)")
+    }
+
     func refunds() async throws -> [Refund] {
         let list: RefundList = try await send("GET", "refunds")
         return list.items

@@ -76,6 +76,8 @@ final class AppEnvironment {
         self.limits = limits
         self.sends = sends
         self.accounts = accounts
+        // Live builds keep saved accounts on the server too, so deleting the app loses none of them.
+        if isLive { accounts.connect(api) }
         self.transfers = transfers
         self.withdrawals = withdrawals
         self.photos = photos

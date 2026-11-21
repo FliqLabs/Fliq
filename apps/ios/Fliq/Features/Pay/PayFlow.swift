@@ -143,7 +143,7 @@ final class PayFlow {
             if let unsigned, unsigned.quoteId == quote.quoteId, unsigned.account == account, Date.now.timeIntervalSince(unsigned.at) < Self.unsignedReuse {
                 created = unsigned.payout
             } else {
-                created = try await api.createPayout(PayoutRequest(quoteId: quote.quoteId, account: account), idempotencyKey: UUID().uuidString)
+                created = try await api.createPayout(PayoutRequest(quoteId: quote.quoteId, to: verified), idempotencyKey: UUID().uuidString)
                 unsigned = (quote.quoteId, account, created, .now)
             }
             // A cash-out from the vault moves only once the payer signs the vault's payout for this order.

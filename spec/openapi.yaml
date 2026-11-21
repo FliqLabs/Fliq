@@ -2696,12 +2696,18 @@ components:
               description: False when the sender supplied the name because the bank could not look it up
     PayoutRequest:
       type: object
-      required: [quote_id, account]
+      required: [quote_id]
+      description: Send exactly one of account or recipient_id.
       properties:
         quote_id:
           type: string
         account:
           $ref: "#/components/schemas/Account"
+        recipient_id:
+          type: string
+          description: >-
+            A saved recipient of the signed-in user, from GET /recipients, paid without sending its number again.
+            Recipient lists only show the last four digits, so this is how an app that did not save the number pays it.
         client_reference:
           type: string
           description: Your own reference. Unique per account, so a second payout with the same one is refused.
@@ -4143,6 +4149,10 @@ components:
           $ref: "#/components/schemas/RecipientBank"
         account_last4:
           type: string
+        country:
+          type: string
+          enum: [ng, ke, gh, id, ph]
+          description: Where the account is, so it is paid in its own currency
         created_at:
           type: string
           format: date-time

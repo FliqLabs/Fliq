@@ -96,6 +96,7 @@ struct RootView: View {
             guard router.path.isEmpty else { return }
             await environment.refreshVault()
             await environment.refreshActivity()
+            await environment.accounts.sync()
             await environment.inbox.load()
             await home?.loadProfile()
             await environment.inbox.returnNewRefunds()

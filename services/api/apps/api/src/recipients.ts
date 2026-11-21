@@ -5,7 +5,7 @@ import type { Country, ProviderAdapter } from "../../../packages/providers/types
 import type { Config } from "./config.js";
 import type { Db, Unit } from "./db.js";
 import { ApiError, invalidRequest, notFound } from "./errors.js";
-import { institutionsIn } from "../../../packages/providers/institutions/translate.js";
+import { findInstitution, institutionsIn } from "../../../packages/providers/institutions/translate.js";
 import { COUNTRY_CODE, FEATURED_CODES, institutionName, logoKeyFor } from "./institutions.js";
 
 export interface AccountLookup {
@@ -86,10 +86,20 @@ function view(config: Config, recipient: { id: string; institutionCode: string; 
     account_name: decrypt(recipient.nameCipher, config.dataKey),
     bank: { code: recipient.institutionCode, name: institutionName(recipient.institutionCode), logo_key: logoKeyFor(recipient.institutionCode) },
     account_last4: decrypt(recipient.accountCipher, config.dataKey).slice(-4),
+    // So an app paying it later pays in the right currency. Nigerian unless the institution says otherwise.
+    country: (findInstitution(recipient.institutionCode)?.country ?? "NG").toLowerCase(),
     created_at: recipient.createdAt.toISOString(),
     own: recipient.own,
     default: recipient.isDefault,
   };
+}
+
+// A payout to a saved account by its id. The full number stays on the server: lists only ever show the last four,
+// so an app reinstalled from scratch can still pay the accounts it saved.
+export async function savedAccount(tx: Db, config: Config, userId: string, recipientId: string): Promise<{ bank: string; number: string }> {
+  const row = await tx.recipient.findFirst({ where: { id: recipientId, userId, savedAt: { not: null }, deletedAt: null } });
+  if (!row) throw notFound("No such saved recipient.");
+  return { bank: row.institutionCode, number: decrypt(row.accountCipher, config.dataKey) };
 }
 
 // A duplicate save returns the recipient already stored instead of making a second one.
