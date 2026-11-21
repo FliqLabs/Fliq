@@ -10,13 +10,14 @@ import { ApiError, invalidRequest, notFound } from "./errors.js";
 import { retrying } from "./retry.js";
 import { markRequestPaid } from "./requests.js";
 
-export type DepositToken = "usdc" | "usdt" | "btc";
+export type DepositToken = "usdc" | "usdt" | "btc" | "sol" | "eth" | "bnb";
 export type DepositChain = "base" | "solana" | "tron" | "arbitrum" | "ethereum" | "polygon" | "bnb" | "monad" | "bitcoin" | "near";
 
 interface Source {
   token: DepositToken;
   chain: DepositChain;
-  group: "dollars" | "bitcoin" | "near";
+  // coins: a chain's own coin (SOL, ETH, BNB), swapped to USDC on arrival like bitcoin, so its dollar value is set then.
+  group: "dollars" | "bitcoin" | "coins" | "near";
   minimum: string;
   etaSeconds: number;
   watchMinutes: number;
@@ -38,6 +39,13 @@ export const DEPOSIT_SOURCES: readonly Source[] = [
   // 1Click refuses Tron swaps under $100 for now, and its fee takes a $100 deposit just under the line.
   { token: "usdt", chain: "tron", group: "dollars", minimum: "110", etaSeconds: 60, watchMinutes: 10 },
   { token: "btc", chain: "bitcoin", group: "bitcoin", minimum: "0.0001", etaSeconds: 600, watchMinutes: 60 },
+  // Minimums sit near $2 at November 2026 prices, above what the network fee and the swap take. Ethereum's own fee is
+  // higher, so its floor is too.
+  { token: "sol", chain: "solana", group: "coins", minimum: "0.03", etaSeconds: 40, watchMinutes: 10 },
+  { token: "eth", chain: "base", group: "coins", minimum: "0.0012", etaSeconds: 40, watchMinutes: 10 },
+  { token: "eth", chain: "arbitrum", group: "coins", minimum: "0.0012", etaSeconds: 40, watchMinutes: 10 },
+  { token: "eth", chain: "ethereum", group: "coins", minimum: "0.003", etaSeconds: 90, watchMinutes: 10 },
+  { token: "bnb", chain: "bnb", group: "coins", minimum: "0.004", etaSeconds: 45, watchMinutes: 10 },
   { token: "usdc", chain: "near", group: "near", minimum: "0.01", etaSeconds: 2, watchMinutes: 0 },
 ];
 

@@ -155,8 +155,8 @@ struct DepositAddressView: View {
 
     private func details(_ deposit: DepositAddress, now: Date) -> some View {
         VStack(spacing: 0) {
-            DetailRow("Arrives as", deposit.source.group == .bitcoin ? "USDC in your vault" : "1 \(deposit.source.token) ≈ $1.00")
-            DetailRow("Minimum", deposit.minimum == .zero ? "Any amount" : "\(deposit.source.group == .bitcoin ? deposit.minimum.decimalString : Money.dollars(deposit.minimum)) \(deposit.source.token)")
+            DetailRow("Arrives as", deposit.source.isSwapped ? "USDC in your vault, at the rate when it lands" : "1 \(deposit.source.token) ≈ $1.00")
+            DetailRow("Minimum", deposit.minimum == .zero ? "Any amount" : "\(deposit.source.isSwapped ? deposit.minimum.decimalString : Money.dollars(deposit.minimum)) \(deposit.source.token)")
             DetailRow("Fees", deposit.fee == .zero ? "None" : "≈ $\(deposit.fee.decimalString)")
             DetailRow("Arrives in", deposit.source.eta)
             if !deposit.source.isDirect {

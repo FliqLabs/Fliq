@@ -52,7 +52,7 @@ struct HTTPDepositAPI: DepositAPI {
             guard let group = DepositSource.Group(rawValue: source.group) else { return nil }
             return DepositSource(
                 tokenId: source.token, chainId: source.chain, group: group,
-                minimum: TokenAmount(decimalString: source.minimum), etaSeconds: source.etaSeconds,
+                minimum: TokenAmount(decimalString: source.minimum) ?? TokenAmount(roundingUp: source.minimum), etaSeconds: source.etaSeconds,
                 available: source.available, address: source.address
             )
         }
@@ -105,7 +105,7 @@ struct HTTPDepositAPI: DepositAPI {
     static func address(_ deposit: VaultDeposit, source: DepositSource) -> DepositAddress {
         DepositAddress(
             source: source, depositId: deposit.depositId, address: deposit.address, memo: deposit.memo,
-            minimum: TokenAmount(decimalString: deposit.minimum) ?? .zero,
+            minimum: TokenAmount(decimalString: deposit.minimum) ?? TokenAmount(roundingUp: deposit.minimum) ?? .zero,
             fee: TokenAmount(decimalString: deposit.fee) ?? .zero,
             reservedUntil: deposit.reservedUntil, estimatedSeconds: deposit.etaSeconds, isDemo: false,
             bankWebhookURL: deposit.bankWebhookUrl.flatMap(URL.init(string:))

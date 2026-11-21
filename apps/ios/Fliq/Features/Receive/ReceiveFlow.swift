@@ -55,7 +55,7 @@ final class ReceiveFlow {
 
     /// One row per token, grouped the way Choose currency shows them. USDC on NEAR is one of USDC's networks.
     var currencies: [(group: DepositSource.Group, tokens: [String])] {
-        [DepositSource.Group.dollars, .bitcoin].compactMap { group in
+        [DepositSource.Group.dollars, .bitcoin, .coins].compactMap { group in
             var tokens: [String] = []
             for source in listed where (source.isDirect ? .dollars : source.group) == group && !tokens.contains(source.tokenId) {
                 tokens.append(source.tokenId)
