@@ -178,8 +178,11 @@ describe.skipIf(!enabled)("topping up the vault from another chain", () => {
     const { sources } = reply.json();
     expect(sources.map((s: { chain: string }) => s.chain)).toEqual([
       "base", "solana", "arbitrum", "ethereum", "polygon", "bnb", "monad",
-      "solana", "ethereum", "bnb", "polygon", "tron", "bitcoin", "near",
+      "solana", "ethereum", "bnb", "polygon", "tron", "bitcoin",
+      "solana", "base", "arbitrum", "ethereum", "bnb", "near",
     ]);
+    expect(sources.filter((s: { group: string }) => s.group === "coins").map((s: { token: string }) => s.token)).toEqual(["sol", "eth", "eth", "eth", "bnb"]);
+    expect(sources.find((s: { token: string }) => s.token === "sol")).toMatchObject({ minimum: "0.03", direct: false });
     expect(sources.find((s: { chain: string }) => s.chain === "near")).toMatchObject({ direct: true, available: true, address: user.account });
     expect(sources.find((s: { chain: string }) => s.chain === "bitcoin")).toMatchObject({ available: false, address: null });
     expect(sources.find((s: { chain: string }) => s.chain === "tron")).toMatchObject({ minimum: "110.00", available: true });

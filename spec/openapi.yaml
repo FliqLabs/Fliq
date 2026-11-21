@@ -4199,7 +4199,7 @@ components:
           description: The USDC token contract address, needed to build the ft_transfer_call that moves the funds
     DepositTokenId:
       type: string
-      enum: [usdc, usdt, btc]
+      enum: [usdc, usdt, btc, sol, eth, bnb]
     DepositChainId:
       type: string
       enum: [base, solana, tron, arbitrum, ethereum, polygon, bnb, monad, bitcoin, near]
@@ -4213,7 +4213,7 @@ components:
           $ref: "#/components/schemas/DepositChainId"
         group:
           type: string
-          enum: [dollars, bitcoin, near]
+          enum: [dollars, bitcoin, coins, near]
           description: The heading the app lists the source under
         minimum:
           type: string

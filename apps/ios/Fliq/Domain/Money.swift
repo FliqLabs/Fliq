@@ -30,6 +30,17 @@ struct TokenAmount: Codable, Hashable, Sendable, Comparable {
         baseUnits = whole * Self.base + fractionUnits
     }
 
+    /// A coin amount with more decimals than six (ETH has 18), cut to six and rounded up, so a minimum shown is
+    /// never below the real one: "0.000980123456789" -> 0.000981.
+    init?(roundingUp text: String) {
+        let pieces = text.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
+        guard pieces.count == 2, pieces[1].count > Self.decimalPlaces, pieces[1].allSatisfy(\.isNumber),
+              let kept = TokenAmount(decimalString: "\(pieces[0]).\(pieces[1].prefix(Self.decimalPlaces))")
+        else { return nil }
+        let rest = pieces[1].dropFirst(Self.decimalPlaces)
+        self = rest.allSatisfy({ $0 == "0" }) ? kept : TokenAmount(baseUnits: kept.baseUnits + 1)
+    }
+
     init(from decoder: Decoder) throws {
         let text = try decoder.singleValueContainer().decode(String.self)
         guard let amount = TokenAmount(decimalString: text) else {

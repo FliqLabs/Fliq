@@ -183,9 +183,10 @@ export type Person = {
 };
 
 export type DepositSource = {
-  token: "usdc" | "usdt" | "btc";
-  chain: "base" | "solana" | "tron" | "arbitrum" | "ethereum" | "polygon" | "bitcoin" | "near";
-  group: "dollars" | "bitcoin" | "near";
+  token: "usdc" | "usdt" | "btc" | "sol" | "eth" | "bnb";
+  chain: "base" | "solana" | "tron" | "arbitrum" | "ethereum" | "polygon" | "bnb" | "monad" | "bitcoin" | "near";
+  // coins: a chain's own coin (SOL, ETH, BNB), swapped to USDC as it lands, like bitcoin.
+  group: "dollars" | "bitcoin" | "coins" | "near";
   minimum: string;
   eta_seconds: number;
   direct: boolean;

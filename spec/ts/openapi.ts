@@ -2645,7 +2645,7 @@ export interface components {
             usdc_contract: string;
         };
         /** @enum {string} */
-        DepositTokenId: "usdc" | "usdt" | "btc";
+        DepositTokenId: "usdc" | "usdt" | "btc" | "sol" | "eth" | "bnb";
         /** @enum {string} */
         DepositChainId: "base" | "solana" | "tron" | "arbitrum" | "ethereum" | "polygon" | "bnb" | "monad" | "bitcoin" | "near";
         DepositSource: {
@@ -2655,7 +2655,7 @@ export interface components {
              * @description The heading the app lists the source under
              * @enum {string}
              */
-            group: "dollars" | "bitcoin" | "near";
+            group: "dollars" | "bitcoin" | "coins" | "near";
             /** @description Smallest top-up, in the source token */
             minimum: string;
             /** @description Typical time from sending to landing in the vault */

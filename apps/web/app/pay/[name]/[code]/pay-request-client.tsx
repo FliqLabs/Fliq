@@ -8,9 +8,9 @@ const TIMEOUT_MS = 8_000;
 const FINAL_DEPOSIT_STATES = new Set(["landed", "refunded", "expired", "failed"]);
 
 type DepositSource = {
-  token: "usdc" | "usdt" | "btc";
+  token: "usdc" | "usdt" | "btc" | "sol" | "eth" | "bnb";
   chain: string;
-  group: "dollars" | "bitcoin" | "near";
+  group: "dollars" | "bitcoin" | "coins" | "near";
   minimum: string;
   eta_seconds: number;
   direct: boolean;
@@ -42,7 +42,7 @@ type Deposit = {
   landed: string | null;
 };
 
-const TOKENS: Record<string, string> = { usdc: "USDC", usdt: "Tether USDT", btc: "Bitcoin" };
+const TOKENS: Record<string, string> = { usdc: "USDC", usdt: "Tether USDT", btc: "Bitcoin", sol: "SOL", eth: "ETH", bnb: "BNB" };
 const CHAINS: Record<string, string> = {
   base: "Base",
   solana: "Solana",
@@ -50,6 +50,8 @@ const CHAINS: Record<string, string> = {
   arbitrum: "Arbitrum",
   ethereum: "Ethereum",
   polygon: "Polygon",
+  bnb: "BNB Chain",
+  monad: "Monad",
   bitcoin: "Bitcoin",
   near: "NEAR",
 };

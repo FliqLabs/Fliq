@@ -39,7 +39,9 @@ const isStopped = (item: ActivityItem) => ["refused", "refunded", "failed", "exp
 export function ActivityAvatar({ item, size }: { item: ActivityItem; size?: "sm" }) {
   if (item.kind === "deposit") {
     const [, network] = (item.party.name.match(/from (\w+)/i) ?? []) as string[];
-    const token = item.token?.toLowerCase().includes("usdt") ? "usdt" : item.token?.toLowerCase().includes("btc") ? "btc" : "usdc";
+    // The token is written after the amount, as in "0.03 SOL".
+    const symbol = item.token?.trim().split(" ").pop()?.toLowerCase() ?? "usdc";
+    const token = ["usdt", "btc", "sol", "eth", "bnb"].includes(symbol) ? symbol : "usdc";
     return <Logo src={tokenLogo(token)} badge={network ? chain(network.toLowerCase()).logo : null} size={size} />;
   }
   const badge = item.party.near_account ? "/landing/tokens/near.webp" : bankLogo(item.party.institution, item.party.name);

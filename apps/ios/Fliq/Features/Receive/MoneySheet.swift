@@ -306,6 +306,9 @@ private struct CurrencyListView: View {
         case "usdc": "USDC"
         case "usdt": "Tether USDT"
         case "btc": "Bitcoin"
+        case "sol": "Solana"
+        case "eth": "Ether"
+        case "bnb": "BNB"
         default: token.uppercased()
         }
     }
@@ -329,7 +332,7 @@ private struct NetworkListView: View {
                         Text("Receive \(token.uppercased())")
                             .font(.system(size: compact ? 26 : 36, weight: .medium))
                             .tracking(-0.7)
-                        Text(token == "btc" ? "Lands in your vault as dollars" : "1 \(token.uppercased()) ≈ $1.00")
+                        Text(DepositSource.swappedTokens.contains(token) ? "Lands in your vault as dollars" : "1 \(token.uppercased()) ≈ $1.00")
                             .font(.system(size: compact ? 15 : 18))
                             .foregroundStyle(Theme.textSecondary)
                     }
@@ -600,7 +603,7 @@ struct TokenLogo: View {
 
     var body: some View {
         Group {
-            if let image = UIImage(named: "Token\(token)") {
+            if let image = UIImage(named: "Token\(token)") ?? Self.coinImage[token].flatMap({ UIImage(named: $0) }) {
                 Image(uiImage: image).resizable().scaledToFill()
             } else {
                 Text(token.prefix(2)).font(.system(size: size * 0.36, weight: .bold)).frame(maxWidth: .infinity, maxHeight: .infinity).background(Theme.surfaceRaised)
@@ -610,6 +613,9 @@ struct TokenLogo: View {
         .clipShape(Circle())
         .accessibilityHidden(true)
     }
+
+    /// A chain's own coin shares the chain's logo.
+    static let coinImage = ["SOL": "ChainSolana", "ETH": "ChainEthereum", "BNB": "ChainBnb"]
 }
 
 /// A network's logo, or its first letter on a soft disc when the app ships none.
@@ -646,7 +652,7 @@ struct SourceBadge: View {
     var body: some View {
         TokenLogo(token: source.token, size: size)
             .overlay(alignment: .bottomTrailing) {
-                if source.group != .bitcoin {
+                if !source.isNativeCoin {
                     ChainLogo(source: source, size: (size * 0.47).rounded())
                         .padding(2)
                         .background(ring, in: Circle())

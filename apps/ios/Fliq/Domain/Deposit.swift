@@ -3,12 +3,14 @@ import Foundation
 /// A token on a chain the vault can be topped up from, from `GET /deposits/sources`.
 struct DepositSource: Hashable, Sendable, Identifiable {
     enum Group: String, CaseIterable, Sendable {
-        case dollars, bitcoin, near
+        /// `coins`: a chain's own coin (SOL, ETH, BNB), swapped to dollars as it lands, like bitcoin.
+        case dollars, bitcoin, coins, near
 
         var title: String {
             switch self {
             case .dollars: "Digital dollars"
             case .bitcoin: "Bitcoin"
+            case .coins: "Other coins"
             case .near: "Already on NEAR"
             }
         }
@@ -32,6 +34,13 @@ struct DepositSource: Hashable, Sendable, Identifiable {
     var chain: String { Self.chainNames[chainId] ?? chainId.capitalized }
     var title: String { "\(token) on \(chain)" }
     var isDirect: Bool { group == .near }
+    /// Not a dollar: swapped to USDC on arrival, so what lands is priced then, not one for one.
+    var isSwapped: Bool { group == .bitcoin || group == .coins }
+    /// A chain's own coin on its own chain (SOL on Solana), drawn without a network badge.
+    var isNativeCoin: Bool {
+        ["btc": "bitcoin", "sol": "solana", "eth": "ethereum", "bnb": "bnb"][tokenId] == chainId
+    }
+    static let swappedTokens: Set<String> = ["btc", "sol", "eth", "bnb"]
     /// The chain's image in the asset catalog: ChainSolana, ChainNEAR, ChainBnb.
     var chainImage: String { "Chain" + (chainId == "near" ? "NEAR" : chainId.capitalized) }
 
