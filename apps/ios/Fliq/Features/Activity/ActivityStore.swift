@@ -61,8 +61,19 @@ final class ActivityStore {
     /// A bank transfer the server never lists by then was not paid, or Paj refunded it.
     static let bankDepositWindow: TimeInterval = 3 * 60 * 60
 
-    init(defaults: UserDefaults? = .standard) {
+    /// With `cache`, the last history is kept on this iPhone and shown at launch while the live one loads.
+    private let cache: UserDefaults?
+    private static let historyKey = "activity.lastHistory"
+    /// False only before the first history is read, when nothing was kept from last time. Activity shows placeholder
+    /// rows then, not "Nothing yet".
+    private(set) var hasLoaded: Bool
+
+    init(defaults: UserDefaults? = .standard, cache: UserDefaults? = nil) {
         self.defaults = defaults
+        self.cache = cache
+        let saved = cache?.data(forKey: Self.historyKey).flatMap { try? JSONDecoder().decode([ActivityItem].self, from: $0) }
+        history = saved ?? []
+        hasLoaded = saved != nil || cache == nil
         bankDeposits = defaults?.data(forKey: Self.bankKey).flatMap { try? JSONDecoder().decode([BankDeposit].self, from: $0) } ?? []
     }
 
@@ -92,10 +103,22 @@ final class ActivityStore {
     /// Bank and mobile money names and logos by code, so a row can say "Access Bank" and show its logo.
     private(set) var institutions: [String: Institution] = [:]
 
+    /// The bank names load beside the history, never in front of it.
     func load(from api: any FliqAPI) async {
-        await loadInstitutions(from: api)
-        guard let list = try? await api.activity() else { return }
-        history = list.items
+        async let names: Void = loadInstitutions(from: api)
+        if let list = try? await api.activity() {
+            history = list.items
+            hasLoaded = true
+            cache?.set(try? JSONEncoder().encode(list.items), forKey: Self.historyKey)
+        }
+        await names
+    }
+
+    /// Signing out: the next account must not see this one's history.
+    func forget() {
+        cache?.removeObject(forKey: Self.historyKey)
+        history = []
+        hasLoaded = cache == nil
     }
 
     private func loadInstitutions(from api: any FliqAPI) async {

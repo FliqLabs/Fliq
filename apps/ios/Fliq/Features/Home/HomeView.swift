@@ -134,6 +134,8 @@ struct HomeView: View {
                         .foregroundStyle(Theme.textTertiary)
                         .padding(.leading, 6)
                 }
+                // Before the first balance is ever read, a placeholder: a $0 here looks like an empty vault.
+                .redacted(reason: model.isBalanceKnown ? [] : .placeholder)
                 .padding(.horizontal, 24)
                 .contentShape(Rectangle())
             }

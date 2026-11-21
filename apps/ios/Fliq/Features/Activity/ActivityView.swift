@@ -34,7 +34,9 @@ struct ActivityView: View {
 
             GeometryReader { proxy in
                 ScrollView {
-                    if shown.isEmpty {
+                    if shown.isEmpty, !store.hasLoaded {
+                        loading
+                    } else if shown.isEmpty {
                         empty.frame(minHeight: proxy.size.height)
                     } else {
                         LazyVStack(alignment: .leading, spacing: 8) {
@@ -65,6 +67,19 @@ struct ActivityView: View {
                 .presentationCornerRadius(32)
                 .presentationBackground(Color(hex: 0x161616))
         }
+    }
+
+    /// First launch on a slow network: the shape of a list, not "Nothing yet", until the history arrives.
+    private var loading: some View {
+        VStack(spacing: 8) {
+            ForEach(0..<5, id: \.self) { _ in
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(Theme.surface)
+                    .frame(height: 68)
+            }
+        }
+        .padding(.top, 30)
+        .accessibilityLabel("Loading activity")
     }
 
     private var empty: some View {
