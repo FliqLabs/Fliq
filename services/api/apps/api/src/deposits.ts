@@ -159,8 +159,8 @@ const STATE_OF: Record<OneClickExecution["status"], DepositState> = {
 };
 
 // Source-token units are NUMERIC in the database (18-decimal tokens overflow BIGINT) and bigint everywhere in code.
-export const units = (value: Prisma.Decimal): bigint => BigInt(value.toFixed(0));
-export const unitsOrNull = (value: Prisma.Decimal | null): bigint | null => (value === null ? null : units(value));
+export const units = (value: Prisma.Decimal | bigint): bigint => (typeof value === "bigint" ? value : BigInt(value.toFixed(0)));
+export const unitsOrNull = (value: Prisma.Decimal | bigint | null): bigint | null => (value === null ? null : units(value));
 export const numeric = (value: bigint): Prisma.Decimal => new Prisma.Decimal(value.toString());
 const numericOrNull = (value: bigint | null): Prisma.Decimal | null => (value === null ? null : numeric(value));
 
