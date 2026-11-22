@@ -1,3 +1,5 @@
+// Must stay first: Sentry instruments fastify and http only if it is initialised before they load.
+import "../../../packages/observability/instrument-api.js";
 import { createOneClickClient } from "../../../packages/chains/oneclick/index.js";
 import { createNearRpc, createRelayerClient, TokenStorage, type NearRpc } from "../../../packages/chains/near/index.js";
 import { MockVault, NearVault, type VaultClient } from "../../../packages/chains/vault/index.js";
