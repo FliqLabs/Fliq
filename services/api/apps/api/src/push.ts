@@ -4,6 +4,7 @@ import { decrypt } from "../../../packages/db/src/crypto.js";
 import type { Db, Unit } from "./db.js";
 import { OUTSIDE_FLIQ } from "./people.js";
 import { DEFAULT_NOTIFICATIONS, type NotificationSettings } from "./settings.js";
+import { units } from "./deposits.js";
 
 export type PushKind = "transfer_in" | "transfer_out" | "payout" | "deposit" | "refused" | "limit" | "key";
 
@@ -363,7 +364,7 @@ async function pending(tx: Db, since: Date, dataKey: Buffer): Promise<Pending[]>
     ...deposits.map((row) => ({
       messageId: row.id,
       build: async () =>
-        depositMessage(row.userId, row.id, row.landedUnits ?? row.amountUnits, row.token, row.chain, row.refundReturn, row.fromBank),
+        depositMessage(row.userId, row.id, row.landedUnits ?? units(row.amountUnits), row.token, row.chain, row.refundReturn, row.fromBank),
     })),
     ...stoppedBank.map((row) => ({
       messageId: `${row.id}:bank_stopped`,
