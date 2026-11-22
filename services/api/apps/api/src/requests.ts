@@ -3,7 +3,7 @@ import type { PaymentRequest, VaultDeposit } from "@prisma/client";
 import { newId } from "../../../packages/db/src/ids.js";
 import type { Config } from "./config.js";
 import type { Db, Unit } from "./db.js";
-import { depositView, formatUnits, formatUsd, parseUnits, type DepositChain, type Deposits, type DepositToken } from "./deposits.js";
+import { depositView, formatUnits, formatUsd, parseUnits, units, type DepositChain, type Deposits, type DepositToken } from "./deposits.js";
 import { conflict, invalidRequest, notFound } from "./errors.js";
 
 const USDC_DECIMALS = 6;
@@ -149,7 +149,7 @@ export async function markRequestPaid(tx: Db, deposit: VaultDeposit): Promise<vo
       depositId: deposit.id,
       paidToken: deposit.token.toUpperCase(),
       paidChain: deposit.chain,
-      paidAmount: formatUnits(deposit.receivedUnits ?? deposit.amountUnits, deposit.decimals),
+      paidAmount: formatUnits(units(deposit.receivedUnits ?? deposit.amountUnits), deposit.decimals),
       feeMicroUsd: deposit.feeMicroUsd,
       landedUnits: deposit.landedUnits,
     },

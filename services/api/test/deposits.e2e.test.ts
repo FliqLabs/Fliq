@@ -7,7 +7,7 @@ import { buildApp } from "../apps/api/src/app.js";
 import type { EmailSender } from "../apps/api/src/auth/email-links.js";
 import { loadConfig } from "../apps/api/src/config.js";
 import { createDatabase, unitOf } from "../apps/api/src/db.js";
-import { createDeposits } from "../apps/api/src/deposits.js";
+import { createDeposits, numeric } from "../apps/api/src/deposits.js";
 import { createHandlers } from "../apps/api/src/handlers.js";
 import { DEFAULT_VELOCITY } from "../apps/api/src/payouts.js";
 import { sandboxAdapters } from "../apps/api/src/sandbox.js";
@@ -347,6 +347,14 @@ describe.skipIf(!enabled)("topping up the vault from another chain", () => {
     } finally {
       clock.offsetMs -= 11 * 60_000;
     }
+  });
+
+  it("keeps an 18-decimal amount, like the $21.96 BNB Chain deposit that stopped the sweep on 22 Nov", async () => {
+    const user = await holder("bigunits");
+    const deposit = (await reserve(user.headers, `bu-${suffix}`, { token: "usdc", chain: "base", amount: "25" })).json();
+    await unit((tx) => tx.vaultDeposit.update({ where: { id: deposit.deposit_id }, data: { decimals: 18, receivedUnits: numeric(21958566605726472356n) } }));
+    expect((await read(user.headers, deposit.deposit_id)).json().received).toBe("21.958566605726472356");
+    await deposits.sweep(unit, 0);
   });
 
   it("lands a top-up nobody is watching through the background sweep", async () => {

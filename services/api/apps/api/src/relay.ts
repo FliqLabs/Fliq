@@ -9,6 +9,7 @@ import type { Reply } from "./idempotency.js";
 import { holdSpend, releaseSpend, spendRef } from "./limits.js";
 import { recordObservedTransfer, recordOutsideSend } from "./people.js";
 import { markSendStarted } from "./sends.js";
+import { numeric } from "./deposits.js";
 
 type DelegateCall = { receiverId: string; method: string; args: Record<string, unknown> };
 // keyChange is true when the delegate adds or removes an access key instead of calling a contract.
@@ -71,14 +72,14 @@ async function recordDirectTopUp(tx: Db, userId: string, delegate: Decoded, txHa
       chain: "near",
       decimals: 6,
       depositAddress: `near:${txHash}`,
-      amountUnits: units,
-      minimumUnits: units,
+      amountUnits: numeric(units),
+      minimumUnits: numeric(units),
       feeMicroUsd: 0n,
       landsUnits: units,
       etaSeconds: 0,
       reservedUntil: at,
       state: "landed",
-      receivedUnits: units,
+      receivedUnits: numeric(units),
       landedUnits: units,
       originTx: txHash,
       seenAt: at,

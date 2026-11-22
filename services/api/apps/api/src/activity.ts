@@ -3,7 +3,7 @@ import { decrypt } from "../../../packages/db/src/crypto.js";
 import type { Config } from "./config.js";
 import { formatTokenAmount } from "./dashboard.js";
 import type { Db } from "./db.js";
-import { formatUnits } from "./deposits.js";
+import { formatUnits, units } from "./deposits.js";
 import { invalidRequest } from "./errors.js";
 import { institutionName } from "./institutions.js";
 import { developerIdFor } from "./quotes.js";
@@ -140,7 +140,7 @@ async function deposits(tx: Db, userId: string, before: Date | null, take: numbe
   });
   const now = new Date();
   return rows.map((row) => {
-    const received = row.receivedUnits ?? row.amountUnits;
+    const received = units(row.receivedUnits ?? row.amountUnits);
     const { status, reason } = depositStatus(row, now);
     return {
       activity_id: `act_${row.id}`,

@@ -2,7 +2,7 @@ import { INTENTS_CONTRACT, type IntentsBalance } from "../../../packages/chains/
 import { OneClickError, type OneClickClient, type OneClickToken } from "../../../packages/chains/oneclick/index.js";
 import { newId } from "../../../packages/db/src/ids.js";
 import type { Db, Unit } from "./db.js";
-import { ONECLICK_BLOCKCHAIN, formatUnits, quotedFee, topUpMessage, vaultAccountOf, type DepositChain } from "./deposits.js";
+import { ONECLICK_BLOCKCHAIN, formatUnits, numeric, quotedFee, topUpMessage, vaultAccountOf, type DepositChain } from "./deposits.js";
 import { ApiError, invalidRequest } from "./errors.js";
 import { retrying } from "./retry.js";
 
@@ -125,8 +125,8 @@ export function createRefunds(deps: RefundDeps) {
         decimals: found.token.decimals,
         depositAddress: quote.depositAddress,
         depositMemo: quote.depositMemo ?? null,
-        amountUnits: found.units,
-        minimumUnits: found.units,
+        amountUnits: numeric(found.units),
+        minimumUnits: numeric(found.units),
         feeMicroUsd: quotedFee(quote, found.token),
         landsUnits: quote.amountOut,
         etaSeconds: Math.max(quote.timeEstimateSeconds, 1),

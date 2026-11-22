@@ -1,5 +1,5 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import type { DepositState, VaultDeposit } from "@prisma/client";
+import { Prisma, type DepositState, type VaultDeposit } from "@prisma/client";
 import { OneClickError, type OneClickClient, type OneClickExecution, type OneClickQuote, type OneClickToken } from "../../../packages/chains/oneclick/index.js";
 import type { Arrival } from "../../../packages/chains/watchers/index.js";
 import { newId } from "../../../packages/db/src/ids.js";
@@ -158,10 +158,18 @@ const STATE_OF: Record<OneClickExecution["status"], DepositState> = {
   FAILED: "failed",
 };
 
-type Tracked = Pick<
-  VaultDeposit,
-  "state" | "reservedUntil" | "receivedUnits" | "landedUnits" | "refundedUnits" | "refundReason" | "originTx" | "seenAt" | "bridgingAt" | "landedAt" | "intentsStatus"
->;
+// Source-token units are NUMERIC in the database (18-decimal tokens overflow BIGINT) and bigint everywhere in code.
+export const units = (value: Prisma.Decimal): bigint => BigInt(value.toFixed(0));
+export const unitsOrNull = (value: Prisma.Decimal | null): bigint | null => (value === null ? null : units(value));
+export const numeric = (value: bigint): Prisma.Decimal => new Prisma.Decimal(value.toString());
+const numericOrNull = (value: bigint | null): Prisma.Decimal | null => (value === null ? null : numeric(value));
+
+type Tracked = Pick<VaultDeposit, "state" | "reservedUntil" | "landedUnits" | "refundReason" | "originTx" | "seenAt" | "bridgingAt" | "landedAt" | "intentsStatus"> & {
+  receivedUnits: bigint | null;
+  refundedUnits: bigint | null;
+};
+
+const tracked = (row: VaultDeposit): Tracked => ({ ...row, receivedUnits: unitsOrNull(row.receivedUnits), refundedUnits: unitsOrNull(row.refundedUnits) });
 
 // What one 1Click answer, or the lack of one, does to a deposit. A step never goes back, and a final state is final.
 export function nextDeposit(current: Tracked, execution: OneClickExecution | undefined, now: Date): Tracked {
@@ -194,7 +202,7 @@ export function depositProblem(before: DepositState, after: VaultDeposit): strin
   if (before === after.state || (after.state !== "refunded" && after.state !== "failed")) return null;
   const what = `${after.token.toUpperCase()} from ${after.chain}`;
   if (after.state === "failed") return `deposit ${after.id} failed: ${what} for ${after.account}. Check it in 1Click.`;
-  const amount = after.refundedUnits === null ? "the money" : formatUnits(after.refundedUnits, after.decimals);
+  const amount = after.refundedUnits === null ? "the money" : formatUnits(units(after.refundedUnits), after.decimals);
   const reason = after.refundReason ? ` (${after.refundReason})` : "";
   return `deposit ${after.id} refunded${reason}: ${amount} ${what} went back to ${after.account}. The app returns it to their vault.`;
 }
@@ -220,15 +228,15 @@ export function depositView(row: VaultDeposit, publicBaseUrl?: string) {
     chain: row.chain,
     address: row.depositAddress,
     memo: row.depositMemo,
-    amount: formatUnits(row.amountUnits, row.decimals),
-    minimum: formatUnits(row.minimumUnits, row.decimals),
+    amount: formatUnits(units(row.amountUnits), row.decimals),
+    minimum: formatUnits(units(row.minimumUnits), row.decimals),
     fee: formatUsd(row.feeMicroUsd),
     lands: formatUnits(row.landsUnits, USD_DECIMALS),
     eta_seconds: row.etaSeconds,
     reserved_until: row.reservedUntil.toISOString(),
-    received: source(row.receivedUnits),
+    received: source(unitsOrNull(row.receivedUnits)),
     landed: usdc(row.landedUnits),
-    refunded: source(row.refundedUnits),
+    refunded: source(unitsOrNull(row.refundedUnits)),
     seen_at: row.seenAt?.toISOString() ?? null,
     bridging_at: row.bridgingAt?.toISOString() ?? null,
     landed_at: row.landedAt?.toISOString() ?? null,
@@ -400,10 +408,10 @@ export function createDeposits(deps: DepositDeps) {
         decimals: picked.origin.decimals,
         depositAddress: quote.depositAddress as string,
         depositMemo: quote.depositMemo ?? null,
-        amountUnits: units,
+        amountUnits: numeric(units),
         fromBank: input.via === "bank",
         bankHookToken: input.via === "bank" ? randomBytes(24).toString("base64url") : null,
-        minimumUnits: quote.minAmountIn,
+        minimumUnits: numeric(quote.minAmountIn),
         feeMicroUsd: quotedFee(quote, picked.origin),
         landsUnits: quote.amountOut,
         etaSeconds: Math.max(quote.timeEstimateSeconds, 1),
@@ -423,7 +431,7 @@ export function createDeposits(deps: DepositDeps) {
       const mint = list.find((item) => item.blockchain === ONECLICK_BLOCKCHAIN[row.chain as DepositChain] && item.symbol.toLowerCase() === row.token)?.contractAddress;
       const found = mint ? await look({ address: row.depositAddress, mint, since: row.createdAt }) : null;
       // 1Click decides what a short payment becomes, so one is left for it to report.
-      return found && found.amount >= row.minimumUnits ? found : null;
+      return found && found.amount >= units(row.minimumUnits) ? found : null;
     } catch (error) {
       console.error("[deposits] origin lookup failed", (error as Error).message);
       return null;
@@ -451,12 +459,13 @@ export function createDeposits(deps: DepositDeps) {
     const { updated, landed, sighted, problem } = await unit(async (tx) => {
       await tx.$queryRaw`SELECT id FROM core.vault_deposits WHERE id = ${row.id} FOR UPDATE`;
       const current = await tx.vaultDeposit.findUniqueOrThrow({ where: { id: row.id } });
-      const followed = nextDeposit(current, execution, at);
+      const followed = nextDeposit(tracked(current), execution, at);
       // Our own sighting only changes what the user is told. The balance is credited when 1Click delivers, below.
       const sightedNow = arrived !== null && followed.state === "waiting";
       const next = sightedNow ? { ...followed, state: "seen" as const, receivedUnits: arrived.amount, originTx: arrived.txHash, seenAt: at } : followed;
       const landedNow = current.state !== "landed" && next.state === "landed" && next.landedUnits !== null;
-      const saved = await tx.vaultDeposit.update({ where: { id: row.id }, data: { ...next, polledAt: at, updatedAt: next.state === current.state ? current.updatedAt : at } });
+      const data = { ...next, receivedUnits: numericOrNull(next.receivedUnits), refundedUnits: numericOrNull(next.refundedUnits) };
+      const saved = await tx.vaultDeposit.update({ where: { id: row.id }, data: { ...data, polledAt: at, updatedAt: next.state === current.state ? current.updatedAt : at } });
       if (landedNow) {
         await postEntry(tx, vaultCredited(saved.id, saved.account, "USDC", saved.landedUnits as bigint));
         await markRequestPaid(tx, saved);
@@ -582,7 +591,17 @@ export function createDeposits(deps: DepositDeps) {
         take: limit,
       }),
     );
-    for (const row of rows) await advance(unit, row);
+    // One deposit that cannot be saved must not hold up the rest: the oldest-polled row comes first, so a row that
+    // fails every time would stall every deposit behind it (22 Nov). It is marked polled, moved to the back, and the
+    // team is told; the others carry on.
+    for (const row of rows) {
+      try {
+        await advance(unit, row);
+      } catch (error) {
+        await unit((tx) => tx.vaultDeposit.update({ where: { id: row.id }, data: { polledAt: at } })).catch(() => undefined);
+        deps.alert?.(`deposit ${row.id} for ${row.account} could not be followed: ${(error as Error).name}. The others carry on.`);
+      }
+    }
     return rows.length;
   }
 

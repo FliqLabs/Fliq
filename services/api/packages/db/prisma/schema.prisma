@@ -707,17 +707,19 @@ model VaultDeposit {
   decimals       Int
   depositAddress String       @map("deposit_address") @db.Text
   depositMemo    String?      @map("deposit_memo") @db.Text
-  amountUnits    BigInt       @map("amount_units")
-  minimumUnits   BigInt       @map("minimum_units")
+  // Source-token units. NUMERIC, not BIGINT: USDC and USDT on BNB Chain and ETH have 18 decimals, so $10 is already
+  // more than BIGINT holds (22 Nov: a $21.96 BNB Chain deposit stopped the deposit sweep).
+  amountUnits    Decimal      @map("amount_units") @db.Decimal(78, 0)
+  minimumUnits   Decimal      @map("minimum_units") @db.Decimal(78, 0)
   feeMicroUsd    BigInt       @map("fee_micro_usd")
   landsUnits     BigInt       @map("lands_units")
   etaSeconds     Int          @map("eta_seconds")
   reservedUntil  DateTime     @map("reserved_until") @db.Timestamptz(6)
   state          DepositState @default(waiting)
   intentsStatus  String?      @map("intents_status") @db.Text
-  receivedUnits  BigInt?      @map("received_units")
+  receivedUnits  Decimal?     @map("received_units") @db.Decimal(78, 0)
   landedUnits    BigInt?      @map("landed_units")
-  refundedUnits  BigInt?      @map("refunded_units")
+  refundedUnits  Decimal?     @map("refunded_units") @db.Decimal(78, 0)
   refundReason   String?      @map("refund_reason") @db.Text
   originTx       String?      @map("origin_tx") @db.Text
   seenAt         DateTime?    @map("seen_at") @db.Timestamptz(6)

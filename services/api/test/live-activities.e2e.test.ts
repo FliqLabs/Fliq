@@ -9,6 +9,7 @@ import { createHandlers } from "../apps/api/src/handlers.js";
 import { dispatchLiveActivities } from "../apps/api/src/live-activities.js";
 import type { PushTarget } from "../apps/api/src/push.js";
 import { MockVault } from "../packages/chains/vault/index.js";
+import { numeric } from "../apps/api/src/deposits.js";
 
 // Throwaway local database only; Prisma loads .env, which may point at a shared one.
 const enabled = /@(localhost|127\.0\.0\.1)[:/]/.test(process.env.DATABASE_URL ?? "") && Boolean(process.env.FLIQ_ACCESS_SECRET);
@@ -87,8 +88,8 @@ describe.skipIf(!enabled)("Live Activities", () => {
           chain: "solana",
           decimals: 6,
           depositAddress: `addr-${id}`,
-          amountUnits: 20_000_000n,
-          minimumUnits: 19_000_000n,
+          amountUnits: numeric(20_000_000n),
+          minimumUnits: numeric(19_000_000n),
           feeMicroUsd: 0n,
           landsUnits: 20_000_000n,
           etaSeconds: 60,
