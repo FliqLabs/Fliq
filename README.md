@@ -313,6 +313,7 @@ Architecture: [docs/architecture.md](docs/architecture.md).
 | near-contract-standards | contracts/vault | Expose standard NEP-141 receiver and NEP-145 storage interfaces |
 | near-sdk | contracts/vault | Build and test the NEAR USDC vault contract |
 | fastify | services/api | HTTP server; validates requests against schemas built from the OpenAPI spec |
+| @sentry/node | services/api | Errors, every request as a trace, and logs from the API and the relayer, local and production |
 | prisma, @prisma/client | services/api | Database schema, migrations and typed queries on Postgres |
 | near-api-js, borsh | services/api | NEAR transaction and delegate-action encoding, signing and verification for the relayer and account creation |
 | @simplewebauthn/server | services/api | Verify passkey registration and sign-in (WebAuthn) |

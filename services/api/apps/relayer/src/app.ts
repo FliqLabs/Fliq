@@ -1,3 +1,4 @@
+import { watchApp } from "../../../packages/observability/sentry.js";
 import Fastify, { type FastifyInstance, type FastifyReply } from "fastify";
 import type { RotatingSecret } from "../../../packages/config/index.js";
 import {
@@ -56,6 +57,8 @@ export function buildRelayerApp(deps: RelayerAppDeps): FastifyInstance {
     ajv: { customOptions: { removeAdditional: false } },
     logger: deps.logger ? { redact: ["req.headers.authorization"] } : false,
   });
+
+  watchApp(app);
 
   app.addHook("onRequest", async (request, reply) => {
     if (request.url === "/health") return;

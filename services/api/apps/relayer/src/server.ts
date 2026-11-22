@@ -1,3 +1,5 @@
+// Must stay first: Sentry instruments fastify and http only if it is initialised before they load.
+import "../../../packages/observability/instrument-relayer.js";
 import { Redis } from "ioredis";
 import { accountCreator, loadConfigOrExit, near, redis, relayer } from "../../../packages/config/index.js";
 import { createNearRpc, RedisRelayStore } from "../../../packages/chains/near/index.js";

@@ -1,3 +1,4 @@
+import { watchApp } from "../../../packages/observability/sentry.js";
 import { randomUUID } from "node:crypto";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { isFamilyActive } from "./auth/sessions.js";
@@ -82,6 +83,8 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     genReqId: () => randomUUID(),
     ajv: { customOptions: { removeAdditional: false, coerceTypes: false, allErrors: false } },
   });
+
+  watchApp(app);
 
   const provenKeys = new ProvenKeys();
   if (deps.limiter) app.addHook("onRequest", rateLimitHook(deps.limiter, deps.config.accessSecret, provenKeys));
