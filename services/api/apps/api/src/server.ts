@@ -28,6 +28,7 @@ import { createOps, opsConfigFromEnv } from "./ops.js";
 import { createSends, startSendWatch } from "./sends.js";
 import { payoutRefresher, startPayoutWatch } from "./payout-watch.js";
 import { apnsFromEnv, createApnsSender, startPushDispatch } from "./push.js";
+import { startNotificationJobs } from "./notification-jobs.js";
 import { startLiveActivityDispatch } from "./live-activities.js";
 import { usageRecorder } from "./usage.js";
 import { httpsTransport } from "../../../packages/webhooks/transport.js";
@@ -215,6 +216,8 @@ const app = buildApp({ config, unit, handlers, logger: true, limiter: createLimi
   bankWebhook: (depositId, token, rawBody) => deposits.bankWebhook(unit, depositId, token, rawBody),
   recordUsage: usageRecorder(unit, (message) => console.error(message)), alert });
 warn = (message) => app.log.warn(message);
+let stopNotificationJobs = async () => {};
+app.addHook("onClose", async () => stopNotificationJobs());
 await app.listen({ port: config.port, host: "0.0.0.0" });
 startHealthChecks(unit, probes, Number(process.env.HEALTH_CHECK_INTERVAL_MS ?? 60_000));
 startRateSampler(rateBoard, Number(process.env.RATE_SAMPLE_INTERVAL_MS ?? 60_000));
@@ -227,6 +230,7 @@ startVaultSync(
 );
 const apns = apnsFromEnv(process.env);
 const apnsSender = apns ? createApnsSender(apns) : null;
+stopNotificationJobs = startNotificationJobs({ unit, vault, send: apnsSender, now: () => new Date(), log: (message) => app.log.warn(message) });
 startPushDispatch(
   { unit, send: apnsSender, dataKey: config.dataKey, now: () => new Date(), log: (message) => app.log.warn(message) },
   Number(process.env.PUSH_INTERVAL_MS ?? 3_000),

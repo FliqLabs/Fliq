@@ -6,7 +6,7 @@ import { OUTSIDE_FLIQ } from "./people.js";
 import { DEFAULT_NOTIFICATIONS, type NotificationSettings } from "./settings.js";
 import { units } from "./deposits.js";
 
-export type PushKind = "transfer_in" | "transfer_out" | "payout" | "deposit" | "refused" | "limit" | "key";
+export type PushKind = "transfer_in" | "transfer_out" | "payout" | "deposit" | "refused" | "limit" | "key" | "rate_alert" | "weekly_summary";
 
 export interface PushMessage {
   userId: string;
