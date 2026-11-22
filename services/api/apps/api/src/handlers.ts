@@ -224,7 +224,10 @@ export function createHandlers({
     }),
     claimName: (request) =>
       claimName(unit, config, provisioner, auth(request).userId, request.headers["idempotency-key"] as string | undefined, body<ClaimInput>(request)),
-    relay: (request) => relayDelegate(unit, relayer, auth(request).userId, body<{ signed_delegate: string }>(request).signed_delegate, { vault: config.vaultAccount, usdc: config.usdcContract }),
+    relay: (request) => {
+      const input = body<{ signed_delegate: string; request_code?: string }>(request);
+      return relayDelegate(unit, relayer, auth(request).userId, input.signed_delegate, { vault: config.vaultAccount, usdc: config.usdcContract }, undefined, undefined, input.request_code);
+    },
     getRelay: (request) => getRelay(unit, relayer, auth(request).userId, (request.params as { delegateHash: string }).delegateHash),
 
     getCurrentWorkspace: async (request) => ({

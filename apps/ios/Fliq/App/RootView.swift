@@ -196,6 +196,7 @@ struct RootView: View {
         tab = .home
         environment.router.reset()
         startPersonPayment(to: link.name)
+        personFlow?.requestCode = link.code
         let opened = personFlow
         do {
             let request = try await environment.api.publicRequest(link)

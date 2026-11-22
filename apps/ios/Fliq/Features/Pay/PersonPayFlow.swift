@@ -26,6 +26,9 @@ final class PersonPayFlow {
     private let transfers: any VaultTransfers
     private let vault: VaultStore?
 
+    /// The request being paid, when Pay was opened from a request link. The API marks it paid as the transfer lands.
+    var requestCode: String?
+
     init(api: any FliqAPI, transfers: any VaultTransfers, vault: VaultStore? = nil, account: String? = nil) {
         self.api = api
         self.transfers = transfers
@@ -72,7 +75,7 @@ final class PersonPayFlow {
         defer { isSending = false }
         do {
             isConfirmed = false
-            _ = try await transfers.send(amount, to: person.nearAccount) { [weak self] in
+            _ = try await transfers.send(amount, to: person.nearAccount, paying: requestCode) { [weak self] in
                 await MainActor.run { self?.paid = amount }
             }
             vault?.debit(amount)

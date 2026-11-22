@@ -2410,6 +2410,8 @@ export interface components {
              * @description Base64 Borsh SignedDelegate, signed by the device key over sha256(NEP-461 prefix and borsh(DelegateAction))
              */
             signed_delegate: string;
+            /** @description Set when the transfer pays a payment request from its link. Once the transfer to the payee succeeds and covers the requested amount, the request turns paid. */
+            request_code?: string;
         };
         RelayResult: {
             /** @enum {string} */
