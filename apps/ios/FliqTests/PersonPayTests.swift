@@ -14,6 +14,33 @@ final class PersonPayTests: XCTestCase {
         PersonPayFlow(api: FixtureClient(), transfers: transfers, vault: VaultStore(balance: TokenAmount(baseUnits: balance)), account: "tobi" + FliqName.suffix)
     }
 
+    private actor CodeLog {
+        private(set) var codes: [String?] = []
+        func add(_ code: String?) { codes.append(code) }
+    }
+
+    private struct RecordingCode: VaultTransfers {
+        let log: CodeLog
+        func send(_ amount: TokenAmount, to recipient: String) async throws -> RelayResult? { nil }
+        func release(_ payout: Payout) async throws -> RelayResult? { nil }
+        func send(_ amount: TokenAmount, to recipient: String, paying requestCode: String?, onSigned: @Sendable () async -> Void) async throws -> RelayResult? {
+            await log.add(requestCode)
+            await onSigned()
+            return nil
+        }
+    }
+
+    func testPayingFromARequestLinkTellsTheAPIWhichRequest() async {
+        let log = CodeLog()
+        let flow = flow(transfers: RecordingCode(log: log))
+        flow.requestCode = "k3x9Qa"
+        await flow.lookUp()
+        flow.enterAmount("5")
+        _ = await flow.pay()
+        let codes = await log.codes
+        XCTAssertEqual(codes, ["k3x9Qa"])
+    }
+
     func testAPaidUserLeavesTheVaultAtOnce() async {
         let flow = flow()
         await flow.lookUp()

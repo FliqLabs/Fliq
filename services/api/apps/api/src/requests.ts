@@ -139,6 +139,32 @@ export async function requestDeposit(unit: Unit, config: Config, deposits: Depos
 }
 
 // Called inside the transaction that lands the deposit, so a request is marked paid exactly once.
+// A request paid inside fliq: a vault transfer to the payee that names the request and covers its amount. A smaller
+// transfer, one to someone else, or a request already paid or cancelled changes nothing.
+export async function markRequestPaidByTransfer(
+  tx: Db,
+  transfer: { code: string; from: string; to: string; amount: bigint; txHash: string },
+): Promise<boolean> {
+  const payee = await tx.user.findFirst({ where: { nearAccount: transfer.to }, select: { id: true } });
+  if (!payee) return false;
+  const request = await tx.paymentRequest.findFirst({ where: { userId: payee.id, code: transfer.code, state: "open" } });
+  if (!request || transfer.amount < request.amountUnits) return false;
+  const marked = await tx.paymentRequest.updateMany({
+    where: { id: request.id, state: "open" },
+    data: {
+      state: "paid",
+      paidAt: new Date(),
+      payer: transfer.from,
+      paidToken: "USDC",
+      paidChain: "near",
+      paidAmount: formatUnits(transfer.amount, USDC_DECIMALS),
+      feeMicroUsd: 0n,
+      landedUnits: transfer.amount,
+    },
+  });
+  return marked.count === 1;
+}
+
 export async function markRequestPaid(tx: Db, deposit: VaultDeposit): Promise<void> {
   if (!deposit.requestId || deposit.landedUnits === null) return;
   await tx.paymentRequest.updateMany({

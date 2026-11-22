@@ -301,6 +301,29 @@ describe.skipIf(!enabled)("the app's activity, agents, requests and settings", (
     expect(bare.json().note).toBe("");
   }, 90_000);
 
+  it("marks a request paid when it is paid inside the app, only for the full amount and only once", async () => {
+    const payee = await holder("payee");
+    const payer = await holder("payer");
+    await fund(payer.account, 50_000_000n);
+    const request = (await send("POST", "/v1/requests", { amount: "5.00", note: "Lunch", cash_out_on_arrival: false }, payee.headers)).json();
+    const transfer = async (amount: string, hash: string, code: string | undefined) => {
+      const signed = await signDelegate({ ...newUser(payer.account), accountId: payer.account }, { receiverId: config.vaultAccount, methodName: "transfer", deposit: 1n, args: { to_account: payee.account, amount } });
+      nextRelay = () => ({ status: "succeeded", tx_hash: `${hash}-${suffix}`, delegate_hash: hash, sender_id: payer.account, receiver_id: config.vaultAccount, failures: [] });
+      return send("POST", "/v1/relays", { signed_delegate: signed.base64, ...(code ? { request_code: code } : {}) }, payer.headers);
+    };
+
+    expect((await transfer("4990000", "tx-short", request.code)).statusCode).toBe(200);
+    expect((await get(`/v1/requests/${request.request_id}`, payee.headers)).json().state, "Short of the amount").toBe("open");
+    expect((await transfer("5000000", "tx-nocode", undefined)).statusCode).toBe(200);
+    expect((await get(`/v1/requests/${request.request_id}`, payee.headers)).json().state, "A plain transfer pays nothing").toBe("open");
+
+    expect((await transfer("5000000", "tx-paid", request.code)).statusCode).toBe(200);
+    const paid = (await get(`/v1/requests/${request.request_id}`, payee.headers)).json();
+    expect(paid).toMatchObject({ state: "paid", paid: { token: "USDC", chain: "near", amount: "5.00" } });
+    expect((await get(`/v1/pay/${payee.name}/${request.code}`)).json().state).toBe("paid");
+    expect((await send("POST", "/v1/relays", { signed_delegate: "AAAA", request_code: "bad code!" }, payer.headers)).statusCode).toBe(400);
+  }, 90_000);
+
   it("connects an agent with caps in naira, shows it active once the vault holds its policy, and revokes it", async () => {
     const frank = await holder("agents");
     const agentKey = newUser("agent").publicKey;

@@ -3787,6 +3787,12 @@ components:
           format: byte
           maxLength: 8192
           description: Base64 Borsh SignedDelegate, signed by the device key over sha256(NEP-461 prefix and borsh(DelegateAction))
+        request_code:
+          type: string
+          pattern: "^[A-Za-z0-9_-]{1,64}$"
+          description: >-
+            Set when the transfer pays a payment request from its link. Once the transfer to the payee succeeds and
+            covers the requested amount, the request turns paid.
     RelayResult:
       type: object
       required: [status, delegate_hash, sender_id, receiver_id]

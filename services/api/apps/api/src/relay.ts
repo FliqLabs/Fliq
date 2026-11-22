@@ -8,6 +8,7 @@ import { ApiError, invalidRequest, notFound } from "./errors.js";
 import type { Reply } from "./idempotency.js";
 import { holdSpend, releaseSpend, spendRef } from "./limits.js";
 import { recordObservedTransfer, recordOutsideSend } from "./people.js";
+import { markRequestPaidByTransfer } from "./requests.js";
 import { markSendStarted } from "./sends.js";
 import { numeric } from "./deposits.js";
 
@@ -97,7 +98,7 @@ const isOutsideSend = (call: DelegateCall, contracts: RelayContracts) => call.re
 
 // A transfer between two vaults is recorded once the chain ran it; an agent payout the vault refused is recorded
 // because nothing moved and nothing else would show it.
-async function recordOutcome(tx: Db, userId: string, delegate: Decoded, result: RelayResponse, contracts: RelayContracts): Promise<void> {
+async function recordOutcome(tx: Db, userId: string, delegate: Decoded, result: RelayResponse, contracts: RelayContracts, requestCode?: string): Promise<void> {
   const call = delegate.call;
   if (call && isDirectTopUp(call, contracts)) {
     if (result.status === "succeeded" && result.tx_hash) await recordDirectTopUp(tx, userId, delegate, result.tx_hash);
@@ -117,7 +118,11 @@ async function recordOutcome(tx: Db, userId: string, delegate: Decoded, result: 
   if (!call || call.receiverId !== contracts.vault) return;
   if (call.method === "transfer" && result.status === "succeeded" && result.tx_hash) {
     const amount = String(call.args.amount ?? "");
-    if (UNITS.test(amount)) await recordObservedTransfer(tx, { txHash: result.tx_hash, from: delegate.sender, to: String(call.args.to_account), amount: BigInt(amount) });
+    if (!UNITS.test(amount)) return;
+    const paid = { txHash: result.tx_hash, from: delegate.sender, to: String(call.args.to_account), amount: BigInt(amount) };
+    await recordObservedTransfer(tx, paid);
+    // Paid from a request link inside the app: the request turns paid as the transfer lands, as a deposit would.
+    if (requestCode) await markRequestPaidByTransfer(tx, { ...paid, code: requestCode });
     return;
   }
   if (call.method !== "payout" || result.status !== "failed") return;
@@ -188,7 +193,19 @@ async function recordKeyChange(tx: Db, userId: string, account: string, change: 
 
 // The sender is the user's own account or one of the user's agents, so nobody can relay for someone else.
 // An agent calling for itself passes onlySender, so it can relay its own delegates and no one else's.
-export async function relayDelegate(unit: Unit, relayer: RelayerClient | undefined, userId: string, signedDelegate: string, contracts: RelayContracts, onlySender?: string, now: () => Date = () => new Date()): Promise<Reply> {
+export async function relayDelegate(
+  unit: Unit,
+  relayer: RelayerClient | undefined,
+  userId: string,
+  signedDelegate: string,
+  contracts: RelayContracts,
+  onlySender?: string,
+  now: () => Date = () => new Date(),
+  requestCode?: string,
+): Promise<Reply> {
+  if (requestCode !== undefined && (typeof requestCode !== "string" || !/^[A-Za-z0-9_-]{1,64}$/.test(requestCode))) {
+    throw invalidRequest("request_code is not a payment request code.");
+  }
   const account = await accountOf(unit, userId);
   const delegate = decodeDelegate(signedDelegate);
   if (!delegate) throw invalidRequest("signed_delegate is not a base64 Borsh SignedDelegate.");
@@ -211,7 +228,7 @@ export async function relayDelegate(unit: Unit, relayer: RelayerClient | undefin
     return relayerFailure(error);
   }
   if (spend !== null && result.status === "failed") await unit((tx) => releaseSpend(tx, ref));
-  await unit((tx) => recordOutcome(tx, userId, delegate, result, contracts));
+  await unit((tx) => recordOutcome(tx, userId, delegate, result, contracts, requestCode));
   const change = delegate.keyChange && result.status === "succeeded" && result.tx_hash ? keyChangeOf(signedDelegate) : null;
   if (change && result.tx_hash) {
     const txHash = result.tx_hash;

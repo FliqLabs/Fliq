@@ -175,7 +175,13 @@ struct HTTPClient: FliqAPI {
     }
 
     func relay(signedDelegate: String) async throws -> RelayResult {
-        try await send("POST", "relays", body: ["signed_delegate": signedDelegate])
+        try await relay(signedDelegate: signedDelegate, requestCode: nil)
+    }
+
+    func relay(signedDelegate: String, requestCode: String?) async throws -> RelayResult {
+        var body = ["signed_delegate": signedDelegate]
+        if let requestCode { body["request_code"] = requestCode }
+        return try await send("POST", "relays", body: body)
     }
 
     func relayResult(hash: String) async throws -> RelayResult {

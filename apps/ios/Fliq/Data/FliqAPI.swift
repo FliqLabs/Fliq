@@ -44,6 +44,7 @@ protocol FliqAPI: Sendable {
     func recentPeople() async throws -> RecentPeopleList
     func person(named name: String) async throws -> Person
     func relay(signedDelegate: String) async throws -> RelayResult
+    func relay(signedDelegate: String, requestCode: String?) async throws -> RelayResult
     func passkeys() async throws -> PasskeyList
     func deviceSessions() async throws -> DeviceSessionList
     func revokeSession(id: String) async throws
@@ -107,6 +108,7 @@ extension FliqAPI {
     func unregisterDevice(token: String) async throws {}
     func registerLiveActivity(_ activity: LiveActivityRegistration) async throws {}
     func refunds() async throws -> [Refund] { [] }
+    func relay(signedDelegate: String, requestCode: String?) async throws -> RelayResult { try await relay(signedDelegate: signedDelegate) }
     func saveRecipient(_ input: RecipientInput) async throws -> Recipient { throw APIError.unexpected(status: 404) }
     func markOwnRecipient(id: String) async throws {}
     func deleteRecipient(id: String) async throws {}
