@@ -1,7 +1,8 @@
 import Foundation
 import Observation
 
-/// Which notifications the owner wants. Stored on the device; nothing here is secret.
+/// Which notifications the owner wants. Kept on the device so the screen is right at launch, and on the server, which
+/// is what actually sends them. Nothing here is secret.
 @MainActor
 @Observable
 final class Preferences {
@@ -24,7 +25,6 @@ final class Preferences {
         var detail: String? {
             switch self {
             case .capAlmostReached: "At 80%"
-            case .rateAlert: "When $1 beats ₦1,400"
             default: nil
             }
         }
@@ -32,22 +32,122 @@ final class Preferences {
         var onByDefault: Bool { self != .rateAlert && self != .weeklySummary }
     }
 
+    private enum Key {
+        static let notices = "prefs.notices"
+        static let rateAbove = "prefs.rateAbove"
+        static let rateCurrency = "prefs.rateCurrency"
+        static let uploaded = "prefs.uploaded"
+    }
+
     private(set) var notices: Set<Notice>
+    /// The rate alert fires when $1 pays more than this, in `rateCurrency`. Nil until the owner picks one.
+    private(set) var rateAbove: Double?
+    private(set) var rateCurrency: Currency
 
     private let defaults: UserDefaults
+    @ObservationIgnored private var api: (any FliqAPI)?
+    @ObservationIgnored private var lastUpload: Task<Void, Never>?
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        let stored = defaults.stringArray(forKey: "prefs.notices")
+        let stored = defaults.stringArray(forKey: Key.notices)
         notices = stored.map { Set($0.compactMap(Notice.init)) } ?? Set(Notice.allCases.filter(\.onByDefault))
+        rateAbove = defaults.object(forKey: Key.rateAbove) as? Double
+        rateCurrency = defaults.string(forKey: Key.rateCurrency).flatMap(Currency.init)
+            ?? (DisplayCurrency.stored(in: defaults) == .kes ? .kes : .ngn)
     }
+
+    /// From here on every change is also saved on the server.
+    func connect(_ api: any FliqAPI) {
+        self.api = api
+    }
+
+    /// The server's copy wins, so choices made before a reinstall come back. The one exception is the first sync on
+    /// an account the server has never had choices for: then this iPhone's choices, kept only here until now, go up.
+    func sync() async {
+        guard let api else { return }
+        await lastUpload?.value
+        guard let server = try? await api.notificationSettings() else { return }
+        if !defaults.bool(forKey: Key.uploaded), server == Self.newUser, settings != server {
+            guard (try? await api.updateNotificationSettings(settings)) != nil else { return }
+        } else {
+            apply(server)
+        }
+        defaults.set(true, forKey: Key.uploaded)
+    }
+
+    /// What the server holds for someone who never chose: money and agent notices on, rates off.
+    static let newUser = NotificationSettings(
+        received: true, payoutPaid: true, payoutRefunded: true, agentPaid: true, agentRefused: true, capAlmostReached: true,
+        rateAlert: .init(enabled: false, currency: "NGN", above: nil), weeklySummary: false
+    )
 
     func isOn(_ notice: Notice) -> Bool { notices.contains(notice) }
 
     func set(_ notice: Notice, _ on: Bool) {
         if on { notices.insert(notice) } else { notices.remove(notice) }
-        defaults.set(notices.map(\.rawValue).sorted(), forKey: "prefs.notices")
+        persist()
+        upload()
     }
+
+    func setRate(above: Double, in currency: Currency) {
+        guard above > 0 else { return }
+        rateAbove = above
+        rateCurrency = currency
+        persist()
+        upload()
+    }
+
+    /// "When $1 beats ₦1,450", or nil before a rate is picked.
+    var rateDetail: String? {
+        rateAbove.map { "When $1 beats \(rateCurrency.symbol)\(Self.whole($0))" }
+    }
+
+    static func whole(_ value: Double) -> String {
+        value.formatted(.number.precision(.fractionLength(0)))
+    }
+
+    /// What the server keeps. The alert only counts as on once it has a rate, because the server refuses one without.
+    var settings: NotificationSettings {
+        NotificationSettings(
+            received: isOn(.received), payoutPaid: isOn(.payoutPaid), payoutRefunded: isOn(.payoutRefunded),
+            agentPaid: isOn(.agentPaid), agentRefused: isOn(.agentRefused), capAlmostReached: isOn(.capAlmostReached),
+            rateAlert: .init(enabled: isOn(.rateAlert) && rateAbove != nil, currency: rateCurrency.rawValue.uppercased(), above: rateAbove),
+            weeklySummary: isOn(.weeklySummary)
+        )
+    }
+
+    private func apply(_ settings: NotificationSettings) {
+        let on: [Notice: Bool] = [
+            .received: settings.received, .payoutPaid: settings.payoutPaid, .payoutRefunded: settings.payoutRefunded,
+            .agentPaid: settings.agentPaid, .agentRefused: settings.agentRefused, .capAlmostReached: settings.capAlmostReached,
+            .rateAlert: settings.rateAlert.enabled, .weeklySummary: settings.weeklySummary,
+        ]
+        notices = Set(on.filter(\.value).keys)
+        if let above = settings.rateAlert.above { rateAbove = above }
+        if let currency = Currency(rawValue: settings.rateAlert.currency.lowercased()) { rateCurrency = currency }
+        persist()
+    }
+
+    private func persist() {
+        defaults.set(notices.map(\.rawValue).sorted(), forKey: Key.notices)
+        defaults.set(rateAbove, forKey: Key.rateAbove)
+        defaults.set(rateCurrency.rawValue, forKey: Key.rateCurrency)
+    }
+
+    // One save at a time, in order, so a quick on then off never lands on the server as on.
+    private func upload() {
+        guard let api else { return }
+        let snapshot = settings
+        let previous = lastUpload
+        lastUpload = Task {
+            await previous?.value
+            _ = try? await api.updateNotificationSettings(snapshot)
+        }
+    }
+
+    /// Waits for every save started so far. For tests.
+    func uploaded() async { await lastUpload?.value }
 }
 
 /// The currency Home shows the balance in. A bank payout starts typing in the bank's currency unless this is dollars.

@@ -91,7 +91,8 @@ final class ReceiveFlow {
     /// What reaches the vault once the deposit is seen; nil until then.
     var landing: TokenAmount? {
         if let landed = status?.landed { return landed }
-        guard let deposit, let received = status?.received else { return nil }
+        // A coin is counted in coins until it is swapped; its dollar amount is only known once it lands.
+        guard let deposit, !deposit.source.isSwapped, let received = status?.received else { return nil }
         return deposit.landing(received)
     }
 

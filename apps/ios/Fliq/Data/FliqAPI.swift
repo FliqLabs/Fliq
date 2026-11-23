@@ -51,6 +51,8 @@ protocol FliqAPI: Sendable {
     func createRequest(_ input: PaymentRequestInput, idempotencyKey: String) async throws -> PaymentRequest
     func request(id: String) async throws -> PaymentRequest
     func relayResult(hash: String) async throws -> RelayResult
+    func notificationSettings() async throws -> NotificationSettings
+    func updateNotificationSettings(_ settings: NotificationSettings) async throws -> NotificationSettings
 }
 
 enum PasskeyPurpose: String, Sendable {
@@ -114,4 +116,33 @@ extension FliqAPI {
     func deleteRecipient(id: String) async throws {}
     func publicRequest(_ link: PayLink) async throws -> PublicPayRequest { throw APIError.unexpected(status: 404) }
     func returnRefund(tokenId: String, idempotencyKey: String) async throws -> ReturnedRefund { throw TransferError.notSetUp }
+    func notificationSettings() async throws -> NotificationSettings { throw APIError.unexpected(status: 404) }
+    func updateNotificationSettings(_ settings: NotificationSettings) async throws -> NotificationSettings { settings }
+}
+
+/// Which notifications the user wants, as `/me/notification-settings` keeps them on the server.
+struct NotificationSettings: Codable, Equatable, Sendable {
+    struct RateAlert: Codable, Equatable, Sendable {
+        var enabled: Bool
+        /// "NGN" or "KES".
+        var currency: String
+        var above: Double?
+
+        // The API requires the key even when there is no rate yet, so nil goes out as null.
+        func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(enabled, forKey: .enabled)
+            try container.encode(currency, forKey: .currency)
+            try container.encode(above, forKey: .above)
+        }
+    }
+
+    var received: Bool
+    var payoutPaid: Bool
+    var payoutRefunded: Bool
+    var agentPaid: Bool
+    var agentRefused: Bool
+    var capAlmostReached: Bool
+    var rateAlert: RateAlert
+    var weeklySummary: Bool
 }
