@@ -444,6 +444,9 @@ async function openHop(
   if (swap.minAmountIn * hop.amountOut * 10_000n > hop.amountIn * funding.units * (10_000n + intents.guardBps)) return { kind: "quote_changed" };
 
   const deposit: Deposit = { chain: "near", address: swap.depositAddress, units: swap.amountIn, validUntil: deadline, memo: swap.depositMemo ?? null };
+  // The swap's own fee is only known now and can push the total a fraction of a cent past what the vault holds.
+  // The vault would refuse that order, so say it is the balance rather than a route that is down.
+  if ((await intents.vault.getBalance(payer)).available < deposit.units) return { kind: "insufficient_balance", order };
   try {
     await intents.tokenStorage.ensure(deposit.address);
     // The token refuses a transfer to an account it has not registered, so the payer must be able to take a refund.
