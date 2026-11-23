@@ -83,7 +83,7 @@ struct MoveMoneySheet: View {
         case .payTo:
             PayToView(onAccount: onAccount, onPerson: onPerson, onNew: { go(.recipientCurrency) }, onScan: startScan, onWallet: onWallet)
         case .recipientCurrency:
-            RecipientCurrencyView { go(.sendMethod($0)) }
+            RecipientCurrencyView(onPick: { go(.sendMethod($0)) }, onWallet: onWallet)
         case .sendMethod(let country):
             SendMethodView(country: country) { method in
                 if method == .fliqName { onPerson(nil) } else { go(.recipient(country, method)) }
@@ -200,7 +200,9 @@ private struct ReceiveStartView: View {
             VStack(spacing: 10) {
                 if let onBankDeposit {
                     SheetRow(title: "Bank transfer", detail: "Pay in naira from any Nigerian bank", action: onBankDeposit) {
-                        Icon("building.columns", size: 24)
+                        NigeriaFlag(size: 36)
+                    } trailing: {
+                        LogoStack(images: ["Bank-gtbank", "Bank-opay", "Bank-access-bank"])
                     }
                 }
                 if let name {
@@ -208,12 +210,15 @@ private struct ReceiveStartView: View {
                         NEARMark(size: 22)
                     }
                 }
-                SheetRow(title: "External wallet", detail: flow.onlyOption?.title ?? "Choose a coin and network", action: onWallet) {
+                SheetRow(title: "External wallet", detail: flow.onlyOption?.title ?? "From any wallet or exchange", action: onWallet) {
                     if flow.isReserving {
                         ProgressView()
                     } else {
                         Icon("wallet.bifold", size: 24)
                     }
+                } trailing: {
+                    let chains = flow.chainImages
+                    LogoStack(images: Array(chains.prefix(3)), extra: max(0, chains.count - 3))
                 }
                 .disabled(flow.isReserving)
             }
@@ -301,6 +306,9 @@ private struct CurrencyListView: View {
         case "usdc": "USDC"
         case "usdt": "Tether USDT"
         case "btc": "Bitcoin"
+        case "sol": "Solana"
+        case "eth": "Ether"
+        case "bnb": "BNB"
         default: token.uppercased()
         }
     }
@@ -324,7 +332,7 @@ private struct NetworkListView: View {
                         Text("Receive \(token.uppercased())")
                             .font(.system(size: compact ? 26 : 36, weight: .medium))
                             .tracking(-0.7)
-                        Text(token == "btc" ? "Lands in your vault as dollars" : "1 \(token.uppercased()) ≈ $1.00")
+                        Text(DepositSource.swappedTokens.contains(token) ? "Lands in your vault as dollars" : "1 \(token.uppercased()) ≈ $1.00")
                             .font(.system(size: compact ? 15 : 18))
                             .foregroundStyle(Theme.textSecondary)
                     }
@@ -502,11 +510,12 @@ struct TestNetworkNote: View {
     }
 }
 
-struct SheetRow<Mark: View>: View {
+struct SheetRow<Mark: View, Trailing: View>: View {
     let title: String
     let detail: String
     let action: () -> Void
     @ViewBuilder let mark: () -> Mark
+    @ViewBuilder var trailing: () -> Trailing
 
     var body: some View {
         Button(action: action) {
@@ -514,9 +523,11 @@ struct SheetRow<Mark: View>: View {
                 mark().frame(width: 44, height: 44)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title).font(.system(size: 18, weight: .semibold))
-                    Text(detail).font(.system(size: 15)).foregroundStyle(Theme.textSecondary).lineLimit(1)
+                    Text(detail).font(.system(size: 15)).foregroundStyle(Theme.textSecondary).lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                Spacer()
+                Spacer(minLength: 8)
+                trailing()
                 Icon("chevron.right", size: 18)
                     .foregroundStyle(Theme.textTertiary)
             }
@@ -528,6 +539,43 @@ struct SheetRow<Mark: View>: View {
         }
         .buttonStyle(.pressable(scale: 0.98))
         .accessibilityIdentifier(title)
+    }
+}
+
+extension SheetRow where Trailing == EmptyView {
+    init(title: String, detail: String, action: @escaping () -> Void, @ViewBuilder mark: @escaping () -> Mark) {
+        self.init(title: title, detail: detail, action: action, mark: mark, trailing: { EmptyView() })
+    }
+}
+
+/// A few overlapping logos and "+3", the way the best wallets show what a row covers before it is opened.
+struct LogoStack: View {
+    let images: [String]
+    var extra = 0
+    var size: CGFloat = 22
+
+    var body: some View {
+        HStack(spacing: 6) {
+            HStack(spacing: -size * 0.32) {
+                ForEach(Array(images.enumerated()), id: \.offset) { index, name in
+                    Image(name)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: size, height: size)
+                        .background(name.hasPrefix("Bank-") ? Color.white : .clear)
+                        .clipShape(Circle())
+                        .overlay(Circle().strokeBorder(Theme.surface, lineWidth: 1.5))
+                        .zIndex(Double(images.count - index))
+                }
+            }
+            if extra > 0 {
+                Text("+\(extra)")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.textSecondary)
+            }
+        }
+        .fixedSize()
+        .accessibilityHidden(true)
     }
 }
 
@@ -555,7 +603,7 @@ struct TokenLogo: View {
 
     var body: some View {
         Group {
-            if let image = UIImage(named: "Token\(token)") {
+            if let image = UIImage(named: "Token\(token)") ?? Self.coinImage[token].flatMap({ UIImage(named: $0) }) {
                 Image(uiImage: image).resizable().scaledToFill()
             } else {
                 Text(token.prefix(2)).font(.system(size: size * 0.36, weight: .bold)).frame(maxWidth: .infinity, maxHeight: .infinity).background(Theme.surfaceRaised)
@@ -565,6 +613,9 @@ struct TokenLogo: View {
         .clipShape(Circle())
         .accessibilityHidden(true)
     }
+
+    /// A chain's own coin shares the chain's logo.
+    static let coinImage = ["SOL": "ChainSolana", "ETH": "ChainEthereum", "BNB": "ChainBnb"]
 }
 
 /// A network's logo, or its first letter on a soft disc when the app ships none.
@@ -601,7 +652,7 @@ struct SourceBadge: View {
     var body: some View {
         TokenLogo(token: source.token, size: size)
             .overlay(alignment: .bottomTrailing) {
-                if source.group != .bitcoin {
+                if !source.isNativeCoin {
                     ChainLogo(source: source, size: (size * 0.47).rounded())
                         .padding(2)
                         .background(ring, in: Circle())

@@ -9,6 +9,12 @@ struct HomeView: View {
     var onSeeAll: () -> Void = {}
     var onOpenPayout: (String) -> Void = { _ in }
     @State private var selected: ActivityLine?
+    /// Remembered on this iPhone, so the balance stays hidden after the app is closed.
+    @AppStorage("home.hidesBalance") private var hidesBalance = false
+    /// Dollars, or a local currency at the live payout rate. Remembered on this iPhone.
+    @AppStorage(DisplayCurrency.storageKey) private var shown: DisplayCurrency = .usd
+
+    private var isMoving: Bool { activity?.lines.contains { $0.outcome == .moving } ?? false }
 
     var body: some View {
         GeometryReader { proxy in
@@ -19,9 +25,17 @@ struct HomeView: View {
                     balance
                     Spacer()
                     VStack(spacing: 12) {
-                        if let lines = activity?.lines.prefix(2), !lines.isEmpty {
-                            HomeRecentCard(lines: Array(lines), onSeeAll: onSeeAll) { selected = $0 }
+                        // Money on its way gets its own live card, so Recent shows what has finished.
+                        let lines = activity?.lines ?? []
+                        let finished = lines.filter { $0.outcome != .moving }.prefix(2)
+                        if !finished.isEmpty {
+                            HomeRecentCard(lines: Array(finished), onSeeAll: onSeeAll) { selected = $0 }
                         }
+                        ForEach(lines.filter { $0.outcome == .moving }.prefix(2)) { line in
+                            HomeInProgressCard(line: line) { selected = $0 }
+                                .transition(.move(edge: .bottom).combined(with: .opacity))
+                        }
+                        RefundCard(inbox: model.inbox)
                         WalletArrivedCard(inbox: model.inbox)
                     }
                     .padding(.horizontal, 16)
@@ -38,6 +52,13 @@ struct HomeView: View {
         }
         .background(Theme.ground.ignoresSafeArea())
         .task { await model.load() }
+        // While something is on its way, Home checks every few seconds, so the card turns into a Recent row when it lands.
+        .task(id: isMoving) {
+            while isMoving, !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(4))
+                await onRefresh()
+            }
+        }
         .sheet(item: $selected) { line in
             ActivityDetailSheet(line: line, onReceipt: onOpenPayout)
                 .presentationDragIndicator(.visible)
@@ -74,41 +95,97 @@ struct HomeView: View {
         .padding(.top, 16)
     }
 
+    static let hiddenAmount = "••••"
+
     private var balance: some View {
         VStack(spacing: 14) {
-            IconLabel("Vault balance", icon: "eye")
-                .labelStyle(TrailingIconLabelStyle())
-                .font(.system(size: 14))
-                .foregroundStyle(Theme.textSecondary)
-
-            HStack(alignment: .firstTextBaseline, spacing: 2) {
-                Text("$")
-                    .font(.system(size: 30, weight: .light))
+            Button { hidesBalance.toggle() } label: {
+                IconLabel("Vault balance", icon: hidesBalance ? "eye.slash" : "eye")
+                    .labelStyle(TrailingIconLabelStyle())
+                    .font(.system(size: 14))
                     .foregroundStyle(Theme.textSecondary)
-                Text(Money.dollars(model.balance))
-                    .font(Theme.hero())
-                    .tracking(-1.9)
-                    .foregroundStyle(Theme.textPrimary)
+                    .padding(.horizontal, 12)
+                    .frame(minHeight: 36)
+                    .contentShape(Capsule())
             }
+            .buttonStyle(.pressable)
+            .accessibilityLabel(hidesBalance ? "Show balance" : "Hide balance")
+            .accessibilityIdentifier("home.hideBalance")
+
+            Menu {
+                Picker("Show balance in", selection: $shown) {
+                    ForEach(DisplayCurrency.allCases) { currency in
+                        Text("\(currency.name) (\(currency.symbol))").tag(currency)
+                    }
+                }
+            } label: {
+                HStack(alignment: .firstTextBaseline, spacing: 2) {
+                    Text(symbol)
+                        .font(.system(size: 30, weight: .light))
+                        .foregroundStyle(Theme.textSecondary)
+                    Text(hidesBalance ? Self.hiddenAmount : amount)
+                        .font(Theme.hero())
+                        .tracking(-1.9)
+                        .foregroundStyle(Theme.textPrimary)
+                        .contentTransition(.numericText())
+                        .minimumScaleFactor(0.5)
+                        .lineLimit(1)
+                    Icon("chevron.down", size: 14)
+                        .foregroundStyle(Theme.textTertiary)
+                        .padding(.leading, 6)
+                }
+                // Before the first balance is ever read, a placeholder: a $0 here looks like an empty vault.
+                .redacted(reason: model.isBalanceKnown ? [] : .placeholder)
+                .padding(.horizontal, 24)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .animation(.snappy(duration: 0.25), value: hidesBalance)
+            .animation(.snappy(duration: 0.25), value: shown)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(hidesBalance ? "Balance hidden" : symbol + amount)
+            .accessibilityHint("Change the currency")
+            .accessibilityIdentifier("home.currency")
 
             ratePill
         }
     }
 
+    /// The local rate being shown, or nil while dollars are shown or the rate hasn't landed yet.
+    private var localRate: Rate? { shown.local.flatMap(model.rate(for:)) }
+
+    /// Falls back to dollars until a rate is known, so the balance never shows a made-up figure.
+    private var symbol: String { localRate == nil ? "$" : shown.symbol }
+
+    private var amount: String {
+        guard let local = shown.local, let value = model.balance(in: local) else { return Money.dollars(model.balance) }
+        return Money.grouped(value)
+    }
+
+    /// The pill quotes the currency on screen, or naira while dollars are shown.
+    private var pillCurrency: Currency { shown.local ?? .ngn }
+
     @ViewBuilder
     private var ratePill: some View {
-        if let rate = model.rate {
+        if let rate = model.rate(for: pillCurrency) {
             let value = Text(Money.rate(rate.rate, rate.currency))
                 .fontWeight(.medium)
                 .foregroundStyle(Theme.textPrimary)
-            Text("$1 = \(value) · \(rate.providersQuoting) quoting")
-                .font(.system(size: 13))
-                .foregroundStyle(Theme.textSecondary)
-                .padding(.horizontal, 14)
-                .frame(height: 32)
-                .fliqGlass(Capsule())
-                .padding(.top, 6)
-        } else if model.rateFailed {
+            Group {
+                if localRate != nil, !hidesBalance {
+                    let dollars = Text("$" + Money.dollars(model.balance)).fontWeight(.medium).foregroundStyle(Theme.textPrimary)
+                    Text("\(dollars) · $1 = \(value)")
+                } else {
+                    Text("$1 = \(value) · \(rate.providersQuoting) quoting")
+                }
+            }
+            .font(.system(size: 13))
+            .foregroundStyle(Theme.textSecondary)
+            .padding(.horizontal, 14)
+            .frame(height: 32)
+            .fliqGlass(Capsule())
+            .padding(.top, 6)
+        } else if model.rateFailed(for: pillCurrency) {
             Text("Rate unavailable")
                 .font(.system(size: 13))
                 .foregroundStyle(Theme.textTertiary)

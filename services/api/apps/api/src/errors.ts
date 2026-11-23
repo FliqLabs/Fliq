@@ -5,6 +5,7 @@ export type ErrorCode =
   | "account_not_found"
   | "account_name_required"
   | "velocity_limit"
+  | "daily_limit"
   | "provider_rejected"
   | "quote_changed"
   | "route_unavailable"
@@ -21,6 +22,7 @@ export type ErrorCode =
   | "rate_limited"
   | "chain_unavailable"
   | "agent_limit"
+  | "paused"
   | "internal";
 
 export class ApiError extends Error {

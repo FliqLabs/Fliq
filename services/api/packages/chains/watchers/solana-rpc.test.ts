@@ -65,6 +65,60 @@ describe("createSolanaRpc", () => {
     ]);
   });
 
+  it("lists the owner's token accounts for a mint with their balances", async () => {
+    // Captured from mainnet getTokenAccountsByOwner on 13 November 2026, trimmed to one account.
+    const { rpc, bodies } = rpcReturning({
+      context: { slot: 468982896, apiVersion: "4.3.0-beta.2" },
+      value: [
+        {
+          pubkey: "TokenAccount1111111111111111111111111111111",
+          account: {
+            lamports: 1488440,
+            data: {
+              program: "spl-token",
+              parsed: {
+                info: {
+                  isNative: false,
+                  mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                  owner: "DepositOwner1111111111111111111111111111111",
+                  state: "initialized",
+                  tokenAmount: {
+                    amount: "1479963",
+                    decimals: 6,
+                    uiAmount: 1.479963,
+                    uiAmountString: "1.479963",
+                  },
+                },
+                type: "account",
+              },
+              space: 165,
+            },
+            owner: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            executable: false,
+            space: 165,
+          },
+        },
+      ],
+    });
+    expect(
+      await rpc.tokenAccounts(
+        "DepositOwner1111111111111111111111111111111",
+        "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      ),
+    ).toEqual([{ address: "TokenAccount1111111111111111111111111111111", amount: 1_479_963n }]);
+    expect(bodies[0]).toMatchObject({
+      method: "getTokenAccountsByOwner",
+      params: [
+        "DepositOwner1111111111111111111111111111111",
+        { mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" },
+        { encoding: "jsonParsed", commitment: "finalized" },
+      ],
+    });
+    expect(await rpcReturning({ context: { slot: 1 }, value: [] }).rpc.tokenAccounts("Owner", MINT)).toEqual(
+      [],
+    );
+  });
+
   it("measures what the token account gained and who sent it", async () => {
     const { rpc, bodies } = rpcReturning(
       transaction({

@@ -336,6 +336,11 @@ model User {
   homeCurrency  String   @default("NGN") @map("home_currency") @db.Text
   // Null until the user changes a notification setting; the API then answers with its defaults.
   notificationSettings Json? @map("notification_settings")
+  // The most the user lets leave their account in any 24 hours, in USDC base units. Null means no limit.
+  dailyLimitUnits        BigInt?   @map("daily_limit_units")
+  // A raise the user asked for. It takes effect at pendingDailyLimitAt; a null amount with a time set removes the limit.
+  pendingDailyLimitUnits BigInt?   @map("pending_daily_limit_units")
+  pendingDailyLimitAt    DateTime? @map("pending_daily_limit_at") @db.Timestamptz(6)
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   passkeys      PasskeyCredential[]
   sessions      Session[]
@@ -558,6 +563,24 @@ model PushToken {
   @@schema("auth")
 }
 
+// A Live Activity on the iPhone following one deposit or cash-out, updated by push until it ends.
+model LiveActivity {
+  token       String    @id @db.Text
+  userId      String    @map("user_id") @db.Text
+  kind        String    @db.Text
+  refId       String    @map("ref_id") @db.Text
+  environment String    @db.Text
+  bundleId    String    @map("bundle_id") @db.Text
+  // The content state last pushed, as JSON, so an unchanged state is not sent again.
+  lastSent    String?   @map("last_sent") @db.Text
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  endedAt     DateTime? @map("ended_at") @db.Timestamptz(6)
+
+  @@index([endedAt, createdAt])
+  @@map("live_activities")
+  @@schema("auth")
+}
+
 enum RequestState {
   open
   paid
@@ -684,17 +707,19 @@ model VaultDeposit {
   decimals       Int
   depositAddress String       @map("deposit_address") @db.Text
   depositMemo    String?      @map("deposit_memo") @db.Text
-  amountUnits    BigInt       @map("amount_units")
-  minimumUnits   BigInt       @map("minimum_units")
+  // Source-token units. NUMERIC, not BIGINT: USDC and USDT on BNB Chain and ETH have 18 decimals, so $10 is already
+  // more than BIGINT holds (22 Nov: a $21.96 BNB Chain deposit stopped the deposit sweep).
+  amountUnits    Decimal      @map("amount_units") @db.Decimal(78, 0)
+  minimumUnits   Decimal      @map("minimum_units") @db.Decimal(78, 0)
   feeMicroUsd    BigInt       @map("fee_micro_usd")
   landsUnits     BigInt       @map("lands_units")
   etaSeconds     Int          @map("eta_seconds")
   reservedUntil  DateTime     @map("reserved_until") @db.Timestamptz(6)
   state          DepositState @default(waiting)
   intentsStatus  String?      @map("intents_status") @db.Text
-  receivedUnits  BigInt?      @map("received_units")
+  receivedUnits  Decimal?     @map("received_units") @db.Decimal(78, 0)
   landedUnits    BigInt?      @map("landed_units")
-  refundedUnits  BigInt?      @map("refunded_units")
+  refundedUnits  Decimal?     @map("refunded_units") @db.Decimal(78, 0)
   refundReason   String?      @map("refund_reason") @db.Text
   originTx       String?      @map("origin_tx") @db.Text
   seenAt         DateTime?    @map("seen_at") @db.Timestamptz(6)
@@ -703,6 +728,20 @@ model VaultDeposit {
   polledAt       DateTime?    @map("polled_at") @db.Timestamptz(6)
   // Set when the top-up pays a payment request, so landing it marks the request paid.
   requestId      String?      @map("request_id") @db.Text
+  // Set when the deposit takes a 1Click refund from the user's NEAR Intents balance back to the vault.
+  refundReturn   Boolean      @default(false) @map("refund_return")
+  // Paid in from the user's bank through the on-ramp partner. The user sees their bank, never the chain it crossed.
+  fromBank       Boolean      @default(false) @map("from_bank")
+  // The bank partner's order for a bank deposit, and the last status it or the app reported (INIT, PAID,
+  // COMPLETED, ERROR). The partner's webhook proves itself with bankHookToken, which only this deposit's link carries.
+  bankOrderId    String?      @map("bank_order_id") @db.Text
+  bankStatus     String?      @map("bank_status") @db.Text
+  bankStatusAt   DateTime?    @map("bank_status_at") @db.Timestamptz(6)
+  bankHookToken  String?      @map("bank_hook_token") @db.Text
+  // When the user said they had sent the money. From then the deposit shows in Activity even before anything arrives.
+  bankSentAt     DateTime?    @map("bank_sent_at") @db.Timestamptz(6)
+  // Set once the team has been told a bank deposit stopped or is overdue, so it is said once.
+  bankAlertedAt  DateTime?    @map("bank_alerted_at") @db.Timestamptz(6)
   // The full 1Click quote, which 1Click asks integrators to keep.
   quote          Json
   createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -711,6 +750,7 @@ model VaultDeposit {
   @@unique([depositAddress])
   @@index([userId, createdAt])
   @@index([state, reservedUntil])
+  @@index([bankOrderId])
   @@map("vault_deposits")
   @@schema("core")
 }
@@ -877,4 +917,84 @@ model InboundEvent {
   @@index([receivedAt])
   @@map("inbound_events")
   @@schema("integration")
+}
+
+// A send the user relayed (to a fliq user or an outside wallet) that counts toward their daily limit. Held before the
+// relay so two sends cannot both slip under the limit, and released if nothing moved. Cash-outs are counted from payouts.
+model SpendHold {
+  id        String   @id @db.Text
+  userId    String   @map("user_id") @db.Text
+  // The hash of the signed delegate, so relaying the same one twice holds once.
+  ref       String   @unique @db.Text
+  units     BigInt
+  released  Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([userId, createdAt])
+  @@map("spend_holds")
+  @@schema("core")
+}
+
+// Each time a user asks to raise or remove their daily limit. The push warning is sent from these rows.
+model LimitChange {
+  id          String    @id @db.Text
+  userId      String    @map("user_id") @db.Text
+  // Null means the limit is being removed.
+  toUnits     BigInt?   @map("to_units")
+  effectiveAt DateTime  @map("effective_at") @db.Timestamptz(6)
+  cancelledAt DateTime? @map("cancelled_at") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([createdAt])
+  @@map("limit_changes")
+  @@schema("auth")
+}
+
+// A full-access key added to or removed from a user's NEAR account through the relayer: a backup key, a new iPhone,
+// or a lost one being removed. The user is told by push each time, from these rows.
+model KeyChange {
+  id        String   @id @db.Text
+  userId    String   @map("user_id") @db.Text
+  account   String   @db.Text
+  // "add" or "delete".
+  kind      String   @db.Text
+  publicKey String   @map("public_key") @db.Text
+  txHash    String   @unique @map("tx_hash") @db.Text
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([createdAt])
+  @@index([userId, createdAt])
+  @@map("key_changes")
+  @@schema("auth")
+}
+
+// USDC a user sends from their fliq account to a wallet on another network. The user moves it to depositAddress on
+// NEAR themselves and NEAR Intents delivers it on the other chain; this row only follows it.
+model WalletSend {
+  id               String   @id @db.Text
+  userId           String   @map("user_id") @db.Text
+  account          String   @db.Text
+  chain            String   @db.Text
+  toAddress        String   @map("to_address") @db.Text
+  amountUnits      BigInt   @map("amount_units")
+  receivesUnits    BigInt   @map("receives_units")
+  minReceivesUnits BigInt   @map("min_receives_units")
+  deliveredUnits   BigInt?  @map("delivered_units")
+  depositAddress   String   @unique @map("deposit_address") @db.Text
+  depositMemo      String?  @map("deposit_memo") @db.Text
+  etaSeconds       Int      @map("eta_seconds")
+  // The user has until then to sign; after it an untouched send is expired.
+  expiresAt        DateTime @map("expires_at") @db.Timestamptz(6)
+  // awaiting, moving, delivered, refunded, failed or expired.
+  state            String   @default("awaiting") @db.Text
+  originTx         String?  @map("origin_tx") @db.Text
+  destinationTx    String?  @map("destination_tx") @db.Text
+  quote            Json
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([userId, createdAt])
+  @@index([state, createdAt])
+  @@map("wallet_sends")
+  @@schema("core")
 }

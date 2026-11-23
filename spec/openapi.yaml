@@ -28,6 +28,8 @@ tags:
     description: The user's vault balance
   - name: deposits
     description: Topping up the vault from other chains through NEAR Intents
+  - name: sends
+    description: USDC sent from a fliq account to a wallet on another network
   - name: activity
     description: Everything that moved money, and the notifications about it
   - name: agents
@@ -338,6 +340,101 @@ paths:
                 $ref: "#/components/schemas/VaultBalance"
         "404":
           $ref: "#/components/responses/Error"
+  /vault/inbox:
+    get:
+      operationId: getVaultInbox
+      summary: USDC waiting in the user's own NEAR account, outside the vault
+      description: >-
+        NEAR Intents returns a failed cash-out or cross-chain send to the user's NEAR account, not the vault.
+        USDC sent directly to a fliq name also lands there. This balance must be moved into the vault before
+        it can be used for a payout.
+      tags: [vault]
+      responses:
+        "200":
+          description: USDC waiting outside the vault, with the contract address needed to move it
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VaultInbox"
+        "404":
+          $ref: "#/components/responses/Error"
+  /sends/networks:
+    get:
+      operationId: listSendNetworks
+      summary: The networks a user can send USDC to from their fliq account
+      description: >-
+        In display order. A network NEAR Intents cannot reach right now is still listed, with available false.
+        Sending to a NEAR wallet needs none of this: it is a transfer the user signs directly. Networks that deliver
+        USDT (Tron, BNB Chain) are listed only when the client asks for them with tokens=usdc,usdt, so an older app
+        that only knows USDC addresses never sees them.
+      tags: [sends]
+      parameters:
+        - name: tokens
+          in: query
+          required: false
+          description: Comma separated tokens the client can show. Defaults to usdc.
+          schema:
+            type: string
+            examples: ["usdc,usdt"]
+      responses:
+        "200":
+          description: Networks in display order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SendNetworkList"
+  /sends:
+    post:
+      operationId: createSend
+      summary: Start a send of USDC to a wallet on another network
+      description: >-
+        Returns what will arrive and a NEAR deposit address. Nothing has moved yet. The user then sends the amount
+        to deposit.address themselves, with the same two signed steps as a send to a NEAR wallet (withdraw from the
+        vault, then ft_transfer), and NEAR Intents delivers it on the other network. If the swap cannot complete,
+        the USDC comes back to the user's own NEAR account. A send not started by deposit.expires_at expires.
+      tags: [sends]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendRequest"
+      responses:
+        "201":
+          description: Quoted, waiting for the user to send
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WalletSend"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "503":
+          $ref: "#/components/responses/Error"
+  /sends/{sendId}:
+    get:
+      operationId: getSend
+      summary: Where a send to another network is
+      description: Poll every few seconds while the app shows it.
+      tags: [sends]
+      parameters:
+        - name: sendId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The send
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WalletSend"
+        "404":
+          $ref: "#/components/responses/Error"
   /deposits/sources:
     get:
       operationId: listDepositSources
@@ -433,6 +530,89 @@ paths:
                 $ref: "#/components/schemas/VaultDeposit"
         "404":
           $ref: "#/components/responses/Error"
+  /deposits/{depositId}/bank-order:
+    post:
+      operationId: reportBankDeposit
+      summary: Link a bank deposit to the bank partner's order and report what the app sees
+      description: >-
+        Called by the app when it creates the partner's order, when the user says they sent the money (sent true),
+        and whenever it reads a new order status. From sent on, the deposit shows in GET /activity before anything
+        arrives. The partner's own webhook, at the deposit's bank_webhook_url, reports the same statuses. Statuses
+        change what the user is shown, never money: the vault is credited from the chain.
+      tags: [deposits]
+      parameters:
+        - name: depositId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BankOrderReport"
+      responses:
+        "200":
+          description: The deposit with its bank status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VaultDeposit"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+  /refunds:
+    get:
+      operationId: listRefunds
+      summary: Refunded deposits waiting in the user's NEAR Intents balance
+      description: >-
+        A top-up NEAR Intents could not finish is refunded to the user's NEAR Intents balance, which the vault
+        cannot see. These are the dollar stablecoins there worth at least five cents. Bring one back with
+        POST /refunds/return.
+      tags: [deposits]
+      responses:
+        "200":
+          description: Balances that can be brought back to the vault
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RefundList"
+        "404":
+          $ref: "#/components/responses/Error"
+        "503":
+          $ref: "#/components/responses/Error"
+  /refunds/return:
+    post:
+      operationId: returnRefund
+      summary: Quote one refunded balance back into the vault
+      description: >-
+        Quotes the whole balance of token_id back to the vault as USDC and starts following it like a top-up,
+        under deposit_id. The app then signs mt_transfer on intents_contract for units of token_id to
+        deposit_address, attaching one yoctoNEAR, and relays it with POST /relays.
+      tags: [deposits]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefundReturnRequest"
+      responses:
+        "201":
+          description: Quoted and followed, waiting for the transfer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RefundReturn"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "503":
+          $ref: "#/components/responses/Error"
   /activity:
     get:
       operationId: listActivity
@@ -522,6 +702,27 @@ paths:
         "204":
           description: Registered; a token already registered moves to this user
         "400":
+          $ref: "#/components/responses/Error"
+  /live-activities:
+    post:
+      operationId: registerLiveActivity
+      summary: Follow a deposit or cash-out with a Live Activity on this iPhone
+      description: >-
+        The API pushes each change of state to the Live Activity's push token, and ends the activity when the deposit
+        or cash-out reaches a final state, or three hours after it started.
+      tags: [accounts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LiveActivityRequest"
+      responses:
+        "204":
+          description: Registered; registering the same token again follows the given deposit or cash-out from the start
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
           $ref: "#/components/responses/Error"
   /devices/{token}:
     delete:
@@ -1011,6 +1212,60 @@ paths:
                 $ref: "#/components/schemas/NotificationSettings"
         "400":
           $ref: "#/components/responses/Error"
+  /me/limits:
+    get:
+      operationId: getLimits
+      summary: The daily limit the user set on what may leave their account, and how much of it is used
+      tags: [accounts]
+      responses:
+        "200":
+          description: The limit, what has been spent in the last 24 hours, and any raise that is waiting
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Limits"
+    put:
+      operationId: updateLimits
+      summary: Set, lower, raise or remove the daily limit
+      description: >-
+        A first limit and a lower limit apply at once. A higher limit, or removing the limit (null), takes effect
+        24 hours later and the user is told by push, so that someone holding an unlocked phone cannot lift the limit
+        and empty the account in one sitting. Sending the current limit cancels a raise that is waiting.
+      tags: [accounts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [daily_limit]
+              properties:
+                daily_limit:
+                  type: [string, "null"]
+                  description: Dollars, with up to two decimals, or null for no limit
+                  examples: ["500.00"]
+      responses:
+        "200":
+          description: The limits as they now stand
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Limits"
+        "400":
+          $ref: "#/components/responses/Error"
+  /me/limits/pending:
+    delete:
+      operationId: cancelPendingLimit
+      summary: Cancel a raise of the daily limit that has not taken effect yet
+      tags: [accounts]
+      responses:
+        "200":
+          description: The limits as they now stand, with nothing waiting
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Limits"
   /me/setup:
     get:
       operationId: getSetup
@@ -2441,12 +2696,18 @@ components:
               description: False when the sender supplied the name because the bank could not look it up
     PayoutRequest:
       type: object
-      required: [quote_id, account]
+      required: [quote_id]
+      description: Send exactly one of account or recipient_id.
       properties:
         quote_id:
           type: string
         account:
           $ref: "#/components/schemas/Account"
+        recipient_id:
+          type: string
+          description: >-
+            A saved recipient of the signed-in user, from GET /recipients, paid without sending its number again.
+            Recipient lists only show the last four digits, so this is how an app that did not save the number pays it.
         client_reference:
           type: string
           description: Your own reference. Unique per account, so a second payout with the same one is refused.
@@ -2775,10 +3036,14 @@ components:
           type: [integer, "null"]
         reason:
           type: [string, "null"]
-          enum: [over_daily_cap, over_per_payout_cap, corridor_not_allowed, not_saved_account, provider_failed, expired, null]
+          enum: [over_daily_cap, over_per_payout_cap, corridor_not_allowed, not_saved_account, provider_failed, expired, bank_stopped, null]
+          description: "bank_stopped is a bank deposit the bank partner ended with FAILED. ERROR is not stopped, the partner retries after it."
         ref_id:
           type: string
           description: The payout, deposit, transfer or refusal behind the row
+        tx_hash:
+          type: [string, "null"]
+          description: The NEAR transaction behind the row, so a receipt can link to it on an explorer. Set for transfers.
     ActivityList:
       type: object
       required: [items, next_cursor]
@@ -2838,6 +3103,29 @@ components:
         platform:
           type: string
           enum: [ios]
+        environment:
+          type: string
+          enum: [production, sandbox]
+          description: production for TestFlight and App Store builds, sandbox for builds run from Xcode
+        bundle_id:
+          type: string
+          maxLength: 255
+    LiveActivityRequest:
+      type: object
+      additionalProperties: false
+      required: [token, kind, ref_id, environment, bundle_id]
+      properties:
+        token:
+          type: string
+          description: The Live Activity's APNs push token in hex
+          pattern: "^[0-9a-fA-F]{32,512}$"
+        kind:
+          type: string
+          enum: [deposit, bank_deposit, payout, send]
+        ref_id:
+          type: string
+          maxLength: 128
+          description: The deposit_id, payout_id or send_id the activity follows; it must belong to the caller
         environment:
           type: string
           enum: [production, sandbox]
@@ -3258,6 +3546,133 @@ components:
               description: Alert when $1 pays more than this
         weekly_summary:
           type: boolean
+    SendNetworkList:
+      type: object
+      additionalProperties: false
+      required: [networks]
+      properties:
+        networks:
+          type: array
+          items:
+            $ref: "#/components/schemas/SendNetwork"
+    SendNetwork:
+      type: object
+      additionalProperties: false
+      required: [chain, name, token, minimum, eta_seconds, available]
+      properties:
+        chain:
+          type: string
+          examples: [solana]
+        name:
+          type: string
+          description: The name to show
+          examples: [Solana]
+        token:
+          type: string
+          enum: [usdc, usdt]
+          description: What arrives on that network. The user always pays in USDC from their fliq account.
+        minimum:
+          type: string
+          description: The smallest amount that can be sent, in dollars
+        eta_seconds:
+          type: integer
+        available:
+          type: boolean
+    SendRequest:
+      type: object
+      additionalProperties: false
+      required: [chain, address, amount]
+      properties:
+        chain:
+          type: string
+          description: A chain from GET /sends/networks
+        address:
+          type: string
+          description: The wallet on that network. Its shape is checked for the network.
+        amount:
+          type: string
+          description: Dollars of USDC to send, as a decimal string
+    WalletSend:
+      type: object
+      additionalProperties: false
+      required: [send_id, state, token, chain, to, amount, receives, fee, eta_seconds, deposit, origin_tx, destination_tx, created_at]
+      properties:
+        send_id:
+          type: string
+        state:
+          type: string
+          enum: [awaiting, moving, delivered, refunded, failed, expired]
+          description: >-
+            awaiting until the user's transfer reaches deposit.address, then moving. refunded and failed mean the
+            USDC went back to the user's own NEAR account. expired means it was never started.
+        token:
+          type: string
+          enum: [usdc, usdt]
+          description: What the wallet receives
+        chain:
+          type: string
+        to:
+          type: string
+        amount:
+          type: string
+          description: What leaves the user's account
+        receives:
+          type: string
+          description: What the wallet receives; the quoted amount until delivered, then the delivered amount
+        fee:
+          type: string
+          description: The network and swap cost, amount minus the quoted receives. fliq adds nothing.
+        eta_seconds:
+          type: integer
+        deposit:
+          type: object
+          additionalProperties: false
+          required: [address, memo, expires_at]
+          properties:
+            address:
+              type: string
+              description: The NEAR account to send the USDC to
+            memo:
+              type: [string, "null"]
+            expires_at:
+              type: string
+              format: date-time
+        origin_tx:
+          type: [string, "null"]
+        destination_tx:
+          type: [string, "null"]
+          description: The transaction on the destination network, once delivered
+        created_at:
+          type: string
+          format: date-time
+    Limits:
+      type: object
+      additionalProperties: false
+      required: [daily_limit, spent_today, remaining, pending]
+      properties:
+        daily_limit:
+          type: [string, "null"]
+          description: >-
+            The most that may leave the account in any 24 hours, in dollars: cash-outs, payments to fliq users and
+            sends to outside wallets. Null means the user has set no limit.
+        spent_today:
+          type: string
+          description: What has left the account in the last 24 hours, in dollars
+        remaining:
+          type: [string, "null"]
+          description: What may still leave before the limit is reached; null when there is no limit
+        pending:
+          type: [object, "null"]
+          description: A raise the user asked for that has not taken effect yet
+          additionalProperties: false
+          required: [daily_limit, effective_at]
+          properties:
+            daily_limit:
+              type: [string, "null"]
+              description: The limit that will apply; null means the limit is being removed
+            effective_at:
+              type: string
+              format: date-time
     SetupStep:
       type: object
       required: [step, done]
@@ -3372,6 +3787,12 @@ components:
           format: byte
           maxLength: 8192
           description: Base64 Borsh SignedDelegate, signed by the device key over sha256(NEP-461 prefix and borsh(DelegateAction))
+        request_code:
+          type: string
+          pattern: "^[A-Za-z0-9_-]{1,64}$"
+          description: >-
+            Set when the transfer pays a payment request from its link. Once the transfer to the payee succeeds and
+            covers the requested amount, the request turns paid.
     RelayResult:
       type: object
       required: [status, delegate_hash, sender_id, receiver_id]
@@ -3734,6 +4155,10 @@ components:
           $ref: "#/components/schemas/RecipientBank"
         account_last4:
           type: string
+        country:
+          type: string
+          enum: [ng, ke, gh, id, ph]
+          description: Where the account is, so it is paid in its own currency
         created_at:
           type: string
           format: date-time
@@ -3768,9 +4193,19 @@ components:
         in_sync:
           type: boolean
           description: False when the ledger mirror disagrees with the chain
+    VaultInbox:
+      type: object
+      required: [usdc, usdc_contract]
+      properties:
+        usdc:
+          type: string
+          description: USDC waiting in the user's NEAR account, outside the vault, as a decimal string
+        usdc_contract:
+          type: string
+          description: The USDC token contract address, needed to build the ft_transfer_call that moves the funds
     DepositTokenId:
       type: string
-      enum: [usdc, usdt, btc]
+      enum: [usdc, usdt, btc, sol, eth, bnb]
     DepositChainId:
       type: string
       enum: [base, solana, tron, arbitrum, ethereum, polygon, bnb, monad, bitcoin, near]
@@ -3784,7 +4219,7 @@ components:
           $ref: "#/components/schemas/DepositChainId"
         group:
           type: string
-          enum: [dollars, bitcoin, near]
+          enum: [dollars, bitcoin, coins, near]
           description: The heading the app lists the source under
         minimum:
           type: string
@@ -3843,6 +4278,10 @@ components:
         amount:
           type: string
           description: About how much the user will send, in the source token. Any amount from minimum up is taken.
+        via:
+          type: string
+          enum: [wallet, bank]
+          description: bank when the user pays from their bank through the on-ramp partner, so fliq names their bank and not the chain. Defaults to wallet.
     DepositState:
       type: string
       description: >-
@@ -3851,6 +4290,22 @@ components:
         landed: in the vault. refunded: returned to the user's NEAR account. expired: nothing arrived in time.
         failed: NEAR Intents could not complete it and support has been told.
       enum: [waiting, seen, underpaid, bridging, landed, refunded, expired, failed]
+    BankOrderReport:
+      type: object
+      required: [order_id]
+      additionalProperties: false
+      properties:
+        order_id:
+          type: string
+          maxLength: 128
+          description: The bank partner's order id
+        status:
+          type: string
+          maxLength: 32
+          description: The order status the app last read (INIT, PAID, COMPLETED, ERROR)
+        sent:
+          type: boolean
+          description: True when the user says they sent the money
     VaultDeposit:
       type: object
       required:
@@ -3876,12 +4331,24 @@ components:
           seconds,
           origin_tx,
           created_at,
+          bank_status,
+          bank_webhook_url,
         ]
       properties:
         deposit_id:
           type: string
         state:
           $ref: "#/components/schemas/DepositState"
+        bank_status:
+          type: [string, "null"]
+          description: >-
+            For a deposit from the user's bank, the bank partner's last order status (INIT, PAID, COMPLETED, ERROR).
+            Null for every other deposit.
+        bank_webhook_url:
+          type: [string, "null"]
+          description: >-
+            For a deposit from the user's bank, the link to give the bank partner as its order's webhook. It carries
+            a secret only this deposit has. Null for every other deposit.
         token:
           $ref: "#/components/schemas/DepositTokenId"
         chain:
@@ -3937,6 +4404,65 @@ components:
         created_at:
           type: string
           format: date-time
+    RefundBalance:
+      type: object
+      required: [token_id, symbol, chain, units, amount, intents_contract]
+      properties:
+        token_id:
+          type: string
+          description: The NEAR Intents token, as mt_transfer names it
+        symbol:
+          type: string
+          enum: [usdc, usdt]
+        chain:
+          $ref: "#/components/schemas/DepositChainId"
+        units:
+          type: string
+          description: The balance in the token's smallest unit
+        amount:
+          type: string
+          description: The balance as a decimal string
+        intents_contract:
+          type: string
+          description: The contract that holds it
+    RefundList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/RefundBalance"
+    RefundReturnRequest:
+      type: object
+      additionalProperties: false
+      required: [token_id]
+      properties:
+        token_id:
+          type: string
+          minLength: 1
+          description: A token_id from GET /refunds
+    RefundReturn:
+      type: object
+      required: [deposit_id, deposit_address, token_id, units, lands, intents_contract]
+      properties:
+        deposit_id:
+          type: string
+          description: Followed like any top-up with GET /deposits/{depositId}
+        deposit_address:
+          type: string
+          description: The account to mt_transfer the balance to
+        token_id:
+          type: string
+        units:
+          type: string
+          description: What to transfer, in the token's smallest unit
+        lands:
+          type: string
+          description: Estimated USDC the vault receives
+        intents_contract:
+          type: string
+          description: The contract to call mt_transfer on
     Person:
       type: object
       required: [near_account, display_name, photo_url, member_since]

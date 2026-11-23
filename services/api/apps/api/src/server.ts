@@ -1,8 +1,9 @@
 // Must stay first: Sentry instruments fastify and http only if it is initialised before they load.
 import "../../../packages/observability/instrument-api.js";
 import { createOneClickClient } from "../../../packages/chains/oneclick/index.js";
-import { createNearRpc, createRelayerClient, TokenStorage, type NearRpc } from "../../../packages/chains/near/index.js";
+import { createNearRpc, createRelayerClient, INTENTS_CONTRACT, intentsBalances, TokenStorage, type NearRpc } from "../../../packages/chains/near/index.js";
 import { MockVault, NearVault, type VaultClient } from "../../../packages/chains/vault/index.js";
+import { createSolanaRpc, latestSolanaArrival } from "../../../packages/chains/watchers/index.js";
 import { DEFAULT_ROUTING_CONFIG, NO_SIGNALS } from "../../../packages/domain/routing.js";
 import { withCache } from "../../../packages/providers/cache.js";
 import { enabledAdapters } from "../../../packages/providers/enabled.js";
@@ -12,6 +13,7 @@ import { createEmailSender } from "./auth/email-links.js";
 import { loadConfig } from "./config.js";
 import { createDatabase, unitOf } from "./db.js";
 import { createDeposits, startDepositWatch } from "./deposits.js";
+import { createRefunds } from "./refunds.js";
 import { createHandlers } from "./handlers.js";
 import { OneClickHops } from "./hop.js";
 import { DEFAULT_DEADLINE_MARGIN_MS, DEFAULT_GUARD_BPS, DEFAULT_VELOCITY } from "./payouts.js";
@@ -23,17 +25,25 @@ import { startHealthChecks, type Probe } from "./status.js";
 import { createWebhookHandler } from "./webhooks.js";
 import { startWebhookDelivery } from "./webhook-delivery.js";
 import { startVaultSync } from "./vault-sync.js";
-import { startPayoutWatch } from "./payout-watch.js";
+import { alertConfigFromEnv, createAlerts } from "./alerts.js";
+import { createOps, opsConfigFromEnv } from "./ops.js";
+import { createSends, startSendWatch } from "./sends.js";
+import { payoutRefresher, startPayoutWatch } from "./payout-watch.js";
 import { apnsFromEnv, createApnsSender, startPushDispatch } from "./push.js";
+import { startLiveActivityDispatch } from "./live-activities.js";
 import { usageRecorder } from "./usage.js";
 import { httpsTransport } from "../../../packages/webhooks/transport.js";
 
 const config = loadConfig();
 const unit = unitOf(createDatabase());
+// Lines a person must act on (watchers, refunded deposits, server errors, a quote outage) go to the alert channel as
+// well as the log. They are written with console until the app's logger exists.
+let warn = (message: string) => console.warn(message);
+const alert = createAlerts({ config: alertConfigFromEnv(process.env), log: (message) => warn(message) });
 
 // Every provider whose keys are set, otherwise the sandbox provider so a fresh clone needs no keys.
 const configured = enabledAdapters(process.env, {
-  alert: (alert) => console.warn(`[provider alert] ${alert.provider} ${alert.kind}`),
+  alert: (event) => alert(`[provider alert] ${event.provider} ${event.kind}`),
 }).map((adapter) => withCache(adapter, { hashKey: config.hashKey }));
 const adapters = configured.length > 0 ? configured : sandboxAdapters();
 
@@ -50,7 +60,14 @@ if (registrationKey && !nearRpcUrl) throw new Error("NEAR_REGISTRATION_PRIVATE_K
 const mockVault = registrationKey
   ? null
   : new MockVault({ registrar: registrationAccount, usdc: usdcContract, now: () => BigInt(Date.now()) * 1_000_000n });
-const nearRpc = nearRpcUrl ? createNearRpc({ url: nearRpcUrl }) : null;
+// Public mainnet endpoints taken in turn when the main one rate limits. NEAR_RPC_FALLBACK_URLS overrides them.
+const MAINNET_FALLBACKS = ["https://free.rpc.fastnear.com", "https://rpc.mainnet.near.org"];
+const nearRpcFallbacks = process.env.NEAR_RPC_FALLBACK_URLS?.trim()
+  ? process.env.NEAR_RPC_FALLBACK_URLS.split(",").map((url) => url.trim()).filter(Boolean)
+  : nearRpcUrl?.includes("mainnet")
+    ? MAINNET_FALLBACKS
+    : [];
+const nearRpc = nearRpcUrl ? createNearRpc({ url: nearRpcUrl, fallbackUrls: nearRpcFallbacks }) : null;
 const vault: VaultClient =
   mockVault ??
   new NearVault({
@@ -105,11 +122,16 @@ const probes: Probe[] = [
   })),
 ];
 
+const solanaRpc = createSolanaRpc({ url: process.env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com", commitment: "confirmed", timeoutMs: 3_000 });
 const deposits = createDeposits({
   client: oneClick,
   vaultAccount: config.vaultAccount,
   usdcContract,
   slippageBps: Number(process.env.ONECLICK_DEPOSIT_SLIPPAGE_BPS ?? 200),
+  arrivals: { solana: ({ address, mint, since }) => latestSolanaArrival(solanaRpc, address, mint, since) },
+  alert,
+  // Railway names the public domain itself; PUBLIC_API_URL overrides it behind a custom domain.
+  publicBaseUrl: process.env.PUBLIC_API_URL || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : undefined),
   // The MockVault stands in for the chain, so it is handed the ft_transfer_call 1Click makes to the real vault.
   ...(mockVault
     ? {
@@ -119,6 +141,24 @@ const deposits = createDeposits({
         },
       }
     : {}),
+});
+
+const intentsContract = process.env.INTENTS_CONTRACT_ID?.trim() || INTENTS_CONTRACT;
+const refunds = createRefunds({
+  client: oneClick,
+  vaultAccount: config.vaultAccount,
+  usdcContract,
+  slippageBps: Number(process.env.ONECLICK_DEPOSIT_SLIPPAGE_BPS ?? 200),
+  intentsContract,
+  ...(nearRpc ? { balances: (account: string) => intentsBalances(nearRpc, account, intentsContract) } : {}),
+});
+
+const sends = createSends({
+  client: oneClick,
+  usdcContract,
+  slippageBps: Number(process.env.ONECLICK_SEND_SLIPPAGE_BPS ?? 100),
+  tokenStorage,
+  log: (message) => console.warn(message),
 });
 
 const quoteDeps = { adapters, ...(hops ? { hop: hops } : {}), routing: DEFAULT_ROUTING_CONFIG, signals: NO_SIGNALS, now: () => new Date() };
@@ -141,15 +181,26 @@ const provisioner = relayer
   ? new RelayerProvisioner(relayer, config.vaultAccount)
   : new MockProvisioner(config.vaultAccount, mockVault ? (account) => mockVault.registerStorage(account) : undefined);
 
+const ops = createOps({
+  ...opsConfigFromEnv(process.env),
+  ...(vault instanceof NearVault ? { liabilities: () => vault.getLiabilities() } : {}),
+  log: alert,
+});
+const payoutWatch = { unit, adapters, ...(oneClick ? { oneClick } : {}), now: () => new Date(), log: alert };
 const handlers = createHandlers({
+  refreshPayout: payoutRefresher(payoutWatch),
   config,
   unit,
   email: createEmailSender(config),
   provisioner,
   ...(relayer ? { relayer } : {}),
   vault,
+  ...(nearRpc ? { nearRpc } : {}),
+  ops,
   status: { probes },
   deposits,
+  refunds,
+  sends,
   rateBoard,
   quotes: quoteDeps,
   payouts: {
@@ -163,22 +214,27 @@ const handlers = createHandlers({
 
 const app = buildApp({ config, unit, handlers, logger: true, limiter: createLimiter(process.env.REDIS_URL),
   webhooks: createWebhookHandler({ unit, adapters, dataKey: config.dataKey }),
-  recordUsage: usageRecorder(unit, (message) => console.error(message)) });
+  bankWebhook: (depositId, token, rawBody) => deposits.bankWebhook(unit, depositId, token, rawBody),
+  recordUsage: usageRecorder(unit, (message) => console.error(message)), alert });
+warn = (message) => app.log.warn(message);
 await app.listen({ port: config.port, host: "0.0.0.0" });
 startHealthChecks(unit, probes, Number(process.env.HEALTH_CHECK_INTERVAL_MS ?? 60_000));
 startRateSampler(rateBoard, Number(process.env.RATE_SAMPLE_INTERVAL_MS ?? 60_000));
-startDepositWatch(unit, deposits, Number(process.env.DEPOSIT_WATCH_INTERVAL_MS ?? 10_000));
-startPayoutWatch(
-  { unit, adapters, ...(oneClick ? { oneClick } : {}), now: () => new Date(), log: (message) => app.log.warn(message) },
-  Number(process.env.PAYOUT_WATCH_INTERVAL_MS ?? 20_000),
-);
+startDepositWatch(unit, deposits, Number(process.env.DEPOSIT_WATCH_INTERVAL_MS ?? 10_000), alert);
+startSendWatch(unit, sends, Number(process.env.SEND_WATCH_INTERVAL_MS ?? 10_000), alert);
+startPayoutWatch(payoutWatch, Number(process.env.PAYOUT_WATCH_INTERVAL_MS ?? 20_000));
 startVaultSync(
-  { unit, vault, now: () => new Date(), log: (message) => app.log.warn(message) },
+  { unit, vault, now: () => new Date(), log: alert },
   Number(process.env.VAULT_SYNC_INTERVAL_MS ?? 15_000),
 );
 const apns = apnsFromEnv(process.env);
+const apnsSender = apns ? createApnsSender(apns) : null;
 startPushDispatch(
-  { unit, send: apns ? createApnsSender(apns) : null, dataKey: config.dataKey, now: () => new Date(), log: (message) => app.log.warn(message) },
+  { unit, send: apnsSender, dataKey: config.dataKey, now: () => new Date(), log: (message) => app.log.warn(message) },
+  Number(process.env.PUSH_INTERVAL_MS ?? 3_000),
+);
+startLiveActivityDispatch(
+  { unit, send: apnsSender, now: () => new Date(), log: (message) => app.log.warn(message) },
   Number(process.env.PUSH_INTERVAL_MS ?? 3_000),
 );
 startWebhookDelivery(

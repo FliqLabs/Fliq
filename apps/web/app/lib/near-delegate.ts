@@ -5,6 +5,8 @@ const BASE58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 /** NEP-461 puts this before the action, so a signed delegate can never be replayed as a transaction. */
 const SIGNING_PREFIX = 2 ** 30 + 366;
 const FUNCTION_CALL = 2;
+const ADD_KEY = 5;
+const FULL_ACCESS = 1;
 const ED25519 = 0;
 /** The relayer only passes about ten minutes of blocks, and refuses more than 1,200. */
 export const LIFETIME_BLOCKS = 600n;
@@ -19,6 +21,8 @@ export type DelegateAction = {
   nonce: bigint;
   maxBlockHeight: bigint;
   publicKey: Uint8Array;
+  /** Set when the action adds this raw ed25519 key to the signer's own account with full access, instead of a call. */
+  addKey?: Uint8Array;
 };
 
 export type SignStep = {
@@ -95,11 +99,19 @@ export function encodeDelegateAction(action: DelegateAction): Uint8Array {
   out.string(action.senderId);
   out.string(action.receiverId);
   out.u32(1);
-  out.u8(FUNCTION_CALL);
-  out.string(action.methodName);
-  out.bytes(action.args);
-  out.u64(action.gas);
-  out.u128(action.deposit);
+  if (action.addKey) {
+    out.u8(ADD_KEY);
+    out.u8(ED25519);
+    out.raw(action.addKey);
+    out.u64(0n);
+    out.u8(FULL_ACCESS);
+  } else {
+    out.u8(FUNCTION_CALL);
+    out.string(action.methodName);
+    out.bytes(action.args);
+    out.u64(action.gas);
+    out.u128(action.deposit);
+  }
   out.u64(action.nonce);
   out.u64(action.maxBlockHeight);
   out.u8(ED25519);
@@ -128,6 +140,21 @@ export function encodeSignedDelegate(action: DelegateAction, signature: Uint8Arr
 
 type Signer = { sender: string; publicKey: Uint8Array; nonce: bigint; blockHeight: bigint };
 
+/** Moves USDC from the user's own NEAR account into the vault: the ft_transfer_call the relayer accepts with an empty msg. */
+export function nearTopUp(signer: Signer, usdc: string, vault: string, units: bigint): DelegateAction {
+  return {
+    senderId: signer.sender,
+    receiverId: usdc,
+    methodName: "ft_transfer_call",
+    args: new TextEncoder().encode(JSON.stringify({ receiver_id: vault, amount: units.toString(), msg: "" })),
+    gas: 50_000_000_000_000n,
+    deposit: 1n,
+    nonce: signer.nonce,
+    maxBlockHeight: signer.blockHeight + LIFETIME_BLOCKS,
+    publicKey: signer.publicKey,
+  };
+}
+
 /** Vault to vault between fliq users. The vault takes exactly one yoctoNEAR, so only a full-access key can move money. */
 export function vaultTransfer(signer: Signer, vault: string, recipient: string, units: bigint): DelegateAction {
   return {
@@ -140,6 +167,39 @@ export function vaultTransfer(signer: Signer, vault: string, recipient: string, 
     nonce: signer.nonce,
     maxBlockHeight: signer.blockHeight + LIFETIME_BLOCKS,
     publicKey: signer.publicKey,
+  };
+}
+
+/** The vault's payout for a cash-out the API registered: it sends the reserved USDC to the swap's deposit address.
+ *  Nothing leaves the vault until this is signed. */
+export function vaultPayout(signer: Signer, vault: string, orderId: string, units: bigint, depositAddress: string): DelegateAction {
+  return {
+    senderId: signer.sender,
+    receiverId: vault,
+    methodName: "payout",
+    args: new TextEncoder().encode(JSON.stringify({ order_id: orderId, amount: units.toString(), deposit_address: depositAddress })),
+    gas: 100_000_000_000_000n,
+    deposit: 0n,
+    nonce: signer.nonce,
+    maxBlockHeight: signer.blockHeight + LIFETIME_BLOCKS,
+    publicKey: signer.publicKey,
+  };
+}
+
+/** Adds a full-access key to the signer's own account, the only key change the relayer accepts. It is how the key
+ *  made from the user's passkey gets onto the account, so any browser with that passkey can sign. */
+export function addFullAccessKey(signer: Signer, key: Uint8Array): DelegateAction {
+  return {
+    senderId: signer.sender,
+    receiverId: signer.sender,
+    methodName: "",
+    args: new Uint8Array(),
+    gas: 0n,
+    deposit: 0n,
+    nonce: signer.nonce,
+    maxBlockHeight: signer.blockHeight + LIFETIME_BLOCKS,
+    publicKey: signer.publicKey,
+    addKey: key,
   };
 }
 
@@ -190,15 +250,28 @@ export type DelegateDeps = {
   pollAttempts?: number;
 };
 
+// The relayer answers once a call is optimistic, so a read of the key can still return the previous nonce.
+const lastNonce = new Map<string, bigint>();
+
+function nextNonce(sender: string, publicKey: string, onChain: number) {
+  const id = `${sender}:${publicKey}`;
+  const fromChain = BigInt(onChain) + 1n;
+  const fromLast = (lastNonce.get(id) ?? 0n) + 1n;
+  const nonce = fromChain > fromLast ? fromChain : fromLast;
+  lastNonce.set(id, nonce);
+  return nonce;
+}
+
 /** Signs one call, hands it to the relayer and follows it until the chain answers. */
 export async function submitDelegate(
   deps: DelegateDeps,
   build: (signer: Signer) => DelegateAction,
+  onSubmitted?: (result: RelayResult) => void,
 ): Promise<RelayResult> {
   const [key, block] = await Promise.all([
     rpc<{ nonce: number }>(deps.rpcUrl, "query", {
       request_type: "view_access_key",
-      finality: "final",
+      finality: "optimistic",
       account_id: deps.sender,
       public_key: deps.publicKey,
     }),
@@ -207,11 +280,12 @@ export async function submitDelegate(
   const action = build({
     sender: deps.sender,
     publicKey: rawPublicKey(deps.publicKey),
-    nonce: BigInt(key.nonce) + 1n,
+    nonce: nextNonce(deps.sender, deps.publicKey, key.nonce),
     blockHeight: BigInt(block.header.height),
   });
   const signature = await deps.sign(await signingHash(action));
   let result = await deps.relay(encodeSignedDelegate(action, signature));
+  if (result.status !== "failed") onSubmitted?.(result);
   for (let attempt = 0; attempt < (deps.pollAttempts ?? 20) && result.status === "pending"; attempt++) {
     await new Promise((resolve) => setTimeout(resolve, deps.pollMs ?? 1500));
     result = await deps.relayStatus(result.delegate_hash);

@@ -12,10 +12,16 @@ export type DelegatedCall = {
   deposit: bigint;
 };
 
+// The one thing besides a function call that can be relayed: a user adding a full-access key to, or removing a key
+// from, an account. It is how a second iPhone or a recovery key gets onto the account without the user holding NEAR.
+export type KeyChange = { kind: "add_full_access" | "delete"; publicKey: string };
+
 export type VerifiedDelegate = {
   senderId: string;
   receiverId: string;
+  // Empty when the delegate is a key change.
   calls: DelegatedCall[];
+  keyChange?: KeyChange;
   nonce: bigint;
   maxBlockHeight: bigint;
   publicKey: string;
@@ -84,16 +90,45 @@ export function verifySignedDelegate(base64: string): VerifiedDelegate {
     throw new DelegateError("bad_signature", "signature does not match the delegate action");
   }
 
+  const keyChange = toKeyChange(action.actions);
   return {
     senderId: action.senderId,
     receiverId: action.receiverId,
-    calls: action.actions.map(toCall),
+    calls: keyChange ? [] : action.actions.map(toCall),
+    ...(keyChange ? { keyChange } : {}),
     nonce: action.nonce,
     maxBlockHeight: action.maxBlockHeight,
     publicKey: publicKey.toString(),
     hash: message.toString("hex"),
     raw,
   };
+}
+
+type DecodedKey = { ed25519Key?: { data: BorshBytes } };
+
+function ed25519Key(key: DecodedKey | undefined): string {
+  const data = key?.ed25519Key?.data;
+  if (!data) throw new DelegateError("unsupported_action", "only ed25519 keys can be added or removed");
+  return new PublicKey({ keyType: KeyType.ED25519, data: Uint8Array.from(data) }).toString();
+}
+
+// A key change travels alone: mixed with anything else it is refused by toCall like any other non-call action.
+function toKeyChange(actions: DecodedAction[]): KeyChange | null {
+  const action = actions[0];
+  if (actions.length !== 1 || !action || Object.keys(action).length !== 1) return null;
+  if (action.deleteKey) {
+    return { kind: "delete", publicKey: ed25519Key((action.deleteKey as { publicKey?: DecodedKey }).publicKey) };
+  }
+  if (!action.addKey) return null;
+  const added = action.addKey as { publicKey?: DecodedKey; accessKey?: { nonce?: bigint; permission?: Record<string, unknown> } };
+  const permission = Object.keys(added.accessKey?.permission ?? {});
+  if (permission.length !== 1 || permission[0] !== "fullAccess") {
+    throw new DelegateError("unsupported_action", "only a full-access key can be added by relay");
+  }
+  if (BigInt(added.accessKey?.nonce ?? 0n) !== 0n) {
+    throw new DelegateError("unsupported_action", "a new key must start at nonce 0");
+  }
+  return { kind: "add_full_access", publicKey: ed25519Key(added.publicKey) };
 }
 
 function toCall(action: DecodedAction): DelegatedCall {

@@ -2,6 +2,7 @@ export * from "./accounts";
 export * from "./balance";
 export * from "./client";
 export * from "./delegate";
+export * from "./intents";
 export * from "./policy";
 export * from "./redis-store";
 export * from "./relay";

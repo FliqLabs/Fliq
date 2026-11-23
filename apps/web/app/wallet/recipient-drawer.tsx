@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Icon } from "../components/app/icons";
 import { Drawer, Notice } from "../components/app/ui";
@@ -27,12 +27,28 @@ export function AddRecipientDrawer({
   const queryClient = useQueryClient();
   const [currency, setCurrency] = useState<LocalCurrency>("NGN");
   const [bank, setBank] = useState("");
+  const [bankOpen, setBankOpen] = useState(false);
+  const [bankQuery, setBankQuery] = useState("");
   const [number, setNumber] = useState("");
+  const bankRef = useRef<HTMLDivElement>(null);
   const institutions = useInstitutions(countryOf(currency));
   const options = institutions.data?.items ?? [];
-  const institution = options.find((item) => item.code === bank) ?? options[0];
+  const institution = options.find((item) => item.code === bank) ?? null;
   const mobile = institution?.type === "mobile_money";
-  const complete = institution && number.length >= NUMBER_LENGTH[institution.type];
+  const complete = !!institution && number.length >= NUMBER_LENGTH[institution.type];
+
+  const filtered = bankQuery.trim()
+    ? options.filter((item) => item.name.toLowerCase().includes(bankQuery.toLowerCase()))
+    : options;
+
+  useEffect(() => {
+    if (!bankOpen) return;
+    function onDown(e: MouseEvent) {
+      if (bankRef.current && !bankRef.current.contains(e.target as Node)) setBankOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [bankOpen]);
 
   const verify = useMutation({
     mutationFn: () => walletApi.verifyAccount({ bank: institution!.code, number, country: countryOf(currency) }),
@@ -83,6 +99,8 @@ export function AddRecipientDrawer({
           onChange={(event) => {
             setCurrency(event.target.value as LocalCurrency);
             setBank("");
+            setBankOpen(false);
+            setBankQuery("");
             setNumber("");
           }}
         >
@@ -94,25 +112,72 @@ export function AddRecipientDrawer({
           ))}
         </select>
       </div>
-      <div className="field">
-        <label htmlFor="rcp-bank">Bank or wallet</label>
-        <select
-          className="inp"
-          id="rcp-bank"
-          value={institution?.code ?? ""}
-          disabled={!options.length}
-          onChange={(event) => {
-            setBank(event.target.value);
-            setNumber("");
-          }}
-        >
-          {institutions.isPending && <option>Loading banks</option>}
-          {options.map((item) => (
-            <option key={item.code} value={item.code}>
-              {item.name}
-            </option>
-          ))}
-        </select>
+      <div className="field" ref={bankRef}>
+        <label htmlFor="rcp-bank-trigger">Bank or wallet</label>
+        {!bankOpen ? (
+          <button
+            type="button"
+            id="rcp-bank-trigger"
+            className="inp"
+            disabled={!options.length}
+            onClick={() => setBankOpen(true)}
+            style={{ display: "flex", alignItems: "center", cursor: "pointer", textAlign: "left" }}
+          >
+            {institutions.isPending ? (
+              <span style={{ flex: 1, color: "var(--muted)" }}>Loading…</span>
+            ) : institution ? (
+              <span style={{ flex: 1 }}>{institution.name}</span>
+            ) : (
+              <span style={{ flex: 1, color: "var(--muted)" }}>Select a bank or wallet</span>
+            )}
+            <span style={{ color: "var(--muted)", lineHeight: 0 }}>
+              <Icon name="chevR" size={16} />
+            </span>
+          </button>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div className="search">
+              <Icon name="search" size={16} />
+              <input
+                autoFocus
+                value={bankQuery}
+                onChange={(e) => setBankQuery(e.target.value)}
+                placeholder="Search banks and wallets"
+                aria-label="Search banks and wallets"
+              />
+              {bankQuery && (
+                <button type="button" onClick={() => setBankQuery("")} aria-label="Clear search" style={{ lineHeight: 0, color: "var(--muted)" }}>
+                  <Icon name="x" size={14} />
+                </button>
+              )}
+            </div>
+            <div
+              className="rows"
+              style={{ maxHeight: 220, overflowY: "auto", border: "1px solid var(--line2)", borderRadius: 12, padding: "4px 8px" }}
+            >
+              {filtered.length === 0 && (
+                <div className="empty" style={{ padding: "12px 0", textAlign: "center", color: "var(--muted)", fontSize: 14 }}>
+                  No results for &ldquo;{bankQuery}&rdquo;
+                </div>
+              )}
+              {filtered.map((item) => (
+                <button
+                  key={item.code}
+                  type="button"
+                  className="row"
+                  onClick={() => {
+                    setBank(item.code);
+                    setBankOpen(false);
+                    setBankQuery("");
+                    setNumber("");
+                  }}
+                >
+                  {item.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
       <div className="field">
         <label htmlFor="rcp-number">{mobile ? "Phone number" : "Account number"}</label>

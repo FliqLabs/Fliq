@@ -42,6 +42,39 @@ final class ReceiveUITests: XCTestCase {
         snap("r6-home")
     }
 
+    /// After a deposit is seen it shows on the Lock Screen and in the Dynamic Island, so the user can leave the app.
+    @MainActor
+    func testADepositShowsOutsideTheApp() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--onboarded"]
+        app.launch()
+
+        app.buttons["Transfer"].tap()
+        XCTAssertTrue(app.buttons["Receive"].waitForExistence(timeout: 3))
+        app.buttons["Receive"].tap()
+        XCTAssertTrue(app.buttons["External wallet"].waitForExistence(timeout: 3))
+        app.buttons["External wallet"].tap()
+        XCTAssertTrue(app.buttons["USDC"].waitForExistence(timeout: 3))
+        app.buttons["USDC"].tap()
+        let solana = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Solana")).firstMatch
+        XCTAssertTrue(solana.waitForExistence(timeout: 3))
+        solana.tap()
+        XCTAssertTrue(app.staticTexts["in your vault"].waitForExistence(timeout: 20))
+
+        XCUIDevice.shared.press(.home)
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        XCTAssertTrue(springboard.wait(for: .runningForeground, timeout: 5))
+        sleep(2)
+        snap("l1-home-dynamic-island")
+        let lock = NSSelectorFromString("pressLockButton")
+        guard XCUIDevice.shared.responds(to: lock) else { return }
+        XCUIDevice.shared.perform(lock)
+        sleep(2)
+        XCUIDevice.shared.perform(lock)
+        sleep(2)
+        snap("l2-lock-screen")
+    }
+
     @MainActor
     private func snap(_ name: String) {
         let png = XCUIScreen.main.screenshot().pngRepresentation

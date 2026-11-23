@@ -7,6 +7,7 @@
 	<key>com.apple.developer.associated-domains</key>
 	<array>
 		<string>webcredentials:fliq.cash$(FLIQ_ASSOCIATED_DOMAIN_MODE)</string>
+		<string>applinks:fliq.cash$(FLIQ_ASSOCIATED_DOMAIN_MODE)</string>
 	</array>
 </dict>
 </plist>

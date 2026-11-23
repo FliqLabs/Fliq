@@ -1,8 +1,9 @@
+import type { VaultDeposit } from "@prisma/client";
 import { decrypt } from "../../../packages/db/src/crypto.js";
 import type { Config } from "./config.js";
 import { formatTokenAmount } from "./dashboard.js";
 import type { Db } from "./db.js";
-import { formatUnits } from "./deposits.js";
+import { formatUnits, units } from "./deposits.js";
 import { invalidRequest } from "./errors.js";
 import { institutionName } from "./institutions.js";
 import { developerIdFor } from "./quotes.js";
@@ -25,18 +26,24 @@ export type ActivityItem = {
   seconds: number | null;
   reason: string | null;
   ref_id: string;
+  /** The NEAR transaction, so a receipt can point anyone to it on an explorer. Only transfers have one today. */
+  tx_hash: string | null;
 };
 
 const CHAIN_NAMES: Record<string, string> = {
   base: "Base",
   solana: "Solana",
   tron: "Tron",
+  bnb: "BNB Chain",
   arbitrum: "Arbitrum",
   ethereum: "Ethereum",
   polygon: "Polygon",
   bitcoin: "Bitcoin",
   near: "NEAR",
 };
+
+const SEND_STATUS: Record<string, ActivityItem["status"]> = { delivered: "sent", refunded: "refunded", failed: "failed", expired: "expired" };
+const shortAddress = (address: string) => (address.length > 12 ? `${address.slice(0, 6)}...${address.slice(-4)}` : address);
 
 const REFUSAL_REASONS: Record<string, string> = {
   POLICY_DAILY_CAP: "over_daily_cap",
@@ -49,6 +56,9 @@ const party = (name: string, extra: Partial<Party> = {}): Party => ({ name, near
 
 const PAYOUT_STATUS: Record<string, ActivityItem["status"]> = { settled: "paid", refunded: "refunded", expired: "expired", failed: "failed" };
 const DEPOSIT_STATUS: Record<string, ActivityItem["status"]> = { landed: "received", refunded: "refunded", expired: "expired", failed: "failed" };
+const REFUND_BACK = "Refund back in your vault";
+// The iPhone app matches this name to draw a bank deposit with the Nigerian flag.
+const FROM_BANK = "From your bank";
 
 const encodeCursor = (item: ActivityItem) => Buffer.from(`${item.at}|${item.activity_id}`).toString("base64url");
 
@@ -66,7 +76,13 @@ const newerFirst = (a: ActivityItem, b: ActivityItem) => b.at.localeCompare(a.at
 async function payouts(tx: Db, config: Config, userId: string, filter: ActivityFilter, before: Date | null, take: number): Promise<ActivityItem[]> {
   const byWhom = filter === "mine" ? { agentId: null } : filter === "agents" ? { agentId: { not: null } } : {};
   const rows = await tx.payout.findMany({
-    where: { developerId: await developerIdFor(tx, userId), ...byWhom, ...(before ? { createdAt: { lte: before } } : {}) },
+    where: {
+      developerId: await developerIdFor(tx, userId),
+      ...byWhom,
+      ...(before ? { createdAt: { lte: before } } : {}),
+      // The app already told the payer it did not start. Nothing left the vault.
+      OR: [{ failureReason: null }, { failureReason: { not: "not_signed" } }],
+    },
     orderBy: { createdAt: "desc" },
     take,
     include: { recipient: true, events: { where: { toState: { in: ["deposit_seen", "settled"] } } } },
@@ -92,32 +108,55 @@ async function payouts(tx: Db, config: Config, userId: string, filter: ActivityF
       seconds: seen && settled ? Math.round((settled.getTime() - seen.getTime()) / 1000) : null,
       reason: row.state === "refunded" ? "provider_failed" : row.state === "expired" ? "expired" : null,
       ref_id: row.id,
+      tx_hash: null,
     };
   });
 }
 
+// A bank deposit moves through the partner before anything reaches the chain, so its address can be "waiting" or even
+// "expired" while the naira is on its way. Its row follows the partner instead, for a day.
+const BANK_FOLLOWED_MS = 24 * 60 * 60_000;
+// ERROR is not here: the partner retries after it, and an order has gone ERROR then COMPLETED (20 Nov).
+const BANK_STOPPED = ["FAILED"];
+
+function depositStatus(row: VaultDeposit, now: Date): { status: ActivityItem["status"]; reason: string | null } {
+  if (row.state === "landed") return { status: "received", reason: null };
+  if (row.fromBank && row.bankStatus && BANK_STOPPED.includes(row.bankStatus)) return { status: "failed", reason: "bank_stopped" };
+  const followed = row.fromBank && (row.bankSentAt !== null || row.bankStatus !== null) && now.getTime() - row.createdAt.getTime() < BANK_FOLLOWED_MS;
+  if (followed && (row.state === "waiting" || row.state === "expired")) return { status: "pending", reason: null };
+  return { status: DEPOSIT_STATUS[row.state] ?? "pending", reason: row.state === "expired" ? "expired" : null };
+}
+
 async function deposits(tx: Db, userId: string, before: Date | null, take: number): Promise<ActivityItem[]> {
   const rows = await tx.vaultDeposit.findMany({
-    where: { userId, state: { notIn: ["waiting"] }, ...(before ? { createdAt: { lte: before } } : {}) },
+    where: {
+      userId,
+      // A bank deposit is listed from the moment the user says they sent it, before anything reaches its address.
+      OR: [{ state: { notIn: ["waiting"] } }, { fromBank: true, OR: [{ bankSentAt: { not: null } }, { bankStatus: { in: ["PAID", "PROCESSING", "COMPLETED", "ERROR", ...BANK_STOPPED] } }] }],
+      ...(before ? { createdAt: { lte: before } } : {}),
+    },
     orderBy: { createdAt: "desc" },
     take,
   });
+  const now = new Date();
   return rows.map((row) => {
-    const received = row.receivedUnits ?? row.amountUnits;
+    const received = units(row.receivedUnits ?? row.amountUnits);
+    const { status, reason } = depositStatus(row, now);
     return {
       activity_id: `act_${row.id}`,
       kind: "deposit",
-      status: DEPOSIT_STATUS[row.state] ?? "pending",
+      status,
       at: row.createdAt.toISOString(),
-      party: party(`Received from ${CHAIN_NAMES[row.chain] ?? row.chain}`),
+      party: party(row.refundReturn ? REFUND_BACK : row.fromBank ? FROM_BANK : `Received from ${CHAIN_NAMES[row.chain] ?? row.chain}`),
       provider: null,
       agent: null,
       local: null,
       usd: formatUnits(row.landedUnits ?? row.landsUnits, 6),
       token: `${formatUnits(received, row.decimals).replace(/\.00$/, "")} ${row.token.toUpperCase()}`,
       seconds: row.seenAt && row.landedAt ? Math.round((row.landedAt.getTime() - row.seenAt.getTime()) / 1000) : null,
-      reason: row.state === "expired" ? "expired" : null,
+      reason,
       ref_id: row.id,
+      tx_hash: null,
     };
   });
 }
@@ -132,16 +171,25 @@ async function transfers(tx: Db, userId: string, before: Date | null, take: numb
     where: { id: { in: rows.map((row) => (row.fromUserId === userId ? row.toUserId : row.fromUserId)) } },
     select: { id: true, displayName: true, photoUrl: true },
   });
+  // A transfer to a NEAR Intents deposit address is a send to a wallet on another network: it is shown by where it
+  // is really going and how far it has got, not by the deposit address it passed through.
+  const sends = await tx.walletSend.findMany({
+    where: { userId, depositAddress: { in: rows.filter((row) => row.fromUserId === userId).map((row) => row.toAccount) } },
+    select: { depositAddress: true, chain: true, toAddress: true, state: true },
+  });
   return rows.map((row) => {
     const outgoing = row.fromUserId === userId;
     const other = others.find((user) => user.id === (outgoing ? row.toUserId : row.fromUserId));
     const account = outgoing ? row.toAccount : row.fromAccount;
+    const send = outgoing ? sends.find((item) => item.depositAddress === row.toAccount) : undefined;
     return {
       activity_id: `act_${row.id}`,
       kind: outgoing ? "transfer_out" : "transfer_in",
-      status: outgoing ? "sent" : "received",
+      status: send ? (SEND_STATUS[send.state] ?? "pending") : outgoing ? "sent" : "received",
       at: row.createdAt.toISOString(),
-      party: party(other?.displayName ?? account, { near_account: account, photo_url: other?.photoUrl ?? null }),
+      party: send
+        ? party(`${CHAIN_NAMES[send.chain] ?? send.chain} wallet ${shortAddress(send.toAddress)}`)
+        : party(other?.displayName ?? account, { near_account: account, photo_url: other?.photoUrl ?? null }),
       provider: null,
       agent: null,
       local: null,
@@ -150,6 +198,7 @@ async function transfers(tx: Db, userId: string, before: Date | null, take: numb
       seconds: null,
       reason: null,
       ref_id: row.id,
+      tx_hash: row.txHash,
     };
   });
 }
@@ -173,6 +222,7 @@ async function refusals(tx: Db, userId: string, before: Date | null, take: numbe
       seconds: null,
       reason: REFUSAL_REASONS[row.reason] ?? null,
       ref_id: row.id,
+      tx_hash: null,
     };
   });
 }
@@ -221,6 +271,9 @@ function notificationFor(item: ActivityItem) {
   }
   if (item.kind === "payout" && item.status === "refunded") {
     return { ...base, kind: "payout_refunded", title: "Refunded", body: `$${item.usd} is back in your vault. ${via} could not pay ${item.party.name}.` };
+  }
+  if (item.kind === "deposit" && item.status === "received" && item.party.name === REFUND_BACK) {
+    return { ...base, kind: "received", title: "Received", body: `Your $${item.usd} refund is back in your vault.` };
   }
   if (item.kind === "deposit" && item.status === "received") {
     const time = item.seconds === null ? "" : `, ${item.seconds} seconds after you sent it`;

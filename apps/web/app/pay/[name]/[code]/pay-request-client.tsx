@@ -8,9 +8,9 @@ const TIMEOUT_MS = 8_000;
 const FINAL_DEPOSIT_STATES = new Set(["landed", "refunded", "expired", "failed"]);
 
 type DepositSource = {
-  token: "usdc" | "usdt" | "btc";
+  token: "usdc" | "usdt" | "btc" | "sol" | "eth" | "bnb";
   chain: string;
-  group: "dollars" | "bitcoin" | "near";
+  group: "dollars" | "bitcoin" | "coins" | "near";
   minimum: string;
   eta_seconds: number;
   direct: boolean;
@@ -42,7 +42,7 @@ type Deposit = {
   landed: string | null;
 };
 
-const TOKENS: Record<string, string> = { usdc: "USDC", usdt: "Tether USDT", btc: "Bitcoin" };
+const TOKENS: Record<string, string> = { usdc: "USDC", usdt: "Tether USDT", btc: "Bitcoin", sol: "SOL", eth: "ETH", bnb: "BNB" };
 const CHAINS: Record<string, string> = {
   base: "Base",
   solana: "Solana",
@@ -50,6 +50,8 @@ const CHAINS: Record<string, string> = {
   arbitrum: "Arbitrum",
   ethereum: "Ethereum",
   polygon: "Polygon",
+  bnb: "BNB Chain",
+  monad: "Monad",
   bitcoin: "Bitcoin",
   near: "NEAR",
 };
@@ -227,15 +229,16 @@ function WalletOption({ name, code, request }: { name: string; code: string; req
   );
 }
 
-function FliqOption({ name, who }: { name: string; who: string }) {
+function FliqOption({ name, code, who }: { name: string; code: string; who: string }) {
   return (
     <Card>
       <Eyebrow>Pay with fliq</Eyebrow>
       <p className="mt-2 text-sm text-[#999]">
-        Instant and free between fliq users. In the app, tap Transfer, then Send, and pay <span className="text-white">{name}</span>.
+        Instant and free between fliq users. The app opens on paying <span className="text-white">{name}</span>, with the amount filled in.
       </p>
       <a
-        href="fliq://"
+        // Carries the request, so the app opens on paying it with the amount filled in.
+        href={`fliq://pay/${encodeURIComponent(name)}/${encodeURIComponent(code)}`}
         className="mt-4 inline-flex h-11 w-full items-center justify-center rounded-full bg-white text-sm font-semibold text-black transition hover:bg-[#e6e6e6] sm:w-auto sm:px-8"
       >
         Open fliq
@@ -290,7 +293,7 @@ export function PayRequestClient({ name, code }: { name: string; code: string })
 
       {request.state === "open" && (
         <div className="mt-3 grid gap-3">
-          <FliqOption name={name} who={who} />
+          <FliqOption name={name} code={code} who={who} />
           <WalletOption name={name} code={code} request={request} />
         </div>
       )}

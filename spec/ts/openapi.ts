@@ -235,6 +235,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/vault/inbox": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * USDC waiting in the user's own NEAR account, outside the vault
+         * @description NEAR Intents returns a failed cash-out or cross-chain send to the user's NEAR account, not the vault. USDC sent directly to a fliq name also lands there. This balance must be moved into the vault before it can be used for a payout.
+         */
+        get: operations["getVaultInbox"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sends/networks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The networks a user can send USDC to from their fliq account
+         * @description In display order. A network NEAR Intents cannot reach right now is still listed, with available false. Sending to a NEAR wallet needs none of this: it is a transfer the user signs directly. Networks that deliver USDT (Tron, BNB Chain) are listed only when the client asks for them with tokens=usdc,usdt, so an older app that only knows USDC addresses never sees them.
+         */
+        get: operations["listSendNetworks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sends": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a send of USDC to a wallet on another network
+         * @description Returns what will arrive and a NEAR deposit address. Nothing has moved yet. The user then sends the amount to deposit.address themselves, with the same two signed steps as a send to a NEAR wallet (withdraw from the vault, then ft_transfer), and NEAR Intents delivers it on the other network. If the swap cannot complete, the USDC comes back to the user's own NEAR account. A send not started by deposit.expires_at expires.
+         */
+        post: operations["createSend"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sends/{sendId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Where a send to another network is
+         * @description Poll every few seconds while the app shows it.
+         */
+        get: operations["getSend"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/deposits/sources": {
         parameters: {
             query?: never;
@@ -315,6 +395,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/deposits/{depositId}/bank-order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Link a bank deposit to the bank partner's order and report what the app sees
+         * @description Called by the app when it creates the partner's order, when the user says they sent the money (sent true), and whenever it reads a new order status. From sent on, the deposit shows in GET /activity before anything arrives. The partner's own webhook, at the deposit's bank_webhook_url, reports the same statuses. Statuses change what the user is shown, never money: the vault is credited from the chain.
+         */
+        post: operations["reportBankDeposit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/refunds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Refunded deposits waiting in the user's NEAR Intents balance
+         * @description A top-up NEAR Intents could not finish is refunded to the user's NEAR Intents balance, which the vault cannot see. These are the dollar stablecoins there worth at least five cents. Bring one back with POST /refunds/return.
+         */
+        get: operations["listRefunds"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/refunds/return": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Quote one refunded balance back into the vault
+         * @description Quotes the whole balance of token_id back to the vault as USDC and starts following it like a top-up, under deposit_id. The app then signs mt_transfer on intents_contract for units of token_id to deposit_address, attaching one yoctoNEAR, and relays it with POST /relays.
+         */
+        post: operations["returnRefund"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/activity": {
         parameters: {
             query?: never;
@@ -380,6 +520,26 @@ export interface paths {
         put?: never;
         /** Register this device for push notifications, with the APNs gateway and app it belongs to */
         post: operations["registerDevice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/live-activities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Follow a deposit or cash-out with a Live Activity on this iPhone
+         * @description The API pushes each change of state to the Live Activity's push token, and ends the activity when the deposit or cash-out reaches a final state, or three hours after it started.
+         */
+        post: operations["registerLiveActivity"];
         delete?: never;
         options?: never;
         head?: never;
@@ -751,6 +911,44 @@ export interface paths {
         put: operations["updateNotificationSettings"];
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/limits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The daily limit the user set on what may leave their account, and how much of it is used */
+        get: operations["getLimits"];
+        /**
+         * Set, lower, raise or remove the daily limit
+         * @description A first limit and a lower limit apply at once. A higher limit, or removing the limit (null), takes effect 24 hours later and the user is told by push, so that someone holding an unlocked phone cannot lift the limit and empty the account in one sitting. Sending the current limit cancels a raise that is waiting.
+         */
+        put: operations["updateLimits"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/limits/pending": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Cancel a raise of the daily limit that has not taken effect yet */
+        delete: operations["cancelPendingLimit"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1623,9 +1821,12 @@ export interface components {
             /** @description False when the sender supplied the name because the bank could not look it up */
             name_verified?: boolean;
         };
+        /** @description Send exactly one of account or recipient_id. */
         PayoutRequest: {
             quote_id: string;
-            account: components["schemas"]["Account"];
+            account?: components["schemas"]["Account"];
+            /** @description A saved recipient of the signed-in user, from GET /recipients, paid without sending its number again. Recipient lists only show the last four digits, so this is how an app that did not save the number pays it. */
+            recipient_id?: string;
             /** @description Your own reference. Unique per account, so a second payout with the same one is refused. */
             client_reference?: string;
             /** @description Where a failed payout is refunded. Defaults to the signed-in user's fliq name. */
@@ -1798,10 +1999,15 @@ export interface components {
             /** @description What was sent from another chain, for a top-up, for example 200 USDC */
             token: string | null;
             seconds: number | null;
-            /** @enum {string|null} */
-            reason: "over_daily_cap" | "over_per_payout_cap" | "corridor_not_allowed" | "not_saved_account" | "provider_failed" | "expired" | null;
+            /**
+             * @description bank_stopped is a bank deposit the bank partner ended with FAILED. ERROR is not stopped, the partner retries after it.
+             * @enum {string|null}
+             */
+            reason: "over_daily_cap" | "over_per_payout_cap" | "corridor_not_allowed" | "not_saved_account" | "provider_failed" | "expired" | "bank_stopped" | null;
             /** @description The payout, deposit, transfer or refusal behind the row */
             ref_id: string;
+            /** @description The NEAR transaction behind the row, so a receipt can link to it on an explorer. Set for transfers. */
+            tx_hash?: string | null;
         };
         ActivityList: {
             items: components["schemas"]["ActivityItem"][];
@@ -1830,6 +2036,20 @@ export interface components {
             token: string;
             /** @enum {string} */
             platform: "ios";
+            /**
+             * @description production for TestFlight and App Store builds, sandbox for builds run from Xcode
+             * @enum {string}
+             */
+            environment: "production" | "sandbox";
+            bundle_id: string;
+        };
+        LiveActivityRequest: {
+            /** @description The Live Activity's APNs push token in hex */
+            token: string;
+            /** @enum {string} */
+            kind: "deposit" | "bank_deposit" | "payout" | "send";
+            /** @description The deposit_id, payout_id or send_id the activity follows; it must belong to the caller */
+            ref_id: string;
             /**
              * @description production for TestFlight and App Store builds, sandbox for builds run from Xcode
              * @enum {string}
@@ -2050,6 +2270,80 @@ export interface components {
             };
             weekly_summary: boolean;
         };
+        SendNetworkList: {
+            networks: components["schemas"]["SendNetwork"][];
+        };
+        SendNetwork: {
+            chain: string;
+            /** @description The name to show */
+            name: string;
+            /**
+             * @description What arrives on that network. The user always pays in USDC from their fliq account.
+             * @enum {string}
+             */
+            token: "usdc" | "usdt";
+            /** @description The smallest amount that can be sent, in dollars */
+            minimum: string;
+            eta_seconds: number;
+            available: boolean;
+        };
+        SendRequest: {
+            /** @description A chain from GET /sends/networks */
+            chain: string;
+            /** @description The wallet on that network. Its shape is checked for the network. */
+            address: string;
+            /** @description Dollars of USDC to send, as a decimal string */
+            amount: string;
+        };
+        WalletSend: {
+            send_id: string;
+            /**
+             * @description awaiting until the user's transfer reaches deposit.address, then moving. refunded and failed mean the USDC went back to the user's own NEAR account. expired means it was never started.
+             * @enum {string}
+             */
+            state: "awaiting" | "moving" | "delivered" | "refunded" | "failed" | "expired";
+            /**
+             * @description What the wallet receives
+             * @enum {string}
+             */
+            token: "usdc" | "usdt";
+            chain: string;
+            to: string;
+            /** @description What leaves the user's account */
+            amount: string;
+            /** @description What the wallet receives; the quoted amount until delivered, then the delivered amount */
+            receives: string;
+            /** @description The network and swap cost, amount minus the quoted receives. fliq adds nothing. */
+            fee: string;
+            eta_seconds: number;
+            deposit: {
+                /** @description The NEAR account to send the USDC to */
+                address: string;
+                memo: string | null;
+                /** Format: date-time */
+                expires_at: string;
+            };
+            origin_tx: string | null;
+            /** @description The transaction on the destination network, once delivered */
+            destination_tx: string | null;
+            /** Format: date-time */
+            created_at: string;
+        };
+        Limits: {
+            /** @description The most that may leave the account in any 24 hours, in dollars: cash-outs, payments to fliq users and sends to outside wallets. Null means the user has set no limit. */
+            daily_limit: string | null;
+            /** @description What has left the account in the last 24 hours, in dollars */
+            spent_today: string;
+            /** @description What may still leave before the limit is reached; null when there is no limit */
+            remaining: string | null;
+            /** @description A raise the user asked for that has not taken effect yet */
+            pending: {
+                /** @description The limit that will apply; null means the limit is being removed */
+                daily_limit: string | null;
+                /** Format: date-time */
+                effective_at: string;
+            } | null;
+        };
         SetupStep: {
             /** @enum {string} */
             step: "add_account" | "top_up";
@@ -2116,6 +2410,8 @@ export interface components {
              * @description Base64 Borsh SignedDelegate, signed by the device key over sha256(NEP-461 prefix and borsh(DelegateAction))
              */
             signed_delegate: string;
+            /** @description Set when the transfer pays a payment request from its link. Once the transfer to the payee succeeds and covers the requested amount, the request turns paid. */
+            request_code?: string;
         };
         RelayResult: {
             /** @enum {string} */
@@ -2319,6 +2615,11 @@ export interface components {
             account_name: string;
             bank: components["schemas"]["RecipientBank"];
             account_last4: string;
+            /**
+             * @description Where the account is, so it is paid in its own currency
+             * @enum {string}
+             */
+            country?: "ng" | "ke" | "gh" | "id" | "ph";
             /** Format: date-time */
             created_at: string;
             /** @description The user's own account */
@@ -2339,8 +2640,14 @@ export interface components {
             /** @description False when the ledger mirror disagrees with the chain */
             in_sync: boolean;
         };
+        VaultInbox: {
+            /** @description USDC waiting in the user's NEAR account, outside the vault, as a decimal string */
+            usdc: string;
+            /** @description The USDC token contract address, needed to build the ft_transfer_call that moves the funds */
+            usdc_contract: string;
+        };
         /** @enum {string} */
-        DepositTokenId: "usdc" | "usdt" | "btc";
+        DepositTokenId: "usdc" | "usdt" | "btc" | "sol" | "eth" | "bnb";
         /** @enum {string} */
         DepositChainId: "base" | "solana" | "tron" | "arbitrum" | "ethereum" | "polygon" | "bnb" | "monad" | "bitcoin" | "near";
         DepositSource: {
@@ -2350,7 +2657,7 @@ export interface components {
              * @description The heading the app lists the source under
              * @enum {string}
              */
-            group: "dollars" | "bitcoin" | "near";
+            group: "dollars" | "bitcoin" | "coins" | "near";
             /** @description Smallest top-up, in the source token */
             minimum: string;
             /** @description Typical time from sending to landing in the vault */
@@ -2383,15 +2690,32 @@ export interface components {
             chain: components["schemas"]["DepositChainId"];
             /** @description About how much the user will send, in the source token. Any amount from minimum up is taken. */
             amount: string;
+            /**
+             * @description bank when the user pays from their bank through the on-ramp partner, so fliq names their bank and not the chain. Defaults to wallet.
+             * @enum {string}
+             */
+            via?: "wallet" | "bank";
         };
         /**
          * @description waiting: nothing has arrived. seen: the transfer is on the source chain. underpaid: less than minimum arrived; more can be sent until reserved_until, after that it is refunded. bridging: moving to NEAR. landed: in the vault. refunded: returned to the user's NEAR account. expired: nothing arrived in time. failed: NEAR Intents could not complete it and support has been told.
          * @enum {string}
          */
         DepositState: "waiting" | "seen" | "underpaid" | "bridging" | "landed" | "refunded" | "expired" | "failed";
+        BankOrderReport: {
+            /** @description The bank partner's order id */
+            order_id: string;
+            /** @description The order status the app last read (INIT, PAID, COMPLETED, ERROR) */
+            status?: string;
+            /** @description True when the user says they sent the money */
+            sent?: boolean;
+        };
         VaultDeposit: {
             deposit_id: string;
             state: components["schemas"]["DepositState"];
+            /** @description For a deposit from the user's bank, the bank partner's last order status (INIT, PAID, COMPLETED, ERROR). Null for every other deposit. */
+            bank_status: string | null;
+            /** @description For a deposit from the user's bank, the link to give the bank partner as its order's webhook. It carries a secret only this deposit has. Null for every other deposit. */
+            bank_webhook_url: string | null;
             token: components["schemas"]["DepositTokenId"];
             chain: components["schemas"]["DepositChainId"];
             /** @description Where to send, on chain only */
@@ -2430,6 +2754,39 @@ export interface components {
             origin_tx: string | null;
             /** Format: date-time */
             created_at: string;
+        };
+        RefundBalance: {
+            /** @description The NEAR Intents token, as mt_transfer names it */
+            token_id: string;
+            /** @enum {string} */
+            symbol: "usdc" | "usdt";
+            chain: components["schemas"]["DepositChainId"];
+            /** @description The balance in the token's smallest unit */
+            units: string;
+            /** @description The balance as a decimal string */
+            amount: string;
+            /** @description The contract that holds it */
+            intents_contract: string;
+        };
+        RefundList: {
+            items: components["schemas"]["RefundBalance"][];
+        };
+        RefundReturnRequest: {
+            /** @description A token_id from GET /refunds */
+            token_id: string;
+        };
+        RefundReturn: {
+            /** @description Followed like any top-up with GET /deposits/{depositId} */
+            deposit_id: string;
+            /** @description The account to mt_transfer the balance to */
+            deposit_address: string;
+            token_id: string;
+            /** @description What to transfer, in the token's smallest unit */
+            units: string;
+            /** @description Estimated USDC the vault receives */
+            lands: string;
+            /** @description The contract to call mt_transfer on */
+            intents_contract: string;
         };
         Person: {
             near_account: string;
@@ -3024,6 +3381,102 @@ export interface operations {
             404: components["responses"]["Error"];
         };
     };
+    getVaultInbox: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description USDC waiting outside the vault, with the contract address needed to move it */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultInbox"];
+                };
+            };
+            404: components["responses"]["Error"];
+        };
+    };
+    listSendNetworks: {
+        parameters: {
+            query?: {
+                /** @description Comma separated tokens the client can show. Defaults to usdc. */
+                tokens?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Networks in display order */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SendNetworkList"];
+                };
+            };
+        };
+    };
+    createSend: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SendRequest"];
+            };
+        };
+        responses: {
+            /** @description Quoted, waiting for the user to send */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WalletSend"];
+                };
+            };
+            400: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    getSend: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sendId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The send */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WalletSend"];
+                };
+            };
+            404: components["responses"]["Error"];
+        };
+    };
     listDepositSources: {
         parameters: {
             query?: never;
@@ -3124,6 +3577,85 @@ export interface operations {
             404: components["responses"]["Error"];
         };
     };
+    reportBankDeposit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                depositId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BankOrderReport"];
+            };
+        };
+        responses: {
+            /** @description The deposit with its bank status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultDeposit"];
+                };
+            };
+            400: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
+    listRefunds: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Balances that can be brought back to the vault */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RefundList"];
+                };
+            };
+            404: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    returnRefund: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RefundReturnRequest"];
+            };
+        };
+        responses: {
+            /** @description Quoted and followed, waiting for the transfer */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RefundReturn"];
+                };
+            };
+            400: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
     listActivity: {
         parameters: {
             query?: {
@@ -3216,6 +3748,30 @@ export interface operations {
                 content?: never;
             };
             400: components["responses"]["Error"];
+        };
+    };
+    registerLiveActivity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LiveActivityRequest"];
+            };
+        };
+        responses: {
+            /** @description Registered; registering the same token again follows the given deposit or cash-out from the start */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Error"];
+            404: components["responses"]["Error"];
         };
     };
     removeDevice: {
@@ -3805,6 +4361,74 @@ export interface operations {
                 };
             };
             400: components["responses"]["Error"];
+        };
+    };
+    getLimits: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The limit, what has been spent in the last 24 hours, and any raise that is waiting */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Limits"];
+                };
+            };
+        };
+    };
+    updateLimits: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Dollars, with up to two decimals, or null for no limit */
+                    daily_limit: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description The limits as they now stand */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Limits"];
+                };
+            };
+            400: components["responses"]["Error"];
+        };
+    };
+    cancelPendingLimit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The limits as they now stand, with nothing waiting */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Limits"];
+                };
+            };
         };
     };
     getSetup: {

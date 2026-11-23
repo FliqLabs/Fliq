@@ -3,12 +3,14 @@ import Foundation
 /// A token on a chain the vault can be topped up from, from `GET /deposits/sources`.
 struct DepositSource: Hashable, Sendable, Identifiable {
     enum Group: String, CaseIterable, Sendable {
-        case dollars, bitcoin, near
+        /// `coins`: a chain's own coin (SOL, ETH, BNB), swapped to dollars as it lands, like bitcoin.
+        case dollars, bitcoin, coins, near
 
         var title: String {
             switch self {
             case .dollars: "Digital dollars"
             case .bitcoin: "Bitcoin"
+            case .coins: "Other coins"
             case .near: "Already on NEAR"
             }
         }
@@ -24,12 +26,21 @@ struct DepositSource: Hashable, Sendable, Identifiable {
     var available = true
     /// Set for the user's own NEAR account, which needs nothing reserved.
     var address: String?
+    /// Paid in from the user's bank through the on-ramp partner, so fliq names their bank and never the chain.
+    var fromBank = false
 
     var id: String { "\(tokenId)-\(chainId)" }
     var token: String { tokenId.uppercased() }
     var chain: String { Self.chainNames[chainId] ?? chainId.capitalized }
     var title: String { "\(token) on \(chain)" }
     var isDirect: Bool { group == .near }
+    /// Not a dollar: swapped to USDC on arrival, so what lands is priced then, not one for one.
+    var isSwapped: Bool { group == .bitcoin || group == .coins }
+    /// A chain's own coin on its own chain (SOL on Solana), drawn without a network badge.
+    var isNativeCoin: Bool {
+        ["btc": "bitcoin", "sol": "solana", "eth": "ethereum", "bnb": "bnb"][tokenId] == chainId
+    }
+    static let swappedTokens: Set<String> = ["btc", "sol", "eth", "bnb"]
     /// The chain's image in the asset catalog: ChainSolana, ChainNEAR, ChainBnb.
     var chainImage: String { "Chain" + (chainId == "near" ? "NEAR" : chainId.capitalized) }
 
@@ -53,6 +64,8 @@ struct DepositAddress: Equatable, Sendable {
     let estimatedSeconds: Int
     /// True for fixture addresses. Nothing sent to them is received.
     let isDemo: Bool
+    /// For a bank deposit, the link the bank partner reports its order's status to. Nil for everything else.
+    var bankWebhookURL: URL? = nil
 
     func landing(_ received: TokenAmount) -> TokenAmount {
         TokenAmount(baseUnits: max(0, received.baseUnits - fee.baseUnits))
@@ -68,6 +81,8 @@ struct DepositStatus: Equatable, Sendable {
         static func < (lhs: Stage, rhs: Stage) -> Bool { lhs.rawValue < rhs.rawValue }
 
         var isFinal: Bool { self == .landed || rawValue >= Stage.refunded.rawValue }
+        /// The money will not reach the vault as it stands: too little was sent, or it was handed back, timed out or failed.
+        var isNotComing: Bool { self == .underpaid || rawValue >= Stage.refunded.rawValue }
     }
 
     let stage: Stage
@@ -82,6 +97,19 @@ protocol DepositAPI: Sendable {
     func sources() async throws -> [DepositSource]
     func reserve(_ source: DepositSource, vault: String) async throws -> DepositAddress
     func status(of deposit: DepositAddress) async throws -> DepositStatus
+    /// Links a bank deposit to the partner's order and says what the app sees, so the deposit shows in Activity
+    /// on every device and the team hears when it stops.
+    func reportBankOrder(_ report: BankOrderReport, for deposit: DepositAddress) async throws
+}
+
+extension DepositAPI {
+    func reportBankOrder(_ report: BankOrderReport, for deposit: DepositAddress) async throws {}
+}
+
+struct BankOrderReport: Encodable, Equatable, Sendable {
+    let orderId: String
+    var status: String?
+    var sent: Bool?
 }
 
 /// The API refused to open an address for this source right now, for example NEAR Intents on a testnet server.

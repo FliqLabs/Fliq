@@ -169,7 +169,7 @@ struct PayToView: View {
             ScrollView(.horizontal) {
                 HStack(alignment: .top, spacing: 14) {
                     ForEach(recent) { payee in
-                        Button { pay(payee) } label: { RecentBubble(name: payee.name) { badge(for: payee) } }
+                        Button { pay(payee) } label: { RecentBubble(name: payee.name, photoURL: photo(of: payee)) { badge(for: payee) } }
                     }
                 }
                 .padding(.horizontal, 2)
@@ -527,11 +527,12 @@ private struct RowLayout<Leading: View, Trailing: View>: View {
 /// A recent payee as a round avatar with their first name under it.
 private struct RecentBubble<Badge: View>: View {
     let name: String
+    let photoURL: URL?
     @ViewBuilder let badge: () -> Badge
 
     var body: some View {
         VStack(spacing: 8) {
-            PersonAvatar(name: name, size: 56)
+            PersonAvatar(name: name, photoURL: photoURL, size: 56)
                 .overlay(alignment: .bottomTrailing) { badge().offset(x: 2, y: 2) }
             Text(name.split(separator: " ").first.map(String.init) ?? name)
                 .font(.system(size: 12, weight: .medium))

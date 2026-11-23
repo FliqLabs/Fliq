@@ -77,6 +77,11 @@ describe("push messages", () => {
     expect(transferOutMessage("u1", "tr_1", 5_000_000n, "ada.fliqaccount.near")).toMatchObject({
       userId: "u1",
       title: "Sent $5.00 to @ada",
+      body: "It's in their vault now.",
+    });
+    expect(transferOutMessage("u1", "tr_2", 5_000_000n, "frank.near", true)).toMatchObject({
+      title: "Sent $5.00 to frank.near",
+      body: "It's in their wallet now.",
     });
     expect(depositMessage("u1", "dep_1", 9_990_000n, "usdc", "solana")).toMatchObject({
       title: "$9.99 arrived in your vault",
@@ -108,6 +113,7 @@ describe("push messages", () => {
   it("drops a token Apple says is gone", () => {
     expect(isDeadToken({ status: 410, reason: "Unregistered" })).toBe(true);
     expect(isDeadToken({ status: 400, reason: "BadDeviceToken" })).toBe(true);
+    expect(isDeadToken({ status: 403, reason: "BadEnvironmentKeyInToken" })).toBe(true);
     expect(isDeadToken({ status: 429, reason: "TooManyRequests" })).toBe(false);
   });
 });
@@ -188,6 +194,8 @@ describe("dispatch", () => {
         ],
       },
       vaultDeposit: { findMany: async () => [] },
+      limitChange: { findMany: async () => [] },
+      keyChange: { findMany: async () => [] },
       payoutEvent: { findMany: async () => [{ id: "pev_1", payoutId: "po_1", toState: "settled" }] },
       payout: {
         findUnique: async () => ({
@@ -247,5 +255,12 @@ describe("dispatch", () => {
   it("claims nothing while APNs is not configured, so turning it on later still sends", async () => {
     const { unit } = world();
     expect(await dispatchPushes({ unit, send: null, dataKey, now: () => now, log: () => {} })).toBe(0);
+  });
+  it("names the user's bank, not the chain, for money paid in from their bank", () => {
+    expect(depositMessage("u", "dep", 1_950_000n, "usdc", "solana", false, true)).toMatchObject({
+      title: "$1.95 arrived in your vault",
+      body: "From your bank",
+    });
+    expect(depositMessage("u", "dep", 1_950_000n, "usdc", "solana").body).toBe("USDC from Solana");
   });
 });

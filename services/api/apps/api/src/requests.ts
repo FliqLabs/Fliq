@@ -3,7 +3,7 @@ import type { PaymentRequest, VaultDeposit } from "@prisma/client";
 import { newId } from "../../../packages/db/src/ids.js";
 import type { Config } from "./config.js";
 import type { Db, Unit } from "./db.js";
-import { depositView, formatUnits, formatUsd, parseUnits, type DepositChain, type Deposits, type DepositToken } from "./deposits.js";
+import { depositView, formatUnits, formatUsd, parseUnits, units, type DepositChain, type Deposits, type DepositToken } from "./deposits.js";
 import { conflict, invalidRequest, notFound } from "./errors.js";
 
 const USDC_DECIMALS = 6;
@@ -53,7 +53,7 @@ export async function createRequest(tx: Db, config: Config, userId: string, inpu
   const units = parseUnits(input.amount, USDC_DECIMALS);
   if (units === null || units < 10_000n) throw invalidRequest("amount must be at least 0.01 dollars.");
   const note = input.note.trim();
-  if (!note || note.length > MAX_NOTE) throw invalidRequest(`note must be 1 to ${MAX_NOTE} characters.`);
+  if (note.length > MAX_NOTE) throw invalidRequest(`note must be at most ${MAX_NOTE} characters.`);
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const code = randomBytes(2).toString("hex");
     if (await tx.paymentRequest.findUnique({ where: { userId_code: { userId, code } }, select: { id: true } })) continue;
@@ -139,6 +139,32 @@ export async function requestDeposit(unit: Unit, config: Config, deposits: Depos
 }
 
 // Called inside the transaction that lands the deposit, so a request is marked paid exactly once.
+// A request paid inside fliq: a vault transfer to the payee that names the request and covers its amount. A smaller
+// transfer, one to someone else, or a request already paid or cancelled changes nothing.
+export async function markRequestPaidByTransfer(
+  tx: Db,
+  transfer: { code: string; from: string; to: string; amount: bigint; txHash: string },
+): Promise<boolean> {
+  const payee = await tx.user.findFirst({ where: { nearAccount: transfer.to }, select: { id: true } });
+  if (!payee) return false;
+  const request = await tx.paymentRequest.findFirst({ where: { userId: payee.id, code: transfer.code, state: "open" } });
+  if (!request || transfer.amount < request.amountUnits) return false;
+  const marked = await tx.paymentRequest.updateMany({
+    where: { id: request.id, state: "open" },
+    data: {
+      state: "paid",
+      paidAt: new Date(),
+      payer: transfer.from,
+      paidToken: "USDC",
+      paidChain: "near",
+      paidAmount: formatUnits(transfer.amount, USDC_DECIMALS),
+      feeMicroUsd: 0n,
+      landedUnits: transfer.amount,
+    },
+  });
+  return marked.count === 1;
+}
+
 export async function markRequestPaid(tx: Db, deposit: VaultDeposit): Promise<void> {
   if (!deposit.requestId || deposit.landedUnits === null) return;
   await tx.paymentRequest.updateMany({
@@ -149,7 +175,7 @@ export async function markRequestPaid(tx: Db, deposit: VaultDeposit): Promise<vo
       depositId: deposit.id,
       paidToken: deposit.token.toUpperCase(),
       paidChain: deposit.chain,
-      paidAmount: formatUnits(deposit.receivedUnits ?? deposit.amountUnits, deposit.decimals),
+      paidAmount: formatUnits(units(deposit.receivedUnits ?? deposit.amountUnits), deposit.decimals),
       feeMicroUsd: deposit.feeMicroUsd,
       landedUnits: deposit.landedUnits,
     },

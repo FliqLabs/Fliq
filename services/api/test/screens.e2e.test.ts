@@ -220,7 +220,7 @@ describe.skipIf(!enabled)("the app's activity, agents, requests and settings", (
     await fund(frank.account, 100_000_000n);
 
     const quote = (await send("POST", "/v1/quotes", { token: "usdc", currency: "ngn", amount: "50.00", source_chain: "base" }, frank.headers)).json();
-    const payout = (await send("POST", "/v1/payouts", { quote_id: quote.quote_id, account: { bank: "058", number: "0123456789" }, refund_address: frank.account }, frank.headers)).json();
+    const payout = (await send("POST", "/v1/payouts", { quote_id: quote.quote_id, account: { bank: "058", number: "0123456789" }, refund_address: "0x1111111111111111111111111111111111111111" }, frank.headers)).json();
 
     const deposit = (await send("POST", "/v1/deposits", { token: "usdc", chain: "solana", amount: "20" }, frank.headers)).json();
     await landDeposit(frank.headers, deposit, 20_000_000n);
@@ -231,7 +231,8 @@ describe.skipIf(!enabled)("the app's activity, agents, requests and settings", (
 
     const all = (await get("/v1/activity", frank.headers)).json().items;
     expect(all.map((item: { kind: string }) => item.kind)).toEqual(["transfer_out", "deposit", "payout"]);
-    expect(all[0]).toMatchObject({ status: "sent", usd: "5.00", party: { near_account: tobi.account } });
+    expect(all[0]).toMatchObject({ status: "sent", usd: "5.00", party: { near_account: tobi.account }, tx_hash: `tx-transfer-${suffix}` });
+    expect(all[2].tx_hash).toBeNull();
     expect(all[1]).toMatchObject({ status: "received", party: { name: "Received from Solana" }, token: "20 USDC" });
     expect(all[2]).toMatchObject({ ref_id: payout.payout_id, provider: payout.provider, party: { account_last4: "6789" }, local: { currency: "NGN" } });
     expect((await get("/v1/activity", tobi.headers)).json().items[0]).toMatchObject({ kind: "transfer_in", status: "received", party: { near_account: frank.account } });
@@ -256,7 +257,7 @@ describe.skipIf(!enabled)("the app's activity, agents, requests and settings", (
   it("shows a payout's public receipt to anyone, with the account holder masked", async () => {
     const frank = await holder("receipt");
     const quote = (await send("POST", "/v1/quotes", { token: "usdc", currency: "ngn", amount: "50.00", source_chain: "base" }, frank.headers)).json();
-    const payout = (await send("POST", "/v1/payouts", { quote_id: quote.quote_id, account: { bank: "058", number: "0123456789" }, refund_address: frank.account }, frank.headers)).json();
+    const payout = (await send("POST", "/v1/payouts", { quote_id: quote.quote_id, account: { bank: "058", number: "0123456789" }, refund_address: "0x1111111111111111111111111111111111111111" }, frank.headers)).json();
     const receipt = await get(`/v1/receipts/${payout.payout_id}`);
     expect(receipt.statusCode, receipt.body).toBe(200);
     expect(receipt.json()).toMatchObject({ payout_id: payout.payout_id, account_masked: "D*** O*** ···6789", institution: "058" });
@@ -294,6 +295,33 @@ describe.skipIf(!enabled)("the app's activity, agents, requests and settings", (
     const other = (await send("POST", "/v1/requests", { amount: "5.00", note: "Studio rent, Nov", cash_out_on_arrival: true }, frank.headers)).json();
     expect((await send("DELETE", `/v1/requests/${other.request_id}`, undefined, frank.headers)).json().state).toBe("cancelled");
     expect((await get("/v1/requests", frank.headers)).json().items.map((item: { state: string }) => item.state)).toEqual(["cancelled", "paid"]);
+
+    const bare = await send("POST", "/v1/requests", { amount: "3.00", note: "  ", cash_out_on_arrival: false }, frank.headers);
+    expect(bare.statusCode).toBe(201);
+    expect(bare.json().note).toBe("");
+  }, 90_000);
+
+  it("marks a request paid when it is paid inside the app, only for the full amount and only once", async () => {
+    const payee = await holder("payee");
+    const payer = await holder("payer");
+    await fund(payer.account, 50_000_000n);
+    const request = (await send("POST", "/v1/requests", { amount: "5.00", note: "Lunch", cash_out_on_arrival: false }, payee.headers)).json();
+    const transfer = async (amount: string, hash: string, code: string | undefined) => {
+      const signed = await signDelegate({ ...newUser(payer.account), accountId: payer.account }, { receiverId: config.vaultAccount, methodName: "transfer", deposit: 1n, args: { to_account: payee.account, amount } });
+      nextRelay = () => ({ status: "succeeded", tx_hash: `${hash}-${suffix}`, delegate_hash: hash, sender_id: payer.account, receiver_id: config.vaultAccount, failures: [] });
+      return send("POST", "/v1/relays", { signed_delegate: signed.base64, ...(code ? { request_code: code } : {}) }, payer.headers);
+    };
+
+    expect((await transfer("4990000", "tx-short", request.code)).statusCode).toBe(200);
+    expect((await get(`/v1/requests/${request.request_id}`, payee.headers)).json().state, "Short of the amount").toBe("open");
+    expect((await transfer("5000000", "tx-nocode", undefined)).statusCode).toBe(200);
+    expect((await get(`/v1/requests/${request.request_id}`, payee.headers)).json().state, "A plain transfer pays nothing").toBe("open");
+
+    expect((await transfer("5000000", "tx-paid", request.code)).statusCode).toBe(200);
+    const paid = (await get(`/v1/requests/${request.request_id}`, payee.headers)).json();
+    expect(paid).toMatchObject({ state: "paid", paid: { token: "USDC", chain: "near", amount: "5.00" } });
+    expect((await get(`/v1/pay/${payee.name}/${request.code}`)).json().state).toBe("paid");
+    expect((await send("POST", "/v1/relays", { signed_delegate: "AAAA", request_code: "bad code!" }, payer.headers)).statusCode).toBe(400);
   }, 90_000);
 
   it("connects an agent with caps in naira, shows it active once the vault holds its policy, and revokes it", async () => {

@@ -6,6 +6,7 @@ import {
   relay,
   RelayError,
   RELAYS_PER_SENDER_PER_HOUR,
+  KEY_CHANGES_PER_SENDER_PER_HOUR,
   relayStatus,
   type RelayDeps,
   type TxOutcome,
@@ -16,6 +17,7 @@ import {
   RELAYER,
   relayerKeys,
   signDelegate,
+  signKeyChange,
   USDC,
   VAULT,
   type User,
@@ -43,7 +45,7 @@ beforeEach(() => {
   deps = {
     rpc,
     store,
-    policy: { vaultContractId: VAULT, usdcContractId: USDC },
+    policy: { vaultContractId: VAULT, usdcContractId: USDC, intentsContractId: "intents.near" },
     relayerAccountId: RELAYER,
     relayerKeys: keys,
     now: () => Date.parse("2026-11-05T12:00:00Z"),
@@ -71,6 +73,31 @@ describe("relay", () => {
       receiverId: VAULT,
       failures: [],
     });
+  });
+
+  it("relays a key the user adds to their own account", async () => {
+    const second = newUser("unused.testnet").publicKey;
+    const result = await relay(deps, (await signKeyChange(ada, { add: second })).base64);
+    expect(result).toMatchObject({ status: "succeeded", senderId: ada.accountId, receiverId: ada.accountId });
+    expect(rpc.sent[0]).toMatchObject({ receiverId: ada.accountId, actionKinds: ["signedDelegate"] });
+  });
+
+  it("does not let a function-call key change the account's keys", async () => {
+    const agent = newUser(ada.accountId);
+    rpc.addKey(ada.accountId, agent.publicKey, { nonce: 100n, permission: { receiverId: VAULT, methodNames: ["payout"], allowance: null } });
+    const second = newUser("unused.testnet").publicKey;
+    expect(await code(relay(deps, (await signKeyChange(agent, { add: second })).base64))).toBe("key_not_allowed");
+    expect(rpc.sent).toHaveLength(0);
+  });
+
+  it(`allows ${KEY_CHANGES_PER_SENDER_PER_HOUR} key changes per account per hour`, async () => {
+    for (let index = 0; index < KEY_CHANGES_PER_SENDER_PER_HOUR; index++) {
+      const key = newUser("unused.testnet").publicKey;
+      expect(await code(relay(deps, (await signKeyChange(ada, { add: key, nonce: 101n + BigInt(index) })).base64))).toBe("ok");
+    }
+    const oneMore = newUser("unused.testnet").publicKey;
+    expect(await code(relay(deps, (await signKeyChange(ada, { add: oneMore, nonce: 200n })).base64))).toBe("rate_limited");
+    expect(await code(relay(deps, (await signDelegate(ada, { nonce: 201n })).base64))).toBe("ok");
   });
 
   it("returns the first result for a repeated delegate and never pays twice", async () => {

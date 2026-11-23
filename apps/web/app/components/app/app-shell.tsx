@@ -12,12 +12,12 @@ import { Icon, type IconName } from "./icons";
 import { ThemeSwitch } from "./theme";
 import { Avatar } from "./ui";
 
-type NavItem = { href: string; label: string; icon: IconName; short?: string };
+type NavItem = { href: string; label: string; icon: IconName };
 
 const WALLET: NavItem[] = [
   { href: "/wallet", label: "Home", icon: "home" },
   { href: "/wallet/send", label: "Send", icon: "send" },
-  { href: "/wallet/add", label: "Add money", icon: "plus", short: "Add" },
+  { href: "/wallet/add", label: "Add money", icon: "plus" },
   { href: "/wallet/activity", label: "Activity", icon: "clock" },
   { href: "/wallet/recipients", label: "Recipients", icon: "users" },
   { href: "/wallet/agents", label: "Agents", icon: "bot" },
@@ -26,7 +26,7 @@ const WALLET: NavItem[] = [
 const DEVELOPER: NavItem[] = [
   { href: "/dashboard", label: "Payouts", icon: "list" },
   { href: "/dashboard/webhooks", label: "Webhooks", icon: "zap" },
-  { href: "/dashboard/api-keys", label: "API keys", icon: "key", short: "Keys" },
+  { href: "/dashboard/api-keys", label: "API keys", icon: "key" },
 ];
 
 const ROOTS = new Set(["/wallet", "/dashboard"]);
@@ -89,8 +89,6 @@ export function AppShell({ mode, children }: { mode: "wallet" | "developer"; chi
   });
 
   const close = () => setMenu(false);
-  const items = mode === "wallet" ? WALLET : DEVELOPER;
-  const tabs = items.slice(0, mode === "wallet" ? 4 : 3);
   const name = me.data?.display_name || me.data?.near_account || "Your account";
 
   return (
@@ -181,18 +179,6 @@ export function AppShell({ mode, children }: { mode: "wallet" | "developer"; chi
           <main className="main" id="main">
             {signedOut || unclaimed ? null : children}
           </main>
-          <nav className="tabbar" aria-label="Quick">
-            {tabs.map((item) => (
-              <Link key={item.href} href={item.href} aria-current={isActive(pathname, item.href) ? "page" : undefined}>
-                <Icon name={item.icon} />
-                <span>{item.short ?? item.label}</span>
-              </Link>
-            ))}
-            <button type="button" onClick={() => setMenu(true)}>
-              <Icon name="menu" />
-              <span>More</span>
-            </button>
-          </nav>
         </div>
       </div>
       {menu && <div className="scrim" style={{ zIndex: 55 }} onClick={close} />}

@@ -16,9 +16,13 @@ enum Paj {
         enum Status: String, Sendable {
             case initiated = "INIT"
             case paid = "PAID"
+            /// Paj's v2 name for a confirmed bank transfer it is turning into USDC. Same step as PAID.
+            case processing = "PROCESSING"
             case completed = "COMPLETED"
             case failed = "FAILED"
             case cancelled = "CANCELLED"
+            /// The bank transfer arrived but the partner could not send the dollars on. The naira is held, not lost.
+            case error = "ERROR"
             case unknown
         }
 
@@ -49,7 +53,8 @@ enum Paj {
 protocol PajAPI: Sendable {
     func publicRate() async throws -> Double
     func quote(naira: Int, session: Paj.Session) async throws -> Paj.Quote
-    func createOrder(naira: Int, recipient: String, session: Paj.Session) async throws -> Paj.Order
+    /// `webhook` is where the partner reports the order's status. Nil sends none.
+    func createOrder(naira: Int, recipient: String, webhook: URL?, session: Paj.Session) async throws -> Paj.Order
     func order(_ id: String, session: Paj.Session) async throws -> Paj.Order
 }
 
@@ -86,10 +91,11 @@ struct HTTPPaj: PajAPI {
         return Paj.Quote(naira: Int(reply.fiatAmount), usdc: reply.amount, rate: reply.rate)
     }
 
-    func createOrder(naira: Int, recipient: String, session: Paj.Session) async throws -> Paj.Order {
-        let body: [String: Any] = [
+    func createOrder(naira: Int, recipient: String, webhook: URL?, session: Paj.Session) async throws -> Paj.Order {
+        var body: [String: Any] = [
             "fiatAmount": naira, "currency": "NGN", "recipient": recipient, "mint": Paj.usdcMint, "chain": "SOLANA",
         ]
+        if let webhook { body["webhookURL"] = webhook.absoluteString }
         let reply: OrderReply = try await send("POST", "pub/onramp", body: body, token: session.token)
         return reply.order
     }
@@ -179,7 +185,8 @@ struct WebPajSignIn: PajSignIn {
         guard let token = await bearer() else { throw Paj.Failure(message: "Sign in to fliq again first.") }
         var request = URLRequest(url: base.appendingPathComponent(path))
         request.httpMethod = "POST"
-        request.timeoutInterval = 20
+        // Longer than the web route waits for Paj, so the app never gives up while the route is still working.
+        request.timeoutInterval = 30
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -210,14 +217,24 @@ struct PajSessionStore: Sendable {
 }
 
 enum PajMessage {
+    static let busy = "Bank deposits are busy right now. Nothing was charged. Try again in a minute."
+
+    /// The partner's swap and server errors pass in a moment and are not the user's doing, so they are retried and
+    /// never shown as they come ("jup::err", a 5xx).
+    static func isTemporary(_ message: String) -> Bool {
+        let text = message.lowercased()
+        return text.contains("jup") || text.contains("::") || text.contains("didn't answer")
+            || text.contains("internal server error") || text.contains("timeout") || text.contains("swap")
+    }
+
     /// Paj and the web route both answer `{"message": ...}`, sometimes as a list.
     static func from(_ data: Data) -> String {
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return "Paj didn't answer. Try again." }
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return "Bank deposits didn't answer. Try again." }
         if let list = json["message"] as? [String], let first = list.first { return first }
         if let text = json["message"] as? String { return text }
         if json["error"] as? String == "sign_in_required" { return "Sign in to fliq again first." }
         if json["error"] as? String == "paj_not_configured" { return "Bank deposits aren't switched on yet." }
-        return "Paj didn't answer. Try again."
+        return "Bank deposits didn't answer. Try again."
     }
 }
 
@@ -232,7 +249,7 @@ actor FixturePaj: PajAPI, PajSignIn {
         Paj.Quote(naira: naira, usdc: (Double(naira) / 1397.04).rounded(toPlaces: 6), rate: 1397.72)
     }
 
-    func createOrder(naira: Int, recipient: String, session: Paj.Session) async throws -> Paj.Order {
+    func createOrder(naira: Int, recipient: String, webhook: URL?, session: Paj.Session) async throws -> Paj.Order {
         polls = 0
         return Self.demoOrder(naira: naira, status: .initiated)
     }

@@ -5,8 +5,13 @@
 **Dollars in, your bank account out.** fliq turns stablecoins into money in a real bank or mobile
 money account, at the best after-fee rate across licensed payout providers. USDC sits in a NEAR
 vault that only you, or an AI agent you set limits for, can spend from. Pick an OPay, GTBank or
-M-Pesa account, see exactly what arrives, confirm with Face ID, and the Naira or Shillings land in
-about two minutes, with the bank's own reference on the receipt.
+M-Pesa account, see exactly what arrives, confirm with Face ID, and the Naira or Shillings land
+with the bank's own reference on the receipt.
+
+Measured on mainnet on 14 November 2026: a real $1 cash-out reached a Nigerian bank account about
+40 seconds after Face ID. That is one run, not a promise. The cross-chain swap in the middle sets
+the pace, and on a slow day it has taken several minutes. Nigeria is proven with real payouts.
+Kenya quotes live and uses the same route, but no real payout to M-Pesa has been made yet.
 
 [![fliq.cash: Dollars in, your bank account out](docs/images/web/landing.png)](https://fliq.cash)
 
@@ -117,6 +122,23 @@ your AI agents with their limits.
 <td align="center">Home</td><td align="center">Amount</td><td align="center">Quote</td><td align="center">Paid, with the bank reference</td>
 </tr>
 </table>
+
+Recorded on mainnet. The two payments are in real time, not sped up or cut. The bank transfer is
+shortened: the switch to the bank app and the wait of about a minute and a half for the money to
+land are cut out.
+
+<table>
+<tr>
+<td><a href="docs/videos/pay-a-fliq-user.mp4"><img src="docs/videos/pay-a-fliq-user.gif" width="260" alt="Paying a fliq user by name: search, type the amount, Face ID, and the balance drops"></a></td>
+<td><a href="docs/videos/send-and-receipt.mp4"><img src="docs/videos/send-and-receipt.gif" width="260" alt="Sending 3 dollars to a fliq user, then opening the receipt from Activity"></a></td>
+<td><a href="docs/videos/add-money-by-bank-transfer.mp4"><img src="docs/videos/add-money-by-bank-transfer.gif" width="260" alt="Adding money by bank transfer: 5,000 Naira in, the bank details to pay, then 3.43 dollars added to the vault"></a></td>
+</tr>
+<tr>
+<td align="center">Pay a fliq user by name</td><td align="center">Send, then open the receipt</td><td align="center">Add money by bank transfer (shortened)</td>
+</tr>
+</table>
+
+Click any of them for the video file.
 
 - **Passkeys, not seed phrases.** One "Continue with passkey" button signs you in, or creates
   your account if you have none. Your NEAR account's key is made on the phone, kept in the
@@ -251,7 +273,8 @@ Architecture: [docs/architecture.md](docs/architecture.md).
 
 - [x] NEAR vault: balances, single-use orders, refunds, receipts, agent policies; live on mainnet as `fliq-vault.near`
 - [x] API on mainnet: rates, quotes, account name lookup, payouts, signed webhooks, status
-- [x] Payouts to Nigerian banks and OPay (NGN) and M-Pesa (KES) through Paycrest
+- [x] Payouts to Nigerian banks and OPay (NGN) through Paycrest, proven with real money on mainnet
+- [ ] A first real payout to M-Pesa (KES): quotes are live through Paycrest, the payout is untested
 - [x] Passkey accounts on `fliqaccount.near` with gas paid by the relayer
 - [x] iPhone app: cash-out, request links, deposits, bank-transfer deposits, agents, app lock
 - [x] fliq.cash: landing, live rates, status, developer dashboard and API keys, web wallet
@@ -259,7 +282,7 @@ Architecture: [docs/architecture.md](docs/architecture.md).
 - [x] Deposits from other chains through NEAR Intents; Naira in through Paj
 - [ ] More providers live in the comparison (adapters for Bitnob, Busha, Fonbnk and TransFi are built and switch on with their keys)
 - [ ] Ghana, Uganda, Tanzania and South Africa payouts
-- [ ] The app on TestFlight
+- [x] The app on TestFlight, for invited testers
 
 ## Team
 

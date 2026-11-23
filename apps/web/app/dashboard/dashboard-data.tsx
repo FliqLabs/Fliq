@@ -12,6 +12,7 @@ import {
   type Workspace,
 } from "../lib/fliq-api";
 import { PayoutsDashboard, type DashboardSummary, type PayoutRow } from "./payouts-dashboard";
+import { CreateWorkspaceForm } from "../create-workspace/create-workspace-form";
 
 export function DashboardData() {
   const account = useQuery({ queryKey: ["me"], queryFn: () => fliqApi<User>("me") });
@@ -19,6 +20,9 @@ export function DashboardData() {
     queryKey: ["workspace"],
     queryFn: () => fliqApi<Workspace>("workspaces/current"),
     enabled: account.isSuccess && Boolean(account.data.near_account),
+    retry: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
   const payouts = useInfiniteQuery({
     queryKey: ["payouts", workspace.data?.workspace_id],
@@ -52,11 +56,9 @@ export function DashboardData() {
   if (workspace.isPending) return <Status message="Loading your workspace…" />;
   if (workspace.error instanceof ApiError && workspace.error.status === 404) {
     return (
-      <Status
-        message="Create your workspace to start testing payouts."
-        href="/create-workspace"
-        action="Create workspace"
-      />
+      <section className="mx-auto max-w-xl rounded-2xl border border-app-line bg-app-panel p-6 sm:p-8">
+        <CreateWorkspaceForm />
+      </section>
     );
   }
   if (workspace.isError) return <Status message={workspace.error.message} />;

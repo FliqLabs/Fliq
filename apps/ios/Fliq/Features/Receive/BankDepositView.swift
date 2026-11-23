@@ -34,9 +34,9 @@ struct BankDepositView: View {
 
     private var reached: Int {
         switch flow.step {
-        case .amount, .signIn, .cancelled: 0
+        case .amount, .signIn, .cancelled, .stopped: 0
         case .pay, .receiving: flow.isPaid ? 2 : 1
-        case .done: 2
+        case .done, .notReceived: 2
         }
     }
 
@@ -46,9 +46,13 @@ struct BankDepositView: View {
         case .amount: AmountStep(flow: flow)
         case .signIn: SignInStep(flow: flow)
         case .pay, .receiving:
-            if flow.isPaid { ArrivingStep(flow: flow) } else { PayStep(flow: flow) }
-        case .done: DoneStep(flow: flow, onDone: onDone)
+            // Once the bank transfer is in, nobody is made to watch the rest: the same screen says it is on its way,
+            // lets them leave, and turns into "Added" if they are still here when it lands.
+            if flow.isPaid { DoneStep(flow: flow, landed: false, onDone: onDone) } else { PayStep(flow: flow) }
+        case .done: DoneStep(flow: flow, landed: !flow.isStillMoving, onDone: onDone)
+        case .notReceived: NotReceivedStep(onDone: onDone)
         case .cancelled: CancelledStep(flow: flow)
+        case .stopped: StoppedStep(flow: flow)
         }
     }
 }
@@ -142,6 +146,9 @@ private struct AmountStep: View {
                     .contentTransition(.numericText())
                     .animation(.snappy, value: flow.usdcEstimate)
                     .padding(.top, 14)
+                if let note = flow.minimumNote {
+                    Text(note).font(.system(size: 14)).foregroundStyle(Theme.warning).padding(.top, 8)
+                }
                 if let rate = flow.rate {
                     RateLine(rate: rate).padding(.top, 18)
                     Text("Rates move through the day. Yours is fixed when you get your bank details.")
@@ -219,8 +226,8 @@ private struct SignInStep: View {
                 Text(flow.codeSent ? "Enter the code" : "Confirm it's you")
                     .font(.system(size: 20, weight: .medium))
                 Note(text: flow.codeSent
-                    ? "Paj sent a code to \(flow.contact)."
-                    : "Paj, the licensed partner that turns your Naira into dollars, checks who's paying once. After that this iPhone goes straight to your bank details.")
+                    ? "We sent a code to \(flow.contact)."
+                    : "A licensed partner turns your Naira into dollars and checks who's paying once. After that this iPhone goes straight to your bank details.")
                     .padding(.top, 8)
                 if flow.codeSent {
                     codeField.padding(.top, 20)
@@ -352,7 +359,7 @@ private struct PayStep: View {
                                     ProgressView().controlSize(.small)
                                     Text("Checking with the bank").font(.system(size: 18, weight: .medium))
                                 }
-                                Note(text: "Most transfers show up within a minute or two. You can close this screen: the money lands in your vault either way.")
+                                Note(text: flow.isRetrying ? BankDepositFlow.retryNote : "Most transfers show up within a minute or two. You can close this screen: the money lands in your vault either way.")
                             }
                             .transition(.opacity.combined(with: .move(edge: .bottom)))
                         } else {
@@ -413,41 +420,57 @@ private struct CopyRow: View {
     }
 }
 
-// MARK: - Arriving, done, cancelled
+// MARK: - On its way, done, cancelled
 
-private struct ArrivingStep: View {
-    let flow: BankDepositFlow
+private struct NotReceivedStep: View {
+    let onDone: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
             DepositCard {
-                HStack(spacing: 12) {
-                    ProgressView()
-                    Text("Transfer received").font(.system(size: 24, weight: .regular)).tracking(-0.4)
-                }
-                Note(text: "Moving about \(flow.order.map { NairaFormat.dollars($0.usdc) } ?? "") into your vault.")
+                Text(DepositFailure.notReceived).font(.system(size: 24, weight: .regular)).tracking(-0.4)
+                Note(text: "\(DepositFailure.belowMinimum) \(DepositFailure.contactUs)")
                     .padding(.top, 10)
+                Button("Done", action: onDone)
+                    .buttonStyle(PrimaryButtonStyle(filled: true))
+                    .padding(.top, 22)
             }
             Spacer()
         }
     }
 }
 
+/// The words of the last screen, reachable from tests.
+enum DoneStepCopy {
+    static func caption(stillMoving: Bool) -> String { DoneStep.caption(testWallet: false, stillMoving: stillMoving) }
+    static var note: String { DoneStep.onItsWayNote }
+}
+
 private struct DoneStep: View {
     let flow: BankDepositFlow
+    /// False while the money is still moving into the vault.
+    let landed: Bool
     let onDone: () -> Void
     @State private var shown = false
+
+    static func caption(testWallet: Bool, stillMoving: Bool) -> String {
+        if testWallet { return "Sent to the team's test wallet" }
+        return stillMoving ? "Transfer received. On its way to your balance" : "Added to your vault"
+    }
+
+    static let onItsWayNote = "It lands in about a minute. You don't need to wait here: we'll show it on Home and notify you."
 
     var body: some View {
         VStack(spacing: 0) {
             DepositCard {
-                Icon("checkmark", size: 22)
+                Icon(landed ? "checkmark" : "clock", size: 22)
                     .foregroundStyle(.black)
                     .frame(width: 44, height: 44)
-                    .background(Theme.confirmed, in: Circle())
+                    .background(landed ? Theme.confirmed : Theme.textSecondary, in: Circle())
                     .scaleEffect(shown ? 1 : 0.5)
                     .opacity(shown ? 1 : 0)
-                Text(flow.destination?.isTestWallet == true ? "Sent to the team's test wallet" : "Added to your vault")
+                    .animation(.spring(duration: 0.35), value: landed)
+                Text(Self.caption(testWallet: flow.destination?.isTestWallet == true, stillMoving: !landed))
                     .font(.system(size: 15))
                     .foregroundStyle(Theme.textSecondary)
                     .padding(.top, 18)
@@ -460,11 +483,18 @@ private struct DoneStep: View {
                     VStack(spacing: 0) {
                         SummaryRow(label: "You paid", value: NairaFormat.full(order.naira))
                         SummaryRow(label: "Rate", value: "\(NairaFormat.rate(order.rate)) = $1.00")
-                        SummaryRow(label: "Through", value: "Paj, by bank transfer")
+                        SummaryRow(label: "Through", value: "Bank transfer")
                     }
                     .padding(.vertical, 6)
                     .background(Layout.inset, in: RoundedRectangle(cornerRadius: Layout.groupRadius, style: .continuous))
                     .padding(.top, 18)
+                }
+                if !landed, flow.destination?.isTestWallet != true {
+                    Text(Self.onItsWayNote)
+                        .font(.system(size: 13))
+                        .foregroundStyle(Theme.textTertiary)
+                        .multilineTextAlignment(.center)
+                        .padding(.top, 14)
                 }
                 Button("Done", action: onDone)
                     .buttonStyle(PrimaryButtonStyle(filled: true))
@@ -489,6 +519,24 @@ private struct SummaryRow: View {
         .font(.system(size: 15))
         .padding(.horizontal, 18)
         .padding(.vertical, 12)
+    }
+}
+
+private struct StoppedStep: View {
+    let flow: BankDepositFlow
+
+    var body: some View {
+        VStack(spacing: 0) {
+            DepositCard {
+                Text(BankDepositFlow.stoppedTitle).font(.system(size: 24, weight: .regular)).tracking(-0.4)
+                Note(text: BankDepositFlow.stuckMessage)
+                    .padding(.top, 10)
+                Button("Start a new deposit", action: flow.startOver)
+                    .buttonStyle(PrimaryButtonStyle(filled: true))
+                    .padding(.top, 22)
+            }
+            Spacer(minLength: 0)
+        }
     }
 }
 

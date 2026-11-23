@@ -3,12 +3,14 @@ import { test } from "node:test";
 import { createPrivateKey, createPublicKey, sign } from "node:crypto";
 import {
   LIFETIME_BLOCKS,
+  addFullAccessKey,
   encodeDelegateAction,
   encodeSignedDelegate,
   rawPublicKey,
   signingHash,
   stepAction,
   submitDelegate,
+  vaultPayout,
   vaultTransfer,
 } from "../app/lib/near-delegate.ts";
 
@@ -99,6 +101,29 @@ test("submitting uses the next nonce, relays once and follows a pending relay to
   assert.deepEqual(calls.map(([kind]) => kind), ["relay", "status"]);
 });
 
+// A vault send is three calls in a row. The second must not reuse the first one's nonce while the key read lags.
+test("calls made back to back never reuse a nonce, even when the chain still reports the old one", async () => {
+  globalThis.fetch = async (_url, init) =>
+    new Response(JSON.stringify({ result: JSON.parse(init.body).method === "query" ? { nonce: 41 } : { header: { height: 1 } } }));
+  const used = [];
+  const deps = {
+    rpcUrl: "x",
+    sender: "back.to.back.near",
+    publicKey: "ed25519:5FjQ8mT3vXk2NcR7yLpW9sBdH4uZaE6gKoJt1qMi9kQ",
+    sign: async () => new Uint8Array(64),
+    relay: async () => ({ status: "succeeded", delegate_hash: "h", sender_id: "", receiver_id: "" }),
+    relayStatus: async () => {
+      throw new Error("not called");
+    },
+  };
+  for (let call = 0; call < 3; call++)
+    await submitDelegate(deps, (signer) => {
+      used.push(signer.nonce);
+      return { ...transfer, nonce: signer.nonce };
+    });
+  assert.deepEqual(used, [42n, 43n, 44n]);
+});
+
 test("a relay the vault refuses surfaces the vault's reason", async () => {
   globalThis.fetch = async (_url, init) =>
     new Response(JSON.stringify({ result: JSON.parse(init.body).method === "query" ? { nonce: 1 } : { header: { height: 1 } } }));
@@ -118,4 +143,39 @@ test("a relay the vault refuses surfaces the vault's reason", async () => {
     ),
     /Over the daily cap\./,
   );
+});
+
+// Mainnet, 15 Nov: a web cash-out was registered but never signed, so nothing left the vault and it sat as sending.
+test("a cash-out signs the vault payout for the order the API registered, as the iPhone app does", () => {
+  const action = vaultPayout(
+    { sender: "frank.fliqaccount.near", publicKey: new Uint8Array(publicBytes), nonce: 7n, blockHeight: 100n },
+    "fliq-vault.near",
+    "po_01m75zg16kvty0rtwx8kz9eeg3",
+    10_070_359n,
+    "3b1b31c12912c31aaabef865f280ca705537ba3dc6fac8e9862e1f2b2a519c3c",
+  );
+  assert.equal(action.receiverId, "fliq-vault.near");
+  assert.equal(action.methodName, "payout");
+  assert.equal(action.deposit, 0n);
+  assert.ok(action.gas >= 60_000_000_000_000n);
+  assert.deepEqual(JSON.parse(new TextDecoder().decode(action.args)), {
+    order_id: "po_01m75zg16kvty0rtwx8kz9eeg3",
+    amount: "10070359",
+    deposit_address: "3b1b31c12912c31aaabef865f280ca705537ba3dc6fac8e9862e1f2b2a519c3c",
+  });
+});
+
+test("adding a full-access key is encoded exactly as near-api-js encodes it, the same vector iOS checks", async () => {
+  const action = addFullAccessKey(
+    {
+      sender: "ada.fliqaccount.near",
+      publicKey: Uint8Array.from({ length: 32 }, (_, index) => index + 1),
+      nonce: 7n,
+      blockHeight: 1000n - LIFETIME_BLOCKS,
+    },
+    Uint8Array.from({ length: 32 }, (_, index) => index + 101),
+  );
+  const expected =
+    "6e010040140000006164612e666c69716163636f756e742e6e656172140000006164612e666c69716163636f756e742e6e65617201000000050065666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f80818283840000000000000000010700000000000000e803000000000000000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
+  assert.equal("6e010040" + Buffer.from(encodeDelegateAction(action)).toString("hex"), expected);
 });

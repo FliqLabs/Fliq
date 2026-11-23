@@ -113,4 +113,22 @@ describe("createNearRpc", () => {
     expect(error).toMatchObject({ kind, outcomeUnknown: unknown });
     expect(error.message).not.toContain("secret-in-url");
   });
+
+  it("moves to the next endpoint when one is rate limited, and never resends a transaction after a dropped call", async () => {
+    const hits: string[] = [];
+    const fetcher = (async (url: string, init: RequestInit) => {
+      hits.push(`${url} ${JSON.parse(String(init.body)).method}`);
+      if (url === "https://main") return new Response("", { status: 429 });
+      if (url === "https://busy") throw new TypeError("network down");
+      return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result: { header: { hash: "h", height: 7 } } }));
+    }) as unknown as typeof fetch;
+    const rpc = createNearRpc({ url: "https://main", fallbackUrls: ["https://busy", "https://spare"], fetch: fetcher });
+    expect(await rpc.finalBlock()).toEqual({ hash: "h", height: 7n });
+    expect(hits).toEqual(["https://main block", "https://busy block", "https://spare block"]);
+
+    hits.length = 0;
+    const sends = createNearRpc({ url: "https://busy", fallbackUrls: ["https://spare"], fetch: fetcher });
+    await expect(sends.sendTransaction("dHg=")).rejects.toThrow(/no response/);
+    expect(hits).toEqual(["https://busy send_tx"]);
+  });
 });

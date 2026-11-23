@@ -44,8 +44,49 @@ final class ActivityStore {
         }
     }
 
+    /// A Naira bank transfer this iPhone started. The server only lists the deposit once the money reaches Solana, and
+    /// then as "Received from Solana", so the app shows it from the moment the user has paid and keeps the bank's name.
+    struct BankDeposit: Codable, Equatable, Sendable {
+        let depositId: String
+        let naira: Int
+        let usd: String
+        let startedAt: Date
+    }
+
     private(set) var entries: [Entry] = []
     private(set) var history: [ActivityItem] = []
+    private(set) var bankDeposits: [BankDeposit]
+    private let defaults: UserDefaults?
+    private static let bankKey = "activity.bankDeposits"
+    /// A bank transfer the server never lists by then was not paid, or Paj refunded it.
+    static let bankDepositWindow: TimeInterval = 3 * 60 * 60
+
+    /// With `cache`, the last history is kept on this iPhone and shown at launch while the live one loads.
+    private let cache: UserDefaults?
+    private static let historyKey = "activity.lastHistory"
+    /// False only before the first history is read, when nothing was kept from last time. Activity shows placeholder
+    /// rows then, not "Nothing yet".
+    private(set) var hasLoaded: Bool
+
+    init(defaults: UserDefaults? = .standard, cache: UserDefaults? = nil) {
+        self.defaults = defaults
+        self.cache = cache
+        let saved = cache?.data(forKey: Self.historyKey).flatMap { try? JSONDecoder().decode([ActivityItem].self, from: $0) }
+        history = saved ?? []
+        hasLoaded = saved != nil || cache == nil
+        bankDeposits = defaults?.data(forKey: Self.bankKey).flatMap { try? JSONDecoder().decode([BankDeposit].self, from: $0) } ?? []
+    }
+
+    #if DEBUG
+    func setHistoryForTesting(_ items: [ActivityItem]) { history = items }
+    #endif
+
+    func recordBankDeposit(_ deposit: BankDeposit) {
+        bankDeposits.removeAll { $0.depositId == deposit.depositId }
+        bankDeposits.insert(deposit, at: 0)
+        bankDeposits = Array(bankDeposits.prefix(30))
+        defaults?.set(try? JSONEncoder().encode(bankDeposits), forKey: Self.bankKey)
+    }
 
     func record(_ payout: Payout, source: Source = .mine, at date: Date = .now) {
         if let index = entries.firstIndex(where: { $0.id == payout.payoutId }) {
@@ -62,10 +103,22 @@ final class ActivityStore {
     /// Bank and mobile money names and logos by code, so a row can say "Access Bank" and show its logo.
     private(set) var institutions: [String: Institution] = [:]
 
+    /// The bank names load beside the history, never in front of it.
     func load(from api: any FliqAPI) async {
-        await loadInstitutions(from: api)
-        guard let list = try? await api.activity() else { return }
-        history = list.items
+        async let names: Void = loadInstitutions(from: api)
+        if let list = try? await api.activity() {
+            history = list.items
+            hasLoaded = true
+            cache?.set(try? JSONEncoder().encode(list.items), forKey: Self.historyKey)
+        }
+        await names
+    }
+
+    /// Signing out: the next account must not see this one's history.
+    func forget() {
+        cache?.removeObject(forKey: Self.historyKey)
+        history = []
+        hasLoaded = cache == nil
     }
 
     private func loadInstitutions(from api: any FliqAPI) async {
@@ -81,10 +134,20 @@ final class ActivityStore {
         rows.map { ActivityLine($0, institutions: institutions) }
     }
 
-    /// A payout started here stays as its live local row until the server lists it.
+    /// A payout started here stays as its live local row until the server lists it. So does a bank deposit, which also
+    /// keeps its bank label once listed.
     var rows: [Row] {
         let listed = Set(history.map(\.refId))
         let pending = entries.filter { !listed.contains($0.id) }.map(Row.local)
-        return (pending + history.map(Row.history)).sorted { $0.date > $1.date }
+        let banks = Dictionary(bankDeposits.map { ($0.depositId, $0) }, uniquingKeysWith: { first, _ in first })
+        let now = Date.now
+        let arriving = bankDeposits
+            .filter { !listed.contains($0.depositId) && now.timeIntervalSince($0.startedAt) < Self.bankDepositWindow }
+            .map { Row.history(.bankDeposit($0, status: "pending")) }
+        let known = history.map { item in
+            guard item.kind == .deposit, let bank = banks[item.refId] else { return Row.history(item) }
+            return Row.history(.bankDeposit(bank, status: item.status, landed: item.usd, seconds: item.seconds, at: item.at, activityId: item.activityId))
+        }
+        return (pending + arriving + known).sorted { $0.date > $1.date }
     }
 }

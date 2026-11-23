@@ -5,10 +5,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Icon } from "../../components/app/icons";
 import { QrCode } from "../../components/app/qr-code";
 import { Chip, Drawer, Logo, Notice, Spinner, Toggle, useCopy, useToast } from "../../components/app/ui";
-import { chain, tokenLogo } from "../../lib/assets";
+import { chain, isNativeCoin, isSwapped, tokenLogo } from "../../lib/assets";
 import { cleanAmount, formatUsd } from "../../lib/money";
 import { walletApi, type DepositSource, type PaymentRequest, type VaultDeposit } from "../../lib/wallet-api";
 import { keys, useDepositSources, useMe, useRequests } from "../../lib/wallet-queries";
+import { isBankSource } from "../../lib/paj";
+import { BankDepositDrawer } from "./bank-deposit-drawer";
 
 const DEPOSIT_POLL_MS = 3_000;
 const FINAL_DEPOSIT = new Set(["landed", "refunded", "expired", "failed"]);
@@ -24,13 +26,13 @@ function sourceLabel(source: DepositSource) {
 function Tile({ source, onOpen }: { source: DepositSource; onOpen: () => void }) {
   const detail = source.direct
     ? "Your vault address · instant"
-    : source.token === "btc"
+    : isSwapped(source)
       ? `Lands as dollars · ${eta(source.eta_seconds)}`
       : `${eta(source.eta_seconds).replace("about ", "About ")}${Number(source.minimum) > 1 ? ` · min $${Number(source.minimum)}` : ""}`;
   return (
     <button type="button" className="tile" onClick={onOpen} disabled={!source.available}>
       <div className="top">
-        <Logo src={tokenLogo(source.token)} badge={source.token === "btc" ? null : chain(source.chain).logo} />
+        <Logo src={tokenLogo(source.token)} badge={isNativeCoin(source) ? null : chain(source.chain).logo} />
         <Icon name="chevR" size={18} />
       </div>
       <div>
@@ -73,7 +75,7 @@ function DepositDrawer({ source, onClose }: { source: DepositSource; onClose: ()
   const copy = useCopy();
   const toast = useToast();
   const queryClient = useQueryClient();
-  const [amount, setAmount] = useState(source.token === "btc" ? "0.001" : String(Math.max(100, Number(source.minimum))));
+  const [amount, setAmount] = useState(isSwapped(source) ? source.minimum : String(Math.max(100, Number(source.minimum))));
   const [debounced, setDebounced] = useState(amount);
   const [depositId, setDepositId] = useState<string | null>(null);
 
@@ -133,11 +135,11 @@ function DepositDrawer({ source, onClose }: { source: DepositSource; onClose: ()
       }
     >
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <Logo src={tokenLogo(source.token)} badge={source.token === "btc" ? null : chain(source.chain).logo} />
+        <Logo src={tokenLogo(source.token)} badge={isNativeCoin(source) ? null : chain(source.chain).logo} />
         <div>
           <b>{sourceLabel(source)}</b>
           <div className="muted" style={{ fontSize: 12.5 }}>
-            {source.direct ? "Already on NEAR, lands in about 2 seconds" : `Arrives as USDC in your vault in ${eta(source.eta_seconds)}`}
+            {source.direct ? "Already on NEAR, lands in about 2 seconds" : `Arrives as USDC in your vault in ${eta(source.eta_seconds)}${isSwapped(source) ? ", at the rate when it lands" : ""}`}
           </div>
         </div>
       </div>
@@ -325,6 +327,7 @@ function Requests() {
 export function AddMoney() {
   const sources = useDepositSources();
   const [open, setOpen] = useState<DepositSource | null>(null);
+  const [bankOpen, setBankOpen] = useState(false);
   const all = sources.data?.sources ?? [];
   const dollars = all.filter((source) => source.group === "dollars");
   const other = all.filter((source) => source.group !== "dollars");
@@ -338,6 +341,15 @@ export function AddMoney() {
       </div>
       {sources.isPending && <Notice icon="spin">Loading the ways to add money</Notice>}
       {sources.isError && <Notice tone="bad">{sources.error.message}</Notice>}
+      {all.some(isBankSource) && (
+        <section style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <h2 className="sec-title">Bank transfer</h2>
+          <button type="button" className="tile" onClick={() => setBankOpen(true)}>
+            <div className="top"><Icon name="bank" size={24} /><Icon name="chevR" size={18} /></div>
+            <div><b>Naira from your bank</b><span>Pay in NGN · arrives as USDC</span></div>
+          </button>
+        </section>
+      )}
       {dollars.length > 0 && (
         <section style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <h2 className="sec-title">Digital dollars</h2>
@@ -350,7 +362,7 @@ export function AddMoney() {
       )}
       {other.length > 0 && (
         <section style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <h2 className="sec-title">Bitcoin and NEAR</h2>
+          <h2 className="sec-title">Other coins and NEAR</h2>
           <div className="tiles">
             {other.map((source) => (
               <Tile key={`${source.token}-${source.chain}`} source={source} onOpen={() => setOpen(source)} />
@@ -360,6 +372,7 @@ export function AddMoney() {
       )}
       <Requests />
       {open && <DepositDrawer source={open} onClose={() => setOpen(null)} />}
+      {bankOpen && <BankDepositDrawer source={all.find(isBankSource)!} onClose={() => setBankOpen(false)} />}
     </div>
   );
 }

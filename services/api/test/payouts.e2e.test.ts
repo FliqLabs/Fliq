@@ -8,6 +8,7 @@ import type { EmailSender } from "../apps/api/src/auth/email-links.js";
 import { loadConfig } from "../apps/api/src/config.js";
 import { createDatabase, unitOf } from "../apps/api/src/db.js";
 import { createHandlers } from "../apps/api/src/handlers.js";
+import { createOps, opsConfigFromEnv, type Ops } from "../apps/api/src/ops.js";
 import { DEFAULT_VELOCITY } from "../apps/api/src/payouts.js";
 import { sandboxAdapters } from "../apps/api/src/sandbox.js";
 import { DEFAULT_ROUTING_CONFIG, NO_SIGNALS } from "../packages/domain/routing.js";
@@ -57,7 +58,7 @@ describe.skipIf(!enabled)("payout creation against a real database", () => {
     },
   };
 
-  function appAt(now: Date, velocity = DEFAULT_VELOCITY, logger = false) {
+  function appAt(now: Date, velocity = DEFAULT_VELOCITY, logger = false, ops?: Ops) {
     return buildApp({
       config,
       logger,
@@ -70,6 +71,7 @@ describe.skipIf(!enabled)("payout creation against a real database", () => {
         vault: new MockVault({ registrar: "registrar.test.near", usdc: "usdc.test.near", now: () => 0n }),
         quotes: { adapters: [adapter], routing: DEFAULT_ROUTING_CONFIG, signals: NO_SIGNALS, now: () => NOW },
         payouts: { config, adapters: [adapter], velocity, now: () => now },
+        ...(ops ? { ops } : {}),
       }),
     });
   }
@@ -162,6 +164,22 @@ describe.skipIf(!enabled)("payout creation against a real database", () => {
 
     const fetched = await app.inject({ method: "GET", url: `/v1/payouts/${payout.payout_id}`, headers: { authorization: `Bearer ${frank.access}` } });
     expect(fetched.json()).toEqual(payout);
+  }, 60_000);
+
+  it("refuses a new cash-out while cash-outs are paused, and creates nothing", async () => {
+    const quoteId = await quote(frank.access);
+    const paused = appAt(NOW, DEFAULT_VELOCITY, false, createOps(opsConfigFromEnv({ FLIQ_PAUSED: "payouts" })));
+    await paused.ready();
+    const reply = await paused.inject({
+      method: "POST",
+      url: "/v1/payouts",
+      payload: body(quoteId),
+      headers: { authorization: `Bearer ${frank.access}`, "idempotency-key": `paused-${suffix}` },
+    });
+    await paused.close();
+    expect(reply.statusCode).toBe(503);
+    expect(reply.json().error.code).toBe("paused");
+    expect(await database.payout.count({ where: { quoteId } })).toBe(0);
   }, 60_000);
 
   it("replays the stored answer for the same key and refuses the same key with a different request", async () => {
@@ -392,5 +410,27 @@ describe.skipIf(!enabled)("payout creation against a real database", () => {
     const paid = await pay(app, user.access, `k-${suffix}-n2`, body(quoteId, { account: UNNAMED, account_name: "ADA LOVELACE" }));
     expect(paid.statusCode).toBe(201);
     expect(paid.json().account_name).toBe("ADA LOVELACE");
+  }, 120_000);
+
+  it("pays a saved account by its id, which only its owner can use", async () => {
+    const authed = { authorization: `Bearer ${frank.access}` };
+    const saved = (await app.inject({ method: "POST", url: "/v1/recipients", payload: { bank: ACCOUNT.bank, number: ACCOUNT.number }, headers: authed })).json();
+    expect(saved).toMatchObject({ account_last4: ACCOUNT.number.slice(-4), country: "ng" });
+    const listed = await app.inject({ method: "GET", url: "/v1/recipients", headers: authed });
+    expect(JSON.stringify(listed.json()), "Lists never carry the full number").not.toContain(ACCOUNT.number);
+
+    const refund = { refund_address: "0x1111111111111111111111111111111111111111" };
+    const paid = await pay(app, frank.access, `k-${suffix}-rcp`, { quote_id: await quote(frank.access), recipient_id: saved.recipient_id, ...refund });
+    expect(paid.statusCode).toBe(201);
+    expect(paid.json()).toMatchObject({ account: ACCOUNT, account_name: "DARA OKONKWO" });
+
+    const both = await pay(app, frank.access, `k-${suffix}-rcp2`, { quote_id: await quote(frank.access), recipient_id: saved.recipient_id, account: ACCOUNT, ...refund });
+    expect(both.statusCode).toBe(400);
+    const neither = await pay(app, frank.access, `k-${suffix}-rcp3`, { quote_id: await quote(frank.access), ...refund });
+    expect(neither.statusCode).toBe(400);
+
+    const other = await signIn("notfrank");
+    const stolen = await pay(app, other.access, `k-${suffix}-rcp4`, { quote_id: await quote(other.access), recipient_id: saved.recipient_id, ...refund });
+    expect(stolen.statusCode).toBe(404);
   }, 120_000);
 });

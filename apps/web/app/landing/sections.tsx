@@ -42,7 +42,7 @@ export function Developers() {
           Quote, create, watch the webhook. One API for the messy part between crypto and a bank account.
         </p>
         <div className="flex flex-wrap gap-2.5">
-          <MarketingActionLink href="/create-workspace">Get a sandbox key</MarketingActionLink>
+          <MarketingActionLink href="/dashboard">Get a sandbox key</MarketingActionLink>
           <MarketingActionLink href="/docs/quickstart" variant="secondary">
             Read the quickstart
           </MarketingActionLink>
@@ -88,7 +88,7 @@ export function Agents() {
           the boundaries.
         </p>
         <div className="flex flex-wrap gap-2.5">
-          <MarketingActionLink href="/create-workspace">Start building</MarketingActionLink>
+          <MarketingActionLink href="/dashboard">Start building</MarketingActionLink>
         </div>
       </div>
       <div className="grid gap-2.5 text-sm">

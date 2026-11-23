@@ -4,6 +4,7 @@ import SwiftUI
 struct BankAccountFields: View {
     @Bindable var entry: AccountEntry
     @FocusState private var numberFocused: Bool
+    @State private var pickingBank = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -25,12 +26,9 @@ struct BankAccountFields: View {
         }
     }
 
+    /// A list to search, not a menu to scroll: Nigeria alone has dozens of banks and wallets.
     private var bankPicker: some View {
-        Menu {
-            Picker("Bank", selection: $entry.institution) {
-                ForEach(entry.institutions, id: \.self) { Text($0.name).tag($0) }
-            }
-        } label: {
+        Button { pickingBank = true } label: {
             HStack(spacing: 12) {
                 InstitutionLogo(logoKey: entry.institution.logoKey, name: entry.institution.name, size: 30)
                 Text(entry.institution.name)
@@ -43,8 +41,23 @@ struct BankAccountFields: View {
             .padding(.horizontal, 16)
             .frame(height: 64)
             .background(Theme.field, in: RoundedRectangle(cornerRadius: 14))
+            .contentShape(RoundedRectangle(cornerRadius: 14))
         }
+        .buttonStyle(.plain)
         .disabled(entry.institutions.isEmpty)
+        .accessibilityLabel("Bank, \(entry.institution.name)")
+        .accessibilityHint("Search for your bank")
+        .sheet(isPresented: $pickingBank) {
+            BankSearchSheet(institutions: entry.institutions, selected: entry.institution) { picked in
+                entry.institution = picked
+                pickingBank = false
+                numberFocused = true
+            }
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+            .presentationCornerRadius(32)
+            .presentationBackground(Color(hex: 0x161616))
+        }
     }
 
     private var numberField: some View {
@@ -89,5 +102,60 @@ struct BankAccountFields: View {
         }
         .font(.system(size: 13))
         .padding(.horizontal, 4)
+    }
+}
+
+/// Every bank and wallet for the country, searchable by name. The popular ones lead the list as the API sends them.
+struct BankSearchSheet: View {
+    let institutions: [Institution]
+    let selected: Institution
+    let onPick: (Institution) -> Void
+    @State private var query = ""
+
+    static func matches(_ institutions: [Institution], query: String) -> [Institution] {
+        let words = query.lowercased().split(separator: " ").map(String.init)
+        guard !words.isEmpty else { return institutions }
+        return institutions.filter { institution in
+            let name = institution.name.lowercased()
+            return words.allSatisfy { name.contains($0) } || institution.code.lowercased() == query.lowercased()
+        }
+    }
+
+    private var shown: [Institution] { Self.matches(institutions, query: query) }
+
+    var body: some View {
+        NavigationStack {
+            List(shown, id: \.self) { institution in
+                Button { onPick(institution) } label: {
+                    HStack(spacing: 12) {
+                        InstitutionLogo(logoKey: institution.logoKey, name: institution.name, size: 30)
+                        Text(institution.name).foregroundStyle(Theme.textPrimary)
+                        Spacer()
+                        if institution == selected {
+                            Icon("checkmark", size: 16).foregroundStyle(Theme.confirmed)
+                        }
+                    }
+                    .font(.system(size: 17))
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .listRowBackground(Color.clear)
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .overlay {
+                if shown.isEmpty {
+                    Text("No bank called \u{201C}\(query)\u{201D}. Check the spelling.")
+                        .font(.system(size: 15))
+                        .foregroundStyle(Theme.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
+                }
+            }
+            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search banks")
+            .navigationTitle("Your bank")
+            .navigationBarTitleDisplayMode(.inline)
+        }
     }
 }

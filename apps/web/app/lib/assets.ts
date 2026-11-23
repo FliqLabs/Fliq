@@ -40,6 +40,8 @@ const CHAINS: Record<DepositSource["chain"], { name: string; logo: string }> = {
   arbitrum: { name: "Arbitrum", logo: "/landing/tokens/arbitrum.webp" },
   ethereum: { name: "Ethereum", logo: "/landing/tokens/ethereum.webp" },
   polygon: { name: "Polygon", logo: "/app/polygon.webp" },
+  bnb: { name: "BNB Chain", logo: "/landing/icons/tokens/bnb.svg" },
+  monad: { name: "Monad", logo: "/landing/tokens/usdc.webp" },
   bitcoin: { name: "Bitcoin", logo: "/landing/tokens/btc.webp" },
   near: { name: "NEAR", logo: "/landing/tokens/near.webp" },
 };
@@ -48,8 +50,26 @@ export function chain(id: string) {
   return CHAINS[id as DepositSource["chain"]] ?? { name: id, logo: "/landing/tokens/usdc.webp" };
 }
 
+const TOKEN_LOGOS: Record<string, string> = {
+  usdt: "/landing/tokens/usdt.webp",
+  btc: "/landing/tokens/btc.webp",
+  sol: "/landing/tokens/solana.webp",
+  eth: "/landing/tokens/ethereum.webp",
+  bnb: "/landing/icons/tokens/bnb.svg",
+};
+
 export function tokenLogo(token: string) {
-  return token === "usdt" ? "/landing/tokens/usdt.webp" : token === "btc" ? "/landing/tokens/btc.webp" : "/landing/tokens/usdc.webp";
+  return TOKEN_LOGOS[token] ?? "/landing/tokens/usdc.webp";
+}
+
+/** Not a dollar: swapped to USDC as it lands, so what arrives is priced then. */
+export function isSwapped(source: Pick<DepositSource, "group">) {
+  return source.group === "bitcoin" || source.group === "coins";
+}
+
+/** A chain's own coin on its own chain (SOL on Solana), drawn without a network badge. */
+export function isNativeCoin(source: Pick<DepositSource, "token" | "chain">) {
+  return ({ btc: "bitcoin", sol: "solana", eth: "ethereum", bnb: "bnb" } as Record<string, string>)[source.token] === source.chain;
 }
 
 /** People without a photo get the shared silhouette, tinted by their name so a list stays tellable apart. */

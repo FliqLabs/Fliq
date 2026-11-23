@@ -28,6 +28,15 @@ protocol FliqAPI: Sendable {
     func removeProfilePhoto() async throws -> User
     func registerDevice(_ device: PushDevice) async throws
     func unregisterDevice(token: String) async throws
+    func registerLiveActivity(_ activity: LiveActivityRegistration) async throws
+    func refunds() async throws -> [Refund]
+    /// Accounts are saved on the server (`recipients()` lists them), so they survive a reinstall and show on the web.
+    func saveRecipient(_ input: RecipientInput) async throws -> Recipient
+    func markOwnRecipient(id: String) async throws
+    func deleteRecipient(id: String) async throws
+    /// The public side of a payment request link. Needs no session.
+    func publicRequest(_ link: PayLink) async throws -> PublicPayRequest
+    func returnRefund(tokenId: String, idempotencyKey: String) async throws -> ReturnedRefund
 
     func institutions(in country: Country) async throws -> [Institution]
     func vaultBalance() async throws -> VaultBalance
@@ -35,6 +44,7 @@ protocol FliqAPI: Sendable {
     func recentPeople() async throws -> RecentPeopleList
     func person(named name: String) async throws -> Person
     func relay(signedDelegate: String) async throws -> RelayResult
+    func relay(signedDelegate: String, requestCode: String?) async throws -> RelayResult
     func passkeys() async throws -> PasskeyList
     func deviceSessions() async throws -> DeviceSessionList
     func revokeSession(id: String) async throws
@@ -96,4 +106,12 @@ struct PushDevice: Encodable, Equatable, Sendable {
 extension FliqAPI {
     func registerDevice(_ device: PushDevice) async throws {}
     func unregisterDevice(token: String) async throws {}
+    func registerLiveActivity(_ activity: LiveActivityRegistration) async throws {}
+    func refunds() async throws -> [Refund] { [] }
+    func relay(signedDelegate: String, requestCode: String?) async throws -> RelayResult { try await relay(signedDelegate: signedDelegate) }
+    func saveRecipient(_ input: RecipientInput) async throws -> Recipient { throw APIError.unexpected(status: 404) }
+    func markOwnRecipient(id: String) async throws {}
+    func deleteRecipient(id: String) async throws {}
+    func publicRequest(_ link: PayLink) async throws -> PublicPayRequest { throw APIError.unexpected(status: 404) }
+    func returnRefund(tokenId: String, idempotencyKey: String) async throws -> ReturnedRefund { throw TransferError.notSetUp }
 }

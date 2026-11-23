@@ -45,7 +45,7 @@ export function ApiKeysList({ initialAction, initialEnvironment = "test" }: ApiK
         </Link>
       )}
       {keys.error instanceof ApiError && keys.error.status === 404 && (
-        <Link href="/create-workspace" className="mt-8 inline-block text-sm font-semibold underline">
+        <Link href="/dashboard" className="mt-8 inline-block text-sm font-semibold underline">
           Create a workspace first
         </Link>
       )}

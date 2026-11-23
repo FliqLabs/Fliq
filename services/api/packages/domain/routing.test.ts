@@ -192,6 +192,24 @@ describe("a route through a NEAR Intents hop", () => {
     expect(route?.hop?.amountIn).toBe(route?.amountIn);
   });
 
+  // 18 Nov: 1Click listed Base but answered 500 for NEAR to Base, while NEAR to Solana priced.
+  it("moves on to the provider's next chain when the first one cannot be priced", async () => {
+    const baseThenSolana = provider("paycrest", {
+      capabilities: { sources: [{ asset: "USDC", chain: "base" }, { asset: "USDC", chain: "solana" }] },
+    });
+    const baseDown: HopPricer = {
+      reachable: async () => true,
+      exactInput: async (_asset, _from, to, amountIn) => {
+        if (to === "base") throw new Error("Internal server error");
+        return { amountOut: (amountIn * 999n) / 1000n, seconds: 30 };
+      },
+      exactOutput: hop.exactOutput,
+    };
+    const { routes } = await quoteRoutes([baseThenSolana], nearRequest, DEFAULT_ROUTING_CONFIG, undefined, now, baseDown);
+    expect(routes[0]?.hop?.chain).toBe("solana");
+    expect(routes[0]?.kind).toBe("intents");
+  });
+
   it("drops the provider when there is no hop pricer, no path, or the hop fails", async () => {
     expect((await quoteRoutes([baseOnly], nearRequest, DEFAULT_ROUTING_CONFIG, undefined, now)).dropped).toContainEqual({ provider: "paycrest", reason: "source" });
     const noPath: HopPricer = { ...hop, reachable: async () => false };

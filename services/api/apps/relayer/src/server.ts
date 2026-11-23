@@ -6,7 +6,14 @@ import { createNearRpc, RedisRelayStore } from "../../../packages/chains/near/in
 import { buildRelayerApp } from "./app.js";
 
 const config = loadConfigOrExit({ redis, near, relayer, accountCreator });
-const rpc = createNearRpc({ url: config.near.rpcUrl.reveal() });
+const rpcUrl = config.near.rpcUrl.reveal();
+// The relayer sends each delegate once; a rate-limited endpoint (429) never took it, so the next one is tried.
+const fallbackUrls = process.env.NEAR_RPC_FALLBACK_URLS?.trim()
+  ? process.env.NEAR_RPC_FALLBACK_URLS.split(",").map((url) => url.trim()).filter(Boolean)
+  : rpcUrl.includes("mainnet")
+    ? ["https://free.rpc.fastnear.com", "https://rpc.mainnet.near.org"]
+    : [];
+const rpc = createNearRpc({ url: rpcUrl, fallbackUrls });
 const store = new RedisRelayStore(new Redis(config.redis.url.reveal(), { maxRetriesPerRequest: 2 }));
 
 const app = buildRelayerApp({
@@ -15,7 +22,11 @@ const app = buildRelayerApp({
   relay: {
     rpc,
     store,
-    policy: { vaultContractId: config.near.vaultContractId, usdcContractId: config.near.usdcContractId },
+    policy: {
+      vaultContractId: config.near.vaultContractId,
+      usdcContractId: config.near.usdcContractId,
+      intentsContractId: config.near.intentsContractId,
+    },
     relayerAccountId: config.relayer.accountId,
     relayerKeys: config.relayer.privateKeys.map((key) => key.reveal()),
     now: Date.now,

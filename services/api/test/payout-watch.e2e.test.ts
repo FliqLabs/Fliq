@@ -7,7 +7,7 @@ import type { EmailSender } from "../apps/api/src/auth/email-links.js";
 import { loadConfig } from "../apps/api/src/config.js";
 import { createDatabase, unitOf } from "../apps/api/src/db.js";
 import { createHandlers } from "../apps/api/src/handlers.js";
-import { watchPayouts } from "../apps/api/src/payout-watch.js";
+import { payoutRefresher, watchPayouts } from "../apps/api/src/payout-watch.js";
 import { DEFAULT_VELOCITY } from "../apps/api/src/payouts.js";
 import { sandboxAdapters } from "../apps/api/src/sandbox.js";
 import { DEFAULT_ROUTING_CONFIG, NO_SIGNALS } from "../packages/domain/routing.js";
@@ -61,10 +61,16 @@ describe.skipIf(!enabled)("polling providers as the backstop to webhooks", () =>
   // A second provider that can read the name the first cannot.
   const reader: ProviderAdapter = { ...sandbox, id: "paycrest" };
 
+  // The refresher's own clock, so a test can step past its three second throttle.
+  let refreshAt = NOW.getTime();
+  let asked = 0;
+  const counted: ProviderAdapter = { ...nameless, getOrder: async (lookup) => (asked++, nameless.getOrder(lookup)) };
+
   const app = buildApp({
     config,
     unit,
     handlers: createHandlers({
+      refreshPayout: payoutRefresher({ unit, adapters: [counted], now: () => new Date(refreshAt), log: () => {} }),
       config,
       unit,
       email: sender,
@@ -109,14 +115,15 @@ describe.skipIf(!enabled)("polling providers as the backstop to webhooks", () =>
     };
   }
 
-  const watch = (options: { now?: Date; oneClick?: Parameters<typeof watchPayouts>[0]["oneClick"] } = {}) =>
+  const logged: string[] = [];
+  const watch = (options: { now?: Date; batch?: number; oneClick?: Parameters<typeof watchPayouts>[0]["oneClick"] } = {}) =>
     watchPayouts({
       unit,
       adapters: [nameless],
       now: () => options.now ?? NOW,
-      log: () => {},
+      log: (message) => void logged.push(message),
       windowMs: 365 * 24 * 60 * 60_000,
-      batch: 500,
+      batch: options.batch ?? 500,
       ...(options.oneClick ? { oneClick: options.oneClick } : {}),
     });
   const stateOf = async (payoutId: string) =>
@@ -172,6 +179,27 @@ describe.skipIf(!enabled)("polling providers as the backstop to webhooks", () =>
     expect(again.find((result) => result.payoutId === payout.payout_id)).toBeUndefined();
   }, 60_000);
 
+  it("shows a payout as paid when its owner reads it, without waiting for a webhook or the sweep", async () => {
+    const payout = await newPayout();
+    const read = () => app.inject({ method: "GET", url: `/v1/payouts/${payout.payout_id}`, headers: { authorization: `Bearer ${access}` } });
+    refreshAt += 10_000;
+    asked = 0;
+    await read();
+    await read();
+    expect(asked).toBe(1);
+
+    answers.set(payout.provider_order as string, { providerOrderId: payout.provider_order as string, status: "paid", fiatReference: "000013251029140213" });
+    refreshAt += 3_000;
+    expect((await read()).json().state).toBe("settled");
+    expect(await stateOf(payout.payout_id)).toBe("settled");
+
+    // A finished payout is never asked about again.
+    refreshAt += 3_000;
+    asked = 0;
+    await read();
+    expect(asked).toBe(0);
+  }, 60_000);
+
   it("tells the provider which transfer paid it once the 1Click leg has delivered", async () => {
     const payout = await newPayout();
     const order = payout.provider_order as string;
@@ -197,6 +225,46 @@ describe.skipIf(!enabled)("polling providers as the backstop to webhooks", () =>
     await watch({ oneClick });
     expect(confirmed).toContain(`${order}:0xdelivered`);
     expect(await stateOf(payout.payout_id)).toBe("paying_out");
+  }, 60_000);
+
+  it("still reaches a newer payout when older stuck ones fill a page", async () => {
+    const stuck = await newPayout();
+    answers.set(stuck.provider_order as string, { providerOrderId: stuck.provider_order as string, status: "awaiting_deposit" });
+    const newer = await newPayout();
+    answers.set(newer.provider_order as string, {
+      providerOrderId: newer.provider_order as string,
+      status: "paid",
+      fiatReference: "000013251029140213",
+    });
+    const results = await watch({ batch: 1 });
+    expect(results.map((result) => result.payoutId)).toEqual(expect.arrayContaining([stuck.payout_id, newer.payout_id]));
+    expect(await stateOf(newer.payout_id)).toBe("settled");
+  }, 60_000);
+
+  it("keeps following the swap of a payout that expired, and says so when it delivers late", async () => {
+    const payout = await newPayout();
+    await database.payout.update({
+      where: { id: payout.payout_id },
+      data: { state: "expired", routeKind: "intents", depositAddress: "1click-late", depositChain: "near" },
+    });
+    const oneClick = {
+      status: async () => ({
+        status: "SUCCESS" as const,
+        updatedAt: NOW,
+        depositedAmount: undefined,
+        amountIn: undefined,
+        amountOut: undefined,
+        refundedAmount: undefined,
+        refundReason: undefined,
+        originTxHashes: [],
+        destinationTxHashes: ["0xlate"],
+        nearTxHashes: [],
+      }),
+    };
+    const results = await watch({ oneClick });
+    expect(results).toContainEqual({ payoutId: payout.payout_id, outcome: "lapsed_hop:SUCCESS" });
+    expect(logged.some((line) => line.includes(payout.payout_id) && line.includes("after the payout expired"))).toBe(true);
+    expect(await stateOf(payout.payout_id)).toBe("expired");
   }, 60_000);
 
   it("fails a payout whose order the provider never received, but only after waiting", async () => {

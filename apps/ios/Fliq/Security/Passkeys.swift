@@ -15,6 +15,8 @@ final class PasskeyAuthenticator: NSObject {
     private var controller: ASAuthorizationController?
     /// The passkey the last successful register or sign-in used, for `PasskeyMemory`.
     private(set) var lastCredentialID: Data?
+    /// The NEAR key the last passkey made, when this iOS and passkey can. Kept in memory only. See `PasskeyKey`.
+    private(set) var lastPasskeyKey: PasskeyKey?
 
     func register(_ options: PasskeyOptions) async throws -> Data {
         guard
@@ -26,10 +28,14 @@ final class PasskeyAuthenticator: NSObject {
 
         let provider = ASAuthorizationPlatformPublicKeyCredentialProvider(relyingPartyIdentifier: rp)
         let request = provider.createCredentialRegistrationRequest(challenge: challenge, name: Self.label, userID: userID)
+        // The passkey makes the NEAR key fliq.cash and other iPhones can use, so the account can start with it.
+        if #available(iOS 18.0, *) { request.prf = .inputValues(.init(saltInput1: PasskeyKey.salt)) }
         guard let credential = try await perform(request).credential as? ASAuthorizationPlatformPublicKeyCredentialRegistration,
               let attestation = credential.rawAttestationObject
         else { throw PasskeyError.failed("No passkey was created.") }
         lastCredentialID = credential.credentialID
+        lastPasskeyKey = nil
+        if #available(iOS 18.0, *), let secret = credential.prf?.first { lastPasskeyKey = try? PasskeyKey(prf: secret) }
 
         return try Self.json(id: credential.credentialID, response: [
             "clientDataJSON": credential.rawClientDataJSON.base64URL,
@@ -39,16 +45,21 @@ final class PasskeyAuthenticator: NSObject {
     }
 
     /// With `allowed`, iOS offers only those passkeys, so a testnet passkey never shows up in the mainnet app.
-    func signIn(_ options: PasskeyOptions, relyingParty: String = "fliq.cash", allowed: [Data] = []) async throws -> Data {
+    /// With `onlyIfOnThisDevice`, an iPhone with no fliq passkey shows nothing and throws `cancelled` at once.
+    func signIn(_ options: PasskeyOptions, relyingParty: String = "fliq.cash", allowed: [Data] = [], onlyIfOnThisDevice: Bool = false) async throws -> Data {
         guard let challenge = Data(base64URL: options.options.challenge) else { throw PasskeyError.badOptions }
 
         let provider = ASAuthorizationPlatformPublicKeyCredentialProvider(relyingPartyIdentifier: options.options.rp?.id ?? relyingParty)
         let request = provider.createCredentialAssertionRequest(challenge: challenge)
         request.allowedCredentials = allowed.map { ASAuthorizationPlatformPublicKeyCredentialDescriptor(credentialID: $0) }
-        guard let credential = try await perform(request).credential as? ASAuthorizationPlatformPublicKeyCredentialAssertion else {
+        if #available(iOS 18.0, *) { request.prf = .inputValues(.init(saltInput1: PasskeyKey.salt)) }
+        let found = try await perform(request, options: onlyIfOnThisDevice ? .preferImmediatelyAvailableCredentials : [])
+        guard let credential = found.credential as? ASAuthorizationPlatformPublicKeyCredentialAssertion else {
             throw PasskeyError.failed("No passkey was used.")
         }
         lastCredentialID = credential.credentialID
+        lastPasskeyKey = nil
+        if #available(iOS 18.0, *), let secret = credential.prf?.first { lastPasskeyKey = try? PasskeyKey(prf: secret) }
 
         return try Self.json(id: credential.credentialID, response: [
             "clientDataJSON": credential.rawClientDataJSON.base64URL,
@@ -58,10 +69,49 @@ final class PasskeyAuthenticator: NSObject {
         ])
     }
 
+    /// Asks the passkey for the secret that makes its NEAR key. Nothing goes to the API: the challenge is only there
+    /// because the system sheet needs one. Nil when this iOS or this passkey cannot do it.
+    func passkeyKey(relyingParty: String = "fliq.cash", allowed: [Data] = []) async throws -> PasskeyKey? {
+        guard #available(iOS 18.0, *) else { return nil }
+        let provider = ASAuthorizationPlatformPublicKeyCredentialProvider(relyingPartyIdentifier: relyingParty)
+        let request = provider.createCredentialAssertionRequest(challenge: Data((0..<32).map { _ in UInt8.random(in: 0...255) }))
+        request.allowedCredentials = allowed.map { ASAuthorizationPlatformPublicKeyCredentialDescriptor(credentialID: $0) }
+        request.prf = .inputValues(.init(saltInput1: PasskeyKey.salt))
+        guard let credential = try await perform(request).credential as? ASAuthorizationPlatformPublicKeyCredentialAssertion else {
+            throw PasskeyError.failed("No passkey was used.")
+        }
+        guard let secret = credential.prf?.first else { return nil }
+        return try PasskeyKey(prf: secret)
+    }
+
     /// What the passkey sheet shows for this passkey. Testnet and mainnet share fliq.cash, so the label tells them apart.
     static var label: String { NearNetwork.current == .testnet ? "fliq testnet" : "fliq" }
 
-    private func perform(_ request: ASAuthorizationRequest) async throws -> ASAuthorization {
+    /// Right after an install or an update, iOS has not finished checking that this app may use fliq.cash passkeys.
+    /// It then refuses at once with code 1004 and asks to try again in a few seconds. So the request is made again,
+    /// quietly, for up to ten seconds: the person only sees the button working a little longer.
+    static let notReadyCode = 1004
+    static let notReadyRetries = 5
+    var notReadyDelay: Duration = .seconds(2)
+
+    static func isNotReady(_ error: any Error) -> Bool {
+        if case PasskeyError.failed(let reason) = error { return reason.hasPrefix("\(notReadyCode):") }
+        return false
+    }
+
+    private func perform(_ request: ASAuthorizationRequest, options: ASAuthorizationController.RequestOptions = []) async throws -> ASAuthorization {
+        var tries = 0
+        while true {
+            do {
+                return try await performOnce(request, options: options)
+            } catch where Self.isNotReady(error) && tries < Self.notReadyRetries {
+                tries += 1
+                try await Task.sleep(for: notReadyDelay)
+            }
+        }
+    }
+
+    private func performOnce(_ request: ASAuthorizationRequest, options: ASAuthorizationController.RequestOptions) async throws -> ASAuthorization {
         let controller = ASAuthorizationController(authorizationRequests: [request])
         controller.delegate = self
         controller.presentationContextProvider = self
@@ -69,7 +119,7 @@ final class PasskeyAuthenticator: NSObject {
         defer { self.controller = nil }
         return try await withCheckedThrowingContinuation { continuation in
             pending = continuation
-            controller.performRequests()
+            controller.performRequests(options: options)
         }
     }
 
@@ -79,7 +129,10 @@ final class PasskeyAuthenticator: NSObject {
     }
 
     private func failure(_ error: any Error) -> any Error {
-        (error as? ASAuthorizationError)?.code == .canceled ? PasskeyError.cancelled : PasskeyError.failed(error.localizedDescription)
+        // The code leads the reason, so a failure can be told apart without showing the system's own sentence.
+        (error as? ASAuthorizationError)?.code == .canceled
+            ? PasskeyError.cancelled
+            : PasskeyError.failed("\((error as NSError).code): \(error.localizedDescription)")
     }
 
     private static func json(id: Data, response: [String: Any]) throws -> Data {

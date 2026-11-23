@@ -16,4 +16,7 @@ regexes = [
   # The sample Idempotency-Key in the web docs pages on the moonlight-frontend branch (42b85e7). Gitleaks scans
   # every branch, so it failed the secret scan on every pull request.
   '''payroll-2026-11-05-dara''',
+  # A Swift type name, not a value. `let key: Curve25519.Signing.PrivateKey` in RecoveryKey.swift on the
+  # ios-account-recovery branch (24b452e) reads to the generic rule as a key assigned a secret.
+  '''Curve25519\.Signing\.PrivateKey''',
 ]

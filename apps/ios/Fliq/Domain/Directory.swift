@@ -38,6 +38,10 @@ struct Recipient: Codable, Sendable, Equatable, Identifiable {
     let bank: Bank
     let accountLast4: String
     let createdAt: Date
+    /// Where the account is ("ng", "ke"), so it is paid in its own currency. Missing from servers older than 21 Nov.
+    var country: String?
+    /// The user's own account.
+    var own: Bool?
 
     var id: String { recipientId }
 }

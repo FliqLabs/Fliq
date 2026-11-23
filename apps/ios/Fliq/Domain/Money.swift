@@ -30,6 +30,17 @@ struct TokenAmount: Codable, Hashable, Sendable, Comparable {
         baseUnits = whole * Self.base + fractionUnits
     }
 
+    /// A coin amount with more decimals than six (ETH has 18), cut to six and rounded up, so a minimum shown is
+    /// never below the real one: "0.000980123456789" -> 0.000981.
+    init?(roundingUp text: String) {
+        let pieces = text.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
+        guard pieces.count == 2, pieces[1].count > Self.decimalPlaces, pieces[1].allSatisfy(\.isNumber),
+              let kept = TokenAmount(decimalString: "\(pieces[0]).\(pieces[1].prefix(Self.decimalPlaces))")
+        else { return nil }
+        let rest = pieces[1].dropFirst(Self.decimalPlaces)
+        self = rest.allSatisfy({ $0 == "0" }) ? kept : TokenAmount(baseUnits: kept.baseUnits + 1)
+    }
+
     init(from decoder: Decoder) throws {
         let text = try decoder.singleValueContainer().decode(String.self)
         guard let amount = TokenAmount(decimalString: text) else {
@@ -59,7 +70,12 @@ enum Money {
     private static let locale = Locale(identifier: "en_US")
 
     static func local(_ amount: Int, _ currency: Currency) -> String {
-        currency.symbol + amount.formatted(.number.locale(locale))
+        currency.symbol + grouped(amount)
+    }
+
+    /// A whole amount with thousands separators and no symbol: 190000 -> "190,000".
+    static func grouped(_ amount: Int) -> String {
+        amount.formatted(.number.locale(locale))
     }
 
     static func rate(_ rate: Double, _ currency: Currency) -> String {
@@ -75,6 +91,23 @@ enum Money {
     /// The number the user commits to is always `Quote.receive` from the server.
     static func estimate(_ amount: TokenAmount, at rate: Double) -> Int {
         Int((Double(amount.baseUnits) * rate / Double(TokenAmount.base)).rounded(.down))
+    }
+
+    /// The dollars it takes for `local` to land at `rate`, rounded up to the cent so the estimate is never short.
+    static func cost(ofLocal local: Double, at rate: Double) -> TokenAmount? {
+        guard rate > 0, local >= 0 else { return nil }
+        let cents = (local / rate * 100 - 1e-6).rounded(.up)
+        guard cents < 1e15 else { return nil }
+        return TokenAmount(baseUnits: Int64(max(cents, 0)) * (TokenAmount.base / 100))
+    }
+
+    /// A typed amount with thousands separators, keeping whatever decimals are typed so far: "7500." -> "7,500.".
+    static func typed(_ text: String) -> String {
+        guard !text.isEmpty else { return "0" }
+        let parts = text.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
+        guard let whole = Int(parts[0]) else { return text }
+        let grouped = whole.formatted(.number.locale(locale))
+        return parts.count == 2 ? grouped + "." + parts[1] : grouped
     }
 
     /// How much more the routed provider pays than the next live one, in whole local units.

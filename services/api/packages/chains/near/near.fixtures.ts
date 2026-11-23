@@ -201,6 +201,26 @@ export async function signDelegate(
   return { base64: Buffer.from(bytes).toString("base64"), bytes };
 }
 
+// A delegate that adds a key to, or removes one from, an account. By default the user's own.
+export async function signKeyChange(
+  user: User,
+  change: { add?: string; remove?: string; receiverId?: string; functionCallOnly?: boolean; nonce?: bigint },
+): Promise<{ base64: string; bytes: Uint8Array }> {
+  const key = PublicKey.fromString((change.add ?? change.remove) as string);
+  const added = change.functionCallOnly ? actions.addFunctionCallAccessKey(key, VAULT, ["payout"]) : actions.addFullAccessKey(key);
+  const delegate = buildDelegateAction({
+    senderId: user.accountId,
+    receiverId: change.receiverId ?? user.accountId,
+    actions: [change.add ? added : actions.deleteKey(key)],
+    nonce: change.nonce ?? 101n,
+    maxBlockHeight: 5_100n,
+    publicKey: user.key.getPublicKey(),
+  });
+  const { signedDelegate } = await new KeyPairSigner(user.key).signDelegateAction(delegate);
+  const bytes = encodeSignedDelegate(signedDelegate);
+  return { base64: Buffer.from(bytes).toString("base64"), bytes };
+}
+
 export function relayerKeys(count: number): string[] {
   return Array.from({ length: count }, () => KeyPair.fromRandom("ed25519").toString());
 }

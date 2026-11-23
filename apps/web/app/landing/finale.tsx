@@ -166,7 +166,7 @@ export function Finale() {
             A test key, a demo recipient, and a payout you can follow all the way.
           </p>
           <div className="mt-1 flex flex-wrap justify-center gap-2.5">
-            <MarketingActionLink href="/create-workspace">Start in sandbox</MarketingActionLink>
+            <MarketingActionLink href="/dashboard">Start in sandbox</MarketingActionLink>
           </div>
         </div>
       </div>

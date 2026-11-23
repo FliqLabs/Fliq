@@ -10,6 +10,14 @@ struct FixtureClient: FliqAPI {
 
     var bundle: Bundle = .main
     private let ledger = FixtureLedger()
+    /// Accounts "saved on the server", kept in memory for as long as this client lives.
+    let savedRecipients = FixtureRecipients()
+
+    func saveRecipient(_ input: RecipientInput) async throws -> Recipient { await savedRecipients.save(input) }
+
+    func markOwnRecipient(id: String) async throws { await savedRecipients.markOwn(id) }
+
+    func deleteRecipient(id: String) async throws { await savedRecipients.delete(id) }
 
     func health() async throws -> Health {
         try load("health")
@@ -111,8 +119,9 @@ struct FixtureClient: FliqAPI {
         try load("vault.balance")
     }
 
+    /// The accounts saved through this client, as the server would list them.
     func recipients() async throws -> RecipientList {
-        try load("recipients.list")
+        RecipientList(items: await savedRecipients.list())
     }
 
     func recentPeople() async throws -> RecentPeopleList {
@@ -246,3 +255,34 @@ private extension Payout {
         )
     }
 }
+
+/// The server's saved accounts, for tests of what survives a reinstall. Lists show only the last four digits.
+actor FixtureRecipients {
+    private(set) var items: [Recipient] = []
+    private(set) var numbers: [String: String] = [:]
+
+    func list() -> [Recipient] { items }
+
+    func save(_ input: RecipientInput) -> Recipient {
+        if let found = items.first(where: { $0.bank.code == input.bank && numbers[$0.recipientId] == input.number }) { return found }
+        let recipient = Recipient(
+            recipientId: "rcp_\(items.count + 1)", accountName: "DARA OKONKWO",
+            bank: .init(code: input.bank, name: input.bank == "058" ? "GTBank" : input.bank, logoKey: nil),
+            accountLast4: String(input.number.suffix(4)), createdAt: .now, country: input.country, own: false
+        )
+        items.append(recipient)
+        numbers[recipient.recipientId] = input.number
+        return recipient
+    }
+
+    func markOwn(_ id: String) {
+        items = items.map { item in
+            var item = item
+            item.own = item.recipientId == id
+            return item
+        }
+    }
+
+    func delete(_ id: String) { items.removeAll { $0.recipientId == id } }
+}
+

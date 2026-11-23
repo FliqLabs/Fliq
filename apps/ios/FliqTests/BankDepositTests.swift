@@ -18,6 +18,20 @@ final class BankDepositTests: XCTestCase {
         XCTAssertEqual(flow.naira, 20_000)
     }
 
+    func testMoreThanFiftyThousandNairaIsStoppedBeforeAnythingStarts() async {
+        let flow = flow()
+        await flow.load()
+        flow.enterAmount("50000")
+        XCTAssertTrue(flow.canContinue)
+        XCTAssertNil(flow.minimumNote)
+
+        flow.enterAmount("500000")
+        XCTAssertFalse(flow.canContinue)
+        XCTAssertEqual(flow.minimumNote, "The most you can add at a time is ₦50,000.")
+        await flow.getBankDetails()
+        XCTAssertEqual(flow.step, .amount, "Never asks to sign in for an amount that would be refused")
+    }
+
     func testOnlyAnEmailOrAnInternationalPhoneCanSignIn() {
         XCTAssertTrue(BankDepositFlow.isContact("gift@entrypointlabs.xyz"))
         XCTAssertTrue(BankDepositFlow.isContact("+2348012345678"))
@@ -85,5 +99,281 @@ final class BankDepositTests: XCTestCase {
         XCTAssertEqual(PajMessage.from(Data(#"{"message":["Phone or email is required."]}"#.utf8)), "Phone or email is required.")
         XCTAssertEqual(PajMessage.from(Data(#"{"error":"paj_not_configured"}"#.utf8)), "Bank deposits aren't switched on yet.")
         XCTAssertEqual(WebPajSignIn.contactField("+2348012345678")["phone"] as? String, "+2348012345678")
+    }
+    // MARK: - The minimum
+
+    private static let solana = DepositSource(tokenId: "usdc", chainId: "solana", group: .dollars)
+
+    /// A flow whose money goes through a deposit address, at ₦1,000 to the dollar before Paj's fee and ₦2,000 after it.
+    private func gated(deposits: StubDeposits = StubDeposits(), paj: FeePaj = FeePaj()) -> BankDepositFlow {
+        let flow = BankDepositFlow(paj: paj, signIn: paj, sessions: nil, deposits: deposits, route: Self.solana) {
+            BankDepositDestination(address: "made-up-address", deposit: StubDeposits.address)
+        }
+        flow.pollInterval = .milliseconds(1)
+        return flow
+    }
+
+    private func signIn(_ flow: BankDepositFlow) async {
+        await flow.getBankDetails()
+        flow.contact = "ada@example.com"
+        await flow.sendCode()
+        flow.code = "1234"
+        await flow.verify()
+    }
+
+    func testNothingCanContinueUntilTheRateIsKnown() {
+        let flow = gated()
+        XCTAssertFalse(flow.canContinue)
+        XCTAssertNil(flow.minimumNote, "No number is shown that the rate cannot back")
+    }
+
+    func testWithoutAQuoteTheEstimateMustClearTheMinimumByAMargin() async {
+        let flow = gated()
+        await flow.load()
+
+        flow.enterAmount("1400")
+        XCTAssertFalse(flow.canContinue, "$1.40 before fees may land under $1")
+        XCTAssertEqual(flow.minimumNote, "The smallest amount is about ₦1,500.")
+
+        flow.enterAmount("1500")
+        XCTAssertTrue(flow.canContinue)
+        XCTAssertNil(flow.minimumNote)
+
+        flow.enterAmount("5000")
+        XCTAssertTrue(flow.canContinue)
+    }
+
+    func testWithAQuoteWhatPajDeliversDecides() async {
+        let flow = gated()
+        await flow.load()
+        await signIn(flow)
+        flow.startOver()
+
+        flow.enterAmount("1999")
+        await flow.refreshQuote()
+        XCTAssertFalse(flow.canContinue, "Just under $1 after Paj's fee")
+        XCTAssertEqual(flow.minimumNote, "This amount is too small to arrive after fees. Try a larger one.")
+
+        flow.enterAmount("2000")
+        await flow.refreshQuote()
+        XCTAssertTrue(flow.canContinue, "Exactly the minimum lands")
+        XCTAssertNil(flow.minimumNote)
+
+        flow.enterAmount("3000")
+        await flow.refreshQuote()
+        XCTAssertTrue(flow.canContinue)
+    }
+
+    func testTheMinimumComesFromTheAPIsSources() async {
+        let flow = gated(deposits: StubDeposits(minimum: TokenAmount(baseUnits: 2_000_000)))
+        XCTAssertEqual(flow.minimum, BankDepositFlow.fallbackMinimum)
+
+        await flow.load()
+
+        XCTAssertEqual(flow.minimum, TokenAmount(baseUnits: 2_000_000))
+        flow.enterAmount("2900")
+        XCTAssertFalse(flow.canContinue)
+        XCTAssertEqual(flow.minimumNote, "The smallest amount is about ₦3,000.")
+    }
+
+    func testBankDetailsAreNotShownForAnOrderThatCannotArrive() async {
+        let flow = gated()
+        await flow.load()
+        flow.enterAmount("1600")
+        XCTAssertTrue(flow.canContinue, "The estimate clears the margin before Paj has quoted")
+
+        await signIn(flow)
+
+        XCTAssertEqual(flow.step, .amount)
+        XCTAssertNil(flow.order)
+        XCTAssertFalse(flow.canContinue)
+        XCTAssertNotNil(flow.minimumNote)
+    }
+
+    func testATestWalletTakesAnyAmount() async {
+        let flow = flow()
+        await flow.load()
+        flow.enterAmount("100")
+        XCTAssertNil(flow.minimum)
+        XCTAssertTrue(flow.canContinue)
+    }
+
+    // MARK: - Money that is not coming
+
+    func testAnUnderpaidOrRefundedDepositReadsAsNotReceived() async {
+        for stage in [DepositStatus.Stage.underpaid, .refunded, .expired, .failed] {
+            let flow = gated(deposits: StubDeposits(stage: stage))
+            await flow.load()
+            await signIn(flow)
+
+            await flow.watch()
+
+            XCTAssertEqual(flow.step, .notReceived, "\(stage)")
+        }
+    }
+
+    func testAnOrderThePartnerStoppedSaysSoInsteadOfWaiting() async {
+        XCTAssertEqual(Paj.Order.Status(rawValue: "ERROR"), .error)
+        XCTAssertEqual(Paj.Order.Status(rawValue: "PROCESSING"), .processing)
+        XCTAssertEqual(LiveMoney.bankDeposit(.processing)?.status, "Your bank sent it", "A confirmed transfer never reads as still waiting")
+        XCTAssertEqual(LiveMoney.bankDeposit(.error)?.status, "Being retried", "Never shown as waiting for a transfer that already arrived")
+        XCTAssertEqual(LiveMoney.bankDeposit(.error)?.failed, false)
+
+        let flow = gated(paj: FeePaj(settles: .failed))
+        await flow.load()
+        await signIn(flow)
+
+        await flow.watch()
+
+        XCTAssertEqual(flow.step, .stopped, "The bank details are taken away so nobody pays into a dead order")
+        XCTAssertTrue(BankDepositFlow.stuckMessage.hasPrefix("Don't send money to those bank details."))
+        XCTAssertTrue(BankDepositFlow.stuckMessage.contains("your money is safe"))
+    }
+
+    func testAnErrorIsARetryAndTheDepositStillLands() async {
+        let steps = StatusSteps([.error, .error, .completed])
+        let flow = gated(paj: FeePaj(steps: steps))
+        await flow.load()
+        await signIn(flow)
+
+        await flow.watch()
+
+        XCTAssertEqual(flow.step, .done, "The 20 Nov order went ERROR, then COMPLETED and landed")
+        XCTAssertFalse(flow.isRetrying)
+        XCTAssertTrue(BankDepositFlow.retryNote.contains("Don't send it again"))
+    }
+
+    func testTheOrderGivesThePartnerOurLinkAndEveryStatusReachesTheAPI() async {
+        let reports = BankReports()
+        let seen = PajSeen()
+        var deposits = StubDeposits(stage: .landed)
+        deposits.reports = reports
+        let flow = gated(deposits: deposits, paj: FeePaj(seen: seen, steps: StatusSteps([.error, .completed])))
+        await flow.load()
+        await signIn(flow)
+        await flow.reporting?.value
+        let webhook = await seen.webhook
+        XCTAssertEqual(webhook, StubDeposits.webhook)
+
+        await flow.watch()
+
+        let sent = await reports.items
+        XCTAssertEqual(sent, [
+            BankOrderReport(orderId: "made-up-order", status: "INIT", sent: nil),
+            BankOrderReport(orderId: "made-up-order", status: "INIT", sent: true),
+            BankOrderReport(orderId: "made-up-order", status: "ERROR", sent: true),
+            BankOrderReport(orderId: "made-up-order", status: "COMPLETED", sent: true),
+        ])
+    }
+
+    func testADepositThatLandsIsDone() async {
+        let flow = gated(deposits: StubDeposits(stage: .landed))
+        await flow.load()
+        await signIn(flow)
+
+        await flow.watch()
+
+        XCTAssertEqual(flow.step, .done)
+        XCTAssertFalse(flow.isStillMoving)
+    }
+
+    func testAWaitThatRunsOutDoesNotClaimTheMoneyLanded() async {
+        let flow = gated(deposits: StubDeposits(stage: .bridging))
+        await flow.load()
+        await signIn(flow)
+
+        await flow.watch()
+
+        XCTAssertEqual(flow.step, .done)
+        XCTAssertTrue(flow.isStillMoving)
+    }
+}
+
+/// Paj at ₦1,000 to the dollar, keeping half as its fee, with an order that is complete the first time it is read.
+private struct FeePaj: PajAPI, PajSignIn {
+    /// What the order reads as once the user says they've sent the money.
+    var settles: Paj.Order.Status = .completed
+    var seen: PajSeen?
+    /// Statuses read one after another once the user says they sent it, the last repeating. Overrides `settles`.
+    var steps: StatusSteps?
+
+    func publicRate() async throws -> Double { 1000 }
+
+    func quote(naira: Int, session: Paj.Session) async throws -> Paj.Quote {
+        Paj.Quote(naira: naira, usdc: Double(naira) / 2000, rate: 1000)
+    }
+
+    func createOrder(naira: Int, recipient: String, webhook: URL?, session: Paj.Session) async throws -> Paj.Order {
+        await seen?.place(webhook)
+        return order(naira: naira, status: .initiated)
+    }
+
+    func order(_ id: String, session: Paj.Session) async throws -> Paj.Order {
+        if let steps { return order(naira: 5000, status: await steps.next()) }
+        return order(naira: 5000, status: settles)
+    }
+
+    private func order(naira: Int, status: Paj.Order.Status) -> Paj.Order {
+        Paj.Order(
+            id: "made-up-order", naira: naira, usdc: Double(naira) / 2000, rate: 1000,
+            accountNumber: "0000000000", accountName: "Made-up account", bank: "Made-up bank", status: status
+        )
+    }
+
+    func sendCode(to contact: String) async throws {}
+
+    func verify(_ contact: String, code: String) async throws -> Paj.Session {
+        Paj.Session(token: "made-up", expiresAt: .now.addingTimeInterval(86_400), contact: contact)
+    }
+}
+
+private actor StatusSteps {
+    private var left: [Paj.Order.Status]
+    init(_ steps: [Paj.Order.Status]) { left = steps }
+    func next() -> Paj.Order.Status { left.count > 1 ? left.removeFirst() : left[0] }
+}
+
+private actor PajSeen {
+    private(set) var webhook: URL?
+    func place(_ webhook: URL?) { self.webhook = webhook }
+}
+
+private actor BankReports {
+    private(set) var items: [BankOrderReport] = []
+    func add(_ report: BankOrderReport) { items.append(report) }
+}
+
+private struct StubDeposits: DepositAPI {
+    static let webhook = URL(string: "https://api.example.test/v1/bank-deposits/dep_made_up/secret")!
+    static let address = DepositAddress(
+        source: DepositSource(tokenId: "usdc", chainId: "solana", group: .dollars), depositId: "dep_made_up", address: "made-up-address",
+        minimum: TokenAmount(baseUnits: 1_000_000), fee: .zero, reservedUntil: .distantFuture, estimatedSeconds: 35, isDemo: false,
+        bankWebhookURL: webhook
+    )
+    var reports: BankReports?
+
+    var minimum = TokenAmount(baseUnits: 1_000_000)
+    var stage = DepositStatus.Stage.landed
+
+    func sources() async throws -> [DepositSource] {
+        [DepositSource(tokenId: "usdc", chainId: "solana", group: .dollars, minimum: minimum)]
+    }
+
+    func reserve(_ source: DepositSource, vault: String) async throws -> DepositAddress { Self.address }
+
+    func status(of deposit: DepositAddress) async throws -> DepositStatus {
+        DepositStatus(stage: stage, received: nil, seenAt: nil, bridgingAt: nil, landedAt: nil)
+    }
+
+    func reportBankOrder(_ report: BankOrderReport, for deposit: DepositAddress) async throws {
+        await reports?.add(report)
+    }
+}
+
+final class BankDepositWaitingCopyTests: XCTestCase {
+    func testTheUserIsToldTheMoneyIsOnItsWayAndThatTheyCanLeave() {
+        XCTAssertEqual(DoneStepCopy.caption(stillMoving: true), "Transfer received. On its way to your balance")
+        XCTAssertEqual(DoneStepCopy.caption(stillMoving: false), "Added to your vault")
+        XCTAssertTrue(DoneStepCopy.note.contains("You don't need to wait here"))
     }
 }

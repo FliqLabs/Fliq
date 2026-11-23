@@ -55,13 +55,20 @@ final class ReceiveFlow {
 
     /// One row per token, grouped the way Choose currency shows them. USDC on NEAR is one of USDC's networks.
     var currencies: [(group: DepositSource.Group, tokens: [String])] {
-        [DepositSource.Group.dollars, .bitcoin].compactMap { group in
+        [DepositSource.Group.dollars, .bitcoin, .coins].compactMap { group in
             var tokens: [String] = []
             for source in listed where (source.isDirect ? .dollars : source.group) == group && !tokens.contains(source.tokenId) {
                 tokens.append(source.tokenId)
             }
             return tokens.isEmpty ? nil : (group, tokens)
         }
+    }
+
+    /// One logo per chain the user can receive from, NEAR last since it has its own row.
+    var chainImages: [String] {
+        var seen: [String] = []
+        for source in listed where !source.isDirect && !seen.contains(source.chainImage) { seen.append(source.chainImage) }
+        return seen
     }
 
     func networks(for token: String) -> [DepositSource] {
@@ -137,7 +144,7 @@ final class ReceiveFlow {
             notice = "\(source.title) isn't available right now."
             return false
         } catch {
-            errorMessage = "Couldn't get an address. Check your connection and try again."
+            errorMessage = DepositFailure.message(for: error)
             return false
         }
     }
@@ -155,7 +162,23 @@ final class ReceiveFlow {
             guard let next = try? await api.status(of: deposit) else { continue }
             status = next
             if next.stage == .landed, let landing { vault.credit(landing) }
+            showLive(next, deposit: deposit)
         }
+    }
+
+    /// Once the money is seen it shows in the Dynamic Island and on the Lock Screen, so the user can leave.
+    private func showLive(_ next: DepositStatus, deposit: DepositAddress) {
+        guard next.stage >= .seen, let landing else { return }
+        let attributes = MoneyActivityAttributes(
+            kind: .deposit,
+            refId: deposit.depositId ?? "demo-\(deposit.address)",
+            amount: "$\(Money.dollars(landing))",
+            from: deposit.source.title,
+            to: "Your vault",
+            fromMark: deposit.source.chainImage,
+            toMark: "fliq"
+        )
+        LiveMoney.shared.show(attributes, LiveMoney.deposit(next, chain: deposit.source.chainId), final: next.stage.isFinal)
     }
 }
 

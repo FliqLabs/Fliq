@@ -26,6 +26,9 @@ final class PersonPayFlow {
     private let transfers: any VaultTransfers
     private let vault: VaultStore?
 
+    /// The request being paid, when Pay was opened from a request link. The API marks it paid as the transfer lands.
+    var requestCode: String?
+
     init(api: any FliqAPI, transfers: any VaultTransfers, vault: VaultStore? = nil, account: String? = nil) {
         self.api = api
         self.transfers = transfers
@@ -72,7 +75,7 @@ final class PersonPayFlow {
         defer { isSending = false }
         do {
             isConfirmed = false
-            _ = try await transfers.send(amount, to: person.nearAccount) { [weak self] in
+            _ = try await transfers.send(amount, to: person.nearAccount, paying: requestCode) { [weak self] in
                 await MainActor.run { self?.paid = amount }
             }
             vault?.debit(amount)
@@ -89,10 +92,16 @@ final class PersonPayFlow {
         } catch let error as KeychainError where error.status == errSecUserCanceled || error.status == errSecAuthFailed {
             paid = nil
             errorMessage = nil
+        } catch let error as NEARRPCError where error.isUnknownAccessKey {
+            paid = nil
+            errorMessage = Self.notAdded
         } catch {
             paid = nil
             errorMessage = "The payment didn't go through. Nothing moved."
         }
         return false
     }
+
+    /// This iPhone's key is not on the account, as on a phone signed in after setting up on the web.
+    static let notAdded = "This iPhone can't send yet. Add it in Settings > Security > Account backup with your passkey."
 }

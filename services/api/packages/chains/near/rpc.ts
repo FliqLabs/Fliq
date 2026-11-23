@@ -58,17 +58,39 @@ export interface NearRpc {
   transactionStatus(txHash: string, senderId: string): Promise<TxOutcome | null>;
 }
 
-export type NearRpcOptions = { url: string; fetch?: typeof fetch; timeoutMs?: number };
+// fallbackUrls are tried in order when an endpoint is rate limited (18 Nov: fastnear answered 429 and Home
+// balances failed). A send moves on only after a 429, which proves the endpoint never took the transaction.
+export type NearRpcOptions = { url: string; fallbackUrls?: readonly string[]; fetch?: typeof fetch; timeoutMs?: number };
 
 export function createNearRpc(options: NearRpcOptions): NearRpc {
   const doFetch = options.fetch ?? fetch;
   let id = 0;
 
+  const urls = [options.url, ...(options.fallbackUrls ?? [])];
+
   async function call(method: string, params: unknown, timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS) {
+    let failure: NearRpcError | undefined;
+    for (const url of urls) {
+      try {
+        return await callOnce(url, method, params, timeoutMs);
+      } catch (error) {
+        if (!(error instanceof NearRpcError) || !movesOn(error, method)) throw error;
+        failure = error;
+      }
+    }
+    throw failure as NearRpcError;
+  }
+
+  function movesOn(error: NearRpcError, method: string): boolean {
+    if (error.message.endsWith("HTTP 429")) return true;
+    return method !== "send_tx" && error.outcomeUnknown;
+  }
+
+  async function callOnce(url: string, method: string, params: unknown, timeoutMs: number) {
     id += 1;
     let response: Response;
     try {
-      response = await doFetch(options.url, {
+      response = await doFetch(url, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ jsonrpc: "2.0", id, method, params }),

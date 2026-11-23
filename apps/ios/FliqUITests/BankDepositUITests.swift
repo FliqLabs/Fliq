@@ -28,6 +28,9 @@ final class BankDepositUITests: XCTestCase {
         if app.staticTexts["Confirm it's you"].waitForExistence(timeout: 3) {
             let contact = app.textFields.firstMatch
             contact.tap()
+            // The app fills in the last email used on this device, so it is cleared before typing.
+            let typed = (contact.value as? String) ?? ""
+            contact.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: typed.count))
             contact.typeText("gift@entrypointlabs.xyz")
             snap("d2-check")
             app.buttons["Send code"].tap()
@@ -45,14 +48,28 @@ final class BankDepositUITests: XCTestCase {
 
         XCTAssertTrue(app.staticTexts["Checking with the bank"].waitForExistence(timeout: 3))
         snap("d5-checking")
-        if app.staticTexts["Transfer received"].waitForExistence(timeout: 8) { snap("d5b-received") }
-
-        XCTAssertTrue(app.buttons["Done"].waitForExistence(timeout: 25))
+        XCUIDevice.shared.press(.home)
+        sleep(1)
+        snap("d5a-dynamic-island")
+        let lock = NSSelectorFromString("pressLockButton")
+        if XCUIDevice.shared.responds(to: lock) {
+            XCUIDevice.shared.perform(lock)
+            sleep(2)
+            XCUIDevice.shared.perform(lock)
+            sleep(2)
+            snap("d5c-lock-screen")
+        }
+        app.activate()
+        // The user can leave as soon as the bank transfer is in: Done is there before the money has landed.
+        XCTAssertTrue(app.buttons["Done"].waitForExistence(timeout: 12))
+        XCTAssertFalse(app.staticTexts["Transfer received"].exists, "No spinner to sit and watch")
         XCTAssertTrue(app.staticTexts["You paid"].waitForExistence(timeout: 3))
+        snap("d5b-on-its-way")
         Thread.sleep(forTimeInterval: 1)
         snap("d6-done")
         app.buttons["Done"].tap()
         XCTAssertTrue(app.staticTexts["Vault balance"].waitForExistence(timeout: 5))
+        snap("d7-home")
     }
 
     @MainActor

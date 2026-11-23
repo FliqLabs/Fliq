@@ -21,6 +21,10 @@ struct RootView: View {
     @State private var tab = RootTab.home
     @State private var sheet: HomeSheet?
     @State private var activityPath: [AppRoute] = []
+    /// Set when this iPhone is signed in but its key is not on the account yet.
+    @State private var restoring: RecoveryState?
+    /// Why a payment request link could not be paid: already paid, cancelled, your own, or not found.
+    @State private var payLinkProblem: String?
 
     var body: some View {
         @Bindable var router = environment.router
@@ -62,6 +66,17 @@ struct RootView: View {
         }
         .animation(.spring(response: 0.45, dampingFraction: 0.8), value: environment.arrival)
         .sensoryFeedback(.success, trigger: environment.arrival) { _, now in now != nil }
+        .sheet(item: $restoring) { state in
+            RestoreSheet(state: state) { restoring = nil }
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
+                .presentationCornerRadius(32)
+                .presentationBackground(Color(hex: 0x161616))
+        }
+        .task {
+            let state = await environment.recovery.state()
+            if state == .canRestore || state == .cannotSign { restoring = state }
+        }
         .sheet(item: $sheet) { sheet in
             content(of: sheet)
                 .presentationDragIndicator(.visible)
@@ -71,12 +86,20 @@ struct RootView: View {
         .onAppear {
             if home == nil { home = HomeModel(api: environment.api, vault: environment.vault, inbox: environment.inbox) }
         }
+        .task(id: environment.pendingPayLink) { await openPayLink() }
+        .alert("Payment request", isPresented: Binding(get: { payLinkProblem != nil }, set: { if !$0 { payLinkProblem = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(payLinkProblem ?? "")
+        }
         .task(id: router.path.isEmpty) {
             guard router.path.isEmpty else { return }
             await environment.refreshVault()
             await environment.refreshActivity()
+            await environment.accounts.sync()
             await environment.inbox.load()
             await home?.loadProfile()
+            await environment.inbox.returnNewRefunds()
         }
     }
 
@@ -144,7 +167,14 @@ struct RootView: View {
     }
 
     private func startPayment(to account: VerifiedAccount? = nil, save: Bool = true) {
-        let flow = PayFlow(api: environment.api, activity: environment.activity, vault: environment.vault, accounts: environment.accounts, transfers: environment.transfers)
+        let flow = PayFlow(
+            api: environment.api,
+            activity: environment.activity,
+            vault: environment.vault,
+            accounts: environment.accounts,
+            transfers: environment.transfers,
+            startsInLocal: DisplayCurrency.stored() != .usd
+        )
         flow.saveAccount = save
         self.flow = flow
         guard let account else { return environment.router.push(.payNew) }
@@ -157,9 +187,45 @@ struct RootView: View {
         environment.router.push(.payPerson)
     }
 
+    /// Opens Pay on the person who asked, straight away, then fills in the amount from the request. A request that
+    /// can't be paid steps back out with a reason.
+    private func openPayLink() async {
+        guard let link = environment.pendingPayLink else { return }
+        environment.pendingPayLink = nil
+        sheet = nil
+        tab = .home
+        environment.router.reset()
+        startPersonPayment(to: link.name)
+        personFlow?.requestCode = link.code
+        let opened = personFlow
+        do {
+            let request = try await environment.api.publicRequest(link)
+            guard personFlow === opened else { return }
+            if let problem = Self.problem(with: request, me: environment.profile.name) {
+                environment.router.reset()
+                payLinkProblem = problem
+                return
+            }
+            if opened?.amountText.isEmpty == true { opened?.enterAmount(request.amount) }
+        } catch APIError.server(let status, _) where status == 404 {
+            environment.router.reset()
+            payLinkProblem = "This payment request doesn't exist. Check the link with the person who sent it."
+        } catch {
+            // Offline: Pay is already open on the right person, so the user can type the amount themselves.
+        }
+    }
+
+    static func problem(with request: PublicPayRequest, me: String?) -> String? {
+        if request.state == "paid" { return "This request has already been paid." }
+        if request.state != "open" { return "This request was cancelled." }
+        if let me, me == request.nearAccount { return "This is your own request. Send the link to the person paying you." }
+        return nil
+    }
+
     private func startWithdraw(to address: String? = nil) {
         withdrawFlow = WithdrawFlow(
             withdrawals: environment.withdrawals,
+            sends: environment.sends,
             vault: environment.vault,
             network: environment.isLive ? .current : .testnet,
             onLeftVault: {
@@ -176,14 +242,19 @@ struct RootView: View {
         let network: NearNetwork = environment.isLive ? .current : .testnet
         let vault = environment.profile.name ?? NearNetwork.current.vault
         let testWallet = environment.pajTestRecipient
-        bankDeposit = BankDepositFlow(paj: environment.paj, signIn: environment.pajSignIn, deposits: deposits) {
+        let solana = DepositSource(tokenId: "usdc", chainId: "solana", group: .dollars, fromBank: true)
+        let route = network.receivesFromOtherChains ? solana : nil
+        bankDeposit = BankDepositFlow(paj: environment.paj, signIn: environment.pajSignIn, deposits: deposits, route: route) {
             if network.receivesFromOtherChains {
-                let solana = DepositSource(tokenId: "usdc", chainId: "solana", group: .dollars)
                 let reserved = try await deposits.reserve(solana, vault: vault)
                 return BankDepositDestination(address: reserved.address, deposit: reserved)
             }
             guard let testWallet else { throw Paj.Failure(message: "Bank deposits land in your vault on mainnet. This test build has no wallet set for them.") }
             return BankDepositDestination(address: testWallet, isTestWallet: true)
+        }
+        bankDeposit?.onPaid = { deposit in
+            environment.activity.recordBankDeposit(deposit)
+            environment.watchForArrival()
         }
         environment.watchForArrival()
         environment.router.push(.bankDeposit)
@@ -213,14 +284,27 @@ struct RootView: View {
             if let bankDeposit {
                 BankDepositView(flow: bankDeposit) {
                     environment.router.reset()
-                    Task { await environment.refreshVault() }
+                    // The user may leave while the money is still moving: Home keeps checking and shows it arriving.
+                    environment.watchForArrival()
+                    Task {
+                        await environment.refreshVault()
+                        await environment.refreshActivity()
+                    }
                 }
             }
         case .agents: AgentsView(store: environment.agents)
         case .settings: SettingsView()
-        case .settingsAccounts: AccountsView(onAdd: { startPayment() })
+        case .settingsAccounts: AccountsView(onAdd: { environment.router.push(.settingsAddAccount) })
+        case .settingsAddAccount:
+            // Saving an account is not a payment: confirm it with the bank, keep it, and go back to the list.
+            AddAccountView(api: environment.api) { account in
+                if environment.accounts.own == nil { environment.accounts.setOwn(account) } else { environment.accounts.save(account) }
+                environment.router.path.removeLast()
+            }
         case .settingsSecurity: SecurityView()
         case .settingsNotifications: NotificationsView()
+        case .settingsBackup: BackupView()
+        case .settingsDailyLimit: DailyLimitView(environment: environment)
         case .agentConnect: AgentConnectView(store: environment.agents)
         }
     }
@@ -247,7 +331,7 @@ struct RootView: View {
             if let payout = flow.payout {
                 RefundedView(payout: payout, quote: flow.quote, onTryAgain: { startPayment(to: flow.verified) })
             }
-        case .payPerson, .withdraw, .withdrawTo, .withdrawReview, .bankDeposit, .receipt, .agents, .agentConnect, .settings, .settingsAccounts, .settingsSecurity, .settingsNotifications: EmptyView()
+        case .payPerson, .withdraw, .withdrawTo, .withdrawReview, .bankDeposit, .receipt, .agents, .agentConnect, .settings, .settingsAccounts, .settingsAddAccount, .settingsSecurity, .settingsNotifications, .settingsDailyLimit, .settingsBackup: EmptyView()
         }
     }
 

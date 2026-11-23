@@ -35,12 +35,15 @@ struct HTTPDepositAPI: DepositAPI {
         let seenAt: Date?
         let bridgingAt: Date?
         let landedAt: Date?
+        /// Missing from servers older than 20 Nov.
+        var bankWebhookUrl: String?
     }
 
     private struct DepositRequest: Encodable {
         let token: String
         let chain: String
         let amount: String
+        var via: String?
     }
 
     func sources() async throws -> [DepositSource] {
@@ -49,7 +52,7 @@ struct HTTPDepositAPI: DepositAPI {
             guard let group = DepositSource.Group(rawValue: source.group) else { return nil }
             return DepositSource(
                 tokenId: source.token, chainId: source.chain, group: group,
-                minimum: TokenAmount(decimalString: source.minimum), etaSeconds: source.etaSeconds,
+                minimum: TokenAmount(decimalString: source.minimum) ?? TokenAmount(roundingUp: source.minimum), etaSeconds: source.etaSeconds,
                 available: source.available, address: source.address
             )
         }
@@ -64,15 +67,30 @@ struct HTTPDepositAPI: DepositAPI {
         }
         // The address takes any amount from its minimum up, so the smallest top-up is what gets quoted.
         let amount = (source.minimum ?? TokenAmount(baseUnits: TokenAmount.base)).decimalString
+        let request = DepositRequest(token: source.tokenId, chain: source.chainId, amount: amount, via: source.fromBank ? "bank" : nil)
+        // One key for every try: if an earlier try got through unseen, the API hands back that same address.
+        let headers = ["Idempotency-Key": UUID().uuidString]
         do {
-            let deposit: VaultDeposit = try await client.send(
-                "POST", "deposits",
-                body: DepositRequest(token: source.tokenId, chain: source.chainId, amount: amount),
-                headers: ["Idempotency-Key": UUID().uuidString]
-            )
+            let deposit: VaultDeposit = try await Retry.run(delays: client.retryDelays, shouldRetry: Self.isWorthAskingAgain) {
+                try await client.send("POST", "deposits", body: request, headers: headers)
+            }
             return Self.address(deposit, source: source)
         } catch APIError.server(let status, let error) where status == 503 || status == 400 {
             throw DepositUnavailable(message: error.message)
+        }
+    }
+
+    /// Reserving moves no money, so it is tried again after a dropped connection, a server fault, or NEAR Intents
+    /// turning the quote down, which it often takes back a moment later.
+    static func isWorthAskingAgain(_ result: Result<VaultDeposit, any Error>) -> Bool {
+        guard case .failure(let error) = result else { return false }
+        switch error {
+        case APIError.server(let status, let detail):
+            return status >= 500 || (status == 400 && detail.code == "invalid_request" && detail.message.hasPrefix("NEAR Intents"))
+        case APIError.unexpected(let status):
+            return status >= 500
+        default:
+            return Retry.isNetworkFailure(error)
         }
     }
 
@@ -87,10 +105,16 @@ struct HTTPDepositAPI: DepositAPI {
     static func address(_ deposit: VaultDeposit, source: DepositSource) -> DepositAddress {
         DepositAddress(
             source: source, depositId: deposit.depositId, address: deposit.address, memo: deposit.memo,
-            minimum: TokenAmount(decimalString: deposit.minimum) ?? .zero,
+            minimum: TokenAmount(decimalString: deposit.minimum) ?? TokenAmount(roundingUp: deposit.minimum) ?? .zero,
             fee: TokenAmount(decimalString: deposit.fee) ?? .zero,
-            reservedUntil: deposit.reservedUntil, estimatedSeconds: deposit.etaSeconds, isDemo: false
+            reservedUntil: deposit.reservedUntil, estimatedSeconds: deposit.etaSeconds, isDemo: false,
+            bankWebhookURL: deposit.bankWebhookUrl.flatMap(URL.init(string:))
         )
+    }
+
+    func reportBankOrder(_ report: BankOrderReport, for deposit: DepositAddress) async throws {
+        guard let id = deposit.depositId else { return }
+        let _: VaultDeposit = try await client.send("POST", "deposits/\(id)/bank-order", body: report)
     }
 
     static func status(_ deposit: VaultDeposit) -> DepositStatus {

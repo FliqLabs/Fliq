@@ -18,7 +18,7 @@ const plans: {
     description: "Every endpoint, mocked providers, mocked Intents. Nothing real moves.",
     features: ["Unlimited test payouts", "Webhooks and replay", "MCP server", "Public rate index"],
     action: "Get a sandbox key",
-    href: "/create-workspace",
+    href: "/dashboard",
   },
   {
     name: "Build",
@@ -26,7 +26,7 @@ const plans: {
     description: "Live routing to available providers. Contact us for pricing.",
     features: ["Available-provider routing", "Account name verification", "Receipts with bank references", "Agent keys with on-chain caps", "Plan-based usage limits"],
     action: "Go live after KYB",
-    href: "/create-workspace",
+    href: "/dashboard",
   },
   {
     name: "Scale",

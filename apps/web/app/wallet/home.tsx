@@ -4,6 +4,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Icon } from "../components/app/icons";
 import { Avatar, BigMoney, Chip, IconBubble, PageState } from "../components/app/ui";
 import { CORRIDORS } from "../lib/corridors";
@@ -14,18 +15,24 @@ import {
   formatRate,
   isLocalCurrency,
   toCurrency,
+  toTokenUnits,
   type LocalCurrency,
 } from "../lib/money";
 import { explorerAccountUrl } from "../lib/near-explorer";
+import { nearTopUp } from "../lib/near-delegate";
+import { signAndRelay, NoDeviceKeyError } from "../lib/device-signer";
 import type { ActivityItem, RateBoard } from "../lib/wallet-api";
+import { asBankActivity, bankActivityItem, useBankDeposits } from "../lib/paj";
 import {
   useActivity,
   useAgents,
   useMe,
+  useNearInbox,
   useRateBoard,
   useRecentPeople,
   useRecipients,
   useVault,
+  keys,
 } from "../lib/wallet-queries";
 import { ActivityAvatar, ActivityRow, LoadingRows, ReceiptDrawer, when } from "./activity-ui";
 
@@ -36,7 +43,13 @@ function greeting() {
 
 export function bestRoute(board: RateBoard | undefined) {
   if (!board) return null;
-  return board.providers.find((provider) => provider.provider === board.best && provider.rate) ?? null;
+  const fetchedAt = Date.parse(board.fetched_at);
+  if (!Number.isFinite(fetchedAt) || Date.now() - fetchedAt > 60_000) return null;
+  return (
+    board.providers.find(
+      (provider) => provider.provider === board.best && provider.status === "live" && provider.rate != null && Number.isFinite(provider.rate) && provider.rate > 0,
+    ) ?? null
+  );
 }
 
 function useSecondsSince(at: string | undefined) {
@@ -46,6 +59,54 @@ function useSecondsSince(at: string | undefined) {
     return () => clearInterval(timer);
   }, []);
   return at ? Math.max(0, Math.round((now - new Date(at).getTime()) / 1000)) : null;
+}
+
+function NearInboxBanner() {
+  const me = useMe();
+  const inbox = useNearInbox();
+  const queryClient = useQueryClient();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const usdc = inbox.data?.usdc ?? "0.00";
+  const amount = Number(usdc);
+  if (!me.data?.near_account || !me.data.vault || !inbox.data || amount <= 0) return null;
+
+  async function add() {
+    if (!inbox.data || !me.data?.vault) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await signAndRelay(me.data!, (signer) =>
+        nearTopUp(signer, inbox.data!.usdc_contract, me.data!.vault!, toTokenUnits(usdc)),
+      );
+      await queryClient.invalidateQueries({ queryKey: keys.vault });
+      await queryClient.invalidateQueries({ queryKey: keys.inbox });
+    } catch (e) {
+      if (e instanceof NoDeviceKeyError) {
+        setError("No signing key in this browser. Restore it in Account.");
+      } else {
+        setError(e instanceof Error ? e.message : "Failed. Try again.");
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <button type="button" className="live" onClick={add} disabled={busy} style={{ width: "100%", textAlign: "left" }}>
+      <span className="av sm" style={{ background: "black", flexShrink: 0 }}>
+        <img src="/landing/tokens/near.webp" alt="" />
+      </span>
+      <div className="t">
+        <b>{formatMoney(usdc, "USD")} is waiting in your NEAR account</b>
+        <span style={{ color: error ? "var(--warning)" : undefined }}>
+          {busy ? "Adding to vault…" : error ?? "Tap to add to vault"}
+        </span>
+      </div>
+      <Icon name="chevR" size={18} />
+    </button>
+  );
 }
 
 function Balance({ home }: { home: LocalCurrency }) {
@@ -192,6 +253,8 @@ function SendAgain() {
 
 function RecentActivity() {
   const activity = useActivity();
+  const me = useMe();
+  const bankDeposits = useBankDeposits(me.data?.user_id ?? me.data?.near_account);
   const [open, setOpen] = useState<ActivityItem | null>(null);
   return (
     <section className="card">
@@ -202,10 +265,13 @@ function RecentActivity() {
       <div className="rows">
         {activity.isPending && <LoadingRows />}
         {activity.isError && <div className="empty">{activity.error.message}</div>}
-        {activity.data?.items.length === 0 && (
+        {activity.data && activity.data.items.length === 0 && bankDeposits.length === 0 && (
           <div className="empty">Nothing yet. Add money to get started.</div>
         )}
-        {activity.data?.items
+        {[...(activity.data?.items ?? []).map((item) => {
+          const bank = bankDeposits.find((record) => record.depositId === item.ref_id);
+          return bank ? asBankActivity(item, bank) : item;
+        }), ...bankDeposits.filter((record) => !(activity.data?.items ?? []).some((item) => item.ref_id === record.depositId)).map((record) => bankActivityItem(record))]
           .slice(0, 5)
           .map((item) => <ActivityRow key={item.activity_id} item={item} onOpen={setOpen} />)}
       </div>
@@ -370,6 +436,7 @@ export function WalletHome() {
       <div className="cols">
         <div className="stack">
           <Balance home={home} />
+          <NearInboxBanner />
           {inFlight && <LivePayout item={inFlight} />}
           <SendAgain />
           <RecentActivity />

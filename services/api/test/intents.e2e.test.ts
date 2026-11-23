@@ -11,6 +11,7 @@ import { createHandlers } from "../apps/api/src/handlers.js";
 import { OneClickHops } from "../apps/api/src/hop.js";
 import { DEFAULT_DEADLINE_MARGIN_MS, DEFAULT_GUARD_BPS, DEFAULT_VELOCITY } from "../apps/api/src/payouts.js";
 import { sandboxAdapters } from "../apps/api/src/sandbox.js";
+import { syncVaultReceipts, UNSIGNED_MS } from "../apps/api/src/vault-sync.js";
 import { createOneClickClient, createOneClickMock, OneClickError, type OneClickClient } from "../packages/chains/oneclick/index.js";
 import { MockVault, type VaultClient } from "../packages/chains/vault/index.js";
 import { DEFAULT_ROUTING_CONFIG, NO_SIGNALS } from "../packages/domain/routing.js";
@@ -60,6 +61,8 @@ describe.skipIf(!enabled)("paying a bank account from the vault through NEAR Int
   const orders: string[] = [];
   const providerRefunds: string[] = [];
   const swapRefunds: string[] = [];
+  // Accounts the API made sure can hold USDC.
+  const ensured: string[] = [];
   const base = sandboxAdapters()[0] as ProviderAdapter;
   // Accepts USDC on Base only, as Paycrest does, and hands back a Base deposit address that is valid for 15 minutes.
   const paycrest: ProviderAdapter = {
@@ -113,7 +116,7 @@ describe.skipIf(!enabled)("paying a bank account from the vault through NEAR Int
           adapters: [paycrest],
           velocity: DEFAULT_VELOCITY,
           now: () => new Date(),
-          intents: { hops, vault: faultyVault, tokenStorage: { ensure: async (account: string) => vault.registerStorage(account) }, guardBps: DEFAULT_GUARD_BPS, deadlineMarginMs: DEFAULT_DEADLINE_MARGIN_MS },
+          intents: { hops, vault: faultyVault, tokenStorage: { ensure: async (account: string) => (ensured.push(account), vault.registerStorage(account)) }, guardBps: DEFAULT_GUARD_BPS, deadlineMarginMs: DEFAULT_DEADLINE_MARGIN_MS },
         },
       }),
     });
@@ -208,6 +211,44 @@ describe.skipIf(!enabled)("paying a bank account from the vault through NEAR Int
     expect((await pay(user.headers, `k-${suffix}-ok`, quoted.quote_id)).json()).toEqual(payout);
   }, 120_000);
 
+  it("ends a cash-out the payer never signed, gives the money back and leaves it out of Activity", async () => {
+    reset();
+    const user = await holder("unsigned", 100_000_000n);
+    const quoted = await quote(user.headers);
+    const payout = (await pay(user.headers, `k-${suffix}-unsigned`, quoted.quote_id)).json();
+    const created = await database.payout.findUniqueOrThrow({ where: { id: payout.payout_id } });
+
+    const onlyThis = (async (fn: (tx: unknown) => unknown) =>
+      unit((tx) =>
+        fn(
+          new Proxy(tx, {
+            get: (target, key) =>
+              key === "payout"
+                ? new Proxy(target.payout, {
+                    get: (payouts, method) =>
+                      method === "findMany"
+                        ? (args: { where: object }) => payouts.findMany({ ...args, where: { ...args.where, id: payout.payout_id } })
+                        : Reflect.get(payouts, method),
+                  })
+                : Reflect.get(target, key),
+          }),
+        ) as Promise<unknown>,
+      )) as unknown as typeof unit;
+    const sync = (at: number) => syncVaultReceipts({ unit: onlyThis, vault, now: () => new Date(created.createdAt.getTime() + at), log: () => undefined });
+
+    const listed = async () =>
+      (await app.inject({ method: "GET", url: "/v1/activity", headers: user.headers })).json().items.map((item: { ref_id: string }) => item.ref_id);
+    expect(await listed(), "shown while it could still be signed").toContain(payout.payout_id);
+    expect((await sync(60_000)).map((r) => r.action)).toEqual(["none"]);
+    expect((await sync(UNSIGNED_MS + 1_000)).map((r) => r.action)).toEqual(["abandon"]);
+
+    expect(await database.payout.findUniqueOrThrow({ where: { id: payout.payout_id } })).toMatchObject({ state: "expired", failureReason: "not_signed" });
+    expect((await vault.getReceipt(payout.payout_id))?.state).toBe("released");
+    expect(await vault.getBalance(user.account)).toEqual({ available: 100_000_000n, reserved: 0n, total: 100_000_000n });
+    expect(await unit((tx) => vaultMirror(tx, user.account, "USDC"))).toEqual({ available: 100_000_000n, reserved: 0n });
+    expect(await listed()).not.toContain(payout.payout_id);
+  }, 120_000);
+
   it("pays a small payout when the provider's order adds its network fee", async () => {
     reset();
     trouble.providerFee = 50_000n;
@@ -296,14 +337,16 @@ describe.skipIf(!enabled)("paying a bank account from the vault through NEAR Int
     expect(reply.json().error.code).toBe("invalid_request");
   }, 60_000);
 
-  it("gives the provider a refund address on Base and the swap a refund to the vault on NEAR", async () => {
+  it("gives the provider a refund address on Base, and the swap a refund to the payer's own NEAR account, which can take it", async () => {
     reset();
     const user = await holder("refunds", 100_000_000n);
     const quoted = await quote(user.headers);
     const reply = await pay(user.headers, `k-${suffix}-refunds`, quoted.quote_id);
     expect(reply.statusCode, reply.body).toBe(201);
     expect(providerRefunds.at(-1)).toBe(BASE_REFUND);
-    expect(swapRefunds.at(-1)).toBe(config.vaultAccount);
+    expect(swapRefunds.at(-1)).toBe(user.account);
+    expect(swapRefunds.at(-1)).not.toBe(config.vaultAccount);
+    expect(ensured).toContain(user.account);
   }, 60_000);
 
   it("refuses before any provider order exists when there is no refund address on the provider's network", async () => {

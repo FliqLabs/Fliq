@@ -22,14 +22,15 @@ struct OnboardingView: View {
         accounts = environment.accounts
         isLive = environment.isLive
         api = environment.api
-        _flow = State(initialValue: OnboardingFlow(api: environment.api, names: environment.names, isLive: environment.isLive, photos: environment.photos))
+        _flow = State(initialValue: OnboardingFlow(
+            api: environment.api, names: environment.names, isLive: environment.isLive, photos: environment.photos, recovery: environment.recovery
+        ))
     }
 
     var body: some View {
         NavigationStack(path: $path) {
             WelcomeView(
                 onStart: start,
-                onExistingAccount: existingAccount,
                 isWorking: passkeyWorking,
                 message: passkeyMessage
             )
@@ -50,19 +51,13 @@ struct OnboardingView: View {
         }
     }
 
-    /// Spelled out as closures: Xcode 26.3 crashes type-checking `isLive ? nil : finish` inline.
-    private var existingAccount: () -> Void {
-        if isLive { return { usePasskey(.login) } }
-        return { finish() }
-    }
-
     private func start() {
         if isLive { return continueWithPasskey() }
         path.append(.claimName)
     }
 
-    /// One button for everyone: signs in with the passkey this app recorded for its account, and creates the account
-    /// when there is no record yet, or when the recorded passkey is no longer known to the server.
+    /// One button for everyone. It signs in with the passkey this app recorded, or with any fliq passkey already on
+    /// this iPhone, and creates the account when there is none or the server no longer knows the one offered.
     private func continueWithPasskey() {
         guard !passkeyWorking else { return }
         passkeyWorking = true
@@ -71,12 +66,25 @@ struct OnboardingView: View {
             defer { passkeyWorking = false }
             do {
                 let known = memory.ids
-                guard !known.isEmpty else { return try await createWithPasskey() }
                 let options = try await api.passkeyOptions(.login)
-                let response = try await passkeys.signIn(options, allowed: known)
+                let response: Data
+                do {
+                    response = try await passkeys.signIn(options, allowed: known, onlyIfOnThisDevice: known.isEmpty)
+                } catch PasskeyError.cancelled where known.isEmpty {
+                    return try await createWithPasskey()
+                } catch PasskeyError.failed {
+                    // The narrow request was refused by the system: the recorded passkey is gone from this iPhone, or
+                    // the quiet lookup is not allowed here. Ask plainly, offering every fliq passkey the iPhone has.
+                    do {
+                        response = try await passkeys.signIn(options)
+                    } catch PasskeyError.failed(let reason) {
+                        return couldNotSignIn(reason)
+                    }
+                }
                 do {
                     let user = try await api.finishPasskey(.login, challengeId: options.challengeId, credential: response)
                     memory.remember(passkeys.lastCredentialID)
+                    flow.passkeyKey = passkeys.lastPasskeyKey
                     signedIn(user)
                 } catch let error as APIError where Self.isRejectedPasskey(error) {
                     memory.forget()
@@ -101,34 +109,30 @@ struct OnboardingView: View {
         let response = try await passkeys.register(options)
         let user = try await api.finishPasskey(.register, challengeId: options.challengeId, credential: response)
         memory.remember(passkeys.lastCredentialID)
+        flow.passkeyKey = passkeys.lastPasskeyKey
         signedIn(user)
     }
 
     private func couldNotCreate(_ error: any Error) {
         if case PasskeyError.cancelled = error { return }
+        if error is APIError || error is URLError { return passkeyMessage = "We couldn't reach fliq. Check your connection and try again." }
+        if PasskeyAuthenticator.isNotReady(error) { return passkeyMessage = Self.notReadyMessage }
         passkeyMessage = "We couldn't create your passkey. Try again."
     }
 
-    private func usePasskey(_ purpose: PasskeyPurpose) {
-        guard !passkeyWorking else { return }
-        passkeyWorking = true
-        passkeyMessage = nil
-        Task {
-            defer { passkeyWorking = false }
-            do {
-                let options = try await api.passkeyOptions(purpose)
-                let response = purpose == .register ? try await passkeys.register(options) : try await passkeys.signIn(options)
-                let user = try await api.finishPasskey(purpose, challengeId: options.challengeId, credential: response)
-                memory.remember(passkeys.lastCredentialID)
-                signedIn(user)
-            } catch PasskeyError.cancelled {
-                return
-            } catch {
-                passkeyMessage = purpose == .register
-                    ? "We couldn't create your passkey. Try again."
-                    : "That passkey isn't for a fliq account here. Try another."
-            }
-        }
+    // iOS checks with Apple that fliq may use fliq.cash passkeys. After 30 seconds of trying it is stuck, not slow, and a
+    // restart is what clears it (seen on a real iPhone on 15 Nov 2026: the check failed for minutes, network fine).
+    static let notReadyMessage = "Your iPhone couldn't confirm fliq is allowed to use your passkey. Restart your iPhone and try again. Your account and money are safe."
+
+    /// Says it was the sign-in that failed, with the system's own code so support can tell why.
+    private func couldNotSignIn(_ reason: String) {
+        passkeyMessage = Self.signInFailure(reason)
+    }
+
+    static func signInFailure(_ reason: String) -> String {
+        let code = reason.split(separator: ":").first.flatMap { Int($0) }
+        if code == PasskeyAuthenticator.notReadyCode { return notReadyMessage }
+        return "We couldn't sign you in with your passkey. Try again." + (code.map { " (code \($0))" } ?? "")
     }
 
     /// A returning user already has a name and goes straight to Home.

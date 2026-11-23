@@ -17,8 +17,13 @@ final class AppEnvironment {
     let vault: VaultStore
     /// The amount that just landed, shown as a banner over any screen for a few seconds.
     private(set) var arrival: TokenAmount?
+    /// A payment request link the app was opened with, waiting for Home to open it. Kept through sign-in.
+    var pendingPayLink: PayLink?
     @ObservationIgnored private var arrivalWatch: Task<Void, Never>?
     let deposits: any DepositAPI
+    let recovery: any AccountRecovering
+    let limits: any LimitsAPI
+    let sends: any SendsAPI
     let agents: AgentStore
     let accounts: AccountBook
     let transfers: any VaultTransfers
@@ -43,6 +48,9 @@ final class AppEnvironment {
         activity: ActivityStore = ActivityStore(),
         vault: VaultStore = VaultStore(),
         deposits: any DepositAPI = FixtureDepositAPI(),
+        recovery: any AccountRecovering = FixtureAccountRecovery(),
+        limits: any LimitsAPI = FixtureLimitsAPI(),
+        sends: any SendsAPI = FixtureSendsAPI(),
         agentAPI: any AgentAPI = FixtureAgentAPI(),
         accounts: AccountBook = AccountBook(),
         transfers: any VaultTransfers = FixtureVaultTransfers(),
@@ -64,7 +72,12 @@ final class AppEnvironment {
         self.activity = activity
         self.vault = vault
         self.deposits = deposits
+        self.recovery = recovery
+        self.limits = limits
+        self.sends = sends
         self.accounts = accounts
+        // Live builds keep saved accounts on the server too, so deleting the app loses none of them.
+        if isLive { accounts.connect(api) }
         self.transfers = transfers
         self.withdrawals = withdrawals
         self.photos = photos
@@ -115,7 +128,14 @@ final class AppEnvironment {
             vault: { try? await api.me().vault }
         )
         let environment = AppEnvironment(
-            api: api, isLive: true, profile: profile, deposits: HTTPDepositAPI(client: api), agentAPI: agents,
+            api: api, isLive: true, profile: profile,
+            // The last balance and history are shown at launch, then refreshed: nobody opens fliq to a $0 that isn't true.
+            activity: ActivityStore(cache: .standard), vault: VaultStore(cache: .standard),
+            deposits: HTTPDepositAPI(client: api),
+            recovery: AccountRecovery(
+                api: api, rpc: NEARRPC(url: rpc), device: keys, recovery: KeychainRecoveryKeys(), biometrics: DeviceBiometrics(),
+                account: { await profile.name }
+            ), limits: HTTPLimitsAPI(client: api), sends: HTTPSendsAPI(client: api), agentAPI: agents,
             transfers: transfers, withdrawals: withdrawals, photos: cloudinary(info: info),
             paj: HTTPPaj(), pajSignIn: pajSignIn(info: info, api: api),
             pajTestRecipient: (info["FliqPajTestRecipient"] as? String).flatMap { $0.isEmpty ? nil : $0 },
@@ -162,6 +182,9 @@ final class AppEnvironment {
     func signedOutByServer() {
         router.reset()
         profile.signOut()
+        vault.forget()
+        activity.forget()
+        UserDefaults.standard.removeObject(forKey: HomeModel.photoKey)
     }
 
     /// Forgot the app passcode: sign out and clear the lock. Signing back in with the passkey loses nothing.
@@ -187,6 +210,7 @@ final class AppEnvironment {
 
     /// Deposits land minutes after the person has left the screen they started on, and nothing pushes the news to
     /// the phone, so once a deposit starts the app checks the balance quietly until it rises or the window closes.
+    /// Activity is read again every sixth check, so a deposit that was handed back stops showing as arriving.
     func watchForArrival(every interval: Duration = .seconds(5), for window: Duration = .seconds(900)) {
         guard isLive else { return }
         arrivalWatch?.cancel()
@@ -195,9 +219,12 @@ final class AppEnvironment {
             await refreshVault()
             var floor = vault.balance.baseUnits
             let end = ContinuousClock.now + window
+            var checks = 0
             while !Task.isCancelled, ContinuousClock.now < end {
                 try? await Task.sleep(for: interval)
                 await refreshVault()
+                checks += 1
+                if checks.isMultiple(of: 6) { await refreshActivity() }
                 let now = vault.balance.baseUnits
                 if now > floor {
                     announceArrival(TokenAmount(baseUnits: now - floor))
@@ -229,7 +256,12 @@ final class AppEnvironment {
         let accounts = AccountBook(keychain: nil)
         if arguments.contains("--sample-recipients") { seedRecipients(accounts) }
         return AppEnvironment(
-            api: FixtureClient(bundle: bundle), profile: profile, vault: VaultStore(balance: TokenAmount(baseUnits: arguments.contains("--funded") ? 100_000_000 : 0)), accounts: accounts,
+            api: FixtureClient(bundle: bundle), profile: profile, activity: ActivityStore(defaults: defaults), vault: VaultStore(balance: TokenAmount(baseUnits: arguments.contains("--funded") ? 100_000_000 : 0)),
+            recovery: FixtureAccountRecovery(
+                arguments.contains("--new-iphone") ? .canRestore : .notBackedUp, otherDevices: arguments.contains("--lost-iphone") ? 1 : 0
+            ),
+            accounts: accounts,
+            walletTopUp: FixtureWalletTopUp(refund: arguments.contains("--refund") ? Refund.sample : nil),
             preferences: Preferences(defaults: defaults), biometrics: AlwaysApprove(), lock: uiTestingLock(arguments, defaults: defaults)
         )
     }

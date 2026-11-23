@@ -2,9 +2,11 @@ import { createPrivateKey, sign, type KeyObject } from "node:crypto";
 import { connect, type ClientHttp2Session } from "node:http2";
 import { decrypt } from "../../../packages/db/src/crypto.js";
 import type { Db, Unit } from "./db.js";
+import { OUTSIDE_FLIQ } from "./people.js";
 import { DEFAULT_NOTIFICATIONS, type NotificationSettings } from "./settings.js";
+import { units } from "./deposits.js";
 
-export type PushKind = "transfer_in" | "transfer_out" | "payout" | "deposit" | "refused";
+export type PushKind = "transfer_in" | "transfer_out" | "payout" | "deposit" | "refused" | "limit" | "key";
 
 export interface PushMessage {
   userId: string;
@@ -19,6 +21,7 @@ export interface PushTarget {
   token: string;
   environment: string;
   bundleId: string | null;
+  pushType?: "alert" | "liveactivity";
 }
 
 export type SendResult = { status: number; reason?: string };
@@ -37,7 +40,9 @@ const HOSTS: Record<string, string> = {
   production: "https://api.push.apple.com",
   sandbox: "https://api.sandbox.push.apple.com",
 };
-const DEAD_REASONS = new Set(["BadDeviceToken", "Unregistered", "DeviceTokenNotForTopic"]);
+// BadEnvironmentKeyInToken: the APNs key is for production only, so a token from an Xcode (sandbox) build can never
+// be reached with it. Retrying only fills the log.
+const DEAD_REASONS = new Set(["BadDeviceToken", "Unregistered", "DeviceTokenNotForTopic", "BadEnvironmentKeyInToken"]);
 
 export function apnsFromEnv(env: NodeJS.ProcessEnv): ApnsCredentials | null {
   const { APNS_KEY_ID: keyId, APNS_TEAM_ID: teamId, APNS_KEY: key, APNS_TOPIC: topic } = env;
@@ -90,14 +95,16 @@ export function createApnsSender(
   };
   return (target, payload) =>
     new Promise((resolve) => {
-      const topic = target.bundleId ?? credentials.topic;
-      if (!topic) return resolve({ status: 0, reason: "NoTopic" });
+      const app = target.bundleId ?? credentials.topic;
+      if (!app) return resolve({ status: 0, reason: "NoTopic" });
+      const pushType = target.pushType ?? "alert";
+      const topic = pushType === "liveactivity" ? `${app}.push-type.liveactivity` : app;
       const request = session(HOSTS[target.environment] ?? (HOSTS.production as string)).request({
         ":method": "POST",
         ":path": `/3/device/${target.token}`,
         authorization: `bearer ${bearer()}`,
         "apns-topic": topic,
-        "apns-push-type": "alert",
+        "apns-push-type": pushType,
         "apns-priority": "10",
         "content-type": "application/json",
       });
@@ -159,12 +166,13 @@ export const transferOutMessage = (
   refId: string,
   units: bigint,
   to: string,
+  outsideFliq = false,
 ): PushMessage => ({
   userId,
   kind: "transfer_out",
   refId,
   title: `Sent ${dollars(units)} to ${handle(to)}`,
-  body: "It's in their vault now.",
+  body: outsideFliq ? "It's in their wallet now." : "It's in their vault now.",
   setting: null,
 });
 
@@ -174,16 +182,32 @@ export const depositMessage = (
   units: bigint,
   token: string,
   chain: string,
+  refundReturn = false,
+  fromBank = false,
 ): PushMessage => ({
   userId,
   kind: "deposit",
   refId,
   title: `${dollars(units)} arrived in your vault`,
-  body:
-    chain === "near"
+  body: refundReturn
+    ? "Your refund is back"
+    : fromBank
+      ? "From your bank"
+      : chain === "near"
       ? "From NEAR"
       : `${token.toUpperCase()} from ${chain.charAt(0).toUpperCase()}${chain.slice(1)}`,
   setting: "received",
+});
+
+// The partner ended a bank deposit with FAILED. Always sent: the user has to act on it. ERROR is not pushed, since
+// the partner retries after it.
+export const bankStoppedMessage = (userId: string, refId: string): PushMessage => ({
+  userId,
+  kind: "deposit",
+  refId,
+  title: "Your bank deposit stopped",
+  body: "If you sent money, it's safe. Contact us with your bank receipt and we'll sort it out.",
+  setting: null,
 });
 
 export function payoutMessage(
@@ -224,6 +248,35 @@ export function payoutMessage(
   return null;
 }
 
+// Sent whatever the user's notification settings say: it is the warning that makes the 24 hour wait worth having.
+export function limitChangeMessage(userId: string, changeId: string, toUnits: bigint | null): PushMessage {
+  const change = toUnits === null ? "your account will have no daily limit" : `your daily limit becomes ${dollars(toUnits)}`;
+  return {
+    userId,
+    kind: "limit",
+    refId: changeId,
+    title: toUnits === null ? "Your daily limit will be removed" : "Your daily limit will go up",
+    body: `In 24 hours ${change}. If this wasn't you, open fliq and cancel it in Settings.`,
+    setting: null,
+  };
+}
+
+// Sent whatever the user's notification settings say. The words cover the user's own backup or new iPhone as well as
+// a stranger's key, because the API cannot tell which it was.
+export function keyChangeMessage(userId: string, changeId: string, kind: string): PushMessage {
+  const added = kind !== "delete";
+  return {
+    userId,
+    kind: "key",
+    refId: changeId,
+    title: added ? "A new key was added to your account" : "A key was removed from your account",
+    body: added
+      ? "If you just turned on backup or added an iPhone, all is well. If not, open fliq and check Security now."
+      : "If you just removed a device, all is well. If not, open fliq and check Security now.",
+    setting: null,
+  };
+}
+
 export interface PushDeps {
   unit: Unit;
   send: PushSender | null;
@@ -261,27 +314,61 @@ async function pending(tx: Db, since: Date, dataKey: Buffer): Promise<Pending[]>
     orderBy: { landedAt: "asc" },
     take: BATCH,
   });
+  const stoppedBank = await tx.vaultDeposit.findMany({
+    where: { fromBank: true, landedAt: null, bankStatus: "FAILED", bankStatusAt: { gt: since } },
+    orderBy: { bankStatusAt: "asc" },
+    take: BATCH,
+  });
   const events = await tx.payoutEvent.findMany({
     where: { createdAt: { gt: since }, toState: { in: PAYOUT_TERMINAL as never } },
     orderBy: { createdAt: "asc" },
     take: BATCH,
   });
 
+  const limitChanges = await tx.limitChange.findMany({
+    where: { createdAt: { gt: since }, cancelledAt: null },
+    orderBy: { createdAt: "asc" },
+    take: BATCH,
+  });
+
+  const keyChanges = await tx.keyChange.findMany({
+    where: { createdAt: { gt: since } },
+    orderBy: { createdAt: "asc" },
+    take: BATCH,
+  });
+
   const all: Pending[] = [
-    ...transfers.flatMap((row) => [
-      {
-        messageId: `${row.id}:in`,
-        build: async () => transferInMessage(row.toUserId, row.id, row.amount, row.fromAccount),
-      },
-      {
+    ...keyChanges.map((row) => ({
+      messageId: row.id,
+      build: async () => keyChangeMessage(row.userId, row.id, row.kind),
+    })),
+    ...limitChanges.map((row) => ({
+      messageId: row.id,
+      build: async () => limitChangeMessage(row.userId, row.id, row.toUnits),
+    })),
+    ...transfers.flatMap((row) => {
+      const outsideFliq = row.toUserId === OUTSIDE_FLIQ;
+      const out = {
         messageId: `${row.id}:out`,
-        build: async () => transferOutMessage(row.fromUserId, row.id, row.amount, row.toAccount),
-      },
-    ]),
+        build: async () => transferOutMessage(row.fromUserId, row.id, row.amount, row.toAccount, outsideFliq),
+      };
+      if (outsideFliq) return [out];
+      return [
+        {
+          messageId: `${row.id}:in`,
+          build: async () => transferInMessage(row.toUserId, row.id, row.amount, row.fromAccount),
+        },
+        out,
+      ];
+    }),
     ...deposits.map((row) => ({
       messageId: row.id,
       build: async () =>
-        depositMessage(row.userId, row.id, row.landedUnits ?? row.amountUnits, row.token, row.chain),
+        depositMessage(row.userId, row.id, row.landedUnits ?? units(row.amountUnits), row.token, row.chain, row.refundReturn, row.fromBank),
+    })),
+    ...stoppedBank.map((row) => ({
+      messageId: `${row.id}:bank_stopped`,
+      build: async () => bankStoppedMessage(row.userId, row.id),
     })),
     ...events.map((event) => ({
       messageId: event.id,

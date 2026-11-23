@@ -5,6 +5,21 @@ export type ProviderId = "paycrest" | "busha" | "fonbnk" | "bitnob" | "transfi" 
 export type ProviderStatus = "live" | "stale" | "paused";
 
 export type VaultBalance = { account: string; available: string; reserved: string; total: string; in_sync: boolean };
+export type VaultInbox = { usdc: string; usdc_contract: string };
+export type SendNetwork = { chain: "solana" | "base"; name: string; token: "usdc"; minimum: string; eta_seconds: number; available: boolean };
+export type WalletSend = {
+  send_id: string;
+  state: "awaiting" | "moving" | "delivered" | "refunded" | "failed" | "expired";
+  chain: string;
+  to: string;
+  amount: string;
+  receives: string;
+  fee: string;
+  eta_seconds: number;
+  deposit: { address: string; memo: string | null; expires_at: string };
+  origin_tx: string | null;
+  destination_tx: string | null;
+};
 
 export type ActivityItem = {
   activity_id: string;
@@ -168,9 +183,10 @@ export type Person = {
 };
 
 export type DepositSource = {
-  token: "usdc" | "usdt" | "btc";
-  chain: "base" | "solana" | "tron" | "arbitrum" | "ethereum" | "polygon" | "bitcoin" | "near";
-  group: "dollars" | "bitcoin" | "near";
+  token: "usdc" | "usdt" | "btc" | "sol" | "eth" | "bnb";
+  chain: "base" | "solana" | "tron" | "arbitrum" | "ethereum" | "polygon" | "bnb" | "monad" | "bitcoin" | "near";
+  // coins: a chain's own coin (SOL, ETH, BNB), swapped to USDC as it lands, like bitcoin.
+  group: "dollars" | "bitcoin" | "coins" | "near";
   minimum: string;
   eta_seconds: number;
   direct: boolean;
@@ -186,8 +202,12 @@ export type DepositEstimate = {
   lands: string;
   eta_seconds: number;
 };
+export type BankOrderReport = { order_id: string; status?: string; sent?: boolean };
 export type VaultDeposit = {
   deposit_id: string;
+  // Only on a deposit from the user's bank, and missing from servers older than 20 Nov.
+  bank_status?: string | null;
+  bank_webhook_url?: string | null;
   state: "waiting" | "seen" | "underpaid" | "bridging" | "landed" | "refunded" | "expired" | "failed";
   token: DepositSource["token"];
   chain: DepositSource["chain"];
@@ -237,6 +257,12 @@ export type NotificationSettings = {
   rate_alert: { enabled: boolean; currency: "NGN" | "KES"; above: number | null };
   weekly_summary: boolean;
 };
+export type DailyLimits = {
+  daily_limit: string | null;
+  spent_today: string;
+  remaining: string | null;
+  pending: { daily_limit: string | null; effective_at: string } | null;
+};
 
 export type { Agent, Money, RelayResult, SignStep, User };
 
@@ -244,9 +270,18 @@ const json = (body: unknown, method = "POST"): RequestInit => ({ method, body: J
 
 export const walletApi = {
   me: () => fliqApi<User>("me"),
+  limits: () => fliqApi<DailyLimits>("me/limits"),
+  updateLimits: (daily_limit: string | null) =>
+    fliqApi<DailyLimits>("me/limits", json({ daily_limit }, "PUT")),
+  cancelPendingLimit: () => fliqApi<DailyLimits>("me/limits/pending", { method: "DELETE" }),
   updateMe: (patch: Partial<Pick<User, "display_name" | "occupation">> & { home_currency?: "NGN" | "KES" }) =>
     fliqApi<User>("me", json(patch, "PATCH")),
   vault: () => fliqApi<VaultBalance>("vault"),
+  nearInbox: () => fliqApi<VaultInbox>("vault/inbox"),
+  sendNetworks: () => fliqApi<{ networks: SendNetwork[] }>("sends/networks"),
+  createSend: (input: { chain: string; address: string; amount: string }, key: string) =>
+    fliqApi<WalletSend>("sends", { ...json(input), headers: { "Idempotency-Key": key } }),
+  send: (id: string) => fliqApi<WalletSend>(`sends/${encodeURIComponent(id)}`),
   activity: (filter: ActivityFilter, cursor?: string | null) =>
     fliqApi<ActivityList>(
       `activity?limit=25${filter === "all" ? "" : `&filter=${filter}`}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
@@ -271,8 +306,10 @@ export const walletApi = {
   depositSources: () => fliqApi<{ sources: DepositSource[] }>("deposits/sources"),
   depositEstimate: (source: DepositSource, amount: string) =>
     fliqApi<DepositEstimate>(`deposits/estimate?token=${source.token}&chain=${source.chain}&amount=${amount}`),
-  createDeposit: (source: DepositSource, amount: string) =>
-    fliqApi<VaultDeposit>("deposits", json({ token: source.token, chain: source.chain, amount })),
+  createDeposit: (source: DepositSource, amount: string, idempotencyKey?: string, via?: "bank") =>
+    fliqApi<VaultDeposit>("deposits", { ...json({ token: source.token, chain: source.chain, amount, ...(via ? { via } : {}) }), ...(idempotencyKey ? { headers: { "Idempotency-Key": idempotencyKey } } : {}) }),
+  // Links a bank deposit to the partner's order, so it shows in Activity everywhere and the team hears if it stops.
+  reportBankOrder: (id: string, report: BankOrderReport) => fliqApi<VaultDeposit>(`deposits/${encodeURIComponent(id)}/bank-order`, json(report)),
   deposit: (id: string) => fliqApi<VaultDeposit>(`deposits/${encodeURIComponent(id)}`),
   requests: () => fliqApi<{ items: PaymentRequest[] }>("requests"),
   createRequest: (input: { amount: string; note: string; cash_out_on_arrival: boolean }) =>

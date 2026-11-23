@@ -14,13 +14,27 @@ struct BankDepositDestination: Equatable, Sendable {
 @Observable
 final class BankDepositFlow {
     enum Step: Equatable {
-        case amount, signIn, pay, receiving, done, cancelled
+        case amount, signIn, pay, receiving, done, notReceived, cancelled
+        /// The partner ended the order without paying out. Its bank details must not be shown again.
+        case stopped
     }
 
     static let presets = [5_000, 10_000, 20_000, 50_000]
+    /// The partner refuses larger orders from users it hasn't verified (20 Nov). Checked here so nobody signs in
+    /// and fetches a quote only to be refused. Raise it once users can verify with the partner.
+    static let maximumNaira = 50_000
+    static let maximumNote = "The most you can add at a time is ₦50,000."
     static let quoteDelay: Duration = .milliseconds(400)
+    /// Used until the API's own minimum has loaded. It mirrors SOURCES in services/api/apps/api/src/deposits.ts.
+    static let fallbackMinimum = TokenAmount(baseUnits: TokenAmount.base)
+    /// Paj takes its fee out of the rate estimate, so without Paj's quote the estimate must clear the minimum by half.
+    static let unquotedMargin = 1.5
 
     private(set) var step = Step.amount
+    /// True when the wait for the vault ran out before the money landed.
+    private(set) var isStillMoving = false
+    /// What reached the vault, which is what the user is told: the partner's figure is an estimate before its fees.
+    private(set) var landed: TokenAmount?
     private(set) var nairaText = "5000"
     private(set) var rate: Double?
     private(set) var quote: Paj.Quote?
@@ -30,6 +44,8 @@ final class BankDepositFlow {
     private(set) var codeSent = false
     private(set) var errorMessage: String?
     private(set) var notice: String?
+    /// The least the deposit address passes on to the vault. Nil when the money goes to a test wallet, which takes anything.
+    private(set) var minimum: TokenAmount?
     var contact = ""
     var code = ""
 
@@ -38,20 +54,26 @@ final class BankDepositFlow {
     private let sessions: PajSessionStore?
     private let destinationFor: @Sendable () async throws -> BankDepositDestination
     private let deposits: (any DepositAPI)?
+    private let route: DepositSource?
     private var session: Paj.Session?
     var pollInterval: Duration = .seconds(4)
+    /// Called once the user says they have paid, so the deposit shows in Activity and on Home straight away.
+    var onPaid: (ActivityStore.BankDeposit) -> Void = { _ in }
 
     init(
         paj: any PajAPI,
         signIn: any PajSignIn,
         sessions: PajSessionStore? = PajSessionStore(),
         deposits: (any DepositAPI)? = nil,
+        route: DepositSource? = nil,
         destination: @escaping @Sendable () async throws -> BankDepositDestination
     ) {
         self.paj = paj
         self.signIn = signIn
         self.sessions = sessions
         self.deposits = deposits
+        self.route = route
+        minimum = route.map { $0.minimum ?? Self.fallbackMinimum }
         destinationFor = destination
         session = sessions?.load()
         contact = sessions?.lastContact() ?? ""
@@ -67,12 +89,41 @@ final class BankDepositFlow {
         return Double(naira) / rate
     }
 
-    var canContinue: Bool { naira >= 100 && !isWorking }
+    var canContinue: Bool { naira >= 100 && !isOverMaximum && clearsMinimum && !isWorking }
+
+    var isOverMaximum: Bool { naira > Self.maximumNaira }
+
+    /// Less than the minimum never arrives: the deposit address hands it back instead of passing it to the vault.
+    var clearsMinimum: Bool {
+        guard let floor = minimumUSDC else { return true }
+        if let quote, quote.naira == naira { return quote.usdc >= floor }
+        guard let rate, rate > 0 else { return false }
+        return Double(naira) / rate >= floor * Self.unquotedMargin
+    }
+
+    /// The smallest amount sure to clear the minimum at today's rate, rounded up to the next ₦100.
+    var smallestNaira: Int? {
+        guard let floor = minimumUSDC, let rate, rate > 0 else { return nil }
+        return Int((floor * Self.unquotedMargin * rate / 100).rounded(.up)) * 100
+    }
+
+    var minimumNote: String? {
+        if isOverMaximum { return Self.maximumNote }
+        guard naira > 0, !clearsMinimum, let smallestNaira else { return nil }
+        return naira < smallestNaira
+            ? "The smallest amount is about \(NairaFormat.short(smallestNaira))."
+            : "This amount is too small to arrive after fees. Try a larger one."
+    }
+
+    private var minimumUSDC: Double? {
+        minimum.map { Double($0.baseUnits) / Double(TokenAmount.base) }
+    }
     var canSendCode: Bool { Self.isContact(contact) && !isWorking }
     var canVerify: Bool { code.count >= 4 && code.allSatisfy(\.isNumber) && !isWorking }
 
     func load() async {
         rate = try? await paj.publicRate()
+        await loadMinimum()
         await refreshQuote()
     }
 
@@ -151,17 +202,34 @@ final class BankDepositFlow {
     func watch() async {
         guard let session, let current = order else { return }
         step = .receiving
+        if let depositId = destination?.deposit?.depositId {
+            onPaid(ActivityStore.BankDeposit(depositId: depositId, naira: current.naira, usd: String(format: "%.2f", current.usdc), startedAt: .now))
+        }
+        showLive(LiveMoney.bankDeposit(current.status), order: current)
+        // From here the deposit is in Activity on every device, whether or not this screen stays open.
+        await report(current, sent: true)
+        var reported = current.status
         while !Task.isCancelled {
             if let fresh = try? await paj.order(current.id, session: session) {
                 order = fresh
+                isRetrying = fresh.status == .error
+                if fresh.status != reported {
+                    reported = fresh.status
+                    await report(fresh, sent: true)
+                }
+                showLive(LiveMoney.bankDeposit(fresh.status), order: fresh)
                 switch fresh.status {
                 case .completed:
-                    await waitForVault()
-                    step = .done
+                    let arrived = await reachesVault()
+                    step = arrived ? .done : .notReceived
+                    if !isStillMoving { showLive(LiveMoney.bankDepositLanded(arrived, landed: landed), order: fresh, final: true) }
                     return
                 case .failed, .cancelled:
-                    errorMessage = "Paj couldn't finish this deposit. If money left your bank, Paj refunds it."
-                    step = .pay
+                    // The partner ended the order. Its bank details are taken away so nobody pays into it, and the
+                    // user is told what to do whether or not they already sent the money.
+                    showLive(LiveMoney.bankDepositFailed, order: fresh, final: true)
+                    errorMessage = nil
+                    step = .stopped
                     return
                 default: break
                 }
@@ -170,24 +238,100 @@ final class BankDepositFlow {
         }
     }
 
-    var isPaid: Bool { order?.status == .paid || order?.status == .completed }
+    /// From "I've sent the money" the deposit shows on the Lock Screen and in the Dynamic Island, so nobody waits here.
+    private func showLive(_ state: LiveMoney.State?, order: Paj.Order, final: Bool = false) {
+        guard let state else { return }
+        let attributes = MoneyActivityAttributes(
+            kind: .bankDeposit,
+            refId: destination?.deposit?.depositId ?? "bank-\(order.id)",
+            amount: "$\(String(format: "%.2f", order.usdc))",
+            from: "Your bank",
+            to: "Your vault",
+            fromMark: "flag.ng",
+            toMark: "fliq"
+        )
+        LiveMoney.shared.show(attributes, state, final: final)
+    }
+
+    var isPaid: Bool { [.paid, .processing, .completed].contains(order?.status) }
 
     private func createOrder(_ session: Paj.Session) async {
         await working {
             let target = try await destinationFor()
             destination = target
-            order = try await paj.createOrder(naira: naira, recipient: target.address, session: session)
+            let placed = try await placeOrder(recipient: target.address, webhook: target.deposit?.bankWebhookURL, session: session)
+            // Paj fixes the amount only now. Bank details for an order that cannot arrive are never shown.
+            guard placed.usdc >= minimumUSDC ?? 0 else {
+                quote = Paj.Quote(naira: placed.naira, usdc: placed.usdc, rate: placed.rate)
+                step = .amount
+                return
+            }
+            order = placed
             step = .pay
             notice = nil
+            // Linked at once so the team can find the order; not awaited, the bank details show straight away.
+            let link = Task { await report(placed, sent: false) }
+            reporting = link
         }
     }
 
-    private func waitForVault() async {
-        guard let deposits, let deposit = destination?.deposit else { return }
+    /// The task linking a new order, kept so tests can wait for it.
+    @ObservationIgnored private(set) var reporting: Task<Void, Never>?
+
+    /// Tells the API what this order is and what Paj says about it. A report that fails changes nothing on screen:
+    /// the deposit still lands from the chain, and the next report carries the same facts.
+    private func report(_ order: Paj.Order, sent: Bool) async {
+        guard let deposits, let deposit = destination?.deposit, deposit.depositId != nil else { return }
+        let status = order.status == .unknown ? nil : order.status.rawValue
+        try? await deposits.reportBankOrder(BankOrderReport(orderId: order.id, status: status, sent: sent ? true : nil), for: deposit)
+    }
+
+    /// The partner buys the dollars through a swap that sometimes fails for a moment, so an order is tried three
+    /// times before the user hears of it, and then in plain words.
+    private func placeOrder(recipient: String, webhook: URL?, session: Paj.Session) async throws -> Paj.Order {
+        for attempt in 0..<3 {
+            if attempt > 0 { try? await Task.sleep(for: Self.orderRetryDelay) }
+            do {
+                return try await paj.createOrder(naira: naira, recipient: recipient, webhook: webhook, session: session)
+            } catch let failure as Paj.Failure where PajMessage.isTemporary(failure.message) {
+                continue
+            }
+        }
+        throw Paj.Failure(message: PajMessage.busy)
+    }
+
+    /// ERROR is the partner retrying, not the end: on 20 Nov an order went ERROR and landed ten minutes later.
+    /// The watch keeps going; the API tells the team if nothing lands within a quarter of an hour.
+    private(set) var isRetrying = false
+    static let retryNote = "Our partner is retrying this deposit. If you've sent the money, it's safe and on its way: you can leave this screen. Don't send it again."
+
+    static let stoppedTitle = "This deposit stopped"
+    static let stuckMessage = "Don't send money to those bank details. If you already sent it, your money is safe: keep your bank receipt. " + DepositFailure.contactUs
+
+    static var orderRetryDelay: Duration = .milliseconds(1500)
+
+    private func loadMinimum() async {
+        guard let route, let deposits, let sources = try? await deposits.sources() else { return }
+        minimum = sources.first { $0.id == route.id }?.minimum ?? minimum
+    }
+
+    /// False when the deposit address got the money and will not pass it on. A wait that runs out is neither:
+    /// the money is still moving, and the last screen must not say it has landed.
+    private func reachesVault() async -> Bool {
+        isStillMoving = false
+        guard let deposits, let deposit = destination?.deposit else { return true }
         for _ in 0..<40 where !Task.isCancelled {
-            if let status = try? await deposits.status(of: deposit), status.stage.isFinal { return }
+            if let status = try? await deposits.status(of: deposit) {
+                if status.stage.isNotComing { return false }
+                if status.stage.isFinal {
+                    landed = status.landed
+                    return true
+                }
+            }
             try? await Task.sleep(for: pollInterval)
         }
+        isStillMoving = true
+        return true
     }
 
     private func working(_ body: () async throws -> Void) async {
@@ -196,10 +340,8 @@ final class BankDepositFlow {
         defer { isWorking = false }
         do {
             try await body()
-        } catch let failure as Paj.Failure {
-            errorMessage = failure.message
         } catch {
-            errorMessage = "Couldn't reach Paj. Check your connection and try again."
+            errorMessage = DepositFailure.message(for: error)
         }
     }
 
