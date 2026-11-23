@@ -7,7 +7,7 @@ Read these two views, not the core tables. They hold no recipient data.
 | Column | Meaning |
 | --- | --- |
 | payout_id | `po_...` |
-| workspace_id | The developer workspace that created it |
+| workspace_id | The developer workspace that created it, or the user's own id when the user has no workspace |
 | provider | `paycrest`, `busha`, `fonbnk`, `bitnob`, `transfi`, or `vault` for a payout refused before a provider was chosen |
 | route_kind | `direct`, `intents` or `vault` |
 | currency | Payout currency, lower case (`ngn`, `kes`) |
@@ -20,10 +20,11 @@ Read these two views, not the core tables. They hold no recipient data.
 | seconds_to_bank | `settled` event minus `deposit_seen` event, in seconds |
 | failure_reason | Why it ended in `failed`, empty otherwise |
 | is_refusal | True when `failure_reason` starts with `vault_` |
+| user_id | The user who owns the payout (`auth.users.id`), empty when `workspace_id` matches no workspace or user |
 
 ## analytics.payout_events (one row per state change)
 
-Same payout columns plus `from_status`, `status`, `occurred_at` (UTC), `event_version` (1, 2, 3 per payout) and `cause`.
+Same payout columns, including `user_id`, plus `from_status`, `status`, `occurred_at` (UTC), `event_version` (1, 2, 3 per payout) and `cause`.
 The table behind it, `core.payout_events`, is append-only: updates and deletes are rejected by the database.
 
 ## Statuses
