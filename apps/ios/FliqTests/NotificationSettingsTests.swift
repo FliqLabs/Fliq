@@ -81,6 +81,31 @@ final class NotificationSettingsTests: XCTestCase {
         XCTAssertTrue(body.contains("\"cap_almost_reached\":true"))
     }
 
+    func testAChangeMadeOfflineIsSentAtTheNextSyncNotUndone() async throws {
+        let api = FixtureClient()
+        let defaults = try freshDefaults()
+        let prefs = Preferences(defaults: defaults)
+        prefs.connect(api)
+        await prefs.sync()
+        await api.savedNotifications.setOffline(true)
+        prefs.set(.payoutPaid, false)
+        await prefs.uploaded()
+
+        await api.savedNotifications.setOffline(false)
+        let relaunched = Preferences(defaults: defaults)
+        relaunched.connect(api)
+        await relaunched.sync()
+        XCTAssertFalse(relaunched.isOn(.payoutPaid), "The server's older copy did not win")
+        let saved = await api.savedNotifications.settings
+        XCTAssertFalse(saved.payoutPaid)
+    }
+
+    func testACoinWithMoreThanSixDecimalsStillShowsWhatArrived() {
+        XCTAssertNil(TokenAmount(decimalString: "0.137662345"))
+        XCTAssertEqual(TokenAmount(roundingDown: "0.137662345")?.decimalString, "0.137662")
+        XCTAssertEqual(TokenAmount(roundingDown: "0.041000000000000001")?.decimalString, "0.041")
+    }
+
     func testTheSuggestedRateIsTheNextRoundTenAboveToday() {
         XCTAssertEqual(RateSuggestion.above(1_452.3), 1_460)
         XCTAssertEqual(RateSuggestion.above(1_450), 1_460)

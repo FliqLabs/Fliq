@@ -66,7 +66,10 @@ struct NotificationsView: View {
                 Spacer()
                 Menu {
                     ForEach(Currency.allCases, id: \.self) { currency in
-                        Button(currency.symbol) { saveRate(in: currency) }
+                        Button(currency.symbol) {
+                            // ₦1,460 means nothing in shillings, so a new currency starts from its own rate.
+                            if currency != preferences.rateCurrency { Task { await suggestRate(in: currency) } }
+                        }
                     }
                 } label: {
                     Text(preferences.rateCurrency.symbol).foregroundStyle(Theme.textSecondary)
@@ -99,19 +102,19 @@ struct NotificationsView: View {
         )
     }
 
-    private func saveRate(in currency: Currency? = nil) {
+    private func saveRate() {
         let digits = rateText.filter(\.isNumber)
         guard let value = Double(digits), value > 0 else {
             rateText = preferences.rateAbove.map(Preferences.whole) ?? ""
             return
         }
-        preferences.setRate(above: value, in: currency ?? preferences.rateCurrency)
+        preferences.setRate(above: value, in: preferences.rateCurrency)
         rateText = Preferences.whole(value)
     }
 
     /// Starts just above today's rate, so the first alert means the rate got better.
-    private func suggestRate() async {
-        let currency = preferences.rateCurrency
+    private func suggestRate(in currency: Currency? = nil) async {
+        let currency = currency ?? preferences.rateCurrency
         let today = try? await environment.api.rate(.usdc, currency).rate
         let suggestion = today.map { RateSuggestion.above($0) } ?? RateSuggestion.fallback(currency)
         preferences.setRate(above: suggestion, in: currency)

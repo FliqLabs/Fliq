@@ -129,7 +129,7 @@ struct HTTPDepositAPI: DepositAPI {
         default: .waiting
         }
         return DepositStatus(
-            stage: stage, received: deposit.received.flatMap(TokenAmount.init(decimalString:)),
+            stage: stage, received: deposit.received.flatMap { TokenAmount(decimalString: $0) ?? TokenAmount(roundingDown: $0) },
             seenAt: deposit.seenAt, bridgingAt: deposit.bridgingAt, landedAt: deposit.landedAt,
             landed: deposit.landed.flatMap(TokenAmount.init(decimalString:))
         )

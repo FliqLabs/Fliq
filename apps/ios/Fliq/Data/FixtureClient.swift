@@ -25,7 +25,8 @@ struct FixtureClient: FliqAPI {
     func notificationSettings() async throws -> NotificationSettings { await savedNotifications.settings }
 
     func updateNotificationSettings(_ settings: NotificationSettings) async throws -> NotificationSettings {
-        await savedNotifications.save(settings)
+        if await savedNotifications.offline { throw URLError(.notConnectedToInternet) }
+        return await savedNotifications.save(settings)
     }
 
     func health() async throws -> Health {
@@ -304,6 +305,9 @@ actor FixtureNotifications {
     )
 
     func preset(_ new: NotificationSettings) { settings = new }
+    /// While true, saves fail as they would with no signal.
+    private(set) var offline = false
+    func setOffline(_ value: Bool) { offline = value }
     private(set) var saves = 0
 
     func save(_ new: NotificationSettings) -> NotificationSettings {

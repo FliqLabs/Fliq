@@ -37,6 +37,8 @@ final class Preferences {
         static let rateAbove = "prefs.rateAbove"
         static let rateCurrency = "prefs.rateCurrency"
         static let uploaded = "prefs.uploaded"
+        /// A change made here has not reached the server yet, for example because the phone was offline.
+        static let pending = "prefs.pending"
     }
 
     private(set) var notices: Set<Notice>
@@ -47,6 +49,7 @@ final class Preferences {
     private let defaults: UserDefaults
     @ObservationIgnored private var api: (any FliqAPI)?
     @ObservationIgnored private var lastUpload: Task<Void, Never>?
+    @ObservationIgnored private var changes = 0
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -67,7 +70,16 @@ final class Preferences {
     func sync() async {
         guard let api else { return }
         await lastUpload?.value
+        if defaults.bool(forKey: Key.pending) {
+            // A change that never got through is sent again, not replaced by the server's older copy.
+            upload()
+            await lastUpload?.value
+            return
+        }
+        let before = changes
         guard let server = try? await api.notificationSettings() else { return }
+        // A change made while the server was being read is newer than what it returned.
+        guard changes == before else { return }
         if !defaults.bool(forKey: Key.uploaded), server == Self.newUser, settings != server {
             guard (try? await api.updateNotificationSettings(settings)) != nil else { return }
         } else {
@@ -140,9 +152,12 @@ final class Preferences {
         guard let api else { return }
         let snapshot = settings
         let previous = lastUpload
+        changes += 1
+        defaults.set(true, forKey: Key.pending)
         lastUpload = Task {
             await previous?.value
-            _ = try? await api.updateNotificationSettings(snapshot)
+            let saved = (try? await api.updateNotificationSettings(snapshot)) != nil
+            if saved, snapshot == settings { defaults.set(false, forKey: Key.pending) }
         }
     }
 
