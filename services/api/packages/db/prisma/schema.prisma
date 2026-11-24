@@ -272,6 +272,17 @@ model Inbox {
   @@schema("messaging")
 }
 
+model NotificationDelivery {
+  messageId String @map("message_id") @db.Text
+  token String @db.Text
+  leaseUntil DateTime? @map("lease_until") @db.Timestamptz(6)
+  deliveredAt DateTime? @map("delivered_at") @db.Timestamptz(6)
+
+  @@id([messageId, token])
+  @@map("notification_deliveries")
+  @@schema("messaging")
+}
+
 model Timer {
   id         String    @id @db.Text
   topic      String    @db.Text

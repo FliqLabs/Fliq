@@ -25,7 +25,7 @@ const NOTIFICATIONS: { key: keyof Omit<NotificationSettings, "rate_alert">; titl
   { key: "agent_paid", title: "An agent pays someone", detail: "Each payout an agent makes" },
   { key: "agent_refused", title: "Your vault refuses an agent", detail: "When a request goes over its limits" },
   { key: "cap_almost_reached", title: "An agent nears its daily limit", detail: "At 80% of the cap" },
-  { key: "weekly_summary", title: "Weekly summary", detail: "Every Monday morning" },
+  { key: "weekly_summary", title: "Weekly summary", detail: "Every Sunday" },
 ];
 
 async function keyMatchesAccount(accountId: string, publicKey: string) {
@@ -136,6 +136,7 @@ function Preferences() {
   });
   const [draft, setDraft] = useState<NotificationSettings | null>(null);
   const current = draft ?? settings.data ?? null;
+  const invalidRate = current?.rate_alert.above !== null && current?.rate_alert.above !== undefined && (!Number.isFinite(current.rate_alert.above) || current.rate_alert.above <= 0);
   const saveSettings = useMutation({
     mutationFn: walletApi.saveNotificationSettings,
     onSuccess: (saved) => {
@@ -147,6 +148,12 @@ function Preferences() {
   const flip = (key: keyof Omit<NotificationSettings, "rate_alert">, value: boolean) => {
     if (!current) return;
     const next = { ...current, [key]: value };
+    setDraft(next);
+    saveSettings.mutate(next);
+  };
+  const setRateAlert = (rate_alert: NotificationSettings["rate_alert"]) => {
+    if (!current) return;
+    const next = { ...current, rate_alert };
     setDraft(next);
     saveSettings.mutate(next);
   };
@@ -208,6 +215,30 @@ function Preferences() {
               <Toggle checked={current[item.key]} onChange={(value) => flip(item.key, value)} label={item.title} disabled={saveSettings.isPending} />
             </div>
           ))}
+        {current && (
+          <div>
+            <span className="icw"><Icon name="bell" size={17} /></span>
+            <div className="t">
+              <b>Rate alert</b>
+              <span>Notify me when $1 crosses my after-fee NGN rate</span>
+              <label htmlFor="rate-threshold">Naira per dollar</label>
+              <input id="rate-threshold" className="inp" type="number" min="0.01" step="0.01"
+                aria-invalid={invalidRate || undefined}
+                aria-describedby={invalidRate ? "rate-threshold-error" : undefined}
+                value={current.rate_alert.above ?? ""}
+                onChange={(event) => setDraft({ ...current, rate_alert: { ...current.rate_alert, currency: "NGN", above: event.target.value === "" ? null : Number(event.target.value) } })}
+                onBlur={(event) => {
+                  const above = Number(event.target.value);
+                  if (above > 0 && Number.isFinite(above)) setRateAlert({ ...current.rate_alert, above });
+                }}
+                disabled={saveSettings.isPending}
+              />
+              {invalidRate && <span id="rate-threshold-error" role="alert">Enter a positive NGN rate.</span>}
+            </div>
+            <Toggle checked={current.rate_alert.enabled} label="Rate alert" disabled={saveSettings.isPending || !current.rate_alert.above || invalidRate}
+              onChange={(enabled) => setRateAlert({ ...current.rate_alert, enabled, currency: "NGN" })} />
+          </div>
+        )}
         {saveSettings.isError && (
           <div>
             <Notice tone="bad">{saveSettings.error.message}</Notice>
