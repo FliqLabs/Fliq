@@ -2007,7 +2007,7 @@ export interface components {
              * @description bank_stopped is a bank deposit the bank partner ended with FAILED. ERROR is not stopped, the partner retries after it.
              * @enum {string|null}
              */
-            reason: "over_daily_cap" | "over_per_payout_cap" | "corridor_not_allowed" | "not_saved_account" | "provider_failed" | "expired" | "bank_stopped" | null;
+            reason: "over_daily_cap" | "over_per_payout_cap" | "corridor_not_allowed" | "not_saved_account" | "provider_failed" | "expired" | "bank_stopped" | "not_started" | null;
             /** @description The payout, deposit, transfer or refusal behind the row */
             ref_id: string;
             /** @description The NEAR transaction behind the row, so a receipt can link to it on an explorer. Set for transfers. */
