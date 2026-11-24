@@ -97,6 +97,7 @@ struct RootView: View {
             await environment.refreshVault()
             await environment.refreshActivity()
             await environment.accounts.sync()
+            await environment.preferences.sync()
             await environment.inbox.load()
             await home?.loadProfile()
             await environment.inbox.returnNewRefunds()

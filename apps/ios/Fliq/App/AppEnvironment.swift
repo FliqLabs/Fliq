@@ -87,6 +87,7 @@ final class AppEnvironment {
         self.pajTestRecipient = pajTestRecipient
         inbox = WalletInbox(topUp: walletTopUp)
         self.preferences = preferences
+        if isLive { preferences.connect(api) }
         agents = AgentStore(api: agentAPI, vault: { profile.name ?? NearNetwork.current.vault })
         self.biometrics = biometrics
         self.lock = lock

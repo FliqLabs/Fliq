@@ -19,6 +19,16 @@ struct FixtureClient: FliqAPI {
 
     func deleteRecipient(id: String) async throws { await savedRecipients.delete(id) }
 
+    /// Notification choices "saved on the server", for tests of what survives a reinstall.
+    let savedNotifications = FixtureNotifications()
+
+    func notificationSettings() async throws -> NotificationSettings { await savedNotifications.settings }
+
+    func updateNotificationSettings(_ settings: NotificationSettings) async throws -> NotificationSettings {
+        if await savedNotifications.offline { throw URLError(.notConnectedToInternet) }
+        return await savedNotifications.save(settings)
+    }
+
     func health() async throws -> Health {
         try load("health")
     }
@@ -286,3 +296,23 @@ actor FixtureRecipients {
     func delete(_ id: String) { items.removeAll { $0.recipientId == id } }
 }
 
+
+/// Starts as a new user's settings on the server: money and agent notices on, rates off.
+actor FixtureNotifications {
+    private(set) var settings = NotificationSettings(
+        received: true, payoutPaid: true, payoutRefunded: true, agentPaid: true, agentRefused: true, capAlmostReached: true,
+        rateAlert: .init(enabled: false, currency: "NGN", above: nil), weeklySummary: false
+    )
+
+    func preset(_ new: NotificationSettings) { settings = new }
+    /// While true, saves fail as they would with no signal.
+    private(set) var offline = false
+    func setOffline(_ value: Bool) { offline = value }
+    private(set) var saves = 0
+
+    func save(_ new: NotificationSettings) -> NotificationSettings {
+        settings = new
+        saves += 1
+        return new
+    }
+}
