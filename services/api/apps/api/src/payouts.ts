@@ -4,9 +4,8 @@ import { newId } from "../../../packages/db/src/ids.js";
 import { transitionPayout } from "../../../packages/domain/transition.js";
 import { InsufficientVaultBalance, postEntry, reserveVault } from "../../../packages/ledger/post.js";
 import { orderCommitted, vaultReleased } from "../../../packages/ledger/postings.js";
-import { MAX_ORDER_TTL_MS, type VaultClient } from "../../../packages/chains/vault/index.js";
+import { MAX_ORDER_TTL_MS, VaultError, type VaultClient } from "../../../packages/chains/vault/index.js";
 import { ProviderError } from "../../../packages/providers/errors.js";
-import { ASSET_DECIMALS } from "../../../packages/providers/money.js";
 import type { AccountCheck, Asset, Chain, CreatedOrder, FiatCurrency, ProviderAdapter } from "../../../packages/providers/types.js";
 import type { Config } from "./config.js";
 import { formatTokenAmount } from "./dashboard.js";
@@ -17,7 +16,17 @@ import { hashOf, type Reply } from "./idempotency.js";
 import { institutionType } from "./institutions.js";
 import type { OneClickHops } from "./hop.js";
 import { isAddressOn } from "./refund-address.js";
-import { COUNTRY, developerIdFor, requestQuote, reviveHop, reviveProviderQuote, type QuoteDeps, type QuoteInput } from "./quotes.js";
+import {
+  COUNTRY,
+  developerIdFor,
+  providerFeeCap,
+  requestQuote,
+  reviveHop,
+  reviveProviderQuote,
+  totalDebit,
+  type QuoteDeps,
+  type QuoteInput,
+} from "./quotes.js";
 import { resolveName } from "./recipients.js";
 import { recoveryView } from "./recovery.js";
 
@@ -43,9 +52,7 @@ export interface IntentsDeps {
 }
 
 export const DEFAULT_GUARD_BPS = 30n;
-export const MAX_PROVIDER_FEE_CENTS = 25n;
-
-const providerFeeCap = (asset: Asset) => MAX_PROVIDER_FEE_CENTS * 10n ** BigInt(ASSET_DECIMALS[asset] - 2);
+export { MAX_PROVIDER_FEE_CENTS } from "./quotes.js";
 export const DEFAULT_DEADLINE_MARGIN_MS = 5 * 60_000;
 const DEFAULT_ADDRESS_VALIDITY_MS = 15 * 60_000;
 
@@ -337,13 +344,19 @@ type Prepared = {
 
 type Deposit = { chain: string; address: string; units: bigint; validUntil: Date | null; memo: string | null };
 
-type Opened =
+// Which check found the vault short: before any provider order, against the swap's deposit, or the contract itself.
+export type BalanceCheck = "before_order" | "swap_deposit" | "register_order";
+type Shortfall = { check: BalanceCheck; needed: bigint; held: bigint };
+
+// Every outcome after the provider order exists carries it, so the order is recorded whatever happens next.
+type Opened = { order?: CreatedOrder } & (
   | { kind: "ready"; order: CreatedOrder; deposit: Deposit }
   | { kind: "unknown" }
   | { kind: "rejected" }
   | { kind: "quote_changed" }
   | { kind: "route_unavailable" }
-  | { kind: "insufficient_balance"; order: CreatedOrder | null };
+  | { kind: "insufficient_balance"; shortfall: Shortfall }
+);
 
 interface OpenInput {
   deps: PayoutDeps;
@@ -361,14 +374,16 @@ interface OpenInput {
 
 const countryFor = (currency: string) => COUNTRY[currency as keyof typeof COUNTRY];
 
-async function openOrder(input: OpenInput): Promise<Opened> {
+export async function openOrder(input: OpenInput): Promise<Opened> {
   const { deps, unit, adapter, payoutId, providerQuote, corridor, asset, prepared, recipient } = input;
   const intents = prepared.intents ? deps.intents : undefined;
   if (prepared.intents && (!intents || !prepared.hop)) return { kind: "route_unavailable" };
 
-  // Fail before any provider order exists when the vault cannot cover the payout.
-  if (intents && (await intents.vault.getBalance(prepared.payer as string)).available < prepared.route.amountIn) {
-    return { kind: "insufficient_balance", order: null };
+  // Fail before any provider order exists when the vault cannot cover the payout with its fees.
+  if (intents && prepared.hop) {
+    const needed = totalDebit(prepared.hop, asset);
+    const held = (await intents.vault.getBalance(prepared.payer as string)).available;
+    if (held < needed) return { kind: "insufficient_balance", shortfall: { check: "before_order", needed, held } };
   }
 
   let order: CreatedOrder;
@@ -398,8 +413,13 @@ async function openOrder(input: OpenInput): Promise<Opened> {
           : { chain: "internal", address: "prefunded", units: funding.units, validUntil: null, memo: null },
     };
   }
-  if (funding.kind !== "deposit_address") return { kind: "route_unavailable" };
-  return openHop({ ...input, intents, hop: prepared.hop, order, funding });
+  if (funding.kind !== "deposit_address") return { kind: "route_unavailable", order };
+  try {
+    return { ...(await openHop({ ...input, intents, hop: prepared.hop, order, funding })), order };
+  } catch (error) {
+    await unit((tx) => tx.payout.update({ where: { id: payoutId }, data: { providerOrderId: order.providerOrderId } })).catch(() => undefined);
+    throw error;
+  }
 }
 
 // Enough to tell why a provider refused an order, without the recipient's account number or any credential.
@@ -444,6 +464,10 @@ async function openHop(
   if (swap.minAmountIn * hop.amountOut * 10_000n > hop.amountIn * funding.units * (10_000n + intents.guardBps)) return { kind: "quote_changed" };
 
   const deposit: Deposit = { chain: "near", address: swap.depositAddress, units: swap.amountIn, validUntil: deadline, memo: swap.depositMemo ?? null };
+  // The swap's own fee is only known now and can push the total a fraction of a cent past what the vault holds.
+  // The vault would refuse that order, so say it is the balance rather than a route that is down.
+  const held = (await intents.vault.getBalance(payer)).available;
+  if (held < deposit.units) return { kind: "insufficient_balance", shortfall: { check: "swap_deposit", needed: deposit.units, held } };
   try {
     await intents.tokenStorage.ensure(deposit.address);
     // The token refuses a transfer to an account it has not registered, so the payer must be able to take a refund.
@@ -452,9 +476,9 @@ async function openHop(
     return { kind: "route_unavailable" };
   }
   try {
-    await unit((tx) => reserveVault(tx, payoutId, payer, asset, deposit.units));
+    await unit((tx) => reserveVault(tx, payoutId, payer, asset, deposit.units, held));
   } catch (error) {
-    if (error instanceof InsufficientVaultBalance) return { kind: "insufficient_balance", order };
+    if (error instanceof InsufficientVaultBalance) return { kind: "insufficient_balance", shortfall: { check: "swap_deposit", needed: error.needed, held: error.held } };
     throw error;
   }
   try {
@@ -467,10 +491,12 @@ async function openHop(
       corridor: `${input.corridor.country}-${input.corridor.currency}-${input.corridor.payoutType}`,
       ...(input.agentId ? { agentId: input.agentId } : {}),
     });
-  } catch {
+  } catch (error) {
     // The reservation was committed first, so a refused registration must give the funds back.
     await unit((tx) => postEntry(tx, vaultReleased(payoutId, payer, asset, deposit.units)));
-    return { kind: "route_unavailable" };
+    if (!(error instanceof VaultError && error.code === "INSUFFICIENT_BALANCE")) return { kind: "route_unavailable" };
+    const after = await intents.vault.getBalance(payer).then((balance) => balance.available, () => held);
+    return { kind: "insufficient_balance", shortfall: { check: "register_order", needed: deposit.units, held: after } };
   }
   return { kind: "ready", order, deposit };
 }
@@ -481,9 +507,10 @@ async function settle(
   context: { userId: string; input: PayoutInput; payoutId: string; prepared: Prepared; opened: Opened },
 ): Promise<Reply> {
   const { userId, payoutId, prepared, opened } = context;
-  const fail = async (reason: string, status: number, body: unknown): Promise<Reply> => {
-    await tx.payout.update({ where: { id: payoutId }, data: { failureReason: reason } });
-    await transitionPayout(tx, { payoutId, target: "failed", cause: reason });
+  const providerOrderId = opened.order?.providerOrderId;
+  const fail = async (reason: string, status: number, body: unknown, detail?: Prisma.InputJsonObject): Promise<Reply> => {
+    await tx.payout.update({ where: { id: payoutId }, data: { failureReason: reason, ...(providerOrderId ? { providerOrderId } : {}) } });
+    await transitionPayout(tx, { payoutId, target: "failed", cause: reason, ...(detail ? { detail } : {}) });
     return { status, body };
   };
 
@@ -508,8 +535,16 @@ async function settle(
       return fail("provider_rejected", 422, { error: { code: "provider_rejected", message: "The provider rejected this payout." } });
     case "route_unavailable":
       return fail("route_unavailable", 422, { error: { code: "route_unavailable", message: "That route is not available right now. Try again." } });
-    case "insufficient_balance":
-      return fail("insufficient_vault_balance", 422, { error: { code: "insufficient_balance", message: "Not enough free balance in your vault." } });
+    case "insufficient_balance": {
+      const { check, needed, held } = opened.shortfall;
+      console.warn(`[payouts] ${payoutId} insufficient_vault_balance check=${check} needed=${needed} held=${held}`);
+      return fail(
+        "insufficient_vault_balance",
+        422,
+        { error: { code: "insufficient_balance", message: "Not enough free balance in your vault." } },
+        { check, needed: needed.toString(), held: held.toString() },
+      );
+    }
     case "quote_changed": {
       const fresh = await requestQuote(tx, deps.quotes, userId, requestOf(prepared));
       return fail("quote_changed", 409, { error: { code: "quote_changed", message: "The rate moved. Nothing was sent." }, quote: fresh });

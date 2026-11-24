@@ -99,7 +99,7 @@ describe.skipIf(!enabled)("paying a bank account from the vault through NEAR Int
     await new Promise<void>((resolve) => server.listen(0, resolve));
     rawClient = createOneClickClient({ baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, apiKey: undefined });
     hops = new OneClickHops({ client, slippageBps: 10, pricingRefundTo: config.vaultAccount, pricingRecipient: PAYCREST_ADDRESS });
-    const quotes = { adapters: [paycrest], hop: hops, routing: DEFAULT_ROUTING_CONFIG, signals: NO_SIGNALS, now: () => new Date() };
+    const quotes = { adapters: [paycrest], hop: hops, vault: faultyVault, routing: DEFAULT_ROUTING_CONFIG, signals: NO_SIGNALS, now: () => new Date() };
     app = buildApp({
       config,
       unit,
@@ -326,6 +326,37 @@ describe.skipIf(!enabled)("paying a bank account from the vault through NEAR Int
     expect(reply.json().error.code).toBe("insufficient_balance");
     expect(orders.length).toBe(before);
     expect(await vault.getBalance(user.account)).toMatchObject({ available: 10_000_000n, reserved: 0n });
+  }, 60_000);
+
+  it("quotes the total the vault pays and the most the payer can send", async () => {
+    reset();
+    const user = await holder("total", 20_000_000n);
+    const quoted = await quote(user.headers, "10");
+    expect(BigInt(quoted.total_debit)).toBeGreaterThan(10_000_000n);
+    expect(BigInt(quoted.max_amount)).toBeGreaterThan(0n);
+    expect(BigInt(quoted.max_amount)).toBeLessThan(20_000_000n);
+  }, 60_000);
+
+  it("pays from what the vault holds when the ledger mirror has drifted below it", async () => {
+    reset();
+    const user = await holder("drift", 0n);
+    vault.ftOnTransfer({ predecessor: USDC, senderId: user.account, amount: 100_000_000n, msg: "" });
+    const quoted = await quote(user.headers);
+    const reply = await pay(user.headers, `k-${suffix}-drift`, quoted.quote_id);
+    expect(reply.statusCode, reply.body).toBe(201);
+  }, 60_000);
+
+  it("refuses with the balance error when the mirror says plenty but the vault holds too little", async () => {
+    reset();
+    const user = await holder("ghost", 0n);
+    await unit((tx) => postEntry(tx, vaultCredited(`fund-ghost-${suffix}`, user.account, "USDC", 100_000_000n)));
+    const quoted = await quote(user.headers);
+    const reply = await pay(user.headers, `k-${suffix}-ghost`, quoted.quote_id);
+    expect(reply.statusCode).toBe(422);
+    expect(reply.json().error.code).toBe("insufficient_balance");
+    const payout = await database.payout.findFirstOrThrow({ where: { quoteId: quoted.quote_id }, include: { events: true } });
+    expect(payout.failureReason).toBe("insufficient_vault_balance");
+    expect(payout.events.find((event) => event.toState === "failed")?.detail).toMatchObject({ check: "before_order" });
   }, 60_000);
 
   it("needs a fliq name, because the vault holder is the sender", async () => {

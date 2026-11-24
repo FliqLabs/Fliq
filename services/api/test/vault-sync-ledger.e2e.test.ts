@@ -24,7 +24,7 @@ describe.skipIf(!enabled)("vault sync keeps the ledger mirror in step with relea
     vault.ftOnTransfer({ predecessor: "usdc.test.near", senderId: payer, amount: 16_082_137n, msg: "" });
     const orderId = `po_${suffix}`;
     await unit((tx) => postEntry(tx, vaultCredited(`dep_${suffix}`, payer, "USDC", 16_082_137n)));
-    await unit((tx) => reserveVault(tx, orderId, payer, "USDC", 10_070_359n));
+    await unit((tx) => reserveVault(tx, orderId, payer, "USDC", 10_070_359n, 16_082_137n));
     await vault.registerOrder({ orderId, payer, depositAddress: "dep.test.near", amount: 10_070_359n, expiresAtNs: NOW_NS + 1n, corridor: "NG-NGN-bank" });
     expect(await unit((tx) => vaultMirror(tx, payer, "USDC"))).toEqual({ available: 6_011_778n, reserved: 10_070_359n });
 

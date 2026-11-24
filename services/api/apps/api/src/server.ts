@@ -161,7 +161,7 @@ const sends = createSends({
   log: (message) => console.warn(message),
 });
 
-const quoteDeps = { adapters, ...(hops ? { hop: hops } : {}), routing: DEFAULT_ROUTING_CONFIG, signals: NO_SIGNALS, now: () => new Date() };
+const quoteDeps = { adapters, ...(hops ? { hop: hops } : {}), vault, routing: DEFAULT_ROUTING_CONFIG, signals: NO_SIGNALS, now: () => new Date() };
 const rateBoard = createRateBoard(quoteDeps, unit);
 
 // With a relayer, claiming a name creates the user's NEAR account on chain; without one, nothing is created on chain.

@@ -1809,6 +1809,10 @@ export interface components {
             eta_seconds?: number;
             /** @description Whole local currency units the chosen route pays over the next best, 0 when there is only one */
             saving_vs_next?: number;
+            /** @description Intents routes only. The most the vault is expected to debit for this payout, in token base units: the amount sent plus the provider's network fee (capped) and the NEAR Intents spread. A payout is refused with insufficient_balance when the vault's free balance is below this. */
+            total_debit?: string;
+            /** @description Intents routes only, and only when the payer's vault balance could be read. The largest amount to send, in token base units, whose total_debit fits the payer's free vault balance. 0 when the balance cannot cover the fees. */
+            max_amount?: string;
         };
         Account: {
             /** @description Institution code, for example 058 for GTBank */
