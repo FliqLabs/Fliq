@@ -9,7 +9,8 @@ import {
   type RoutingSignals,
 } from "../../../packages/domain/routing.js";
 import { newId } from "../../../packages/db/src/ids.js";
-import { InvalidAmountError, toUnits } from "../../../packages/providers/money.js";
+import type { VaultClient } from "../../../packages/chains/vault/index.js";
+import { ASSET_DECIMALS, InvalidAmountError, toUnits } from "../../../packages/providers/money.js";
 import type { Asset, Chain, Country, FiatCurrency, PayoutType, ProviderAdapter, ProviderQuote, QuoteAmount } from "../../../packages/providers/types.js";
 import { formatTokenAmount } from "./dashboard.js";
 import type { Db, Unit } from "./db.js";
@@ -21,6 +22,8 @@ export interface QuoteDeps {
   routing: RoutingConfig;
   signals: RoutingSignals;
   now: () => Date;
+  // Present when quotes can read the payer's free vault balance, to say how much they can send.
+  vault?: Pick<VaultClient, "getBalance">;
 }
 
 export interface QuoteInput {
@@ -40,6 +43,33 @@ const NOT_OFFERED: Partial<Record<Dropped["reason"], "breaker_open" | "timeout" 
   error: "error",
   half_open_over_limit: "half_open_over_limit",
 };
+
+export const MAX_PROVIDER_FEE_CENTS = 25n;
+export const providerFeeCap = (asset: Asset) => MAX_PROVIDER_FEE_CENTS * 10n ** BigInt(ASSET_DECIMALS[asset] - 2);
+
+type HopLeg = { amountIn: bigint; amountOut: bigint };
+
+const ceilDiv = (numerator: bigint, denominator: bigint) => (numerator + denominator - 1n) / denominator;
+
+// What the vault pays for an Intents payout at most: the provider may add up to the fee cap to what it asks for once
+// its order exists (Paycrest adds its network fee), and the hop charges its own spread on top of that.
+export function totalDebit(hop: HopLeg, asset: Asset): bigint {
+  return ceilDiv((hop.amountOut + providerFeeCap(asset)) * hop.amountIn, hop.amountOut);
+}
+
+// The largest send amount whose total debit still fits what the payer holds, scaling the route's hop linearly.
+export function maxSendAmount(sent: bigint, hop: HopLeg, asset: Asset, available: bigint): bigint {
+  const feeIn = ceilDiv(providerFeeCap(asset) * hop.amountIn, hop.amountOut);
+  if (available <= feeIn) return 0n;
+  const debitAt = (amount: bigint) => {
+    const amountIn = (amount * hop.amountIn) / sent;
+    const amountOut = (amountIn * hop.amountOut) / hop.amountIn;
+    return amountOut > 0n ? totalDebit({ amountIn, amountOut }, asset) : feeIn;
+  };
+  let amount = ((available - feeIn) * sent) / hop.amountIn;
+  while (amount > 0n && debitAt(amount) > available) amount -= 1n;
+  return amount;
+}
 
 // bigint amounts travel as strings so the stored quote survives JSON.
 function serializeProviderQuote(quote: ProviderQuote, hop: Route["hop"]): Prisma.InputJsonObject {
@@ -123,7 +153,7 @@ export async function priceQuote(deps: QuoteDeps, input: QuoteInput) {
 
 export type PricedQuote = Awaited<ReturnType<typeof priceQuote>>;
 
-export async function saveQuote(tx: Db, userId: string, input: QuoteInput, priced: PricedQuote) {
+export async function saveQuote(tx: Db, userId: string, input: QuoteInput, priced: PricedQuote, payerAvailable: bigint | null = null) {
   const { routes, dropped, expiresAt, now } = priced;
   const best = routes[0];
   if (!best || expiresAt <= now) throw new ApiError(422, "no_route", "No provider can pay this out right now.");
@@ -167,6 +197,8 @@ export async function saveQuote(tx: Db, userId: string, input: QuoteInput, price
   });
 
   const next = routes[1];
+  const asset = input.token.toUpperCase() as Asset;
+  const debit = best.kind === "intents" && best.hop ? totalDebit(best.hop, asset) : null;
   return {
     quote_id: quoteId,
     token: input.token,
@@ -208,6 +240,8 @@ export async function saveQuote(tx: Db, userId: string, input: QuoteInput, price
     expires_in: Math.max(0, Math.floor((expiresAt.getTime() - now.getTime()) / 1000)),
     eta_seconds: best.etaSeconds,
     saving_vs_next: next ? wholeUnits(best.amountOutMinor - next.amountOutMinor) : 0,
+    ...(debit !== null ? { total_debit: debit.toString() } : {}),
+    ...(debit !== null && best.hop && payerAvailable !== null ? { max_amount: maxSendAmount(best.amountIn, best.hop, asset, payerAvailable).toString() } : {}),
   };
 }
 
@@ -218,7 +252,16 @@ export async function requestQuote(tx: Db, deps: QuoteDeps, userId: string, inpu
 // Prices first, then opens the transaction only to store the quote.
 export async function quoteAndSave(unit: Unit, deps: QuoteDeps, userId: string, input: QuoteInput) {
   const priced = await priceQuote(deps, input);
-  return unit((tx) => saveQuote(tx, userId, input, priced));
+  const available = priced.routes[0]?.kind === "intents" ? await payerAvailable(unit, deps, userId) : null;
+  return unit((tx) => saveQuote(tx, userId, input, priced, available));
+}
+
+// The vault contract, not the ledger mirror, says what the payer can spend. A read that fails leaves max_amount out.
+async function payerAvailable(unit: Unit, deps: QuoteDeps, userId: string): Promise<bigint | null> {
+  if (!deps.vault) return null;
+  const payer = (await unit((tx) => tx.user.findUnique({ where: { id: userId }, select: { nearAccount: true } })))?.nearAccount;
+  if (!payer) return null;
+  return deps.vault.getBalance(payer).then((balance) => balance.available, () => null);
 }
 
 export function logTimeouts(operation: string, currency: string, dropped: readonly Dropped[]): void {

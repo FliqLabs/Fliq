@@ -10,7 +10,16 @@ export interface PostResult {
   created: boolean;
 }
 
-export class InsufficientVaultBalance extends Error {}
+export class InsufficientVaultBalance extends Error {
+  constructor(
+    readonly needed: bigint,
+    readonly held: bigint,
+    holder: string,
+  ) {
+    super(`not enough free balance for ${holder}: needs ${needed}, holds ${held}`);
+    this.name = "InsufficientVaultBalance";
+  }
+}
 
 // Spec 7.3: the key is the payout id and the posting type, so replaying an event creates nothing.
 // The lock lets two callers racing on one key run one after the other instead of colliding on the unique index.
@@ -72,13 +81,15 @@ export async function vaultAvailable(tx: Db, holder: string, asset: Asset): Prom
   return -(row?.amount ?? 0n);
 }
 
-// Reserves the funding balance for a vault payout, refusing when the free balance cannot cover it.
-export async function reserveVault(tx: Db, payoutId: string, holder: string, asset: Asset, amount: bigint): Promise<PostResult> {
+// Reserves the funding balance for a vault payout, refusing when the free balance cannot cover it. The free balance
+// is the vault contract's, read by the caller: the mirror has drifted from the chain for some holders, so it would
+// refuse payers who have the money and pass payers who do not.
+export async function reserveVault(tx: Db, payoutId: string, holder: string, asset: Asset, amount: bigint, chainAvailable: bigint): Promise<PostResult> {
   const posting = vaultReserved(payoutId, holder, asset, amount);
   const already = await tx.journalEntry.findUnique({ where: { idempotencyKey: `${payoutId}:${posting.type}` }, select: { id: true } });
   if (already) return { entryId: already.id, created: false };
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`vault:${holder}:${asset}`}, 0))`;
-  if ((await vaultAvailable(tx, holder, asset)) < amount) throw new InsufficientVaultBalance(`not enough free balance for ${holder}`);
+  if (chainAvailable < amount) throw new InsufficientVaultBalance(amount, chainAvailable, holder);
   return postEntry(tx, posting);
 }
 
