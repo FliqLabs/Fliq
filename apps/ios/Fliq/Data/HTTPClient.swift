@@ -204,6 +204,14 @@ struct HTTPClient: FliqAPI {
         try await send("GET", "requests/\(id)")
     }
 
+    func notificationSettings() async throws -> NotificationSettings {
+        try await send("GET", "me/notification-settings")
+    }
+
+    func updateNotificationSettings(_ settings: NotificationSettings) async throws -> NotificationSettings {
+        try await send("PUT", "me/notification-settings", body: settings)
+    }
+
     func revokeSession(id: String) async throws {
         let _: Empty = try await send("DELETE", "sessions/\(id)")
     }

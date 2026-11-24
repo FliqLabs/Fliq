@@ -5,7 +5,13 @@ struct NEARRPC: Sendable {
     let url: URL
     var session: URLSession = .shared
 
-    struct AccessKey: Decodable { let nonce: UInt64 }
+    /// A `view_access_key` answer. Some RPC providers, FastNEAR among them, answer a missing key with HTTP 200 and a
+    /// result that carries an `error` text instead of a nonce, so both are read.
+    private struct AccessKeyLookup: Decodable {
+        let nonce: UInt64?
+        let error: String?
+    }
+    static let requestTimeout: TimeInterval = 10
     struct Block: Decodable {
         struct Header: Decodable {
             let height: UInt64
@@ -35,27 +41,24 @@ struct NEARRPC: Sendable {
         enum CodingKeys: String, CodingKey { case approvedUSDC = "approved_usdc_token_contract" }
     }
 
+    /// The key's nonce. A key that is not on the account throws a `NEARRPCError` whose `isUnknownAccessKey` is true,
+    /// whichever way the provider says so.
     func accessKeyNonce(account: String, publicKey: String) async throws -> UInt64 {
-        let key: AccessKey = try await call("query", [
+        let found: AccessKeyLookup = try await call("query", [
             "request_type": "view_access_key", "finality": "final", "account_id": account, "public_key": publicKey,
         ])
-        return key.nonce
+        if let nonce = found.nonce { return nonce }
+        if let error = found.error, error.contains("does not exist") {
+            throw NEARRPCError(message: error, cause: NEARRPCError.unknownAccessKey)
+        }
+        throw NEARRPCError(message: found.error ?? "unreadable access key")
     }
 
-    /// Whether `publicKey` is an access key of `account` right now. Some RPC providers answer a missing key with an
-    /// error, others with a result that carries an `error` text, so both are read. Anything else is thrown, never guessed.
+    /// Whether `publicKey` is an access key of `account` right now. Anything but a clear yes or no is thrown, never guessed.
     func hasAccessKey(account: String, publicKey: String) async throws -> Bool {
-        struct Lookup: Decodable {
-            let nonce: UInt64?
-            let error: String?
-        }
         do {
-            let found: Lookup = try await call("query", [
-                "request_type": "view_access_key", "finality": "final", "account_id": account, "public_key": publicKey,
-            ])
-            if found.nonce != nil { return true }
-            if let error = found.error, error.contains("does not exist") { return false }
-            throw NEARRPCError(message: found.error ?? "unreadable access key")
+            _ = try await accessKeyNonce(account: account, publicKey: publicKey)
+            return true
         } catch let error as NEARRPCError where error.isUnknownAccessKey {
             return false
         }
@@ -175,8 +178,16 @@ struct NEARRPC: Sendable {
     }
 
     private func call<Result: Decodable>(_ method: String, _ params: [String: String]) async throws -> Result {
-        let (data, _) = try await session.data(for: request(method, params))
-        let reply = try JSONDecoder().decode(Reply<Result>.self, from: data)
+        let (data, response) = try await session.data(for: request(method, params))
+        let reply: Reply<Result>
+        do {
+            reply = try JSONDecoder().decode(Reply<Result>.self, from: data)
+        } catch {
+            // A gateway error page is not JSON: say what the server answered rather than how it failed to decode.
+            try Self.checkStatus(response)
+            throw error
+        }
+        if reply.error == nil { try Self.checkStatus(response) }
         guard let result = reply.result else {
             throw NEARRPCError(message: reply.error?.message ?? "no result", cause: reply.error?.cause?.name)
         }
@@ -184,27 +195,41 @@ struct NEARRPC: Sendable {
     }
 
     private func rawCall(_ method: String, _ params: [String: String]) async throws -> [String: Any] {
-        let (data, _) = try await session.data(for: request(method, params))
-        let reply = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
-        if let result = reply["result"] as? [String: Any] { return result }
+        let (data, response) = try await session.data(for: request(method, params))
+        guard let reply = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            try Self.checkStatus(response)
+            throw NEARRPCError(message: "unreadable reply")
+        }
         let error = reply["error"] as? [String: Any]
+        if error == nil { try Self.checkStatus(response) }
+        if let result = reply["result"] as? [String: Any] { return result }
         let cause = (error?["cause"] as? [String: Any])?["name"] as? String
         throw NEARRPCError(message: error?["message"] as? String ?? "no result", cause: cause)
     }
 
     private func request(_ method: String, _ params: [String: String]) throws -> URLRequest {
-        var request = URLRequest(url: url)
+        var request = URLRequest(url: url, timeoutInterval: Self.requestTimeout)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: ["jsonrpc": "2.0", "id": "fliq", "method": method, "params": params])
         return request
     }
+
+    /// A JSON-RPC error keeps its own cause whatever the HTTP status. Without one, only a 2xx answer counts.
+    private static func checkStatus(_ response: URLResponse) throws {
+        guard let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) else { return }
+        throw NEARRPCError(message: "HTTP \(http.statusCode)", status: http.statusCode)
+    }
 }
 
 struct NEARRPCError: Error, Equatable {
+    static let unknownAccessKey = "UNKNOWN_ACCESS_KEY"
+
     let message: String
     var cause: String?
+    /// Set when the RPC answered with a non-2xx HTTP status and no JSON-RPC error.
+    var status: Int?
 
     var isUnknownAccount: Bool { cause == "UNKNOWN_ACCOUNT" }
-    var isUnknownAccessKey: Bool { cause == "UNKNOWN_ACCESS_KEY" }
+    var isUnknownAccessKey: Bool { cause == Self.unknownAccessKey }
 }

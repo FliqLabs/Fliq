@@ -25,6 +25,7 @@ import { startHealthChecks, type Probe } from "./status.js";
 import { createWebhookHandler } from "./webhooks.js";
 import { startWebhookDelivery } from "./webhook-delivery.js";
 import { startVaultSync } from "./vault-sync.js";
+import { startVaultReconcile } from "./vault-reconcile.js";
 import { alertConfigFromEnv, createAlerts } from "./alerts.js";
 import { createOps, opsConfigFromEnv } from "./ops.js";
 import { createSends, startSendWatch } from "./sends.js";
@@ -161,7 +162,7 @@ const sends = createSends({
   log: (message) => console.warn(message),
 });
 
-const quoteDeps = { adapters, ...(hops ? { hop: hops } : {}), routing: DEFAULT_ROUTING_CONFIG, signals: NO_SIGNALS, now: () => new Date() };
+const quoteDeps = { adapters, ...(hops ? { hop: hops } : {}), vault, routing: DEFAULT_ROUTING_CONFIG, signals: NO_SIGNALS, now: () => new Date() };
 const rateBoard = createRateBoard(quoteDeps, unit);
 
 // With a relayer, claiming a name creates the user's NEAR account on chain; without one, nothing is created on chain.
@@ -227,6 +228,14 @@ startVaultSync(
   { unit, vault, now: () => new Date(), log: alert },
   Number(process.env.VAULT_SYNC_INTERVAL_MS ?? 15_000),
 );
+// Off unless VAULT_RECONCILE is set: "dry_run" only logs the drift, "apply" also writes the corrections.
+const reconcileMode = process.env.VAULT_RECONCILE;
+if (reconcileMode === "dry_run" || reconcileMode === "apply") {
+  startVaultReconcile(
+    { unit, chainBalance: (holder) => vault.getBalance(holder), now: () => new Date(), log: alert, apply: reconcileMode === "apply" },
+    Number(process.env.VAULT_RECONCILE_INTERVAL_MS ?? 300_000),
+  );
+}
 const apns = apnsFromEnv(process.env);
 const apnsSender = apns ? createApnsSender(apns) : null;
 startPushDispatch(

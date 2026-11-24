@@ -12,10 +12,13 @@ struct AmountView: View {
             AmountKeypad(text: flow.amountText, onType: flow.enterAmount)
                 .padding(.bottom, 12)
 
-            if let message = flow.errorMessage {
+            if flow.signing.isBlocked {
+                NotAddedPrompt(signing: flow.signing)
+            } else if let message = flow.errorMessage {
                 Text(message)
                     .font(.system(size: 13))
                     .foregroundStyle(Theme.warning)
+                    .multilineTextAlignment(.center)
                     .padding(.bottom, 8)
             }
 
@@ -27,7 +30,7 @@ struct AmountView: View {
                 if flow.isQuoting { ProgressView() } else { Text("Get quote") }
             }
             .buttonStyle(PrimaryButtonStyle())
-            .disabled((flow.amount ?? .zero) <= .zero || flow.isOverBalance || flow.isQuoting)
+            .disabled((flow.amount ?? .zero) <= .zero || flow.isOverBalance || flow.isQuoting || flow.signing.isBlocked)
             .padding(.bottom, 12)
         }
         .fliqScreen()
@@ -35,6 +38,7 @@ struct AmountView: View {
             ToolbarItem(placement: .principal) { recipientChip }
         }
         .task { await flow.loadRate() }
+        .task { await flow.signing.check() }
     }
 
     private var amount: some View {
@@ -67,10 +71,22 @@ struct AmountView: View {
                     .foregroundStyle(Theme.textSecondary)
                     .padding(.top, 6)
             }
-            Text(flow.isOverBalance ? "More than the $\(Money.dollars(flow.available)) in your vault" : "In your vault $\(Money.dollars(flow.available))")
-                .font(.system(size: 14))
-                .foregroundStyle(flow.isOverBalance ? Theme.warning : Theme.textTertiary)
-                .padding(.top, 2)
+            HStack(spacing: 10) {
+                Text(flow.isOverBalance ? "More than the $\(Money.dollars(flow.available)) in your vault" : "In your vault $\(Money.dollars(flow.available))")
+                    .font(.system(size: 14))
+                    .foregroundStyle(flow.isOverBalance ? Theme.warning : Theme.textTertiary)
+                if flow.available.baseUnits > PayFlow.maxReserveCents * (TokenAmount.base / 100) {
+                    Button("Max", action: flow.useMax)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Theme.textPrimary)
+                        .padding(.horizontal, 12)
+                        .frame(height: 28)
+                        .overlay(Capsule().strokeBorder(Theme.hairline))
+                        .buttonStyle(.plain)
+                        .accessibilityHint("Cashes out everything in your vault, less a little for fees")
+                }
+            }
+            .padding(.top, 2)
         }
     }
 

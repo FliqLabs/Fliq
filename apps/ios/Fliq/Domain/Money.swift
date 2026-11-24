@@ -41,6 +41,16 @@ struct TokenAmount: Codable, Hashable, Sendable, Comparable {
         self = rest.allSatisfy({ $0 == "0" }) ? kept : TokenAmount(baseUnits: kept.baseUnits + 1)
     }
 
+    /// A coin amount that arrived with more decimals than six (SOL has 9, ETH 18), cut to six, so what is shown
+    /// is never more than arrived: "0.137662345" -> 0.137662.
+    init?(roundingDown text: String) {
+        let pieces = text.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
+        guard pieces.count == 2, pieces[1].count > Self.decimalPlaces, pieces[1].allSatisfy(\.isNumber),
+              let kept = TokenAmount(decimalString: "\(pieces[0]).\(pieces[1].prefix(Self.decimalPlaces))")
+        else { return nil }
+        self = kept
+    }
+
     init(from decoder: Decoder) throws {
         let text = try decoder.singleValueContainer().decode(String.self)
         guard let amount = TokenAmount(decimalString: text) else {

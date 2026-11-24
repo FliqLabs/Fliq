@@ -32,7 +32,9 @@ struct PersonPayView: View {
                 AmountKeypad(text: flow.amountText, onType: flow.enterAmount)
                     .padding(.bottom, 8)
             }
-            if let message = flow.errorMessage {
+            if flow.signing.isBlocked {
+                NotAddedPrompt(signing: flow.signing)
+            } else if let message = flow.errorMessage {
                 Text(message)
                     .font(.system(size: 13))
                     .foregroundStyle(Theme.warning)
@@ -51,6 +53,7 @@ struct PersonPayView: View {
             .padding(.bottom, 12)
         }
         .task(id: flow.nameText) { await flow.lookUp() }
+        .task { await flow.signing.check() }
         .onAppear { if flow.nameText.isEmpty { nameFocused = true } }
     }
 

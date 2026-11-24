@@ -102,7 +102,7 @@ describe.skipIf(!enabled)("ledger against a real database", () => {
     expect(mine(await findProjectionDrift(db))).toEqual([]);
   });
 
-  it("reserves vault funds only when the free balance covers them", async () => {
+  it("reserves vault funds only when the chain's free balance covers them", async () => {
     const holder = `holder-${run}.near`;
     const topUp = newId("po");
     payouts.push(topUp);
@@ -111,14 +111,29 @@ describe.skipIf(!enabled)("ledger against a real database", () => {
 
     const first = newId("po");
     payouts.push(first);
-    expect((await db.$transaction((tx) => reserveVault(tx, first, holder, "USDC", 30_000_000n))).created).toBe(true);
+    expect((await db.$transaction((tx) => reserveVault(tx, first, holder, "USDC", 30_000_000n, 50_000_000n))).created).toBe(true);
     expect(await db.$transaction((tx) => vaultAvailable(tx, holder, "USDC"))).toBe(20_000_000n);
-    expect((await db.$transaction((tx) => reserveVault(tx, first, holder, "USDC", 30_000_000n))).created).toBe(false);
+    expect((await db.$transaction((tx) => reserveVault(tx, first, holder, "USDC", 30_000_000n, 20_000_000n))).created).toBe(false);
 
     const second = newId("po");
     payouts.push(second);
-    await expect(db.$transaction((tx) => reserveVault(tx, second, holder, "USDC", 30_000_000n))).rejects.toBeInstanceOf(InsufficientVaultBalance);
+    await expect(db.$transaction((tx) => reserveVault(tx, second, holder, "USDC", 30_000_000n, 20_000_000n))).rejects.toBeInstanceOf(InsufficientVaultBalance);
     expect(await db.$transaction((tx) => vaultAvailable(tx, holder, "USDC"))).toBe(20_000_000n);
+  });
+
+  it("trusts the chain over a drifted mirror, and still posts the reservation", async () => {
+    const holder = `drift-${run}.near`;
+    const rich = newId("po");
+    payouts.push(rich);
+    expect((await db.$transaction((tx) => reserveVault(tx, rich, holder, "USDC", 1_000_000n, 1_870_000n))).created).toBe(true);
+    expect(await db.$transaction((tx) => vaultAvailable(tx, holder, "USDC"))).toBe(-1_000_000n);
+
+    const topUp = newId("po");
+    payouts.push(topUp);
+    await post(vaultCredited(topUp, holder, "USDC", 12_770_000n));
+    const poor = newId("po");
+    payouts.push(poor);
+    await expect(db.$transaction((tx) => reserveVault(tx, poor, holder, "USDC", 5_000_000n, 870_000n))).rejects.toMatchObject({ needed: 5_000_000n, held: 870_000n });
   });
 
 });

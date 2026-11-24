@@ -35,10 +35,12 @@ final class PayFlow {
     private let transfers: (any VaultTransfers)?
 
     private let accounts: AccountBook?
+    let signing: SigningAccess
 
     /// `startsInLocal` opens the keypad in the bank's currency: set when the owner shows their balance in a local currency.
-    init(api: any FliqAPI, activity: ActivityStore? = nil, vault: VaultStore? = nil, accounts: AccountBook? = nil, transfers: (any VaultTransfers)? = nil, startsInLocal: Bool = false) {
+    init(api: any FliqAPI, activity: ActivityStore? = nil, vault: VaultStore? = nil, accounts: AccountBook? = nil, transfers: (any VaultTransfers)? = nil, startsInLocal: Bool = false, recovery: (any AccountRecovering)? = nil) {
         unit = startsInLocal ? .local : .dollars
+        signing = SigningAccess(recovery: recovery)
         self.transfers = transfers
         self.accounts = accounts
         self.api = api
@@ -63,6 +65,43 @@ final class PayFlow {
     var isOverBalance: Bool {
         guard vault != nil, let amount else { return false }
         return amount > available
+    }
+
+    /// The quote's fees in dollars, rounded up to the cent. The API gives them in the bank currency's minor units.
+    var fees: TokenAmount? {
+        guard let quote, quote.rateBeforeFees > 0 else { return nil }
+        let cents = (Double(quote.fees.total) / quote.rateBeforeFees - 1e-6).rounded(.up)
+        return TokenAmount(baseUnits: Int64(max(cents, 0)) * Self.cent)
+    }
+
+    /// The vault less the quote's fees, down to the cent.
+    var mostWithFees: TokenAmount? {
+        guard let fees else { return nil }
+        let cents = max(0, (available.baseUnits - fees.baseUnits) / Self.cent)
+        return TokenAmount(baseUnits: cents * Self.cent)
+    }
+
+    /// The quoted amount and its fees come to more than the vault holds. A flow without a vault never blocks.
+    var isOverBalanceWithFees: Bool {
+        guard vault != nil, let quote, let fees else { return false }
+        return quote.amount.baseUnits + fees.baseUnits > available.baseUnits
+    }
+
+    var overBalanceWithFeesMessage: String? {
+        guard isOverBalanceWithFees, let mostWithFees else { return nil }
+        return "With fees, the most you can cash out is $\(Money.dollars(mostWithFees))."
+    }
+
+    private static let cent = TokenAmount.base / 100
+    /// Kept back by Max for fees: about $0.005 here plus up to $0.25 on Paycrest's network, which a quote then checks.
+    static let maxReserveCents: Int64 = 2
+
+    /// Fills in the vault balance less a little for fees, in dollars.
+    func useMax() {
+        let cents = max(0, available.baseUnits / Self.cent - Self.maxReserveCents)
+        unit = .dollars
+        amountText = cents % 100 == 0 ? "\(cents / 100)" : "\(cents / 100)." + String(format: "%02lld", cents % 100)
+        errorMessage = nil
     }
 
     var estimatedReceive: Int? {
@@ -102,6 +141,7 @@ final class PayFlow {
     @discardableResult
     func enterAmount(_ typed: String) -> String {
         amountText = AmountTyping.clean(typed, previous: amountText)
+        errorMessage = nil
         return amountText
     }
 
@@ -115,8 +155,8 @@ final class PayFlow {
             let quote = try await api.quote(QuoteRequest(token: .usdc, currency: currency, amount: amount))
             self.quote = quote
             quoteExpiresAt = .now.addingTimeInterval(TimeInterval(quote.expiresIn))
-            errorMessage = nil
-            return true
+            errorMessage = overBalanceWithFeesMessage
+            return errorMessage == nil
         } catch {
             errorMessage = "No quote right now. Try again in a moment."
             return false
@@ -135,6 +175,10 @@ final class PayFlow {
 
     func send() async -> Bool {
         guard let quote, let verified, !isSending else { return false }
+        if let overBalanceWithFeesMessage {
+            errorMessage = overBalanceWithFeesMessage
+            return false
+        }
         isSending = true
         defer { isSending = false }
         do {
@@ -169,16 +213,18 @@ final class PayFlow {
             unsigned = nil
             errorMessage = "The vault refused it: \(reason). Nothing moved."
             return false
-        } catch let error as KeychainError where error.status == errSecUserCanceled || error.status == errSecAuthFailed {
-            // Face ID was cancelled. Nothing moved; Send asks again for the same cash-out.
-            errorMessage = nil
-            return false
         } catch TransferError.stillPending {
             unsigned = nil
             errorMessage = "Your vault hasn't confirmed yet. Check Activity in a minute before trying again."
             return false
         } catch {
-            errorMessage = "The payout didn't start. Nothing moved."
+            if let failure = SignFailure(error) {
+                errorMessage = failure.message
+                if failure == .notAdded { await signing.notAdded() }
+            } else {
+                // A cancelled Face ID moved nothing; Send asks again for the same cash-out.
+                errorMessage = SignFailure.isCancel(error) ? nil : "The payout didn't start. Nothing moved."
+            }
             return false
         }
     }

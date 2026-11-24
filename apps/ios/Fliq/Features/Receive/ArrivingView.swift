@@ -83,6 +83,8 @@ struct ArrivingView: View {
                     .frame(height: 64)
             } else if let landing = flow.landing {
                 HeroAmount(symbol: "+$", value: landing.decimalString)
+            } else if deposit.source.isSwapped, let received = flow.status?.received {
+                HeroAmount(symbol: "+", value: "\(received.decimalString) \(deposit.source.token)", size: 48)
             } else {
                 Text("Waiting for your \(deposit.source.token)")
                     .font(.system(size: 30, weight: .light))
@@ -113,6 +115,7 @@ struct ArrivingView: View {
         if stage == .underpaid { return "\(DepositFailure.belowMinimum) \(DepositFailure.contactUs)" }
         if stage.isNotComing { return DepositFailure.contactUs }
         if stage == .waiting { return "We'll show it here the moment it arrives" }
+        if (stage == .seen || stage == .bridging), deposit.source.isSwapped { return "Received. Arriving in your vault as dollars" }
         if stage == .seen || stage == .bridging { return "Received. Arriving in your vault" }
         let left = secondsLeft(deposit, now: now)
         if left >= 120 { return "about \(left / 60) minutes left" }

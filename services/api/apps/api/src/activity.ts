@@ -157,7 +157,8 @@ async function payouts(
       usd: formatTokenAmount(row.amountIn),
       token: null,
       seconds: seen && settled ? Math.round((settled.getTime() - seen.getTime()) / 1000) : null,
-      reason: row.state === "refunded" ? "provider_failed" : row.state === "expired" ? "expired" : null,
+      // A payout that failed or expired before the provider saw any money never left the vault, so the receipt says so.
+      reason: row.state === "refunded" ? "provider_failed" : !seen && (row.state === "failed" || row.state === "expired") ? "not_started" : row.state === "expired" ? "expired" : null,
       ref_id: row.id,
       tx_hash: null,
     };

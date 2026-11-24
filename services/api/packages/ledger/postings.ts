@@ -12,7 +12,8 @@ export type PostingType =
   | "VAULT_CREDITED"
   | "VAULT_TRANSFER"
   | "VAULT_RESERVED"
-  | "VAULT_RELEASED";
+  | "VAULT_RELEASED"
+  | "VAULT_RECONCILED";
 
 export interface Line {
   account: AccountRef;
@@ -170,4 +171,24 @@ export function vaultTransfer(transferId: string, from: string, to: string, asse
     type: "VAULT_TRANSFER",
     lines: [debit(account("vault_available", asset, from), amount), credit(account("vault_available", asset, to), amount)],
   };
+}
+
+// Money that moved in or out of a vault without passing through fliq's own flows (a withdraw to the holder's wallet, a
+// top-up from it), and reservations left behind by finished payouts, are brought in line with the contract by one entry
+// per holder per run, against the outside world.
+export function vaultReconciled(
+  runId: string,
+  holder: string,
+  asset: Asset,
+  delta: { available: bigint; reserved: bigint },
+  memo: Record<string, string | number>,
+): Posting {
+  const outside = account("sender_external", asset);
+  const lines: Line[] = [];
+  for (const [name, change] of [["vault_available", delta.available], ["vault_reserved", delta.reserved]] as const) {
+    if (change === 0n) continue;
+    const mirror = account(name, asset, holder);
+    lines.push(...(change > 0n ? [debit(outside, change), credit(mirror, change)] : [debit(mirror, -change), credit(outside, -change)]));
+  }
+  return { payoutId: `${runId}:${holder}`, type: "VAULT_RECONCILED", lines, memo };
 }
