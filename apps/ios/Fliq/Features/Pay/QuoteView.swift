@@ -123,7 +123,9 @@ struct QuoteView: View {
                     .tint(.white)
             }
 
-            if let message = flow.errorMessage {
+            if flow.signing.isBlocked {
+                NotAddedPrompt(signing: flow.signing)
+            } else if let message = flow.overBalanceWithFeesMessage ?? flow.errorMessage {
                 Text(message)
                     .font(.system(size: 13))
                     .foregroundStyle(Theme.warning)
@@ -138,7 +140,7 @@ struct QuoteView: View {
                     IconLabel("Confirm with Face ID", icon: "faceid")
                 }
                 .buttonStyle(PrimaryButtonStyle(filled: true))
-                .disabled(flow.isSending)
+                .disabled(flow.isSending || flow.isOverBalanceWithFees || flow.signing.isBlocked)
             }
         }
         .padding(.bottom, 12)

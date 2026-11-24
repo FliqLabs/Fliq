@@ -173,7 +173,8 @@ struct RootView: View {
             vault: environment.vault,
             accounts: environment.accounts,
             transfers: environment.transfers,
-            startsInLocal: DisplayCurrency.stored() != .usd
+            startsInLocal: DisplayCurrency.stored() != .usd,
+            recovery: environment.recovery
         )
         flow.saveAccount = save
         self.flow = flow
@@ -183,7 +184,7 @@ struct RootView: View {
     }
 
     private func startPersonPayment(to account: String?) {
-        personFlow = PersonPayFlow(api: environment.api, transfers: environment.transfers, vault: environment.vault, account: account)
+        personFlow = PersonPayFlow(api: environment.api, transfers: environment.transfers, vault: environment.vault, account: account, recovery: environment.recovery)
         environment.router.push(.payPerson)
     }
 
@@ -228,6 +229,7 @@ struct RootView: View {
             sends: environment.sends,
             vault: environment.vault,
             network: environment.isLive ? .current : .testnet,
+            recovery: environment.recovery,
             onLeftVault: {
                 await environment.refreshVault()
                 await environment.inbox.load()

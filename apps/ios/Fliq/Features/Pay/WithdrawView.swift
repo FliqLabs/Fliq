@@ -34,12 +34,14 @@ struct WithdrawAmountView: View {
             .padding(.bottom, 8)
             AmountKeypad(text: flow.amountText, onType: flow.enterAmount)
                 .padding(.bottom, 12)
+            if flow.signing.isBlocked { NotAddedPrompt(signing: flow.signing) }
             Button("Next") { environment.router.push(.withdrawTo) }
                 .buttonStyle(PrimaryButtonStyle())
                 .disabled(!flow.hasAmount)
                 .padding(.bottom, 12)
         }
         .fliqScreen("Send")
+        .task { await flow.signing.check() }
     }
 }
 
@@ -266,6 +268,8 @@ struct WithdrawReviewView: View {
                     .foregroundStyle(Theme.warning)
                     .multilineTextAlignment(.center)
                     .padding(.bottom, 8)
+            } else if flow.signing.isBlocked {
+                NotAddedPrompt(signing: flow.signing)
             } else if let message = flow.errorMessage {
                 Text(message)
                     .font(.system(size: 13))
