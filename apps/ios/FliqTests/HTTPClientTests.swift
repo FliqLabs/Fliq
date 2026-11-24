@@ -85,6 +85,32 @@ final class HTTPClientTests: XCTestCase {
         XCTAssertEqual(StubProtocol.requests.last?.value(forHTTPHeaderField: "Authorization"), "Bearer \(signedIn.accessToken)")
     }
 
+    /// The bank deposit routes run on the website, outside this client, so they get a token renewed the same way.
+    func testTheTokenForTheWebsiteIsRenewedWhenItIsAboutToRunOut() async throws {
+        let sessions = SessionVault(keychain: nil)
+        let signedIn: Session = try fixtures.load("session.signed-in")
+        await sessions.store(Session(accessToken: "nearly-gone", expiresIn: 10, refreshToken: "rt_old", user: signedIn.user))
+        let client = makeClient(sessions: sessions)
+        StubProtocol.respond { _ in (200, try fixtures.data("session.signed-in")) }
+
+        let token = await client.freshAccessToken()
+
+        XCTAssertEqual(token, signedIn.accessToken)
+        XCTAssertEqual(StubProtocol.requests.map(\.url?.path), ["/v1/auth/refresh"])
+    }
+
+    func testAFreshTokenForTheWebsiteIsSentAsItIs() async throws {
+        let sessions = SessionVault(keychain: nil)
+        let signedIn: Session = try fixtures.load("session.signed-in")
+        await sessions.store(Session(accessToken: "still-good", expiresIn: 900, refreshToken: "rt_old", user: signedIn.user))
+        let client = makeClient(sessions: sessions)
+
+        let token = await client.freshAccessToken()
+
+        XCTAssertEqual(token, "still-good")
+        XCTAssertTrue(StubProtocol.requests.isEmpty)
+    }
+
     /// The API revokes the whole session family when a refresh token is spent twice, so this once signed users out.
     func testCallsRefusedTogetherShareOneRenewal() async throws {
         let sessions = SessionVault(keychain: nil)
