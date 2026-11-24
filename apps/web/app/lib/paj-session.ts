@@ -26,7 +26,9 @@ function isText(value: unknown, max = MAX_FIELD): value is string {
 }
 
 async function hasFliqSession(request: NextRequest) {
-  const accessToken = request.cookies.get("fliq_access")?.value;
+  // The website signs in with a cookie; the iPhone app sends its session as a bearer token. Both must pass.
+  const bearer = /^Bearer (\S+)$/.exec(request.headers.get("authorization") ?? "")?.[1];
+  const accessToken = bearer ?? request.cookies.get("fliq_access")?.value;
   if (!accessToken) return false;
   const apiBase = process.env.FLIQ_API_BASE_URL ?? "https://api-mainnet-64d65ef4.up.railway.app/v1";
   const check = () =>
