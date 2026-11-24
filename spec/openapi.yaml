@@ -3050,7 +3050,7 @@ components:
           type: [integer, "null"]
         reason:
           type: [string, "null"]
-          enum: [over_daily_cap, over_per_payout_cap, corridor_not_allowed, not_saved_account, provider_failed, expired, bank_stopped, null]
+          enum: [over_daily_cap, over_per_payout_cap, corridor_not_allowed, not_saved_account, provider_failed, expired, bank_stopped, not_started, null]
           description: "bank_stopped is a bank deposit the bank partner ended with FAILED. ERROR is not stopped, the partner retries after it."
         ref_id:
           type: string
