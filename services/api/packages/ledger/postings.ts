@@ -174,14 +174,21 @@ export function vaultTransfer(transferId: string, from: string, to: string, asse
 }
 
 // Money that moved in or out of a vault without passing through fliq's own flows (a withdraw to the holder's wallet, a
-// top-up from it) is brought into the mirror by one entry per run, against the outside world.
-export function vaultReconciled(runId: string, holder: string, asset: Asset, delta: bigint, memo: Record<string, string | number>): Posting {
-  const available = account("vault_available", asset, holder);
+// top-up from it), and reservations left behind by finished payouts, are brought in line with the contract by one entry
+// per holder per run, against the outside world.
+export function vaultReconciled(
+  runId: string,
+  holder: string,
+  asset: Asset,
+  delta: { available: bigint; reserved: bigint },
+  memo: Record<string, string | number>,
+): Posting {
   const outside = account("sender_external", asset);
-  return {
-    payoutId: `${runId}:${holder}`,
-    type: "VAULT_RECONCILED",
-    lines: delta > 0n ? [debit(outside, delta), credit(available, delta)] : [debit(available, -delta), credit(outside, -delta)],
-    memo,
-  };
+  const lines: Line[] = [];
+  for (const [name, change] of [["vault_available", delta.available], ["vault_reserved", delta.reserved]] as const) {
+    if (change === 0n) continue;
+    const mirror = account(name, asset, holder);
+    lines.push(...(change > 0n ? [debit(outside, change), credit(mirror, change)] : [debit(mirror, -change), credit(outside, -change)]));
+  }
+  return { payoutId: `${runId}:${holder}`, type: "VAULT_RECONCILED", lines, memo };
 }
