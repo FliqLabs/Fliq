@@ -26,7 +26,11 @@ export type MockVaultOptions = {
 
 export type IncomingTransfer = { predecessor: AccountId; senderId: AccountId; amount: bigint; msg: string };
 
-export type AgentRule = Omit<AgentPolicy, "owner" | "spentToday">;
+export type AgentRule = Omit<AgentPolicy, "owner" | "spentToday"> & {
+  revoked?: boolean;
+  cooldownNs?: bigint;
+  lastPayoutAtNs?: bigint;
+};
 
 // In-memory model of the vault as proposed in INTERFACE.md, for local runs and tests until a testnet
 // deployment exists. Most of it is not in the real contract yet.
@@ -96,7 +100,13 @@ export class MockVault implements VaultClient {
     if (rule.perPayoutCap <= 0n || rule.dailyCap <= 0n) throw new VaultError("INVALID_AMOUNT");
     const existing = this.#agents.get(agentId);
     if (existing && existing.owner !== owner) throw new VaultError("AGENT_TAKEN");
-    this.#agents.set(agentId, { ...rule, owner });
+    this.#agents.set(agentId, {
+      ...rule,
+      owner,
+      revoked: false,
+      cooldownNs: rule.cooldownNs ?? 0n,
+      lastPayoutAtNs: existing?.lastPayoutAtNs,
+    });
     this.events.push({
       event: "agent_set",
       owner,
@@ -114,8 +124,13 @@ export class MockVault implements VaultClient {
   removeAgent(owner: AccountId, agentId: AccountId): VaultTx {
     const agent = this.#agents.get(agentId);
     if (agent?.owner !== owner) throw new VaultError("AGENT_NOT_FOUND");
-    this.#agents.delete(agentId);
-    this.events.push({ event: "agent_revoked", owner, agentId, publicKey: mockKeyOf(agentId, agent.publicKey) });
+    this.#agents.set(agentId, { ...agent, revoked: true });
+    this.events.push({
+      event: "agent_revoked",
+      owner,
+      agentId,
+      publicKey: mockKeyOf(agentId, agent.publicKey),
+    });
     return this.#tx();
   }
 
@@ -143,8 +158,11 @@ export class MockVault implements VaultClient {
   }
 
   // predecessor is the only caller identity a relayed call carries: NEP-366 leaves the relayer's key as signer.
-  payout(predecessor: AccountId, orderId: OrderId): VaultTx {
+  payout(predecessor: AccountId, orderId: OrderId, amount?: bigint, depositAddress?: string): VaultTx {
     const order = this.#order(orderId);
+    if (amount !== undefined && amount !== order.amount) throw new VaultError("AMOUNT_MISMATCH");
+    if (depositAddress !== undefined && depositAddress !== order.depositAddress)
+      throw new VaultError("DESTINATION_MISMATCH");
     const agent = predecessor === order.payer ? null : this.#agents.get(predecessor);
     if (agent === undefined || (agent && agent.owner !== order.payer)) throw new VaultError("UNAUTHORIZED");
     if (agent && order.agentId !== predecessor) throw new VaultError("AGENT_NOT_BOUND");
@@ -251,11 +269,23 @@ export class MockVault implements VaultClient {
   }
 
   #enforcePolicy(agentId: AccountId, rule: AgentRule, order: VaultReceipt): void {
+    if (rule.revoked) throw new VaultError("POLICY_REVOKED");
+    if (rule.expiresAtNs !== undefined && this.#options.now() >= rule.expiresAtNs)
+      throw new VaultError("POLICY_EXPIRED");
+    const cooldown = rule.cooldownNs ?? 0n;
+    if (
+      cooldown > 0n &&
+      rule.lastPayoutAtNs !== undefined &&
+      this.#options.now() < rule.lastPayoutAtNs + cooldown
+    ) {
+      throw new VaultError("POLICY_COOLDOWN");
+    }
     if (rule.corridors && !rule.corridors.includes(order.corridor)) throw new VaultError("POLICY_CORRIDOR");
     if (order.amount > rule.perPayoutCap) throw new VaultError("POLICY_PER_PAYOUT_CAP");
     const spent = this.#spentToday(agentId);
     if (spent + order.amount > rule.dailyCap) throw new VaultError("POLICY_DAILY_CAP");
     this.#spent.set(this.#dayKey(agentId), spent + order.amount);
+    rule.lastPayoutAtNs = this.#options.now();
   }
 
   #spentToday(agentId: AccountId): bigint {

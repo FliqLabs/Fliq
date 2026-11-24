@@ -89,6 +89,15 @@ describe("register_order", () => {
 });
 
 describe("payout", () => {
+  it("refuses mismatched amount and destination arguments", async () => {
+    await vault.registerOrder(order());
+    expect(await refusal(() => vault.payout(ADA, "po_1", 49n * USDC_UNIT, order().depositAddress))).toBe(
+      "AMOUNT_MISMATCH",
+    );
+    expect(await refusal(() => vault.payout(ADA, "po_1", 50n * USDC_UNIT, "wrong.testnet"))).toBe(
+      "DESTINATION_MISMATCH",
+    );
+  });
   it("sends the reserved funds out once", async () => {
     await executedOrder();
     expect(await vault.getBalance(ADA)).toEqual({
@@ -188,8 +197,36 @@ describe("agent policy", () => {
     expect(await refusal(() => vault.removeAgent("bob.testnet", AGENT))).toBe("AGENT_NOT_FOUND");
     vault.removeAgent(ADA, AGENT);
     await vault.registerOrder(order({ amount: USDC_UNIT }));
-    expect(await refusal(agentPays("po_1"))).toBe("UNAUTHORIZED");
-    expect(await vault.getAgent(ADA, AGENT)).toBeNull();
+    expect(await refusal(agentPays("po_1"))).toBe("AGENT_NOT_BOUND");
+    expect((await vault.getAgent(ADA, AGENT))?.revoked).toBe(true);
+  });
+
+  it("refuses cooldown and expired policies", async () => {
+    vault.setAgent(ADA, "cooldown.testnet", {
+      perPayoutCap: USDC_UNIT,
+      dailyCap: USDC_UNIT,
+      corridors: ["API"],
+      cooldownNs: 60n * SECOND_NS,
+    });
+    await vault.registerOrder(
+      order({ orderId: "po_cool_1", amount: USDC_UNIT, corridor: "API", agentId: "cooldown.testnet" }),
+    );
+    vault.payout("cooldown.testnet", "po_cool_1");
+    await vault.registerOrder(
+      order({ orderId: "po_cool_2", amount: USDC_UNIT, corridor: "API", agentId: "cooldown.testnet" }),
+    );
+    expect(await refusal(() => vault.payout("cooldown.testnet", "po_cool_2"))).toBe("POLICY_COOLDOWN");
+
+    vault.setAgent(ADA, "expired.testnet", {
+      perPayoutCap: USDC_UNIT,
+      dailyCap: USDC_UNIT,
+      corridors: ["API"],
+      expiresAtNs: now - 1n,
+    });
+    await vault.registerOrder(
+      order({ orderId: "po_expired", amount: USDC_UNIT, corridor: "API", agentId: "expired.testnet" }),
+    );
+    expect(await refusal(() => vault.payout("expired.testnet", "po_expired"))).toBe("POLICY_EXPIRED");
   });
 });
 

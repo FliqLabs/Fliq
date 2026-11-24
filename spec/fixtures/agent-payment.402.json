@@ -1,0 +1,24 @@
+{
+  "error": {
+    "code": "payment_required",
+    "message": "Pay 1 USDC cent from the vault, then retry."
+  },
+  "price": "10000",
+  "token_contract": "usdc.test.near",
+  "vault_account": "fliq-vault.testnet",
+  "pay_to_address": "live-naira-rate.testnet",
+  "order_id": "api_demo_402",
+  "expires_at_ns": "1763978400000000000",
+  "payment_header": "x-fliq-payment",
+  "payment_method": "payout(order_id, amount, deposit_address)",
+  "live_rate_preview": {
+    "token": "usdc",
+    "currency": "ngn",
+    "rate": 1650.25,
+    "rate_before_fees": 1652,
+    "provider": "mock",
+    "providers_quoting": 2,
+    "spread": 1.75,
+    "fetched_at": "2026-11-24T10:00:00.000Z"
+  }
+}

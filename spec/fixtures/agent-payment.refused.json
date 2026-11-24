@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "agent_limit",
+    "message": "The vault refused the payout: POLICY_PER_PAYOUT_CAP."
+  }
+}
