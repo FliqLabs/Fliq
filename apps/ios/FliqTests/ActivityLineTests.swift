@@ -30,6 +30,21 @@ final class ActivityLineTests: XCTestCase {
         XCTAssertFalse(line.facts.contains { $0.0 == "Delivered" })
     }
 
+    /// A cash-out refused before the provider saw any money must not say it left the vault.
+    func testACashOutThatNeverStartedSaysNothingLeftTheVault() throws {
+        let line = try line(kind: "payout", status: "failed", reason: "not_started", party: "Faiz")
+
+        XCTAssertEqual(line.steps.map(\.title), ["Didn't start"])
+        XCTAssertEqual(line.steps.first?.detail, "Nothing left your vault")
+        XCTAssertNil(line.dollars)
+        XCTAssertTrue(line.facts.contains { $0 == ("From your vault", "Nothing moved") })
+    }
+
+    func testAFailedCashOutThatReachedTheProviderStillShowsItLeft() throws {
+        let line = try line(kind: "payout", status: "failed", party: "Faiz")
+        XCTAssertEqual(line.steps.first?.title, "Left your vault")
+    }
+
     func testAFailedOrExpiredDepositReadsAsNotReceived() throws {
         XCTAssertEqual(try line(status: "failed").statusText, "Not received")
         let expired = try line(status: "expired")

@@ -160,16 +160,21 @@ extension ActivityLine {
             facts = [("Status", "Refused"), ("Asked for", item.headline), ("Why", reason), ("Agent", item.agent?.name ?? ""), ("Reference", item.refId)]
         case .payout, .unknown:
             badge = item.agent.map { .agent(AgentApp.named($0.name)) } ?? .bank(name: item.party.name, logoKey: bank?.logoKey)
-            subtitle = outcome == .refunded
+            let notStarted = item.reason == "not_started"
+            subtitle = notStarted
+                ? Self.join(date, "Didn't start, nothing moved")
+                : outcome == .refunded
                 ? Self.join(date, "Not paid, refunded to you")
                 : Self.join(date, provider, bank?.name, item.seconds.map { "\($0)s" })
-            dollars = outcome == .refunded ? nil : item.usd.map { "$" + $0 }
+            dollars = outcome == .refunded || notStarted ? nil : item.usd.map { "$" + $0 }
             category = "Cash out"
-            steps = Self.payoutSteps(outcome, at: date, seconds: item.seconds, bank: bank?.name, provider: provider ?? "the provider")
+            steps = notStarted
+                ? [Step(title: "Didn't start", detail: "Nothing left your vault", done: false)]
+                : Self.payoutSteps(outcome, at: date, seconds: item.seconds, bank: bank?.name, provider: provider ?? "the provider")
             facts = [
                 ("Status", statusText),
                 ("They receive", item.headline),
-                ("From your vault", item.usd.map { "$" + $0 } ?? ""),
+                ("From your vault", notStarted ? "Nothing moved" : item.usd.map { "$" + $0 } ?? ""),
                 ("Paid out by", provider ?? ""),
                 ("Bank", bank?.name ?? item.party.institution ?? ""),
                 ("Account", item.party.accountLast4.map { "•••• " + $0 } ?? ""),
