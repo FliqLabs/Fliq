@@ -56,7 +56,8 @@ struct RelayedVaultTransfers: VaultTransfers {
     }
 
     func release(_ payout: Payout) async throws -> RelayResult? {
-        guard payout.deposit.chain == "near", let sender = await sender(), let vault = await vault() else { return nil }
+        guard payout.deposit.chain == "near" else { return nil }
+        guard let sender = await sender(), let vault = await vault() else { throw TransferError.notSetUp }
         let relay = DelegateRelay(api: api, rpc: rpc, keys: keys, pollInterval: pollInterval, pollAttempts: pollAttempts)
         return try await relay.submit(from: sender, reason: "Send \(Money.local(payout.receive, payout.currency)) to \(payout.accountName)") { nonce, height, key in
             .vaultPayout(

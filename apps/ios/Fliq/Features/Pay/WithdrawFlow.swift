@@ -62,6 +62,7 @@ final class WithdrawFlow {
     var pollAttempts = 60
     private let recents: SentAddresses
     private let onLeftVault: () async -> Void
+    let signing: SigningAccess
 
     init(
         withdrawals: any Withdrawals,
@@ -69,8 +70,10 @@ final class WithdrawFlow {
         vault: VaultStore? = nil,
         network: NearNetwork = .testnet,
         recents: SentAddresses = SentAddresses(),
+        recovery: (any AccountRecovering)? = nil,
         onLeftVault: @escaping () async -> Void = {}
     ) {
+        signing = SigningAccess(recovery: recovery)
         self.withdrawals = withdrawals
         self.sends = sends
         self.vault = vault
@@ -95,7 +98,7 @@ final class WithdrawFlow {
 
     var hasAmount: Bool {
         guard let amount, amount > .zero else { return false }
-        return !isOverBalance
+        return !isOverBalance && !signing.isBlocked
     }
 
     /// Another network takes a small fee, so a send below its minimum would mostly be eaten by it.
@@ -240,12 +243,14 @@ final class WithdrawFlow {
         } catch let error as WithdrawError {
             sent = nil
             await explain(error, amount: amount)
-        } catch let error as KeychainError where error.status == errSecUserCanceled || error.status == errSecAuthFailed {
-            sent = nil
-            errorMessage = nil
         } catch {
             sent = nil
-            errorMessage = "Couldn't reach NEAR. Nothing moved."
+            if let failure = SignFailure(error) {
+                errorMessage = failure.message
+                if failure == .notAdded { await signing.notAdded() }
+            } else {
+                errorMessage = SignFailure.isCancel(error) ? nil : "Couldn't reach NEAR. Nothing moved."
+            }
         }
         return false
     }

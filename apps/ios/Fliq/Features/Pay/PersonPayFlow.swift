@@ -25,12 +25,14 @@ final class PersonPayFlow {
     private let api: any FliqAPI
     private let transfers: any VaultTransfers
     private let vault: VaultStore?
+    let signing: SigningAccess
 
     /// The request being paid, when Pay was opened from a request link. The API marks it paid as the transfer lands.
     var requestCode: String?
 
-    init(api: any FliqAPI, transfers: any VaultTransfers, vault: VaultStore? = nil, account: String? = nil) {
+    init(api: any FliqAPI, transfers: any VaultTransfers, vault: VaultStore? = nil, account: String? = nil, recovery: (any AccountRecovering)? = nil) {
         self.api = api
+        signing = SigningAccess(recovery: recovery)
         self.transfers = transfers
         self.vault = vault
         nameText = account.map { $0.hasSuffix(FliqName.suffix) ? String($0.dropLast(FliqName.suffix.count)) : $0 } ?? ""
@@ -41,7 +43,7 @@ final class PersonPayFlow {
     var available: TokenAmount { vault?.balance ?? .zero }
 
     var canPay: Bool {
-        guard person != nil, let amount, amount > .zero, !isSending else { return false }
+        guard person != nil, let amount, amount > .zero, !isSending, !signing.isBlocked else { return false }
         return vault == nil || amount <= available
     }
 
@@ -89,19 +91,15 @@ final class PersonPayFlow {
         } catch TransferError.stillPending {
             paid = nil
             errorMessage = "Still confirming on NEAR. Check Activity in a moment before paying again."
-        } catch let error as KeychainError where error.status == errSecUserCanceled || error.status == errSecAuthFailed {
-            paid = nil
-            errorMessage = nil
-        } catch let error as NEARRPCError where error.isUnknownAccessKey {
-            paid = nil
-            errorMessage = Self.notAdded
         } catch {
             paid = nil
-            errorMessage = "The payment didn't go through. Nothing moved."
+            if let failure = SignFailure(error) {
+                errorMessage = failure.message
+                if failure == .notAdded { await signing.notAdded() }
+            } else {
+                errorMessage = SignFailure.isCancel(error) ? nil : "The payment didn't go through. Nothing moved."
+            }
         }
         return false
     }
-
-    /// This iPhone's key is not on the account, as on a phone signed in after setting up on the web.
-    static let notAdded = "This iPhone can't send yet. Add it in Settings > Security > Account backup with your passkey."
 }
