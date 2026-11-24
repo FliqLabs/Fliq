@@ -16,25 +16,26 @@ export type ReconcileDeps = {
 export type Correction = {
   holder: string;
   asset: Asset;
-  ledger: bigint;
-  chain: bigint;
-  delta: bigint;
+  ledger: Holding;
+  chain: Holding;
+  delta: Holding;
   applied: boolean;
   skipped?: string;
 };
 
-// The vault contract is the truth. A holder with a payout reserved on either side is left for the next run, so a
-// correction never races a payout that is still moving.
+// The vault contract is the truth for both the free and the reserved balance. Only a holder the contract still shows
+// with a reservation is left for the next run, so a correction never races a payout that is still moving. Reservations
+// the mirror kept after a payout finished are cleared here.
 export function planCorrection(
   holder: string,
   asset: Asset,
   ledger: Holding,
   chain: Holding,
 ): Correction | null {
-  const delta = chain.available - ledger.available;
-  if (delta === 0n) return null;
-  const base = { holder, asset, ledger: ledger.available, chain: chain.available, delta, applied: false };
-  if (ledger.reserved !== 0n || chain.reserved !== 0n) return { ...base, skipped: "payout_in_flight" };
+  const delta = { available: chain.available - ledger.available, reserved: chain.reserved - ledger.reserved };
+  if (delta.available === 0n && delta.reserved === 0n) return null;
+  const base = { holder, asset, ledger, chain, delta, applied: false };
+  if (chain.reserved !== 0n) return { ...base, skipped: "payout_in_flight" };
   return base;
 }
 
@@ -57,8 +58,10 @@ export async function reconcileVaultMirror(deps: ReconcileDeps): Promise<Correct
     if (deps.apply && !planned.skipped) {
       const memo = {
         reason: "chain_reconcile",
-        ledger: planned.ledger.toString(),
-        chain: planned.chain.toString(),
+        ledger_available: planned.ledger.available.toString(),
+        ledger_reserved: planned.ledger.reserved.toString(),
+        chain_available: planned.chain.available.toString(),
+        chain_reserved: planned.chain.reserved.toString(),
       };
       await deps.unit((tx) =>
         postEntry(tx, vaultReconciled(runId, ownerId, planned.asset, planned.delta, memo)),
@@ -66,7 +69,7 @@ export async function reconcileVaultMirror(deps: ReconcileDeps): Promise<Correct
       planned.applied = true;
     }
     deps.log(
-      `[vault-reconcile] ${ownerId} ledger ${planned.ledger} chain ${planned.chain} delta ${planned.delta} ${planned.skipped ?? (planned.applied ? "applied" : "dry_run")}`,
+      `[vault-reconcile] ${ownerId} available ${planned.ledger.available}->${planned.chain.available} reserved ${planned.ledger.reserved}->${planned.chain.reserved} ${planned.skipped ?? (planned.applied ? "applied" : "dry_run")}`,
     );
     corrections.push(planned);
   }
