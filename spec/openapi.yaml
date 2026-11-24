@@ -82,6 +82,41 @@ paths:
           $ref: "#/components/responses/Error"
         "422":
           $ref: "#/components/responses/Error"
+  /demo/rates/usdc/ngn:
+    get:
+      operationId: getPaidNairaRate
+      summary: Pay 1 US cent for a live USDC/NGN rate
+      tags: [agents]
+      security:
+        - agentSignature: []
+      parameters:
+        - name: x-fliq-payment
+          in: header
+          required: false
+          schema:
+            type: string
+          description: The vault order ID or payout transaction hash returned by the first 402 response.
+      responses:
+        "200":
+          description: Paid live naira rate
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Rate"
+        "402":
+          description: Payment required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaidApiPaymentRequired"
+        "202":
+          $ref: "#/components/responses/Error"
+        "400":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+        "503":
+          $ref: "#/components/responses/Error"
   /rates/{token}/{currency}/providers:
     get:
       operationId: getRateBoard
@@ -2413,7 +2448,20 @@ components:
       enum: [live, stale, paused]
     ProviderRate:
       type: object
-      required: [provider, status, rate, rate_before_fees, fee, fee_percent, receive, eta_seconds, on_time_percent, updated_at, not_offered_reason]
+      required:
+        [
+          provider,
+          status,
+          rate,
+          rate_before_fees,
+          fee,
+          fee_percent,
+          receive,
+          eta_seconds,
+          on_time_percent,
+          updated_at,
+          not_offered_reason,
+        ]
       properties:
         provider:
           $ref: "#/components/schemas/ProviderId"
@@ -2462,6 +2510,42 @@ components:
         fetched_at:
           type: string
           format: date-time
+    PaidApiPaymentRequired:
+      type: object
+      required:
+        [
+          error,
+          price,
+          token_contract,
+          vault_account,
+          pay_to_address,
+          order_id,
+          expires_at_ns,
+          payment_header,
+          payment_method,
+        ]
+      properties:
+        error:
+          $ref: "#/components/schemas/ErrorBody"
+        price:
+          type: string
+          description: USDC base units; 10000 is 1 cent.
+        token_contract:
+          type: string
+        vault_account:
+          type: string
+        pay_to_address:
+          type: string
+        order_id:
+          type: string
+        expires_at_ns:
+          type: string
+        payment_header:
+          type: string
+        payment_method:
+          type: string
+        live_rate_preview:
+          $ref: "#/components/schemas/Rate"
         providers:
           type: array
           description: Live providers best first, then stale, then paused
@@ -2511,17 +2595,7 @@ components:
           type: number
     Rate:
       type: object
-      required:
-        [
-          token,
-          currency,
-          rate,
-          rate_before_fees,
-          provider,
-          providers_quoting,
-          spread,
-          fetched_at,
-        ]
+      required: [token, currency, rate, rate_before_fees, provider, providers_quoting, spread, fetched_at]
       properties:
         token:
           type: string
@@ -2997,7 +3071,8 @@ components:
           type: [string, "null"]
     ActivityItem:
       type: object
-      required: [activity_id, kind, status, at, party, provider, agent, local, usd, token, seconds, reason, ref_id]
+      required:
+        [activity_id, kind, status, at, party, provider, agent, local, usd, token, seconds, reason, ref_id]
       properties:
         activity_id:
           type: string
@@ -3036,7 +3111,17 @@ components:
           type: [integer, "null"]
         reason:
           type: [string, "null"]
-          enum: [over_daily_cap, over_per_payout_cap, corridor_not_allowed, not_saved_account, provider_failed, expired, bank_stopped, null]
+          enum:
+            [
+              over_daily_cap,
+              over_per_payout_cap,
+              corridor_not_allowed,
+              not_saved_account,
+              provider_failed,
+              expired,
+              bank_stopped,
+              null,
+            ]
           description: "bank_stopped is a bank deposit the bank partner ended with FAILED. ERROR is not stopped, the partner retries after it."
         ref_id:
           type: string
@@ -3143,7 +3228,20 @@ components:
           type: string
     AgentSelf:
       type: object
-      required: [agent_id, owner, name, state, daily_cap, per_payout_cap, currencies, saved_accounts_only, spent_today_usd, remaining_today_usd, per_payout_usd]
+      required:
+        [
+          agent_id,
+          owner,
+          name,
+          state,
+          daily_cap,
+          per_payout_cap,
+          currencies,
+          saved_accounts_only,
+          spent_today_usd,
+          remaining_today_usd,
+          per_payout_usd,
+        ]
       properties:
         agent_id:
           type: string
@@ -3211,7 +3309,20 @@ components:
           $ref: "#/components/schemas/SignStep"
     Agent:
       type: object
-      required: [agent_id, name, public_key, state, daily_cap, per_payout_cap, currencies, saved_accounts_only, spent_today, connected_at, expires_at]
+      required:
+        [
+          agent_id,
+          name,
+          public_key,
+          state,
+          daily_cap,
+          per_payout_cap,
+          currencies,
+          saved_accounts_only,
+          spent_today,
+          connected_at,
+          expires_at,
+        ]
       properties:
         agent_id:
           type: string
@@ -3433,7 +3544,22 @@ components:
           $ref: "#/components/schemas/DepositChainId"
     PublicReceipt:
       type: object
-      required: [payout_id, state, receive, currency, account_masked, institution, provider, created_at, settled_at, seconds, bank_reference, vault_receipt, provider_order]
+      required:
+        [
+          payout_id,
+          state,
+          receive,
+          currency,
+          account_masked,
+          institution,
+          provider,
+          created_at,
+          settled_at,
+          seconds,
+          bank_reference,
+          vault_receipt,
+          provider_order,
+        ]
       properties:
         payout_id:
           type: string
@@ -3516,7 +3642,17 @@ components:
     NotificationSettings:
       type: object
       additionalProperties: false
-      required: [received, payout_paid, payout_refunded, agent_paid, agent_refused, cap_almost_reached, rate_alert, weekly_summary]
+      required:
+        [
+          received,
+          payout_paid,
+          payout_refunded,
+          agent_paid,
+          agent_refused,
+          cap_almost_reached,
+          rate_alert,
+          weekly_summary,
+        ]
       properties:
         received:
           type: boolean
@@ -3595,7 +3731,22 @@ components:
     WalletSend:
       type: object
       additionalProperties: false
-      required: [send_id, state, token, chain, to, amount, receives, fee, eta_seconds, deposit, origin_tx, destination_tx, created_at]
+      required:
+        [
+          send_id,
+          state,
+          token,
+          chain,
+          to,
+          amount,
+          receives,
+          fee,
+          eta_seconds,
+          deposit,
+          origin_tx,
+          destination_tx,
+          created_at,
+        ]
       properties:
         send_id:
           type: string
@@ -3993,7 +4144,8 @@ components:
           type: string
     PayoutSummary:
       type: object
-      required: [payout_id, state, account_name, bank, account_last4, amount, receive, currency, provider, created_at]
+      required:
+        [payout_id, state, account_name, bank, account_last4, amount, receive, currency, provider, created_at]
       properties:
         payout_id:
           type: string
@@ -4615,7 +4767,8 @@ components:
           type: boolean
     WebhookEndpoint:
       type: object
-      required: [endpoint_id, url, description, events, status, environment, created_at, updated_at, failing_since]
+      required:
+        [endpoint_id, url, description, events, status, environment, created_at, updated_at, failing_since]
       properties:
         endpoint_id:
           type: string
@@ -4666,7 +4819,17 @@ components:
               format: date-time
     WebhookSigning:
       type: object
-      required: [header, algorithm, signed_payload, format, tolerance_seconds, event_id_header, event_type_header, delivery_id_header]
+      required:
+        [
+          header,
+          algorithm,
+          signed_payload,
+          format,
+          tolerance_seconds,
+          event_id_header,
+          event_type_header,
+          delivery_id_header,
+        ]
       description: >-
         How to verify a delivery. Compute HMAC-SHA256 of "<t>.<raw body>" with the endpoint secret, hex encoded,
         compare in constant time with any v1 value, and reject t more than tolerance_seconds from your clock.

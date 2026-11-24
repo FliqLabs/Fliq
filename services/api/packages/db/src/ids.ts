@@ -39,7 +39,10 @@ export type IdPrefix =
   | "evt"
   | "req"
   | "ref"
-  | "ntf";
+  | "ntf"
+  | "api"
+  | "apo"
+  | "apc";
 
 function encodeBase32(value: bigint, length: number): string {
   let out = "";

@@ -11,6 +11,7 @@ export interface Config {
   origins: string[];
   nearRootAccount: string;
   vaultAccount: string;
+  agentApiPayToAddress: string;
   // The USDC contract the vault accepts, so a top-up the user relays from their own account can be recognised.
   usdcContract: string;
   // Where a provider refunds a payout funded on each network, from PROVIDER_REFUND_ADDRESS_<NETWORK>. An Intents payout
@@ -38,9 +39,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     hashKey: parseKey(required(env, "FLIQ_HASH_KEY")),
     rpId: env.WEBAUTHN_RP_ID ?? "localhost",
     rpName: "fliq",
-    origins: (env.WEBAUTHN_ORIGINS ?? "http://localhost:3000").split(",").map((origin) => origin.trim()).filter(Boolean),
+    origins: (env.WEBAUTHN_ORIGINS ?? "http://localhost:3000")
+      .split(",")
+      .map((origin) => origin.trim())
+      .filter(Boolean),
     nearRootAccount: env.NEAR_ROOT_ACCOUNT ?? "fliq.near",
     vaultAccount: env.VAULT_ACCOUNT ?? "fliq-vault.testnet",
+    agentApiPayToAddress: env.AGENT_API_PAY_TO_ADDRESS ?? "live-naira-rate.testnet",
     usdcContract: env.USDC_CONTRACT_ID ?? "usdc.test.near",
     providerRefundAddresses: refundAddressesFrom(env),
     emailLinkBaseUrl: env.EMAIL_LINK_BASE_URL ?? "http://localhost:3000",

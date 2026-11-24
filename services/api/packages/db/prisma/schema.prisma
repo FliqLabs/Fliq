@@ -57,18 +57,18 @@ enum AccountType {
 }
 
 model Quote {
-  id             String      @id @db.Text
-  developerId    String      @map("developer_id") @db.Text
+  id             String       @id @db.Text
+  developerId    String       @map("developer_id") @db.Text
   mode           QuoteMode
-  tokenSymbol    String      @map("token_symbol") @db.Text
-  sourceChain    String      @map("source_chain") @db.Text
-  currency       String      @db.Text
-  amountIn       BigInt      @map("amount_in")
-  amountOutMinor BigInt      @map("amount_out_minor")
-  rate           Decimal     @db.Decimal(24, 10)
-  chosenRouteId  String?     @unique @map("chosen_route_id") @db.Text
-  expiresAt      DateTime    @map("expires_at") @db.Timestamptz(6)
-  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  tokenSymbol    String       @map("token_symbol") @db.Text
+  sourceChain    String       @map("source_chain") @db.Text
+  currency       String       @db.Text
+  amountIn       BigInt       @map("amount_in")
+  amountOutMinor BigInt       @map("amount_out_minor")
+  rate           Decimal      @db.Decimal(24, 10)
+  chosenRouteId  String?      @unique @map("chosen_route_id") @db.Text
+  expiresAt      DateTime     @map("expires_at") @db.Timestamptz(6)
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
   routes         QuoteRoute[] @relation("QuoteRoutes")
   payouts        Payout[]
 
@@ -78,24 +78,24 @@ model Quote {
 }
 
 model QuoteRoute {
-  id             String   @id @db.Text
-  quoteId        String   @map("quote_id") @db.Text
-  provider       String   @db.Text
+  id             String    @id @db.Text
+  quoteId        String    @map("quote_id") @db.Text
+  provider       String    @db.Text
   kind           RouteKind
   rank           Int
-  amountIn       BigInt   @map("amount_in")
-  amountOutMinor BigInt   @map("amount_out_minor")
-  rate           Decimal  @db.Decimal(24, 10)
-  feeProvider    BigInt   @map("fee_provider")
-  feeNetwork     BigInt   @map("fee_network")
-  feeIntents     BigInt   @default(0) @map("fee_intents")
-  feeOurs        BigInt   @default(0) @map("fee_ours")
-  etaSeconds     Int      @map("eta_seconds")
-  expiresAt      DateTime @map("expires_at") @db.Timestamptz(6)
-  scoreBreakdown Json     @map("score_breakdown")
+  amountIn       BigInt    @map("amount_in")
+  amountOutMinor BigInt    @map("amount_out_minor")
+  rate           Decimal   @db.Decimal(24, 10)
+  feeProvider    BigInt    @map("fee_provider")
+  feeNetwork     BigInt    @map("fee_network")
+  feeIntents     BigInt    @default(0) @map("fee_intents")
+  feeOurs        BigInt    @default(0) @map("fee_ours")
+  etaSeconds     Int       @map("eta_seconds")
+  expiresAt      DateTime  @map("expires_at") @db.Timestamptz(6)
+  scoreBreakdown Json      @map("score_breakdown")
   // The provider's own quote, kept so createOrder can be sent exactly what was priced.
-  providerQuote  Json?    @map("provider_quote")
-  quote          Quote    @relation("QuoteRoutes", fields: [quoteId], references: [id])
+  providerQuote  Json?     @map("provider_quote")
+  quote          Quote     @relation("QuoteRoutes", fields: [quoteId], references: [id])
 
   @@unique([quoteId, rank])
   @@index([quoteId])
@@ -104,16 +104,16 @@ model QuoteRoute {
 }
 
 model Recipient {
-  id              String   @id @db.Text
-  userId          String   @map("user_id") @db.Text
-  institutionCode String   @map("institution_code") @db.Text
-  logoKey         String?  @map("logo_key") @db.Text
+  id              String    @id @db.Text
+  userId          String    @map("user_id") @db.Text
+  institutionCode String    @map("institution_code") @db.Text
+  logoKey         String?   @map("logo_key") @db.Text
   // AES-256-GCM ciphertext; never log or emit these fields.
-  accountCipher   Bytes    @map("account_cipher")
-  nameCipher      Bytes    @map("name_cipher")
+  accountCipher   Bytes     @map("account_cipher")
+  nameCipher      Bytes     @map("name_cipher")
   // Keyed hash (HMAC-SHA-256) of institution + account for duplicate lookup.
-  lookupHash      Bytes    @map("lookup_hash")
-  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  lookupHash      Bytes     @map("lookup_hash")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   // Set when the user chose to save this account; recipients made by paying are not saved ones.
   savedAt         DateTime? @map("saved_at") @db.Timestamptz(6)
   own             Boolean   @default(false)
@@ -127,40 +127,40 @@ model Recipient {
 }
 
 model Payout {
-  id              String      @id @db.Text
-  developerId     String      @map("developer_id") @db.Text
-  clientReference String      @map("client_reference") @db.Text
-  quoteId         String      @map("quote_id") @db.Text
-  recipientId     String      @map("recipient_id") @db.Text
-  routeKind       RouteKind   @map("route_kind")
-  provider        String      @db.Text
-  providerOrderId String?     @map("provider_order_id") @db.Text
-  state           PayoutState @default(created)
+  id                String        @id @db.Text
+  developerId       String        @map("developer_id") @db.Text
+  clientReference   String        @map("client_reference") @db.Text
+  quoteId           String        @map("quote_id") @db.Text
+  recipientId       String        @map("recipient_id") @db.Text
+  routeKind         RouteKind     @map("route_kind")
+  provider          String        @db.Text
+  providerOrderId   String?       @map("provider_order_id") @db.Text
+  state             PayoutState   @default(created)
   // Incremented on every transition; transitions are UPDATE ... WHERE version = $n.
-  version         Int         @default(1)
-  amountIn        BigInt      @map("amount_in")
-  amountOutMinor  BigInt      @map("amount_out_minor")
-  currency        String      @db.Text
-  rate            Decimal     @db.Decimal(24, 10)
-  retryOfId       String?     @map("retry_of_id") @db.Text
+  version           Int           @default(1)
+  amountIn          BigInt        @map("amount_in")
+  amountOutMinor    BigInt        @map("amount_out_minor")
+  currency          String        @db.Text
+  rate              Decimal       @db.Decimal(24, 10)
+  retryOfId         String?       @map("retry_of_id") @db.Text
   // The agent that made the payout, or null when the user did.
-  agentId         String?     @map("agent_id") @db.Text
+  agentId           String?       @map("agent_id") @db.Text
   // Why a payout ended in failed. Reasons starting with vault_ are refusals by the vault caps.
-  failureReason   String?     @map("failure_reason") @db.Text
+  failureReason     String?       @map("failure_reason") @db.Text
   // Where the sender pays, from the provider's createOrder answer. Empty while the order is not confirmed.
-  depositChain      String?   @map("deposit_chain") @db.Text
-  depositAddress    String?   @map("deposit_address") @db.Text
-  depositUnits      BigInt?   @map("deposit_units")
-  depositValidUntil DateTime? @map("deposit_valid_until") @db.Timestamptz(6)
-  depositMemo       String?   @map("deposit_memo") @db.Text
-  createdAt       DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime    @default(now()) @map("updated_at") @db.Timestamptz(6)
-  quote           Quote       @relation(fields: [quoteId], references: [id])
-  recipient       Recipient   @relation(fields: [recipientId], references: [id])
-  retryOf         Payout?     @relation("PayoutRetry", fields: [retryOfId], references: [id])
-  retries         Payout[]    @relation("PayoutRetry")
-  events          PayoutEvent[]
-  claims          PayoutClaim[]
+  depositChain      String?       @map("deposit_chain") @db.Text
+  depositAddress    String?       @map("deposit_address") @db.Text
+  depositUnits      BigInt?       @map("deposit_units")
+  depositValidUntil DateTime?     @map("deposit_valid_until") @db.Timestamptz(6)
+  depositMemo       String?       @map("deposit_memo") @db.Text
+  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime      @default(now()) @map("updated_at") @db.Timestamptz(6)
+  quote             Quote         @relation(fields: [quoteId], references: [id])
+  recipient         Recipient     @relation(fields: [recipientId], references: [id])
+  retryOf           Payout?       @relation("PayoutRetry", fields: [retryOfId], references: [id])
+  retries           Payout[]      @relation("PayoutRetry")
+  events            PayoutEvent[]
+  claims            PayoutClaim[]
 
   @@unique([developerId, clientReference])
   @@index([developerId, createdAt])
@@ -171,16 +171,16 @@ model Payout {
 
 // Append-only: UPDATE and DELETE are rejected by trigger (see migrations).
 model PayoutEvent {
-  id        String      @id @db.Text
-  payoutId  String      @map("payout_id") @db.Text
+  id        String       @id @db.Text
+  payoutId  String       @map("payout_id") @db.Text
   fromState PayoutState? @map("from_state")
-  toState   PayoutState @map("to_state")
+  toState   PayoutState  @map("to_state")
   version   Int
-  cause     String      @db.Text
-  detail    Json        @default("{}")
-  traceId   String?     @map("trace_id") @db.Text
-  createdAt DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
-  payout    Payout      @relation(fields: [payoutId], references: [id])
+  cause     String       @db.Text
+  detail    Json         @default("{}")
+  traceId   String?      @map("trace_id") @db.Text
+  createdAt DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  payout    Payout       @relation(fields: [payoutId], references: [id])
 
   @@unique([payoutId, version])
   @@index([createdAt])
@@ -189,12 +189,12 @@ model PayoutEvent {
 }
 
 model Account {
-  id        String      @id @db.Text
-  code      String      @unique @db.Text
+  id        String        @id @db.Text
+  code      String        @unique @db.Text
   type      AccountType
-  asset     String      @db.Text
-  ownerId   String?     @map("owner_id") @db.Text
-  createdAt DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  asset     String        @db.Text
+  ownerId   String?       @map("owner_id") @db.Text
+  createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
   lines     JournalLine[]
   balance   Balance?
 
@@ -204,13 +204,13 @@ model Account {
 
 // Append-only. One entry per posting; (payoutId, postingType) makes replays no-ops.
 model JournalEntry {
-  id          String   @id @db.Text
-  payoutId    String?  @map("payout_id") @db.Text
-  postingType String   @map("posting_type") @db.Text
-  idempotencyKey String @unique @map("idempotency_key") @db.Text
-  memo        String?  @db.Text
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  lines       JournalLine[]
+  id             String        @id @db.Text
+  payoutId       String?       @map("payout_id") @db.Text
+  postingType    String        @map("posting_type") @db.Text
+  idempotencyKey String        @unique @map("idempotency_key") @db.Text
+  memo           String?       @db.Text
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  lines          JournalLine[]
 
   @@unique([payoutId, postingType])
   @@map("journal_entries")
@@ -247,15 +247,15 @@ model Balance {
 }
 
 model Outbox {
-  id          String    @id @db.Text
-  topic       String    @db.Text
-  routingKey  String    @map("routing_key") @db.Text
-  eventType   String    @map("event_type") @db.Text
-  schemaVersion Int     @default(1) @map("schema_version")
-  traceId     String?   @map("trace_id") @db.Text
-  payload     Json
-  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  publishedAt DateTime? @map("published_at") @db.Timestamptz(6)
+  id            String    @id @db.Text
+  topic         String    @db.Text
+  routingKey    String    @map("routing_key") @db.Text
+  eventType     String    @map("event_type") @db.Text
+  schemaVersion Int       @default(1) @map("schema_version")
+  traceId       String?   @map("trace_id") @db.Text
+  payload       Json
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  publishedAt   DateTime? @map("published_at") @db.Timestamptz(6)
 
   @@index([createdAt], map: "outbox_unpublished_idx")
   @@map("outbox")
@@ -273,13 +273,13 @@ model Inbox {
 }
 
 model Timer {
-  id        String    @id @db.Text
-  topic     String    @db.Text
-  routingKey String   @map("routing_key") @db.Text
-  payload   Json
-  dueAt     DateTime  @map("due_at") @db.Timestamptz(6)
-  firedAt   DateTime? @map("fired_at") @db.Timestamptz(6)
-  dedupeKey String?   @unique @map("dedupe_key") @db.Text
+  id         String    @id @db.Text
+  topic      String    @db.Text
+  routingKey String    @map("routing_key") @db.Text
+  payload    Json
+  dueAt      DateTime  @map("due_at") @db.Timestamptz(6)
+  firedAt    DateTime? @map("fired_at") @db.Timestamptz(6)
+  dedupeKey  String?   @unique @map("dedupe_key") @db.Text
 
   @@index([dueAt])
   @@map("timers")
@@ -287,13 +287,13 @@ model Timer {
 }
 
 model DeadLetter {
-  id         String   @id @db.Text
-  queue      String   @db.Text
-  messageId  String?  @map("message_id") @db.Text
-  payload    Json
-  error      String   @db.Text
-  attempts   Int
-  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  id        String   @id @db.Text
+  queue     String   @db.Text
+  messageId String?  @map("message_id") @db.Text
+  payload   Json
+  error     String   @db.Text
+  attempts  Int
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   @@map("dead_letters")
   @@schema("messaging")
@@ -324,27 +324,27 @@ enum KeyEnvironment {
 }
 
 model User {
-  id            String   @id @db.Text
-  email         String?  @unique @db.Text
+  id                     String              @id @db.Text
+  email                  String?             @unique @db.Text
   // Claimed name, for example frank.fliq.near. Null until the user claims one.
-  nearAccount   String?  @unique @map("near_account") @db.Text
-  vaultAccount  String?  @map("vault_account") @db.Text
-  displayName   String?  @map("display_name") @db.Text
+  nearAccount            String?             @unique @map("near_account") @db.Text
+  vaultAccount           String?             @map("vault_account") @db.Text
+  displayName            String?             @map("display_name") @db.Text
   // Uploaded by the client straight to object storage; we only keep the https URL it sends back.
-  photoUrl      String?  @map("photo_url") @db.Text
-  occupation    String?  @db.Text
-  homeCurrency  String   @default("NGN") @map("home_currency") @db.Text
+  photoUrl               String?             @map("photo_url") @db.Text
+  occupation             String?             @db.Text
+  homeCurrency           String              @default("NGN") @map("home_currency") @db.Text
   // Null until the user changes a notification setting; the API then answers with its defaults.
-  notificationSettings Json? @map("notification_settings")
+  notificationSettings   Json?               @map("notification_settings")
   // The most the user lets leave their account in any 24 hours, in USDC base units. Null means no limit.
-  dailyLimitUnits        BigInt?   @map("daily_limit_units")
+  dailyLimitUnits        BigInt?             @map("daily_limit_units")
   // A raise the user asked for. It takes effect at pendingDailyLimitAt; a null amount with a time set removes the limit.
-  pendingDailyLimitUnits BigInt?   @map("pending_daily_limit_units")
-  pendingDailyLimitAt    DateTime? @map("pending_daily_limit_at") @db.Timestamptz(6)
-  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  passkeys      PasskeyCredential[]
-  sessions      Session[]
-  workspaces    Workspace[]
+  pendingDailyLimitUnits BigInt?             @map("pending_daily_limit_units")
+  pendingDailyLimitAt    DateTime?           @map("pending_daily_limit_at") @db.Timestamptz(6)
+  createdAt              DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  passkeys               PasskeyCredential[]
+  sessions               Session[]
+  workspaces             Workspace[]
 
   @@map("users")
   @@schema("auth")
@@ -410,14 +410,14 @@ model EmailLink {
 }
 
 model Workspace {
-  id        String           @id @db.Text
-  ownerId   String           @map("owner_id") @db.Text
-  name      String           @db.Text
-  useCase   WorkspaceUseCase @map("use_case")
-  countries String[]
-  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
-  owner     User             @relation(fields: [ownerId], references: [id])
-  apiKeys   ApiKey[]
+  id               String            @id @db.Text
+  ownerId          String            @map("owner_id") @db.Text
+  name             String            @db.Text
+  useCase          WorkspaceUseCase  @map("use_case")
+  countries        String[]
+  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  owner            User              @relation(fields: [ownerId], references: [id])
+  apiKeys          ApiKey[]
   webhookEndpoints WebhookEndpoint[]
 
   @@index([ownerId])
@@ -548,15 +548,15 @@ model SessionDevice {
 }
 
 model PushToken {
-  token     String   @id @db.Text
-  userId    String   @map("user_id") @db.Text
-  platform  String   @db.Text
+  token       String   @id @db.Text
+  userId      String   @map("user_id") @db.Text
+  platform    String   @db.Text
   // APNs has a production and a sandbox gateway; a TestFlight or App Store build is production.
-  environment String  @default("production") @db.Text
+  environment String   @default("production") @db.Text
   // The app the token belongs to, sent as apns-topic. Null for tokens registered before it was asked for.
-  bundleId  String?  @map("bundle_id") @db.Text
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  bundleId    String?  @map("bundle_id") @db.Text
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
 
   @@index([userId])
   @@map("push_tokens")
@@ -658,6 +658,43 @@ model AgentRefusal {
 
   @@index([userId, createdAt])
   @@map("agent_refusals")
+  @@schema("core")
+}
+
+model PaidApiOrder {
+  id           String        @id @db.Text
+  orderId      String        @unique @map("order_id") @db.Text
+  userId       String        @map("user_id") @db.Text
+  agentId      String        @map("agent_id") @db.Text
+  payer        String        @db.Text
+  payToAddress String        @map("pay_to_address") @db.Text
+  amountUnits  BigInt        @map("amount_units")
+  expiresAtNs  BigInt        @map("expires_at_ns")
+  txHash       String?       @map("tx_hash") @db.Text
+  consumedAt   DateTime?     @map("consumed_at") @db.Timestamptz(6)
+  createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  calls        PaidApiCall[]
+
+  @@index([userId, createdAt])
+  @@index([txHash])
+  @@map("paid_api_orders")
+  @@schema("core")
+}
+
+model PaidApiCall {
+  id          String       @id @db.Text
+  orderId     String       @map("order_id") @db.Text
+  userId      String       @map("user_id") @db.Text
+  agentId     String       @map("agent_id") @db.Text
+  service     String       @db.Text
+  amountUnits BigInt       @map("amount_units")
+  txHash      String?      @map("tx_hash") @db.Text
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  order       PaidApiOrder @relation(fields: [orderId], references: [orderId])
+
+  @@unique([orderId])
+  @@index([userId, createdAt])
+  @@map("paid_api_calls")
   @@schema("core")
 }
 
@@ -779,13 +816,13 @@ enum IncidentState {
 
 // One row per probe per run, kept for the 60-day status bars. component is a service or provider id.
 model HealthCheck {
-  id         String      @id @db.Text
-  component  String      @db.Text
-  checkedAt  DateTime    @default(now()) @map("checked_at") @db.Timestamptz(6)
-  result     CheckResult
-  latencyMs  Int?        @map("latency_ms")
+  id        String      @id @db.Text
+  component String      @db.Text
+  checkedAt DateTime    @default(now()) @map("checked_at") @db.Timestamptz(6)
+  result    CheckResult
+  latencyMs Int?        @map("latency_ms")
   // A kind such as timeout or error, never a message: messages can carry account details.
-  errorKind  String?     @map("error_kind") @db.Text
+  errorKind String?     @map("error_kind") @db.Text
 
   @@index([component, checkedAt])
   @@index([checkedAt])
@@ -827,25 +864,25 @@ enum WebhookDeliveryStatus {
 }
 
 model WebhookEndpoint {
-  id           String                @id @db.Text
-  workspaceId  String                @map("workspace_id") @db.Text
-  environment  KeyEnvironment
-  url          String                @db.Text
+  id                      String                @id @db.Text
+  workspaceId             String                @map("workspace_id") @db.Text
+  environment             KeyEnvironment
+  url                     String                @db.Text
   // AES-256-GCM ciphertext of the signing secret. Encrypted, not hashed: every delivery is signed with it.
-  secretCipher Bytes                 @map("secret_cipher")
-  status       WebhookEndpointStatus @default(active)
+  secretCipher            Bytes                 @map("secret_cipher")
+  status                  WebhookEndpointStatus @default(active)
   // Event types this endpoint receives; empty means all.
-  events       String[]              @default([])
-  description  String?               @db.Text
+  events                  String[]              @default([])
+  description             String?               @db.Text
   // After a secret rotation the old secret also signs, until it expires (ARCH §16.2 overlap).
-  previousSecretCipher    Bytes?     @map("previous_secret_cipher")
-  previousSecretExpiresAt DateTime?  @map("previous_secret_expires_at") @db.Timestamptz(6)
-  createdAt    DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt    DateTime              @default(now()) @map("updated_at") @db.Timestamptz(6)
-  failingSince DateTime?             @map("failing_since") @db.Timestamptz(6)
-  deletedAt    DateTime?             @map("deleted_at") @db.Timestamptz(6)
-  workspace    Workspace             @relation(fields: [workspaceId], references: [id])
-  deliveries   WebhookDelivery[]
+  previousSecretCipher    Bytes?                @map("previous_secret_cipher")
+  previousSecretExpiresAt DateTime?             @map("previous_secret_expires_at") @db.Timestamptz(6)
+  createdAt               DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime              @default(now()) @map("updated_at") @db.Timestamptz(6)
+  failingSince            DateTime?             @map("failing_since") @db.Timestamptz(6)
+  deletedAt               DateTime?             @map("deleted_at") @db.Timestamptz(6)
+  workspace               Workspace             @relation(fields: [workspaceId], references: [id])
+  deliveries              WebhookDelivery[]
 
   @@index([workspaceId])
   @@map("webhook_endpoints")

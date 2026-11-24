@@ -23,6 +23,9 @@ export type ErrorCode =
   | "chain_unavailable"
   | "agent_limit"
   | "paused"
+  | "payment_required"
+  | "payment_pending"
+  | "payment_unconfirmed"
   | "internal";
 
 export class ApiError extends Error {
@@ -35,7 +38,8 @@ export class ApiError extends Error {
   }
 }
 
-export const unauthorized = (message = "Missing or invalid credentials.") => new ApiError(401, "unauthorized", message);
+export const unauthorized = (message = "Missing or invalid credentials.") =>
+  new ApiError(401, "unauthorized", message);
 export const invalidRequest = (message: string) => new ApiError(400, "invalid_request", message);
 export const forbidden = (message: string) => new ApiError(403, "forbidden", message);
 export const conflict = (message: string) => new ApiError(409, "conflict", message);
@@ -56,5 +60,6 @@ export const notFound = (message: string) => new ApiError(404, "not_found", mess
 
 export function requireHttpsUrl(value: string | null | undefined): void {
   if (!value) return;
-  if (!URL.canParse(value) || new URL(value).protocol !== "https:") throw invalidRequest("photo_url must be an https URL.");
+  if (!URL.canParse(value) || new URL(value).protocol !== "https:")
+    throw invalidRequest("photo_url must be an https URL.");
 }

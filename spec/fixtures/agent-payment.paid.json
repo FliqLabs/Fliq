@@ -1,0 +1,10 @@
+{
+  "token": "usdc",
+  "currency": "ngn",
+  "rate": 1650.25,
+  "rate_before_fees": 1652,
+  "provider": "mock",
+  "providers_quoting": 2,
+  "spread": 1.75,
+  "fetched_at": "2026-11-24T10:01:00.000Z"
+}

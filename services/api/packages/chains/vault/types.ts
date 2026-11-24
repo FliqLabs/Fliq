@@ -6,7 +6,13 @@ export type OrderState = (typeof ORDER_STATES)[number];
 
 // The contract's verified transfer track. "executed" covers both executing and dispatched; only dispatched means
 // the USDC left the vault, and the contract refuses paying_out and settled before it.
-export const TRANSFER_STATES = ["registered", "executing", "dispatched", "transfer_failed", "released"] as const;
+export const TRANSFER_STATES = [
+  "registered",
+  "executing",
+  "dispatched",
+  "transfer_failed",
+  "released",
+] as const;
 export type TransferState = (typeof TRANSFER_STATES)[number];
 
 export const RECEIPT_STATUSES = [
@@ -88,6 +94,8 @@ export type AgentPolicy = {
   // Present when read from the deployed contract, which keys a policy to the agent's signing key.
   publicKey?: string;
   expiresAtNs?: bigint;
+  cooldownNs?: bigint;
+  lastPayoutAtNs?: bigint;
   revoked?: boolean;
 };
 

@@ -70,5 +70,8 @@
   "limits.none.json": "Limits",
   "setup.halfway.json": "Setup",
   "agent.payout.json": "AgentPayout",
-  "agent.self.json": "AgentSelf"
+  "agent.self.json": "AgentSelf",
+  "agent-payment.402.json": "PaidApiPaymentRequired",
+  "agent-payment.paid.json": "Rate",
+  "agent-payment.refused.json": "Error"
 }

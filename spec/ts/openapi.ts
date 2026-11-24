@@ -41,6 +41,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/demo/rates/usdc/ngn": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Pay 1 US cent for a live USDC/NGN rate */
+        get: operations["getPaidNairaRate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/rates/{token}/{currency}/providers": {
         parameters: {
             query?: never;
@@ -1696,8 +1713,21 @@ export interface components {
             best: components["schemas"]["ProviderId"] | null;
             /** Format: date-time */
             fetched_at: string;
+        };
+        PaidApiPaymentRequired: {
+            error: components["schemas"]["ErrorBody"];
+            /** @description USDC base units; 10000 is 1 cent. */
+            price: string;
+            token_contract: string;
+            vault_account: string;
+            pay_to_address: string;
+            order_id: string;
+            expires_at_ns: string;
+            payment_header: string;
+            payment_method: string;
+            live_rate_preview?: components["schemas"]["Rate"];
             /** @description Live providers best first, then stale, then paused */
-            providers: components["schemas"]["ProviderRate"][];
+            providers?: components["schemas"]["ProviderRate"][];
         };
         RatePoint: {
             /**
@@ -3076,6 +3106,42 @@ export interface operations {
             };
             400: components["responses"]["Error"];
             422: components["responses"]["Error"];
+        };
+    };
+    getPaidNairaRate: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The vault order ID or payout transaction hash returned by the first 402 response. */
+                "x-fliq-payment"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paid live naira rate */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Rate"];
+                };
+            };
+            202: components["responses"]["Error"];
+            400: components["responses"]["Error"];
+            /** @description Payment required */
+            402: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaidApiPaymentRequired"];
+                };
+            };
+            409: components["responses"]["Error"];
+            503: components["responses"]["Error"];
         };
     };
     getRateBoard: {
