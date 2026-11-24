@@ -533,3 +533,327 @@ async fn payout_cases_run_in_a_local_sandbox() -> Result<()> {
 
     Ok(())
 }
+
+#[tokio::test]
+async fn forwarded_deposit_cases_run_in_a_local_sandbox() -> Result<()> {
+    let worker: Worker<near_workspaces::network::Sandbox> = near_workspaces::sandbox().await?;
+    let mock = worker
+        .dev_deploy(MOCK_USDC_WASM)
+        .await
+        .context("deploy mock USDC")?;
+    let wrong_mock = worker
+        .dev_deploy(MOCK_USDC_WASM)
+        .await
+        .context("deploy wrong mock USDC")?;
+    let vault = worker
+        .dev_deploy(VAULT_WASM)
+        .await
+        .context("deploy vault")?;
+    let owner = worker.dev_create_account().await?;
+    let registration = worker.dev_create_account().await?;
+    let beneficiary = worker.dev_create_account().await?;
+    let second_beneficiary = worker.dev_create_account().await?;
+    let forwarder = worker.dev_create_account().await?;
+    let second_forwarder = worker.dev_create_account().await?;
+    let unregistered = worker.dev_create_account().await?;
+
+    call(
+        vault.as_account(),
+        vault.id(),
+        "new",
+        json!({
+            "owner": owner.id(),
+            "registration_account": registration.id(),
+            "approved_usdc_token_contract": mock.id()
+        }),
+        0,
+    )
+    .await?
+    .into_result()?;
+
+    call(
+        vault.as_account(),
+        vault.id(),
+        "storage_deposit",
+        json!({ "account_id": null, "registration_only": true }),
+        STORAGE_DEPOSIT,
+    )
+    .await?
+    .into_result()?;
+
+    for account in [&beneficiary, &second_beneficiary, &forwarder] {
+        call(
+            account,
+            vault.id(),
+            "storage_deposit",
+            json!({ "account_id": null, "registration_only": true }),
+            STORAGE_DEPOSIT,
+        )
+        .await?
+        .into_result()?;
+    }
+
+    call(
+        &owner,
+        mock.id(),
+        "storage_deposit",
+        json!({ "account_id": vault.id(), "registration_only": true }),
+        TOKEN_STORAGE_DEPOSIT,
+    )
+    .await?
+    .into_result()?;
+
+    for account in [&forwarder, &second_forwarder] {
+        call(
+            account,
+            mock.id(),
+            "storage_deposit",
+            json!({ "account_id": null, "registration_only": true }),
+            TOKEN_STORAGE_DEPOSIT,
+        )
+        .await?
+        .into_result()?;
+    }
+
+    call(
+        &owner,
+        wrong_mock.id(),
+        "storage_deposit",
+        json!({ "account_id": vault.id(), "registration_only": true }),
+        TOKEN_STORAGE_DEPOSIT,
+    )
+    .await?
+    .into_result()?;
+    call(
+        &forwarder,
+        wrong_mock.id(),
+        "storage_deposit",
+        json!({ "account_id": null, "registration_only": true }),
+        TOKEN_STORAGE_DEPOSIT,
+    )
+    .await?
+    .into_result()?;
+
+    let mint = async |account: &Account, amount: u128| -> Result<()> {
+        call(
+            &owner,
+            mock.id(),
+            "mint",
+            json!({ "account_id": account.id(), "amount": amount.to_string() }),
+            0,
+        )
+        .await?
+        .into_result()?;
+        Ok(())
+    };
+    mint(&forwarder, 1_000_000_000_000_000).await?;
+    mint(&second_forwarder, 1_000_000_000_000_000).await?;
+
+    let deposit = async |account: &Account, amount: u128, msg: &str| -> Result<()> {
+        let outcome = call(
+            account,
+            mock.id(),
+            "ft_transfer_call",
+            json!({
+                "receiver_id": vault.id(),
+                "amount": amount.to_string(),
+                "memo": null,
+                "msg": msg
+            }),
+            1,
+        )
+        .await?;
+        outcome.into_result()?;
+        Ok(())
+    };
+
+    let strict_msg = format!(r#"{{"top_up":{{"account_id":"{}"}}}}"#, beneficiary.id());
+    deposit(&forwarder, 1, &strict_msg).await?;
+    deposit(&forwarder, 25_000_000, &strict_msg).await?;
+    deposit(&forwarder, 25_000_000, &strict_msg).await?;
+
+    let beneficiary_balance: serde_json::Value = view_json(
+        &vault,
+        "get_balance",
+        json!({ "account_id": beneficiary.id() }),
+    )
+    .await?;
+    assert_eq!(
+        beneficiary_balance["available"]
+            .as_str()
+            .unwrap()
+            .parse::<u128>()?,
+        50_000_000 + 1
+    );
+    assert_eq!(
+        beneficiary_balance["reserved"]
+            .as_str()
+            .unwrap()
+            .parse::<u128>()?,
+        0
+    );
+    let forwarder_balance: serde_json::Value = view_json(
+        &vault,
+        "get_balance",
+        json!({ "account_id": forwarder.id() }),
+    )
+    .await?;
+    assert_eq!(
+        forwarder_balance["available"]
+            .as_str()
+            .unwrap()
+            .parse::<u128>()?,
+        0
+    );
+
+    deposit(&forwarder, 1, "").await?;
+    let forwarder_empty_balance: serde_json::Value = view_json(
+        &vault,
+        "get_balance",
+        json!({ "account_id": forwarder.id() }),
+    )
+    .await?;
+    assert_eq!(
+        forwarder_empty_balance["available"]
+            .as_str()
+            .unwrap()
+            .parse::<u128>()?,
+        1
+    );
+
+    for malformed in [
+        r#"{"account_id":"not-top-up"}"#,
+        r#"{"top_up":{"account_id":"not valid"}}"#,
+        r#"{"top_up":{"account_id":"wrong.testnet","extra":1}}"#,
+        r#"{"top_up":{"account_id":"wrong.testnet"},"extra":1}"#,
+        "not-json",
+    ] {
+        let before: String = view_json(
+            &mock,
+            "ft_balance_of",
+            json!({ "account_id": forwarder.id() }),
+        )
+        .await?;
+        deposit(&forwarder, 1, malformed).await?;
+        let after: String = view_json(
+            &mock,
+            "ft_balance_of",
+            json!({ "account_id": forwarder.id() }),
+        )
+        .await?;
+        assert_eq!(before.parse::<u128>()?, after.parse::<u128>()?);
+    }
+
+    let unregistered_msg = format!(r#"{{"top_up":{{"account_id":"{}"}}}}"#, unregistered.id());
+    let unregistered_before: String = view_json(
+        &mock,
+        "ft_balance_of",
+        json!({ "account_id": forwarder.id() }),
+    )
+    .await?;
+    deposit(&forwarder, 100, &unregistered_msg).await?;
+    let unregistered_after: String = view_json(
+        &mock,
+        "ft_balance_of",
+        json!({ "account_id": forwarder.id() }),
+    )
+    .await?;
+    assert_eq!(unregistered_before, unregistered_after);
+    let unregistered_balance: serde_json::Value = view_json(
+        &vault,
+        "get_balance",
+        json!({ "account_id": unregistered.id() }),
+    )
+    .await?;
+    assert_eq!(
+        unregistered_balance["total"]
+            .as_str()
+            .unwrap()
+            .parse::<u128>()?,
+        0
+    );
+
+    let wrong_sender_before: String = view_json(
+        &wrong_mock,
+        "ft_balance_of",
+        json!({ "account_id": forwarder.id() }),
+    )
+    .await?;
+    call(
+        &owner,
+        wrong_mock.id(),
+        "mint",
+        json!({ "account_id": forwarder.id(), "amount": "77" }),
+        0,
+    )
+    .await?
+    .into_result()?;
+    call(
+        &forwarder,
+        wrong_mock.id(),
+        "ft_transfer_call",
+        json!({
+            "receiver_id": vault.id(),
+            "amount": "77",
+            "memo": null,
+            "msg": strict_msg
+        }),
+        1,
+    )
+    .await?
+    .into_result()?;
+    let wrong_sender_after: String = view_json(
+        &wrong_mock,
+        "ft_balance_of",
+        json!({ "account_id": forwarder.id() }),
+    )
+    .await?;
+    assert_eq!(
+        wrong_sender_before.parse::<u128>()? + 77,
+        wrong_sender_after.parse::<u128>()?
+    );
+
+    let large = 1_000_000_000_000_000u128;
+    deposit(
+        &second_forwarder,
+        large,
+        &format!(
+            r#"{{"top_up":{{"account_id":"{}"}}}}"#,
+            second_beneficiary.id()
+        ),
+    )
+    .await?;
+    deposit(
+        &forwarder,
+        10_000_000,
+        &format!(
+            r#"{{"top_up":{{"account_id":"{}"}}}}"#,
+            second_beneficiary.id()
+        ),
+    )
+    .await?;
+
+    let second_balance: serde_json::Value = view_json(
+        &vault,
+        "get_balance",
+        json!({ "account_id": second_beneficiary.id() }),
+    )
+    .await?;
+    assert_eq!(
+        second_balance["available"]
+            .as_str()
+            .unwrap()
+            .parse::<u128>()?,
+        large + 10_000_000
+    );
+
+    let liabilities: String = view_json(&vault, "get_liabilities", json!({})).await?;
+    let vault_usdc: String =
+        view_json(&mock, "ft_balance_of", json!({ "account_id": vault.id() })).await?;
+    assert!(
+        liabilities.parse::<u128>()? <= vault_usdc.parse::<u128>()?,
+        "vault liabilities exceeded approved USDC backing"
+    );
+
+    Ok(())
+}
