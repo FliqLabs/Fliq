@@ -126,6 +126,26 @@ model Recipient {
   @@schema("core")
 }
 
+// A wallet on another network the user named, to send to again. Not a recipient: no bank, no payouts.
+model SavedWallet {
+  id            String    @id @db.Text
+  userId        String    @map("user_id") @db.Text
+  label         String    @db.Text
+  chain         String    @db.Text
+  token         String?   @db.Text
+  // AES-256-GCM ciphertext of the address; never log or emit it outside the owner's own list.
+  addressCipher Bytes     @map("address_cipher")
+  // Keyed hash (HMAC-SHA-256) of chain + address, for duplicate lookup.
+  lookupHash    Bytes     @map("lookup_hash")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  deletedAt     DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  @@unique([userId, lookupHash])
+  @@index([userId, createdAt])
+  @@map("saved_wallets")
+  @@schema("core")
+}
+
 model Payout {
   id                String        @id @db.Text
   developerId       String        @map("developer_id") @db.Text

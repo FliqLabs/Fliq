@@ -7,7 +7,7 @@ export const MIN_PAYOUT_GAS = 50n * TGAS;
 const MAX_ARGS_BYTES = 2_048;
 const ONE_YOCTO = 1n;
 const POSITIVE_INTEGER = /^[1-9]\d*$/;
-const NEAR_ACCOUNT = /^(?=.{2,64}$)(([a-z\d]+[-_])*[a-z\d]+\.)*([a-z\d]+[-_])*[a-z\d]+$/;
+export const NEAR_ACCOUNT = /^(?=.{2,64}$)(([a-z\d]+[-_])*[a-z\d]+\.)*([a-z\d]+[-_])*[a-z\d]+$/;
 const CORRIDOR = /^[A-Z]{2}-[A-Z]{3}-[a-z_]+$/;
 const ED25519_KEY = /^ed25519:[1-9A-HJ-NP-Za-km-z]{43,44}$/;
 // 1Click deposit addresses are implicit accounts: 64 lowercase hex characters.
