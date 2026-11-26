@@ -26,6 +26,7 @@ final class AppEnvironment {
     let sends: any SendsAPI
     let agents: AgentStore
     let accounts: AccountBook
+    let wallets: WalletBook
     let transfers: any VaultTransfers
     let withdrawals: any Withdrawals
     /// Nil when no Cloudinary preset is configured: the photo then stays on this iPhone.
@@ -55,6 +56,7 @@ final class AppEnvironment {
         sends: any SendsAPI = FixtureSendsAPI(),
         agentAPI: any AgentAPI = FixtureAgentAPI(),
         accounts: AccountBook = AccountBook(),
+        wallets: WalletBook = WalletBook(),
         transfers: any VaultTransfers = FixtureVaultTransfers(),
         withdrawals: any Withdrawals = FixtureWithdrawals(),
         photos: (any PhotoUploads)? = FixturePhotoUploads(),
@@ -80,6 +82,9 @@ final class AppEnvironment {
         self.accounts = accounts
         // Live builds keep saved accounts on the server too, so deleting the app loses none of them.
         if isLive { accounts.connect(api) }
+        // Fixture builds list the sample wallets from spec/fixtures, so the demo has some to show.
+        self.wallets = wallets
+        wallets.connect(api)
         self.transfers = transfers
         self.withdrawals = withdrawals
         self.photos = photos
@@ -265,6 +270,7 @@ final class AppEnvironment {
                 arguments.contains("--new-iphone") ? .canRestore : .notBackedUp, otherDevices: arguments.contains("--lost-iphone") ? 1 : 0
             ),
             accounts: accounts,
+            wallets: WalletBook(keychain: nil, recents: SentAddresses(defaults: defaults)),
             walletTopUp: FixtureWalletTopUp(refund: arguments.contains("--refund") ? Refund.sample : nil),
             preferences: Preferences(defaults: defaults), biometrics: AlwaysApprove(), lock: uiTestingLock(arguments, defaults: defaults)
         )

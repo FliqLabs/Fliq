@@ -103,6 +103,7 @@ struct RootView: View {
             await environment.refreshVault()
             await environment.refreshActivity()
             await environment.accounts.sync()
+            await environment.wallets.sync()
             await environment.preferences.sync()
             await environment.inbox.load()
             await environment.home.loadProfile()
@@ -170,6 +171,7 @@ struct RootView: View {
         switch recipient.kind {
         case .bank(let account): startPayment(to: account)
         case .person(let person): startPersonPayment(to: person.nearAccount)
+        case .wallet(let wallet): startWithdraw(to: wallet)
         }
     }
 
@@ -248,19 +250,32 @@ struct RootView: View {
     }
 
     private func startWithdraw(to address: String? = nil) {
-        withdrawFlow = WithdrawFlow(
+        withdrawFlow = makeWithdraw()
+        if let address { withdrawFlow?.pick(address) }
+        environment.router.push(.withdraw)
+    }
+
+    /// A saved wallet opens on the amount with its network and address already in, so Next goes to Review.
+    private func startWithdraw(to wallet: SavedWallet) {
+        let flow = makeWithdraw()
+        withdrawFlow = flow
+        environment.router.push(.withdraw)
+        Task { await flow.startFromWallet(wallet) }
+    }
+
+    private func makeWithdraw() -> WithdrawFlow {
+        WithdrawFlow(
             withdrawals: environment.withdrawals,
             sends: environment.sends,
             vault: environment.vault,
             network: environment.isLive ? .current : .testnet,
+            wallets: environment.wallets,
             recovery: environment.recovery,
             onLeftVault: {
                 await environment.refreshVault()
                 await environment.inbox.load()
             }
         )
-        if let address { withdrawFlow?.pick(address) }
-        environment.router.push(.withdraw)
     }
 
     private func startBankDeposit() {

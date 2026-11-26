@@ -34,6 +34,11 @@ protocol FliqAPI: Sendable {
     func saveRecipient(_ input: RecipientInput) async throws -> Recipient
     func markOwnRecipient(id: String) async throws
     func deleteRecipient(id: String) async throws
+    /// Wallets the user named, kept on the server like saved accounts.
+    func wallets() async throws -> SavedWalletList
+    func saveWallet(_ input: SavedWalletInput) async throws -> SavedWallet
+    func renameWallet(id: String, label: String) async throws -> SavedWallet
+    func deleteWallet(id: String) async throws
     /// The public side of a payment request link. Needs no session.
     func publicRequest(_ link: PayLink) async throws -> PublicPayRequest
     func returnRefund(tokenId: String, idempotencyKey: String) async throws -> ReturnedRefund
@@ -114,6 +119,10 @@ extension FliqAPI {
     func saveRecipient(_ input: RecipientInput) async throws -> Recipient { throw APIError.unexpected(status: 404) }
     func markOwnRecipient(id: String) async throws {}
     func deleteRecipient(id: String) async throws {}
+    func wallets() async throws -> SavedWalletList { SavedWalletList(items: []) }
+    func saveWallet(_ input: SavedWalletInput) async throws -> SavedWallet { throw APIError.unexpected(status: 404) }
+    func renameWallet(id: String, label: String) async throws -> SavedWallet { throw APIError.unexpected(status: 404) }
+    func deleteWallet(id: String) async throws {}
     func publicRequest(_ link: PayLink) async throws -> PublicPayRequest { throw APIError.unexpected(status: 404) }
     func returnRefund(tokenId: String, idempotencyKey: String) async throws -> ReturnedRefund { throw TransferError.notSetUp }
     func notificationSettings() async throws -> NotificationSettings { throw APIError.unexpected(status: 404) }

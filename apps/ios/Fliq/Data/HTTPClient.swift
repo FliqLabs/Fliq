@@ -144,6 +144,22 @@ struct HTTPClient: FliqAPI {
         let _: Empty = try await send("DELETE", "recipients/\(id)")
     }
 
+    func wallets() async throws -> SavedWalletList {
+        try await send("GET", "wallets")
+    }
+
+    func saveWallet(_ input: SavedWalletInput) async throws -> SavedWallet {
+        try await send("POST", "wallets", body: input)
+    }
+
+    func renameWallet(id: String, label: String) async throws -> SavedWallet {
+        try await send("PATCH", "wallets/\(id)", body: ["label": label])
+    }
+
+    func deleteWallet(id: String) async throws {
+        let _: Empty = try await send("DELETE", "wallets/\(id)")
+    }
+
     func refunds() async throws -> [Refund] {
         let list: RefundList = try await send("GET", "refunds")
         return list.items
