@@ -33,20 +33,20 @@ struct SwipeReveal: Equatable {
             return SwipeReveal(axis: axis, startedOpen: startedOpen, progress: startedOpen ? 1 : 0)
         }
         let start: CGFloat = startedOpen ? 1 : 0
-        let progress = min(1, max(0, start - translation.width / width))
+        let progress = min(1, max(0, start + translation.width / width))
         return SwipeReveal(axis: axis, startedOpen: startedOpen, progress: progress)
     }
 
     /// Whether Recipients ends open. A vertical drag never changes anything.
     func settlesOpen(velocity: CGFloat) -> Bool {
         guard axis == .horizontal else { return startedOpen }
-        if velocity <= -Self.flickSpeed { return true }
-        if velocity >= Self.flickSpeed { return false }
+        if velocity >= Self.flickSpeed { return true }
+        if velocity <= -Self.flickSpeed { return false }
         return startedOpen ? progress > 1 - Self.openFraction : progress >= Self.openFraction
     }
 }
 
-/// Home with Recipients waiting off its right edge. Dragging toward the left edge pulls Recipients in under the finger;
+/// Home with Recipients waiting off its left edge. Dragging toward the right edge pulls Recipients in under the finger;
 /// dragging back, or its back button, returns to Home.
 struct SwipeToRecipients<Home: View, Recipients: View>: View {
     @Binding var isOpen: Bool
@@ -65,11 +65,11 @@ struct SwipeToRecipients<Home: View, Recipients: View>: View {
             let progress = drag?.axis == .horizontal ? drag?.progress ?? 0 : (isOpen ? 1 : 0)
             ZStack {
                 home()
-                    .offset(x: reduceMotion ? 0 : -progress * width * 0.25)
+                    .offset(x: reduceMotion ? 0 : progress * width * 0.25)
                     .opacity(reduceMotion ? 1 - progress : 1)
                     .accessibilityHidden(isOpen)
                 recipients(progress > 0 || isOpen)
-                    .offset(x: (1 - progress) * width)
+                    .offset(x: -(1 - progress) * width)
                     .accessibilityHidden(!isOpen)
             }
             .simultaneousGesture(swipe(width: width))
