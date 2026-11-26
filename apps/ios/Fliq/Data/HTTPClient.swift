@@ -312,6 +312,14 @@ struct HTTPClient: FliqAPI {
         return try await perform(method, path, query: query, body: body, headers: headers, bearer: renewed)
     }
 
+    /// The access token for a call that does not go through this client (the bank deposit routes on the website),
+    /// renewed first when it is about to run out, so the website never sees an expired one.
+    func freshAccessToken() async -> String? {
+        let current = await sessions.tokens?.accessToken
+        guard await sessions.needsRenewal() else { return current }
+        return await sessions.renewedToken(replacing: current, with: refresh) ?? current
+    }
+
     /// Nil when the API refuses the refresh token; throws when it could not be reached or failed.
     private var refresh: @Sendable (String) async throws -> Session? {
         { refreshToken in
