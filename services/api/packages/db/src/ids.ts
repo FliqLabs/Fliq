@@ -42,7 +42,8 @@ export type IdPrefix =
   | "ntf"
   | "api"
   | "apo"
-  | "apc";
+  | "apc"
+  | "wal";
 
 function encodeBase32(value: bigint, length: number): string {
   let out = "";

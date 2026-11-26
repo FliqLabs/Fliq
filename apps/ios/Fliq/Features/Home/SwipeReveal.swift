@@ -33,20 +33,20 @@ struct SwipeReveal: Equatable {
             return SwipeReveal(axis: axis, startedOpen: startedOpen, progress: startedOpen ? 1 : 0)
         }
         let start: CGFloat = startedOpen ? 1 : 0
-        let progress = min(1, max(0, start - translation.width / width))
+        let progress = min(1, max(0, start + translation.width / width))
         return SwipeReveal(axis: axis, startedOpen: startedOpen, progress: progress)
     }
 
     /// Whether Recipients ends open. A vertical drag never changes anything.
     func settlesOpen(velocity: CGFloat) -> Bool {
         guard axis == .horizontal else { return startedOpen }
-        if velocity <= -Self.flickSpeed { return true }
-        if velocity >= Self.flickSpeed { return false }
+        if velocity >= Self.flickSpeed { return true }
+        if velocity <= -Self.flickSpeed { return false }
         return startedOpen ? progress > 1 - Self.openFraction : progress >= Self.openFraction
     }
 }
 
-/// Home with Recipients waiting off its right edge. Dragging toward the left edge pulls Recipients in under the finger;
+/// Home with Recipients waiting off its left edge. Dragging toward the right edge pulls Recipients in under the finger;
 /// dragging back, or its back button, returns to Home.
 struct SwipeToRecipients<Home: View, Recipients: View>: View {
     @Binding var isOpen: Bool
@@ -55,6 +55,9 @@ struct SwipeToRecipients<Home: View, Recipients: View>: View {
     @ViewBuilder let recipients: (_ isShown: Bool) -> Recipients
 
     @State private var drag: SwipeReveal?
+    @State private var tapGuard = SwipeTapGuard()
+    /// Keeps Home's own buttons from firing on the touch-up that ends a swipe.
+    @State private var isQuiet = false
     /// True only while a finger is down. A drag the system cancels never reaches `onEnded`, so this settles it instead.
     @GestureState private var isTouching = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -65,13 +68,15 @@ struct SwipeToRecipients<Home: View, Recipients: View>: View {
             let progress = drag?.axis == .horizontal ? drag?.progress ?? 0 : (isOpen ? 1 : 0)
             ZStack {
                 home()
-                    .offset(x: reduceMotion ? 0 : -progress * width * 0.25)
+                    .disabled(drag?.axis == .horizontal || isQuiet)
+                    .offset(x: reduceMotion ? 0 : progress * width * 0.25)
                     .opacity(reduceMotion ? 1 - progress : 1)
                     .accessibilityHidden(isOpen)
                 recipients(progress > 0 || isOpen)
-                    .offset(x: (1 - progress) * width)
+                    .offset(x: -(1 - progress) * width)
                     .accessibilityHidden(!isOpen)
             }
+            .environment(\.swipeTapGuard, tapGuard)
             .simultaneousGesture(swipe(width: width))
         }
         .onChange(of: isTouching) { _, touching in
@@ -86,6 +91,7 @@ struct SwipeToRecipients<Home: View, Recipients: View>: View {
             .updating($isTouching) { _, touching, _ in touching = true }
             .onChanged { value in
                 drag = SwipeReveal.track(drag, translation: value.translation, width: width, isOpen: isOpen)
+                if drag?.axis == .horizontal { tapGuard.swiped() }
             }
             .onEnded { value in
                 guard let drag else { return }
@@ -94,9 +100,35 @@ struct SwipeToRecipients<Home: View, Recipients: View>: View {
     }
 
     private func settle(open: Bool) {
+        if drag?.axis == .horizontal { quiet() }
         withAnimation(SwipeReveal.settle) {
             drag = nil
             isOpen = open
         }
     }
+
+    private func quiet() {
+        tapGuard.swiped()
+        isQuiet = true
+        Task {
+            try? await Task.sleep(for: .seconds(SwipeTapGuard.quiet))
+            isQuiet = false
+        }
+    }
+}
+
+/// A finger that swipes between Home and Recipients is not a tap. Buttons under it check this before acting, because
+/// a sideways drag inside a scroll view does not cancel the button it started on.
+@MainActor
+final class SwipeTapGuard {
+    /// Long enough to cover the button's touch-up arriving after the drag has ended.
+    static let quiet: TimeInterval = 0.35
+    private(set) var quietUntil = Date.distantPast
+
+    func swiped(at now: Date = .now) { quietUntil = now.addingTimeInterval(Self.quiet) }
+    func allowsTap(at now: Date = .now) -> Bool { now >= quietUntil }
+}
+
+extension EnvironmentValues {
+    @Entry var swipeTapGuard: SwipeTapGuard?
 }

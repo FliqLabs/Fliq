@@ -35,7 +35,7 @@ struct WithdrawAmountView: View {
             AmountKeypad(text: flow.amountText, onType: flow.enterAmount)
                 .padding(.bottom, 12)
             if flow.signing.isBlocked { NotAddedPrompt(signing: flow.signing) }
-            Button("Next") { environment.router.push(.withdrawTo) }
+            Button("Next") { environment.router.push(flow.startedFromWallet && flow.hasAddress ? .withdrawReview : .withdrawTo) }
                 .buttonStyle(PrimaryButtonStyle())
                 .disabled(!flow.hasAmount)
                 .padding(.bottom, 12)
@@ -45,7 +45,7 @@ struct WithdrawAmountView: View {
     }
 }
 
-/// Step 2: which wallet. Paste or type an address, or pick one sent to before.
+/// Step 2: which wallet. Paste or type an address, or pick a saved wallet or one sent to before.
 struct WithdrawToView: View {
     @Bindable var flow: WithdrawFlow
     @Environment(AppEnvironment.self) private var environment
@@ -63,14 +63,20 @@ struct WithdrawToView: View {
             }
             toCard.padding(.top, flow.networks.count > 1 ? 12 : 16)
             status.padding(.top, 12)
-            if flow.network.isNEAR, !flow.recentAddresses.isEmpty {
-                Text("Recent")
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(Theme.textSecondary)
-                    .padding(.top, 28)
-                    .padding(.leading, 4)
-                recents.padding(.top, 10)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    if !flow.savedWallets.isEmpty {
+                        heading("Saved")
+                        saved.padding(.top, 10)
+                    }
+                    if flow.network.isNEAR, !flow.unsavedRecents.isEmpty {
+                        heading("Recent")
+                        recents.padding(.top, 10)
+                    }
+                }
             }
+            .scrollIndicators(.hidden)
+            .scrollDismissesKeyboard(.immediately)
             Spacer(minLength: 12)
             Button("Next") { environment.router.push(.withdrawReview) }
                 .buttonStyle(PrimaryButtonStyle())
@@ -184,9 +190,55 @@ struct WithdrawToView: View {
         .background(isWarning ? Theme.warning.opacity(0.1) : .clear, in: RoundedRectangle(cornerRadius: 14))
     }
 
+    private func heading(_ title: String) -> some View {
+        Text(title)
+            .font(.system(size: 15, weight: .medium))
+            .foregroundStyle(Theme.textSecondary)
+            .padding(.top, 28)
+            .padding(.leading, 4)
+    }
+
+    /// Saved wallets on every network, by name. Picking one on another network switches to it.
+    private var saved: some View {
+        VStack(spacing: 0) {
+            ForEach(flow.savedWallets) { wallet in
+                Button { Task { await flow.use(wallet) } } label: {
+                    HStack(spacing: 14) {
+                        PersonAvatar(name: wallet.label, size: 44)
+                            .overlay(alignment: .bottomTrailing) { ChainBadge(chain: wallet.network, size: 18).offset(x: 2, y: 2) }
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(wallet.label)
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(Theme.textPrimary)
+                            Text("\(wallet.network?.name ?? wallet.chain) · \(wallet.shortAddress)")
+                                .font(.system(size: 13))
+                                .foregroundStyle(Theme.textTertiary)
+                        }
+                        .lineLimit(1)
+                        Spacer()
+                        if wallet.isSame(chain: flow.network.chain, address: flow.address) {
+                            Icon("checkmark", size: 16).foregroundStyle(Theme.confirmed)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(wallet.label), \(wallet.network?.name ?? wallet.chain) wallet ending \(wallet.address.suffix(4))")
+                .overlay(alignment: .bottom) {
+                    if wallet != flow.savedWallets.last {
+                        Rectangle().fill(Theme.hairline).frame(height: 1).padding(.leading, 74)
+                    }
+                }
+            }
+        }
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 20))
+    }
+
     private var recents: some View {
         VStack(spacing: 0) {
-            ForEach(flow.recentAddresses) { entry in
+            ForEach(flow.unsavedRecents) { entry in
                 Button { flow.pick(entry.address) } label: {
                     HStack(spacing: 14) {
                         WalletAvatar(address: entry.address)
@@ -205,7 +257,7 @@ struct WithdrawToView: View {
                 }
                 .buttonStyle(.plain)
                 .overlay(alignment: .bottom) {
-                    if entry != flow.recentAddresses.last {
+                    if entry != flow.unsavedRecents.last {
                         Rectangle().fill(Theme.hairline).frame(height: 1).padding(.leading, 74)
                     }
                 }
@@ -237,6 +289,13 @@ struct WithdrawReviewView: View {
         }
         .fliqScreen(flow.sent == nil ? "Review" : "")
         .navigationBarBackButtonHidden(flow.sent != nil)
+        .sheet(isPresented: Binding(get: { flow.offersToSave }, set: { if !$0 { flow.skipSaving() } })) {
+            SaveSentWalletSheet(flow: flow)
+                .presentationDetents([.height(300)])
+                .presentationDragIndicator(.visible)
+                .presentationCornerRadius(32)
+                .presentationBackground(Color(hex: 0x161616))
+        }
     }
 
     private var review: some View {

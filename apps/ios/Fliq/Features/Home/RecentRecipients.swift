@@ -1,10 +1,11 @@
 import Foundation
 
-/// Someone Recipients can pay: a saved bank account or a fliq user, with when they were last paid.
+/// Someone Recipients can pay: a saved bank account, a fliq user or a saved wallet, with when they were last paid.
 struct RecentRecipient: Identifiable, Hashable {
     enum Kind: Hashable {
         case bank(VerifiedAccount)
         case person(RecentPerson)
+        case wallet(SavedWallet)
     }
 
     let kind: Kind
@@ -14,6 +15,7 @@ struct RecentRecipient: Identifiable, Hashable {
         switch kind {
         case .bank(let account): "bank-\(account.recipientId ?? account.bank + "-" + account.number.suffix(4))"
         case .person(let person): "person-\(person.nearAccount)"
+        case .wallet(let wallet): "wallet-\(wallet.walletId)"
         }
     }
 
@@ -21,18 +23,22 @@ struct RecentRecipient: Identifiable, Hashable {
         switch kind {
         case .bank(let account): account.accountName.localizedCapitalized
         case .person(let person): person.displayName ?? FliqName.display(person.nearAccount)
+        case .wallet(let wallet): wallet.label
         }
     }
 
+    /// A wallet keeps its whole name: "Tunde's Binance" cut to "Tunde's" says less.
     var firstName: String {
-        name.split(separator: " ").first.map(String.init) ?? name
+        if case .wallet = kind { return name }
+        return name.split(separator: " ").first.map(String.init) ?? name
     }
 
-    /// "GTBank 4821" for a bank account, "@tobi" for a fliq user.
+    /// "GTBank 4821" for a bank account, "@tobi" for a fliq user, "7xKX…9fGh" for a wallet.
     var detail: String {
         switch kind {
         case .bank(let account): "\(account.institution) \(account.number.suffix(4))"
         case .person(let person): FliqName.display(person.nearAccount)
+        case .wallet(let wallet): wallet.shortAddress
         }
     }
 
@@ -41,24 +47,57 @@ struct RecentRecipient: Identifiable, Hashable {
         return false
     }
 
+    var isWallet: Bool {
+        if case .wallet = kind { return true }
+        return false
+    }
+
     var photoURL: URL? {
         guard case .person(let person) = kind else { return nil }
         return person.photoUrl.flatMap(URL.init(string:))
     }
 
-    var accessibilityLabel: String { "Pay \(name), \(detail)" }
+    var accessibilityLabel: String {
+        guard case .wallet(let wallet) = kind else { return "Pay \(name), \(detail)" }
+        return "Send to \(name), \(wallet.network?.name ?? wallet.chain) wallet ending \(wallet.address.suffix(4))"
+    }
 
     func matches(_ query: String) -> Bool {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return true }
         var fields = [name, detail]
         if case .person(let person) = kind { fields.append(person.nearAccount) }
+        if case .wallet(let wallet) = kind { fields += [wallet.address, wallet.network?.name ?? wallet.chain] }
         return fields.contains { $0.localizedCaseInsensitiveContains(trimmed) }
     }
 }
 
-/// Merges saved bank accounts and fliq users into one list, most recently paid first.
+/// Merges saved bank accounts, fliq users and saved wallets into one list, most recently paid first.
 enum RecentRecipients {
+    enum Filter: Hashable, CaseIterable {
+        case all, banks, stablecoins
+
+        var title: String {
+            switch self {
+            case .all: "All"
+            case .banks: "Banks"
+            case .stablecoins: "Stablecoins"
+            }
+        }
+
+        func includes(_ recipient: RecentRecipient) -> Bool {
+            switch self {
+            case .all: true
+            case .banks: recipient.isBank
+            case .stablecoins: recipient.isWallet
+            }
+        }
+    }
+
+    static func filter(_ recipients: [RecentRecipient], by filter: Filter, search: String) -> [RecentRecipient] {
+        recipients.filter { filter.includes($0) && $0.matches(search) }
+    }
+
     /// A payment the app knows about, reduced to who it went to and when.
     struct Payment: Equatable {
         enum To: Equatable {
@@ -88,7 +127,7 @@ enum RecentRecipients {
     }
 
     /// Paid recipients come first, newest first. Those never paid keep the order they were given in, after them.
-    static func merge(accounts: [VerifiedAccount], people: [RecentPerson], payments: [Payment]) -> [RecentRecipient] {
+    static func merge(accounts: [VerifiedAccount], people: [RecentPerson], payments: [Payment], wallets: [SavedWallet] = []) -> [RecentRecipient] {
         var banks: [VerifiedAccount] = []
         for account in accounts where !banks.contains(where: { $0.isSame(as: account) }) {
             banks.append(account)
@@ -100,7 +139,7 @@ enum RecentRecipients {
             RecentRecipient(kind: .bank(account), lastPaid: latest(payments, to: .bank(code: account.bank, last4: String(account.number.suffix(4)))))
         } + users.map { person in
             RecentRecipient(kind: .person(person), lastPaid: [person.lastPaidAt, latest(payments, to: .person(nearAccount: person.nearAccount))].compactMap { $0 }.max())
-        }
+        } + wallets.map { RecentRecipient(kind: .wallet($0), lastPaid: $0.lastSentAt) }
 
         return recipients.enumerated().sorted { lhs, rhs in
             switch (lhs.element.lastPaid, rhs.element.lastPaid) {

@@ -96,6 +96,7 @@ import {
   verifyAccount,
   type AccountLookup,
 } from "./recipients.js";
+import { deleteWallet, listWallets, renameWallet, saveWallet, type WalletInput } from "./wallets.js";
 import { bankReference, createPayout, getPayout, type PayoutDeps, type PayoutInput } from "./payouts.js";
 import { openClaim, quoteRetry } from "./recovery.js";
 import { createRateBoard, type RateBoard } from "./rate-board.js";
@@ -572,6 +573,28 @@ export function createHandlers({
       await unit((tx) =>
         deleteRecipient(tx, auth(request).userId, (request.params as { recipientId: string }).recipientId),
       );
+      return { status: 204, body: undefined };
+    },
+
+    listWallets: async (request) => ({
+      status: 200,
+      body: await unit((tx) => listWallets(tx, config, auth(request).userId)),
+    }),
+    saveWallet: (request) => saveWallet(unit, config, auth(request).userId, body<WalletInput>(request)),
+    renameWallet: async (request) => ({
+      status: 200,
+      body: await unit((tx) =>
+        renameWallet(
+          tx,
+          config,
+          auth(request).userId,
+          (request.params as { walletId: string }).walletId,
+          body<{ label?: unknown }>(request),
+        ),
+      ),
+    }),
+    deleteWallet: async (request) => {
+      await unit((tx) => deleteWallet(tx, auth(request).userId, (request.params as { walletId: string }).walletId));
       return { status: 204, body: undefined };
     },
 

@@ -19,6 +19,19 @@ struct FixtureClient: FliqAPI {
 
     func deleteRecipient(id: String) async throws { await savedRecipients.delete(id) }
 
+    /// Wallets "saved on the server": the fixture list at first, then whatever this client saved, renamed or removed.
+    let savedWallets = FixtureWallets()
+
+    func wallets() async throws -> SavedWalletList {
+        SavedWalletList(items: await savedWallets.list(seed: (try? load("wallets.list") as SavedWalletList)?.items ?? []))
+    }
+
+    func saveWallet(_ input: SavedWalletInput) async throws -> SavedWallet { try await savedWallets.save(input) }
+
+    func renameWallet(id: String, label: String) async throws -> SavedWallet { try await savedWallets.rename(id, to: label) }
+
+    func deleteWallet(id: String) async throws { await savedWallets.delete(id) }
+
     /// Notification choices "saved on the server", for tests of what survives a reinstall.
     let savedNotifications = FixtureNotifications()
 
@@ -296,6 +309,41 @@ actor FixtureRecipients {
     func delete(_ id: String) { items.removeAll { $0.recipientId == id } }
 }
 
+/// The server's saved wallets, checked as the API checks them. A second save of the same address renames it.
+actor FixtureWallets {
+    private var items: [SavedWallet]?
+    private var count = 0
+
+    func list(seed: [SavedWallet]) -> [SavedWallet] {
+        if items == nil { items = seed }
+        return items ?? []
+    }
+
+    func save(_ input: SavedWalletInput) throws -> SavedWallet {
+        guard let chain = WalletChain(rawValue: input.chain), WalletAddress.problem(input.address, on: chain) == nil else {
+            throw APIError.server(status: 400, .init(code: "invalid_request", message: "That is not a \(WalletChain(rawValue: input.chain)?.name ?? input.chain) address. Check it and try again."))
+        }
+        var all = items ?? []
+        if let index = all.firstIndex(where: { $0.isSame(chain: input.chain, address: input.address) }) {
+            all[index].label = input.label
+            items = all
+            return all[index]
+        }
+        count += 1
+        let wallet = SavedWallet(walletId: "wal_local_\(count)", label: input.label, chain: input.chain, address: input.address, token: input.token, createdAt: .now)
+        items = all + [wallet]
+        return wallet
+    }
+
+    func rename(_ id: String, to label: String) throws -> SavedWallet {
+        guard var all = items, let index = all.firstIndex(where: { $0.walletId == id }) else { throw APIError.unexpected(status: 404) }
+        all[index].label = label
+        items = all
+        return all[index]
+    }
+
+    func delete(_ id: String) { items?.removeAll { $0.walletId == id } }
+}
 
 /// Starts as a new user's settings on the server: money and agent notices on, rates off.
 actor FixtureNotifications {

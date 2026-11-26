@@ -130,54 +130,64 @@ final class RecipientsTests: XCTestCase {
 
     func testTheDirectionIsDecidedOnceForTheWholeDrag() {
         let scrolling = SwipeReveal.track(nil, translation: CGSize(width: 0, height: 20), width: width, isOpen: false)
-        let later = SwipeReveal.track(scrolling, translation: CGSize(width: -300, height: 20), width: width, isOpen: false)
+        let later = SwipeReveal.track(scrolling, translation: CGSize(width: 300, height: 20), width: width, isOpen: false)
 
         XCTAssertEqual(later.axis, .vertical)
         XCTAssertEqual(later.progress, 0)
-        XCTAssertFalse(later.settlesOpen(velocity: -2000))
+        XCTAssertFalse(later.settlesOpen(velocity: 2000))
     }
 
     func testThePageFollowsTheFingerAndStaysInBounds() {
-        let first = SwipeReveal.track(nil, translation: CGSize(width: -20, height: 0), width: width, isOpen: false)
-        XCTAssertEqual(SwipeReveal.track(first, translation: CGSize(width: -100, height: 0), width: width, isOpen: false).progress, 0.25)
-        XCTAssertEqual(SwipeReveal.track(first, translation: CGSize(width: -900, height: 0), width: width, isOpen: false).progress, 1)
-        XCTAssertEqual(SwipeReveal.track(first, translation: CGSize(width: 200, height: 0), width: width, isOpen: false).progress, 0)
+        let first = SwipeReveal.track(nil, translation: CGSize(width: 20, height: 0), width: width, isOpen: false)
+        XCTAssertEqual(SwipeReveal.track(first, translation: CGSize(width: 100, height: 0), width: width, isOpen: false).progress, 0.25)
+        XCTAssertEqual(SwipeReveal.track(first, translation: CGSize(width: 900, height: 0), width: width, isOpen: false).progress, 1)
+        XCTAssertEqual(SwipeReveal.track(first, translation: CGSize(width: -200, height: 0), width: width, isOpen: false).progress, 0)
     }
 
     func testOpensPastAThirdAndSnapsBackShortOfIt() {
-        let short = SwipeReveal.track(nil, translation: CGSize(width: -120, height: 0), width: width, isOpen: false)
-        let far = SwipeReveal.track(nil, translation: CGSize(width: -150, height: 0), width: width, isOpen: false)
+        let short = SwipeReveal.track(nil, translation: CGSize(width: 120, height: 0), width: width, isOpen: false)
+        let far = SwipeReveal.track(nil, translation: CGSize(width: 150, height: 0), width: width, isOpen: false)
 
-        XCTAssertFalse(short.settlesOpen(velocity: -100))
-        XCTAssertTrue(far.settlesOpen(velocity: -100))
+        XCTAssertFalse(short.settlesOpen(velocity: 100))
+        XCTAssertTrue(far.settlesOpen(velocity: 100))
     }
 
     func testAFastFlickOpensEvenWhenShort() {
-        let flick = SwipeReveal.track(nil, translation: CGSize(width: -40, height: 0), width: width, isOpen: false)
+        let flick = SwipeReveal.track(nil, translation: CGSize(width: 40, height: 0), width: width, isOpen: false)
 
-        XCTAssertTrue(flick.settlesOpen(velocity: -900))
+        XCTAssertTrue(flick.settlesOpen(velocity: 900))
     }
 
     func testAFlickBackTowardHomeWinsOverDistance() {
-        let pulledFar = SwipeReveal.track(nil, translation: CGSize(width: -300, height: 0), width: width, isOpen: false)
+        let pulledFar = SwipeReveal.track(nil, translation: CGSize(width: 300, height: 0), width: width, isOpen: false)
 
-        XCTAssertFalse(pulledFar.settlesOpen(velocity: 900))
+        XCTAssertFalse(pulledFar.settlesOpen(velocity: -900))
     }
 
     func testSwipingBackClosesAndAShortNudgeStaysOpen() {
-        let nudge = SwipeReveal.track(nil, translation: CGSize(width: 80, height: 0), width: width, isOpen: true)
-        let back = SwipeReveal.track(nil, translation: CGSize(width: 200, height: 0), width: width, isOpen: true)
+        let nudge = SwipeReveal.track(nil, translation: CGSize(width: -80, height: 0), width: width, isOpen: true)
+        let back = SwipeReveal.track(nil, translation: CGSize(width: -200, height: 0), width: width, isOpen: true)
 
         XCTAssertEqual(nudge.progress, 0.8)
         XCTAssertTrue(nudge.settlesOpen(velocity: 0))
         XCTAssertFalse(back.settlesOpen(velocity: 0))
-        XCTAssertFalse(nudge.settlesOpen(velocity: 900))
+        XCTAssertFalse(nudge.settlesOpen(velocity: -900))
     }
 
     func testAScrollWhileOpenLeavesItOpen() {
-        let scroll = SwipeReveal.track(nil, translation: CGSize(width: 10, height: 60), width: width, isOpen: true)
+        let scroll = SwipeReveal.track(nil, translation: CGSize(width: -10, height: 60), width: width, isOpen: true)
 
         XCTAssertEqual(scroll.progress, 1)
-        XCTAssertTrue(scroll.settlesOpen(velocity: 2000))
+        XCTAssertTrue(scroll.settlesOpen(velocity: -2000))
+    }
+
+    @MainActor
+    func testATapRightAfterASwipeIsIgnored() {
+        let guardian = SwipeTapGuard()
+        let now = Date(timeIntervalSince1970: 1_000)
+        XCTAssertTrue(guardian.allowsTap(at: now))
+        guardian.swiped(at: now)
+        XCTAssertFalse(guardian.allowsTap(at: now.addingTimeInterval(0.2)), "The touch-up that ends a swipe is not a tap")
+        XCTAssertTrue(guardian.allowsTap(at: now.addingTimeInterval(0.4)))
     }
 }

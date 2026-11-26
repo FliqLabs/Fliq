@@ -32,6 +32,8 @@ const routes: Route[] = [
   { method: "GET", path: /^\/v1\/pay\/[\w-]+\/[\w]+$/, fixture: "request.public.json", auth: false },
   { method: "GET", path: /^\/v1\/receipts\/[\w-]+$/, fixture: "receipt.public.json", auth: false },
   { method: "GET", path: /^\/v1\/sessions$/, fixture: "sessions.list.json" },
+  { method: "GET", path: /^\/v1\/wallets$/, fixture: "wallets.list.json" },
+  { method: "POST", path: /^\/v1\/wallets$/, fixture: "wallet.saved.json", status: 201 },
   { method: "GET", path: /^\/v1\/passkeys$/, fixture: "passkeys.list.json" },
   { method: "GET", path: /^\/v1\/me\/notification-settings$/, fixture: "notification-settings.json" },
   { method: "GET", path: /^\/v1\/me\/setup$/, fixture: "setup.halfway.json" },

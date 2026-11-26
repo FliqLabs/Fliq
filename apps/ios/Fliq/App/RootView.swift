@@ -14,7 +14,6 @@ enum HomeSheet: Identifiable {
 
 struct RootView: View {
     @Environment(AppEnvironment.self) private var environment
-    @State private var home: HomeModel?
     @State private var flow: PayFlow?
     @State private var personFlow: PersonPayFlow?
     @State private var withdrawFlow: WithdrawFlow?
@@ -34,10 +33,10 @@ struct RootView: View {
         TabView(selection: tabSelection) {
             NavigationStack(path: $router.path) {
                 SwipeToRecipients(isOpen: $showsRecipients) {
-                    if let home { HomeView(model: home, onMenu: { router.push(.settings) }, onQR: { sheet = .qr }, onRefresh: {
+                    HomeView(model: environment.home, onMenu: { router.push(.settings) }, onQR: { sheet = .qr }, onRefresh: {
                         await environment.refreshVault()
                         await environment.refreshActivity()
-                    }, activity: environment.activity, onSeeAll: { tab = .activity }, onOpenPayout: { router.push(.receipt(payoutId: $0)) }) }
+                    }, activity: environment.activity, onSeeAll: { tab = .activity }, onOpenPayout: { router.push(.receipt(payoutId: $0)) })
                 } recipients: { isShown in
                     RecipientsView(
                         isShown: isShown,
@@ -93,9 +92,6 @@ struct RootView: View {
                 .presentationCornerRadius(32)
                 .presentationBackground(Color(hex: 0x161616))
         }
-        .onAppear {
-            if home == nil { home = HomeModel(api: environment.api, vault: environment.vault, inbox: environment.inbox) }
-        }
         .task(id: environment.pendingPayLink) { await openPayLink() }
         .alert("Payment request", isPresented: Binding(get: { payLinkProblem != nil }, set: { if !$0 { payLinkProblem = nil } })) {
             Button("OK", role: .cancel) {}
@@ -107,9 +103,10 @@ struct RootView: View {
             await environment.refreshVault()
             await environment.refreshActivity()
             await environment.accounts.sync()
+            await environment.wallets.sync()
             await environment.preferences.sync()
             await environment.inbox.load()
-            await home?.loadProfile()
+            await environment.home.loadProfile()
             await environment.inbox.returnNewRefunds()
         }
     }
@@ -174,6 +171,7 @@ struct RootView: View {
         switch recipient.kind {
         case .bank(let account): startPayment(to: account)
         case .person(let person): startPersonPayment(to: person.nearAccount)
+        case .wallet(let wallet): startWithdraw(to: wallet)
         }
     }
 
@@ -252,19 +250,32 @@ struct RootView: View {
     }
 
     private func startWithdraw(to address: String? = nil) {
-        withdrawFlow = WithdrawFlow(
+        withdrawFlow = makeWithdraw()
+        if let address { withdrawFlow?.pick(address) }
+        environment.router.push(.withdraw)
+    }
+
+    /// A saved wallet opens on the amount with its network and address already in, so Next goes to Review.
+    private func startWithdraw(to wallet: SavedWallet) {
+        let flow = makeWithdraw()
+        withdrawFlow = flow
+        environment.router.push(.withdraw)
+        Task { await flow.startFromWallet(wallet) }
+    }
+
+    private func makeWithdraw() -> WithdrawFlow {
+        WithdrawFlow(
             withdrawals: environment.withdrawals,
             sends: environment.sends,
             vault: environment.vault,
             network: environment.isLive ? .current : .testnet,
+            wallets: environment.wallets,
             recovery: environment.recovery,
             onLeftVault: {
                 await environment.refreshVault()
                 await environment.inbox.load()
             }
         )
-        if let address { withdrawFlow?.pick(address) }
-        environment.router.push(.withdraw)
     }
 
     private func startBankDeposit() {

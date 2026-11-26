@@ -81,6 +81,7 @@ struct SettingsView: View {
         .confirmationDialog("Sign out of fliq on this iPhone?", isPresented: $confirmingSignOut, titleVisibility: .visible) {
             Button("Sign out", role: .destructive) {
                 environment.accounts.clear()
+                environment.wallets.clear()
                 environment.router.reset()
                 profile.signOut()
                 Task {

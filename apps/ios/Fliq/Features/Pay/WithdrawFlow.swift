@@ -53,6 +53,10 @@ final class WithdrawFlow {
     private var prepared: PreparedWithdraw?
 
     private(set) var recentAddresses: [SentAddresses.Entry]
+    /// True when the send started from a saved wallet: the address is known, so Next goes from the amount to Review.
+    private(set) var startedFromWallet = false
+    /// After a send to an address that has no name yet, the app offers to save it once.
+    private(set) var offersToSave = false
 
     private let withdrawals: any Withdrawals
     private let sends: any SendsAPI
@@ -61,6 +65,7 @@ final class WithdrawFlow {
     var pollInterval: Duration = .seconds(3)
     var pollAttempts = 60
     private let recents: SentAddresses
+    private let wallets: WalletBook?
     private let onLeftVault: () async -> Void
     let signing: SigningAccess
 
@@ -70,6 +75,7 @@ final class WithdrawFlow {
         vault: VaultStore? = nil,
         network: NearNetwork = .testnet,
         recents: SentAddresses = SentAddresses(),
+        wallets: WalletBook? = nil,
         recovery: (any AccountRecovering)? = nil,
         onLeftVault: @escaping () async -> Void = {}
     ) {
@@ -79,6 +85,7 @@ final class WithdrawFlow {
         self.vault = vault
         near = network
         self.recents = recents
+        self.wallets = wallets
         self.onLeftVault = onLeftVault
         recentAddresses = recents.entries()
     }
@@ -128,6 +135,57 @@ final class WithdrawFlow {
 
     func pick(_ address: String) {
         addressText = address
+    }
+
+    /// Saved wallets, most recently sent to first, shown by name above the Recent list.
+    var savedWallets: [SavedWallet] { wallets?.saved ?? [] }
+
+    /// Recent NEAR wallets that have not been saved under a name.
+    var unsavedRecents: [SentAddresses.Entry] {
+        recentAddresses.filter { wallets?.wallet(chain: WalletChain.near.rawValue, address: $0.address) == nil }
+    }
+
+    /// Fills in a saved wallet's network and address and checks it, as if the user had picked them on Send to.
+    func use(_ wallet: SavedWallet) async {
+        if wallet.chain != network.chain {
+            if wallet.chain != SendNetwork.near.chain, !networks.contains(where: { $0.chain == wallet.chain }) { await loadNetworks() }
+            guard let picked = networks.first(where: { $0.chain == wallet.chain }) else {
+                errorMessage = "Sending to \(wallet.network?.name ?? wallet.chain) isn't available right now."
+                return
+            }
+            network = picked
+        }
+        addressText = wallet.address
+        await checkAddress()
+    }
+
+    func startFromWallet(_ wallet: SavedWallet) async {
+        startedFromWallet = true
+        await use(wallet)
+    }
+
+    /// Nil when it was saved, otherwise what to tell the user.
+    func saveSentWallet(named label: String) async -> String? {
+        guard let wallets, let sent else { return nil }
+        if let problem = WalletAddress.labelProblem(label) { return problem.isEmpty ? "Give it a name." : problem }
+        let input = SavedWalletInput(label: label.trimmingCharacters(in: .whitespacesAndNewlines), chain: sent.network.chain, address: sent.address, token: sent.network.token)
+        do {
+            try await wallets.save(input)
+            wallets.markSent(chain: input.chain, address: input.address, at: sent.at)
+            offersToSave = false
+            return nil
+        } catch {
+            return WalletSaveError.message(error)
+        }
+    }
+
+    func skipSaving() {
+        offersToSave = false
+    }
+
+    private func sentTo(_ address: String) {
+        wallets?.markSent(chain: network.chain, address: address)
+        offersToSave = wallets.map { $0.wallet(chain: network.chain, address: address) == nil } ?? false
     }
 
     @discardableResult
@@ -230,12 +288,14 @@ final class WithdrawFlow {
                 sent?.crossing = true
                 quote = nil
                 showLive(crossing, state: .awaiting, amount: amount)
+                sentTo(crossing.to)
                 await onLeftVault()
                 Task { await follow(crossing) }
                 return true
             }
             recents.record(address)
             recentAddresses = recents.entries()
+            sentTo(address)
             sent?.delivered = true
             sent?.explorer = receipt.transactionHash.isEmpty ? nil : near.explorer(transaction: receipt.transactionHash)
             await onLeftVault()
