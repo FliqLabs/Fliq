@@ -9,6 +9,7 @@ struct RecipientsView: View {
     let onPay: (RecentRecipient) -> Void
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.swipeTapGuard) private var tapGuard
     @State private var people: [RecentPerson] = []
     @State private var filter = Filter.all
     @State private var search = ""
@@ -53,6 +54,12 @@ struct RecipientsView: View {
         }
     }
 
+    /// Ignores the touch-up of a finger that was swiping between Home and Recipients.
+    private func tap(_ action: () -> Void) {
+        guard tapGuard?.allowsTap() ?? true else { return }
+        action()
+    }
+
     private var recipients: [RecentRecipient] {
         let accounts = [environment.accounts.own].compactMap { $0 } + environment.accounts.saved
         let payments = RecentRecipients.payments(entries: environment.activity.entries, history: environment.activity.history)
@@ -63,7 +70,7 @@ struct RecipientsView: View {
 
     private var header: some View {
         HStack {
-            Button(action: onBack) {
+            Button { tap(onBack) } label: {
                 Icon("chevron.left", size: 20)
                     .foregroundStyle(Theme.textPrimary)
                     .frame(width: 40, height: 40)
@@ -72,7 +79,7 @@ struct RecipientsView: View {
             .buttonStyle(.pressable)
             .accessibilityLabel("Back to Home")
             Spacer()
-            Button(action: onAdd) {
+            Button { tap(onAdd) } label: {
                 IconLabel("Add", icon: "plus", size: 16)
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.black)
@@ -92,7 +99,7 @@ struct RecipientsView: View {
         let columns = Array(repeating: GridItem(.flexible(), spacing: 8, alignment: .top), count: 3)
         return LazyVGrid(columns: columns, spacing: 20) {
             ForEach(Array(recipients.prefix(Self.gridCount).enumerated()), id: \.element.id) { index, recipient in
-                Button { onPay(recipient) } label: { tile(recipient) }
+                Button { tap { onPay(recipient) } } label: { tile(recipient) }
                     .buttonStyle(.pressable(scale: reduceMotion ? 1 : 0.92))
                     .accessibilityLabel(recipient.accessibilityLabel)
                     .opacity(appeared ? 1 : 0)
@@ -201,7 +208,7 @@ struct RecipientsView: View {
     }
 
     private func row(_ recipient: RecentRecipient, isLast: Bool) -> some View {
-        Button { onPay(recipient) } label: {
+        Button { tap { onPay(recipient) } } label: {
             HStack(spacing: 14) {
                 avatar(recipient, size: 46)
                 Text(recipient.name)
@@ -254,7 +261,7 @@ struct RecipientsView: View {
             Text("People you pay show up here")
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(Theme.textPrimary)
-            Button("Send", action: onSend)
+            Button("Send") { tap(onSend) }
                 .buttonStyle(PrimaryButtonStyle(filled: true))
                 .frame(width: 180)
                 .padding(.top, 6)

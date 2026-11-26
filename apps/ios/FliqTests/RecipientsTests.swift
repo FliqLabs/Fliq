@@ -180,4 +180,14 @@ final class RecipientsTests: XCTestCase {
         XCTAssertEqual(scroll.progress, 1)
         XCTAssertTrue(scroll.settlesOpen(velocity: -2000))
     }
+
+    @MainActor
+    func testATapRightAfterASwipeIsIgnored() {
+        let guardian = SwipeTapGuard()
+        let now = Date(timeIntervalSince1970: 1_000)
+        XCTAssertTrue(guardian.allowsTap(at: now))
+        guardian.swiped(at: now)
+        XCTAssertFalse(guardian.allowsTap(at: now.addingTimeInterval(0.2)), "The touch-up that ends a swipe is not a tap")
+        XCTAssertTrue(guardian.allowsTap(at: now.addingTimeInterval(0.4)))
+    }
 }

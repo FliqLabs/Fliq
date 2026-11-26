@@ -26,6 +26,8 @@ struct MoveMoneySheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AppEnvironment.self) private var environment
     @State private var path: [Step]
+    /// The steps it was opened on. Going back past them closes the sheet instead of showing the menu nobody saw.
+    private let start: [Step]
     @State private var request: RequestFlow?
     @State private var detent: PresentationDetent
     @State private var scan: ScanToPayModel?
@@ -54,6 +56,7 @@ struct MoveMoneySheet: View {
         self.onWallet = onWallet
         self.onScanWallet = onScanWallet
         self.onBankDeposit = onBankDeposit
+        self.start = start
         _path = State(initialValue: start)
         _detent = State(initialValue: Self.opening(start.last))
     }
@@ -67,6 +70,7 @@ struct MoveMoneySheet: View {
         .tint(Theme.textPrimary)
         .presentationDetents(Self.detents(for: path.last).union([detent]), selection: $detent)
         .onChange(of: path) { _, path in
+            if !start.isEmpty, path.count < start.count { return dismiss() }
             let allowed = Self.detents(for: path.last)
             if !allowed.contains(detent) { withAnimation(.snappy) { detent = Self.opening(path.last) } }
         }
