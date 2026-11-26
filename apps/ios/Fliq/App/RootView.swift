@@ -4,9 +4,10 @@ enum RootTab: Hashable {
     case home, transfer, activity
 }
 
-/// Transfer opens on its menu; Receive from Activity opens straight on "How do you want to get paid?".
+/// Transfer opens on its menu; Receive from Activity opens straight on "How do you want to get paid?". Recipients
+/// opens it on Pay to, or on adding a new bank recipient.
 enum HomeSheet: Identifiable {
-    case menu, receive, qr
+    case menu, receive, qr, send, addRecipient
 
     var id: Self { self }
 }
@@ -25,17 +26,26 @@ struct RootView: View {
     @State private var restoring: RecoveryState?
     /// Why a payment request link could not be paid: already paid, cancelled, your own, or not found.
     @State private var payLinkProblem: String?
+    @State private var showsRecipients = false
 
     var body: some View {
         @Bindable var router = environment.router
 
         TabView(selection: tabSelection) {
             NavigationStack(path: $router.path) {
-                Group {
+                SwipeToRecipients(isOpen: $showsRecipients) {
                     if let home { HomeView(model: home, onMenu: { router.push(.settings) }, onQR: { sheet = .qr }, onRefresh: {
                         await environment.refreshVault()
                         await environment.refreshActivity()
                     }, activity: environment.activity, onSeeAll: { tab = .activity }, onOpenPayout: { router.push(.receipt(payoutId: $0)) }) }
+                } recipients: { isShown in
+                    RecipientsView(
+                        isShown: isShown,
+                        onBack: { withAnimation(SwipeReveal.settle) { showsRecipients = false } },
+                        onAdd: { sheet = .addRecipient },
+                        onSend: { sheet = .send },
+                        onPay: pay
+                    )
                 }
                 .navigationDestination(for: AppRoute.self) { pushed($0) }
             }
@@ -136,7 +146,7 @@ struct RootView: View {
 
     private func moveMoney(_ sheet: HomeSheet) -> some View {
         MoveMoneySheet(
-            startingAt: sheet == .receive ? [.receive] : [],
+            startingAt: Self.start(of: sheet),
             name: environment.profile.name,
             receive: makeReceive(),
             inbox: environment.inbox,
@@ -148,6 +158,23 @@ struct RootView: View {
             onScanWallet: { address in leaveSheet { startWithdraw(to: address) } },
             onBankDeposit: { leaveSheet { startBankDeposit() } }
         )
+    }
+
+    private static func start(of sheet: HomeSheet) -> [MoveMoneySheet.Step] {
+        switch sheet {
+        case .receive: [.receive]
+        case .send: [.payTo]
+        case .addRecipient: [.recipientCurrency]
+        case .menu, .qr: []
+        }
+    }
+
+    /// The same flows Pay to opens, with the recipient already filled in.
+    private func pay(_ recipient: RecentRecipient) {
+        switch recipient.kind {
+        case .bank(let account): startPayment(to: account)
+        case .person(let person): startPersonPayment(to: person.nearAccount)
+        }
     }
 
     private func leaveSheet(then next: @escaping () -> Void) {
