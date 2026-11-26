@@ -14,7 +14,6 @@ enum HomeSheet: Identifiable {
 
 struct RootView: View {
     @Environment(AppEnvironment.self) private var environment
-    @State private var home: HomeModel?
     @State private var flow: PayFlow?
     @State private var personFlow: PersonPayFlow?
     @State private var withdrawFlow: WithdrawFlow?
@@ -34,10 +33,10 @@ struct RootView: View {
         TabView(selection: tabSelection) {
             NavigationStack(path: $router.path) {
                 SwipeToRecipients(isOpen: $showsRecipients) {
-                    if let home { HomeView(model: home, onMenu: { router.push(.settings) }, onQR: { sheet = .qr }, onRefresh: {
+                    HomeView(model: environment.home, onMenu: { router.push(.settings) }, onQR: { sheet = .qr }, onRefresh: {
                         await environment.refreshVault()
                         await environment.refreshActivity()
-                    }, activity: environment.activity, onSeeAll: { tab = .activity }, onOpenPayout: { router.push(.receipt(payoutId: $0)) }) }
+                    }, activity: environment.activity, onSeeAll: { tab = .activity }, onOpenPayout: { router.push(.receipt(payoutId: $0)) })
                 } recipients: { isShown in
                     RecipientsView(
                         isShown: isShown,
@@ -93,9 +92,6 @@ struct RootView: View {
                 .presentationCornerRadius(32)
                 .presentationBackground(Color(hex: 0x161616))
         }
-        .onAppear {
-            if home == nil { home = HomeModel(api: environment.api, vault: environment.vault, inbox: environment.inbox) }
-        }
         .task(id: environment.pendingPayLink) { await openPayLink() }
         .alert("Payment request", isPresented: Binding(get: { payLinkProblem != nil }, set: { if !$0 { payLinkProblem = nil } })) {
             Button("OK", role: .cancel) {}
@@ -109,7 +105,7 @@ struct RootView: View {
             await environment.accounts.sync()
             await environment.preferences.sync()
             await environment.inbox.load()
-            await home?.loadProfile()
+            await environment.home.loadProfile()
             await environment.inbox.returnNewRefunds()
         }
     }

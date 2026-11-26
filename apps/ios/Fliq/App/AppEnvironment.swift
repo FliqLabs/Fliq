@@ -35,6 +35,8 @@ final class AppEnvironment {
     /// A testnet build's stand-in destination for Paj deposits; nil on mainnet, where they land in the vault.
     let pajTestRecipient: String?
     let inbox: WalletInbox
+    /// Made with everything else, so Home has something to draw on the app's first frame.
+    let home: HomeModel
     let preferences: Preferences
     let biometrics: any Biometrics
     let lock: AppLock
@@ -86,6 +88,7 @@ final class AppEnvironment {
         self.pajSignIn = pajSignIn ?? demoPaj
         self.pajTestRecipient = pajTestRecipient
         inbox = WalletInbox(topUp: walletTopUp)
+        home = HomeModel(api: api, vault: vault, inbox: inbox)
         self.preferences = preferences
         if isLive { preferences.connect(api) }
         agents = AgentStore(api: agentAPI, vault: { profile.name ?? NearNetwork.current.vault })
