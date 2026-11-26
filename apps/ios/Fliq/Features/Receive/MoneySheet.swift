@@ -55,7 +55,7 @@ struct MoveMoneySheet: View {
         self.onScanWallet = onScanWallet
         self.onBankDeposit = onBankDeposit
         _path = State(initialValue: start)
-        _detent = State(initialValue: Self.menuHeight)
+        _detent = State(initialValue: Self.opening(start.last))
     }
 
     var body: some View {
