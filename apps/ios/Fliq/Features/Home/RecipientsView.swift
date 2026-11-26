@@ -25,13 +25,6 @@ struct RecipientsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
-            Text("Recipients")
-                .font(.system(size: 34, weight: .bold))
-                .tracking(-0.6)
-                .foregroundStyle(Theme.textPrimary)
-                .padding(.horizontal, 20)
-                .padding(.top, 8)
-                .accessibilityAddTraits(.isHeader)
             if recipients.isEmpty {
                 empty
             } else {
@@ -41,6 +34,8 @@ struct RecipientsView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Theme.ground.ignoresSafeArea())
+        // Swiping back has no button; VoiceOver's two-finger scrub does the same.
+        .accessibilityAction(.escape) { onBack() }
         .task(id: isShown) {
             guard isShown || people.isEmpty else { return }
             if let loaded = try? await environment.api.recentPeople().items { people = loaded }
@@ -69,15 +64,12 @@ struct RecipientsView: View {
     // MARK: Top
 
     private var header: some View {
-        HStack {
-            Button { tap(onBack) } label: {
-                Icon("chevron.left", size: 20)
-                    .foregroundStyle(Theme.textPrimary)
-                    .frame(width: 40, height: 40)
-                    .fliqGlass(Circle())
-            }
-            .buttonStyle(.pressable)
-            .accessibilityLabel("Back to Home")
+        HStack(alignment: .center) {
+            Text("Recipients")
+                .font(.system(size: 34, weight: .bold))
+                .tracking(-0.6)
+                .foregroundStyle(Theme.textPrimary)
+                .accessibilityAddTraits(.isHeader)
             Spacer()
             Button { tap(onAdd) } label: {
                 IconLabel("Add", icon: "plus", size: 16)
@@ -91,8 +83,9 @@ struct RecipientsView: View {
             .accessibilityLabel("Add a recipient")
             .accessibilityIdentifier("recipients.add")
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 8)
+        .padding(.leading, 20)
+        .padding(.trailing, 16)
+        .padding(.top, 12)
     }
 
     private var grid: some View {
