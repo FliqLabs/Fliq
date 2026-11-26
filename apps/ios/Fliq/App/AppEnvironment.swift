@@ -160,7 +160,7 @@ final class AppEnvironment {
     private static func pajSignIn(info: [String: Any], api: HTTPClient) -> WebPajSignIn {
         let web = (info["FliqWebBaseURL"] as? String).flatMap(URL.init(string:)) ?? URL(string: "https://fliq.cash")!
         let device = UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString
-        return WebPajSignIn(base: web, bearer: { await api.sessions.tokens?.accessToken }, deviceID: device)
+        return WebPajSignIn(base: web, bearer: { await api.freshAccessToken() }, deviceID: device)
     }
 
     private static func cloudinary(info: [String: Any]) -> CloudinaryUploads? {
