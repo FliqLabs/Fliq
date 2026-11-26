@@ -208,6 +208,48 @@ export interface paths {
         patch: operations["updateRecipient"];
         trace?: never;
     };
+    "/wallets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The user's saved wallets, most recently sent to first
+         * @description Wallets sent to most recently come first, then those never sent to, newest saved first. last_sent_at is read from the sends fliq already records: a send to another network once the user's transfer left NEAR, and a NEAR transfer to that wallet. It covers sends made before the wallet was saved and from any device.
+         */
+        get: operations["listWallets"];
+        put?: never;
+        /**
+         * Name a wallet and save it
+         * @description The address is checked for the chain. Saving a chain and address that is already saved returns that wallet with the new label, so there is never a second copy. A wallet removed earlier comes back.
+         */
+        post: operations["saveWallet"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/wallets/{walletId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove a saved wallet */
+        delete: operations["deleteWallet"];
+        options?: never;
+        head?: never;
+        /** Rename a saved wallet */
+        patch: operations["renameWallet"];
+        trace?: never;
+    };
     "/status": {
         parameters: {
             query?: never;
@@ -2639,6 +2681,48 @@ export interface components {
         InstitutionList: {
             items: components["schemas"]["Institution"][];
         };
+        /**
+         * @description NEAR, or a chain from GET /sends/networks
+         * @enum {string}
+         */
+        SavedWalletChain: "near" | "solana" | "base" | "tron" | "bnb";
+        SavedWallet: {
+            wallet_id: string;
+            /** @description The user's name for it */
+            label: string;
+            chain: components["schemas"]["SavedWalletChain"];
+            /** @description In full, to send to. NEAR names are lower case; other addresses are kept as typed. */
+            address: string;
+            /**
+             * @description What the user said arrives there, if they said
+             * @enum {string|null}
+             */
+            token: "usdc" | "usdt" | null;
+            /** Format: date-time */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description The last send to this chain and address, or null if none
+             */
+            last_sent_at: string | null;
+        };
+        SavedWalletList: {
+            items: components["schemas"]["SavedWallet"][];
+        };
+        SavedWalletInput: {
+            label: string;
+            chain: components["schemas"]["SavedWalletChain"];
+            /** @description Checked for the chain. EVM is 0x and 40 hex, Solana is base58 of 32 bytes, Tron is a Base58Check T address. */
+            address: string;
+            /**
+             * @description Must be what fliq sends on that chain
+             * @enum {string}
+             */
+            token?: "usdc" | "usdt";
+        };
+        SavedWalletUpdate: {
+            label: string;
+        };
         RecipientBank: {
             code: string;
             name: string;
@@ -3407,6 +3491,109 @@ export interface operations {
                     "application/json": components["schemas"]["Recipient"];
                 };
             };
+            404: components["responses"]["Error"];
+        };
+    };
+    listWallets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Saved wallets */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedWalletList"];
+                };
+            };
+        };
+    };
+    saveWallet: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SavedWalletInput"];
+            };
+        };
+        responses: {
+            /** @description Already saved, the existing wallet with the new label */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedWallet"];
+                };
+            };
+            /** @description Saved */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedWallet"];
+                };
+            };
+            400: components["responses"]["Error"];
+        };
+    };
+    deleteWallet: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                walletId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["Error"];
+        };
+    };
+    renameWallet: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                walletId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SavedWalletUpdate"];
+            };
+        };
+        responses: {
+            /** @description The renamed wallet */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedWallet"];
+                };
+            };
+            400: components["responses"]["Error"];
             404: components["responses"]["Error"];
         };
     };

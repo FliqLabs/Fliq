@@ -73,5 +73,7 @@
   "agent.self.json": "AgentSelf",
   "agent-payment.402.json": "PaidApiPaymentRequired",
   "agent-payment.paid.json": "Rate",
-  "agent-payment.refused.json": "Error"
+  "agent-payment.refused.json": "Error",
+  "wallet.saved.json": "SavedWallet",
+  "wallets.list.json": "SavedWalletList"
 }

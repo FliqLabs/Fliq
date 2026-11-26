@@ -1,0 +1,40 @@
+{
+  "items": [
+    {
+      "wallet_id": "wal_01jcwallet00000000000000a1",
+      "label": "Tunde's Binance",
+      "chain": "solana",
+      "address": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+      "token": "usdc",
+      "created_at": "2026-11-10T09:00:00.000Z",
+      "last_sent_at": "2026-11-15T10:00:00.000Z"
+    },
+    {
+      "wallet_id": "wal_01jcwallet00000000000000a4",
+      "label": "Kemi on Base",
+      "chain": "base",
+      "address": "0x76b4c56085ed136a8744d52be956396624a730e8",
+      "token": "usdc",
+      "created_at": "2026-11-14T16:30:00.000Z",
+      "last_sent_at": null
+    },
+    {
+      "wallet_id": "wal_01jcwallet00000000000000a3",
+      "label": "Ada's Trust Wallet",
+      "chain": "tron",
+      "address": "TA4Wt1DUCqz6YegbnsmqsWC5uUfbdBqPxm",
+      "token": "usdt",
+      "created_at": "2026-11-12T08:15:00.000Z",
+      "last_sent_at": null
+    },
+    {
+      "wallet_id": "wal_01jcwallet00000000000000a2",
+      "label": "My Phantom",
+      "chain": "solana",
+      "address": "4Nd1mYQzvgV8Vr3Z3nYb7pD6T1K9wLx2aRkQeJcUuHsM",
+      "token": null,
+      "created_at": "2026-11-11T12:00:00.000Z",
+      "last_sent_at": null
+    }
+  ]
+}

@@ -40,6 +40,8 @@ tags:
     description: Other fliq users, for paying by name
   - name: recipients
     description: Saved accounts the user pays often
+  - name: wallets
+    description: Stablecoin wallets the user named, to send to again
   - name: auth
     description: Passkey and email-link sign-in, sessions
   - name: accounts
@@ -333,6 +335,93 @@ paths:
       tags: [recipients]
       parameters:
         - name: recipientId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Removed
+        "404":
+          $ref: "#/components/responses/Error"
+  /wallets:
+    get:
+      operationId: listWallets
+      summary: The user's saved wallets, most recently sent to first
+      description: >-
+        Wallets sent to most recently come first, then those never sent to, newest saved first. last_sent_at is read
+        from the sends fliq already records: a send to another network once the user's transfer left NEAR, and a NEAR
+        transfer to that wallet. It covers sends made before the wallet was saved and from any device.
+      tags: [wallets]
+      responses:
+        "200":
+          description: Saved wallets
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SavedWalletList"
+    post:
+      operationId: saveWallet
+      summary: Name a wallet and save it
+      description: >-
+        The address is checked for the chain. Saving a chain and address that is already saved returns that wallet
+        with the new label, so there is never a second copy. A wallet removed earlier comes back.
+      tags: [wallets]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SavedWalletInput"
+      responses:
+        "201":
+          description: Saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SavedWallet"
+        "200":
+          description: Already saved, the existing wallet with the new label
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SavedWallet"
+        "400":
+          $ref: "#/components/responses/Error"
+  /wallets/{walletId}:
+    patch:
+      operationId: renameWallet
+      summary: Rename a saved wallet
+      tags: [wallets]
+      parameters:
+        - name: walletId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SavedWalletUpdate"
+      responses:
+        "200":
+          description: The renamed wallet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SavedWallet"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+    delete:
+      operationId: deleteWallet
+      summary: Remove a saved wallet
+      tags: [wallets]
+      parameters:
+        - name: walletId
           in: path
           required: true
           schema:
@@ -4300,6 +4389,76 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Institution"
+    SavedWalletChain:
+      type: string
+      enum: [near, solana, base, tron, bnb]
+      description: NEAR, or a chain from GET /sends/networks
+    SavedWallet:
+      type: object
+      additionalProperties: false
+      required: [wallet_id, label, chain, address, token, created_at, last_sent_at]
+      properties:
+        wallet_id:
+          type: string
+        label:
+          type: string
+          maxLength: 40
+          description: The user's name for it
+          examples: ["Tunde's Binance"]
+        chain:
+          $ref: "#/components/schemas/SavedWalletChain"
+        address:
+          type: string
+          description: In full, to send to. NEAR names are lower case; other addresses are kept as typed.
+        token:
+          type: [string, "null"]
+          enum: [usdc, usdt, null]
+          description: What the user said arrives there, if they said
+        created_at:
+          type: string
+          format: date-time
+        last_sent_at:
+          type: [string, "null"]
+          format: date-time
+          description: The last send to this chain and address, or null if none
+    SavedWalletList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SavedWallet"
+    SavedWalletInput:
+      type: object
+      additionalProperties: false
+      required: [label, chain, address]
+      properties:
+        label:
+          type: string
+          minLength: 1
+          maxLength: 40
+        chain:
+          $ref: "#/components/schemas/SavedWalletChain"
+        address:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Checked for the chain. EVM is 0x and 40 hex, Solana is base58 of 32 bytes, Tron is a Base58Check T address.
+        token:
+          type: string
+          enum: [usdc, usdt]
+          description: Must be what fliq sends on that chain
+    SavedWalletUpdate:
+      type: object
+      additionalProperties: false
+      required: [label]
+      properties:
+        label:
+          type: string
+          minLength: 1
+          maxLength: 40
     RecipientBank:
       type: object
       required: [code, name, logo_key]
